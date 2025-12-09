@@ -352,7 +352,7 @@ export default function PatientCrmPreferencesCard({
               className="mt-1 block w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
               <option value="">Unassigned</option>
-              {userOptions.map((user) => {
+              {(Array.isArray(userOptions) ? userOptions : []).map((user) => {
                 const display = user.full_name || user.email || "Unnamed user";
                 const value = user.email ?? "";
                 if (!value) return null;
@@ -384,7 +384,7 @@ export default function PatientCrmPreferencesCard({
               className="block w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
               <option value="">Select</option>
-              {LANGUAGE_OPTIONS.map((option) => (
+              {(Array.isArray(LANGUAGE_OPTIONS) ? LANGUAGE_OPTIONS : []).map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -400,7 +400,7 @@ export default function PatientCrmPreferencesCard({
               className="block w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
               <option value="">Select</option>
-              {CLINIC_OPTIONS.map((option) => (
+              {(Array.isArray(CLINIC_OPTIONS) ? CLINIC_OPTIONS : []).map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -416,7 +416,7 @@ export default function PatientCrmPreferencesCard({
               className="block w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
               <option value="">Select</option>
-              {serviceOptions.map((service) => (
+              {(Array.isArray(serviceOptions) ? serviceOptions : []).map((service) => (
                 <option key={service.id} value={service.name}>
                   {service.name}
                 </option>

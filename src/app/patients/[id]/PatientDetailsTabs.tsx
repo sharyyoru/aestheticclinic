@@ -16,6 +16,9 @@ export default function PatientDetailsTabs({
 }) {
   const [activeTab, setActiveTab] = useState<TabKey>("primary");
 
+  // Defensive: ensure insurance is always an array
+  const safeInsurance = Array.isArray(insurance) ? insurance : [];
+
   const fullName = `${patient.first_name ?? ""} ${patient.last_name ?? ""}`.trim();
 
   function handleCopy(value?: string | null) {
@@ -220,13 +223,13 @@ export default function PatientDetailsTabs({
 
         {activeTab === "insurance" ? (
           <div className="space-y-3">
-            {insurance.length === 0 ? (
+            {safeInsurance.length === 0 ? (
               <p className="text-sm text-slate-500">
                 No insurance information on file.
               </p>
             ) : (
               <div className="space-y-3">
-                {insurance.map((item) => (
+                {safeInsurance.map((item) => (
                   <div
                     key={item.id}
                     className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-slate-50/80 px-3 py-2"
