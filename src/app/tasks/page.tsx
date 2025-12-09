@@ -36,7 +36,9 @@ type TaskRow = {
 
 type PlatformUser = {
   id: string;
-  full_name: string | null;
+  fullName: string | null;
+  firstName: string | null;
+  lastName: string | null;
   email: string | null;
 };
 
@@ -144,9 +146,10 @@ export default function TasksPage() {
           setUsersLoading(false);
           return;
         }
-        const data = (await response.json()) as PlatformUser[];
+        const json = await response.json();
+        const data = (json.users ?? json) as PlatformUser[];
         if (!isMounted) return;
-        setAllUsers(data);
+        setAllUsers(Array.isArray(data) ? data : []);
         setUsersLoading(false);
       } catch {
         if (!isMounted) return;
@@ -162,13 +165,21 @@ export default function TasksPage() {
     };
   }, []);
 
+  // Helper to get display name for a user
+  function getUserDisplayName(u: PlatformUser): string {
+    if (u.fullName) return u.fullName;
+    const parts = [u.firstName, u.lastName].filter(Boolean);
+    if (parts.length > 0) return parts.join(" ");
+    return u.email || "Unnamed";
+  }
+
   // Filter users based on search query
   const filteredUsers = useMemo(() => {
     const safeUsers = Array.isArray(allUsers) ? allUsers : [];
     const term = userSearchQuery.trim().toLowerCase();
     if (!term) return safeUsers;
     return safeUsers.filter((u) => {
-      const name = (u.full_name ?? "").toLowerCase();
+      const name = getUserDisplayName(u).toLowerCase();
       const email = (u.email ?? "").toLowerCase();
       return name.includes(term) || email.includes(term);
     });
@@ -180,7 +191,7 @@ export default function TasksPage() {
     const safeUsers = Array.isArray(allUsers) ? allUsers : [];
     const user = safeUsers.find((u) => u.id === selectedUserId);
     if (!user) return "My Tasks";
-    return user.full_name || user.email || "Unknown User";
+    return getUserDisplayName(user);
   }, [selectedUserId, allUsers]);
 
   const patientOptions = useMemo(() => {
@@ -335,7 +346,7 @@ export default function TasksPage() {
                   value={userSearchQuery}
                   onChange={(e) => setUserSearchQuery(e.target.value)}
                   placeholder="Search users..."
-                  className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus:border-sky-500 focus:outline-none"
+                  className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-900 focus:border-sky-500 focus:outline-none"
                   autoFocus
                 />
               </div>
@@ -371,7 +382,7 @@ export default function TasksPage() {
                         selectedUserId === user.id ? "bg-sky-50 text-sky-700" : "text-slate-700"
                       }`}
                     >
-                      <span className="font-medium">{user.full_name || "Unnamed"}</span>
+                      <span className="font-medium">{getUserDisplayName(user)}</span>
                       <span className="text-[10px] text-slate-500">{user.email}</span>
                     </button>
                   ))
