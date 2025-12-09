@@ -344,8 +344,8 @@ export default function RootLayout({
                       <div className="flex items-center gap-3">
                         <Link href="/" aria-label="Go to dashboard" className="inline-flex items-center">
                           <Image
-                            src="/logos/maisontoa-logo.png"
-                            alt="Maison Tōa logo"
+                            src="/logos/aesthetics-logo.svg"
+                            alt="Aesthetics logo"
                             width={90}
                             height={32}
                             className="h-8 w-auto"

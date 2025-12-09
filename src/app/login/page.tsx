@@ -14,8 +14,8 @@ export default function LoginPage() {
             className="h-8 w-auto"
           />
           <Image
-            src="/logos/maisontoa-logo.png"
-            alt="Maison Tōa logo"
+            src="/logos/aesthetics-logo.svg"
+            alt="Aesthetics logo"
             width={96}
             height={32}
             className="h-8 w-auto"
