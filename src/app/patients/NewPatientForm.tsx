@@ -151,47 +151,45 @@ export default function NewPatientForm() {
           className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
         />
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-1">
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-slate-700"
+      <div className="space-y-1">
+        <label
+          htmlFor="email"
+          className="block text-sm font-medium text-slate-700"
+        >
+          Email
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          required
+          className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="block text-sm font-medium text-slate-700">
+          Phone
+        </label>
+        <div className="flex gap-2">
+          <select
+            id="country_code"
+            name="country_code"
+            defaultValue="+41"
+            className="w-28 rounded-lg border border-slate-200 bg-white/90 px-2 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
           >
-            Email
-          </label>
+            <option value="+41">🇨🇭 +41</option>
+            <option value="+971">🇦🇪 +971</option>
+            <option value="+44">🇬🇧 +44</option>
+            <option value="+1">🇺🇸 +1</option>
+          </select>
           <input
-            id="email"
-            name="email"
-            type="email"
+            id="phone"
+            name="phone"
+            type="tel"
+            placeholder="79 123 45 67"
             required
             className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
           />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-slate-700">
-            Phone
-          </label>
-          <div className="flex gap-2">
-            <select
-              id="country_code"
-              name="country_code"
-              defaultValue="+41"
-              className="w-28 rounded-lg border border-slate-200 bg-white/90 px-2 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            >
-              <option value="+41">🇨🇭 +41</option>
-              <option value="+971">🇦🇪 +971</option>
-              <option value="+44">🇬🇧 +44</option>
-              <option value="+1">🇺🇸 +1</option>
-            </select>
-            <input
-              id="phone"
-              name="phone"
-              type="tel"
-              placeholder="79 123 45 67"
-              required
-              className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            />
-          </div>
         </div>
       </div>
       <div className="space-y-1">
