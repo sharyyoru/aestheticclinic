@@ -353,10 +353,10 @@ export default function TasksPage() {
                 </button>
                 {usersLoading ? (
                   <p className="px-3 py-2 text-slate-500">Loading users...</p>
-                ) : filteredUsers.length === 0 ? (
+                ) : !Array.isArray(filteredUsers) || filteredUsers.length === 0 ? (
                   <p className="px-3 py-2 text-slate-500">No users found</p>
                 ) : (
-                  filteredUsers.map((user) => (
+                  (Array.isArray(filteredUsers) ? filteredUsers : []).map((user) => (
                     <button
                       key={user.id}
                       type="button"

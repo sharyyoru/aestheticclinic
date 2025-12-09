@@ -81,6 +81,10 @@ export default function EmailReportsPage() {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 25;
+
   useEffect(() => {
     let isMounted = true;
 
@@ -195,6 +199,19 @@ export default function EmailReportsPage() {
     const manual = emails.filter((e) => !e.deal_id).length;
     return { total, sent, failed, inbound, outbound, automation, manual };
   }, [emails]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredEmails.length / ITEMS_PER_PAGE);
+  const paginatedEmails = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    const end = start + ITEMS_PER_PAGE;
+    return filteredEmails.slice(start, end);
+  }, [filteredEmails, currentPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
 
   function handleViewEmail(email: Email) {
     setSelectedEmail(email);
@@ -470,8 +487,9 @@ export default function EmailReportsPage() {
             <p className="mt-3 text-sm text-slate-500">No emails match your filters</p>
           </div>
         ) : (
+          <>
           <div className="divide-y divide-slate-100">
-            {filteredEmails.map((email) => {
+            {paginatedEmails.map((email) => {
               const patient = email.patient_id ? patientMap.get(email.patient_id) : null;
               const isAutomation = !!email.deal_id;
 
@@ -554,13 +572,67 @@ export default function EmailReportsPage() {
               );
             })}
           </div>
+
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+              <p className="text-xs text-slate-500">
+                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredEmails.length)} of {filteredEmails.length} emails
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  ←
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-xs ${
+                        currentPage === pageNum
+                          ? "border-sky-500 bg-sky-500 text-white"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
 
       {/* View Email Modal */}
       {viewModalOpen && selectedEmail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewModalOpen(false)}>
+          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <h2 className="text-lg font-semibold text-slate-900">Email Details</h2>
               <button
