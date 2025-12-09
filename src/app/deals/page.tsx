@@ -63,6 +63,14 @@ export default function DealsPage() {
   const [dragDealId, setDragDealId] = useState<string | null>(null);
   const [updatingDealId, setUpdatingDealId] = useState<string | null>(null);
 
+  // List view pagination
+  const [listPage, setListPage] = useState(1);
+  const LIST_ITEMS_PER_PAGE = 25;
+
+  // Kanban view load more (per stage)
+  const KANBAN_ITEMS_PER_STAGE = 20;
+  const [stageLoadMoreCounts, setStageLoadMoreCounts] = useState<Record<string, number>>({});
+
   useEffect(() => {
     let isMounted = true;
 
@@ -162,6 +170,31 @@ export default function DealsPage() {
     if (serviceFilter === "all") return deals;
     return deals.filter((deal) => deal.service?.id === serviceFilter);
   }, [deals, serviceFilter]);
+
+  // List view pagination calculations
+  const totalListPages = Math.ceil(filteredDeals.length / LIST_ITEMS_PER_PAGE);
+  const paginatedListDeals = useMemo(() => {
+    const start = (listPage - 1) * LIST_ITEMS_PER_PAGE;
+    const end = start + LIST_ITEMS_PER_PAGE;
+    return filteredDeals.slice(start, end);
+  }, [filteredDeals, listPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setListPage(1);
+  }, [searchQuery, serviceFilter]);
+
+  // Helper to get visible deals count for a stage in kanban
+  function getVisibleCountForStage(stageId: string): number {
+    return stageLoadMoreCounts[stageId] ?? KANBAN_ITEMS_PER_STAGE;
+  }
+
+  function handleLoadMoreForStage(stageId: string) {
+    setStageLoadMoreCounts((prev) => ({
+      ...prev,
+      [stageId]: (prev[stageId] ?? KANBAN_ITEMS_PER_STAGE) + KANBAN_ITEMS_PER_STAGE,
+    }));
+  }
 
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -395,6 +428,7 @@ export default function DealsPage() {
                 ) : filteredDeals.length === 0 ? (
                   <p className="text-[11px] text-slate-500">No deals found.</p>
                 ) : (
+                  <>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-left text-[11px]">
                       <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
@@ -409,7 +443,7 @@ export default function DealsPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {filteredDeals.map((deal) => {
+                        {paginatedListDeals.map((deal) => {
                           const stageName = getStageName(deal.stage_id);
                           const patientName = deal.patient
                             ? `${deal.patient.first_name ?? ""} ${
@@ -465,6 +499,60 @@ export default function DealsPage() {
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Pagination controls */}
+                  {totalListPages > 1 && (
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <p className="text-[11px] text-slate-500">
+                        Showing {((listPage - 1) * LIST_ITEMS_PER_PAGE) + 1} to {Math.min(listPage * LIST_ITEMS_PER_PAGE, filteredDeals.length)} of {filteredDeals.length} deals
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                          disabled={listPage === 1}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          ←
+                        </button>
+                        {Array.from({ length: Math.min(5, totalListPages) }, (_, i) => {
+                          let pageNum: number;
+                          if (totalListPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (listPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (listPage >= totalListPages - 2) {
+                            pageNum = totalListPages - 4 + i;
+                          } else {
+                            pageNum = listPage - 2 + i;
+                          }
+                          return (
+                            <button
+                              key={pageNum}
+                              type="button"
+                              onClick={() => setListPage(pageNum)}
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] ${
+                                listPage === pageNum
+                                  ? "border-sky-500 bg-sky-500 text-white"
+                                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setListPage((p) => Math.min(totalListPages, p + 1))}
+                          disabled={listPage === totalListPages}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  </>
                 )}
               </div>
             )}
@@ -489,9 +577,12 @@ export default function DealsPage() {
               >
                 <div className="flex gap-3 px-3 py-3 md:gap-4">
                   {dealStages.map((stage) => {
-                    const stageDeals = boardDeals.filter(
+                    const allStageDeals = boardDeals.filter(
                       (deal) => deal.stage_id === stage.id,
                     );
+                    const visibleCount = getVisibleCountForStage(stage.id);
+                    const stageDeals = allStageDeals.slice(0, visibleCount);
+                    const hasMoreDeals = allStageDeals.length > visibleCount;
 
                     return (
                       <div
@@ -510,7 +601,7 @@ export default function DealsPage() {
                             {stage.name}
                           </p>
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                            {stageDeals.length}
+                            {allStageDeals.length}
                           </span>
                         </div>
                         <div className="flex-1 space-y-2 overflow-y-auto p-2">
@@ -583,6 +674,15 @@ export default function DealsPage() {
                                 </div>
                               );
                             })
+                          )}
+                          {hasMoreDeals && (
+                            <button
+                              type="button"
+                              onClick={() => handleLoadMoreForStage(stage.id)}
+                              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
+                            >
+                              Load more ({allStageDeals.length - stageDeals.length} remaining)
+                            </button>
                           )}
                         </div>
                       </div>

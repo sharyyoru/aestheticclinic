@@ -5,6 +5,8 @@ import Image from "next/image";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 interface ProfileState {
+  firstName: string;
+  lastName: string;
   fullName: string;
   email: string;
   avatarUrl: string | null;
@@ -20,6 +22,9 @@ export default function ProfileSettingsForm() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameSuccess, setNameSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -44,6 +49,8 @@ export default function ProfileSettingsForm() {
         rawPriority === "medical" ? "medical" : "crm";
 
       setProfile({
+        firstName,
+        lastName,
         fullName,
         email: user.email ?? "",
         avatarUrl: (meta["avatar_url"] as string) || null,
@@ -114,6 +121,41 @@ export default function ProfileSettingsForm() {
       setAvatarError("Unexpected error uploading avatar.");
     } finally {
       setAvatarUploading(false);
+    }
+  }
+
+  async function handleNameSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profile) return;
+
+    try {
+      setNameSaving(true);
+      setNameError(null);
+      setNameSuccess(null);
+
+      const { error: updateError } = await supabaseClient.auth.updateUser({
+        data: {
+          first_name: profile.firstName.trim(),
+          last_name: profile.lastName.trim(),
+        },
+      });
+
+      if (updateError) {
+        setNameError(updateError.message);
+        setNameSaving(false);
+        return;
+      }
+
+      const newFullName = [profile.firstName.trim(), profile.lastName.trim()]
+        .filter(Boolean)
+        .join(" ") || profile.email;
+
+      setProfile({ ...profile, fullName: newFullName });
+      setNameSuccess("Name updated successfully.");
+    } catch (err) {
+      setNameError("Unexpected error saving name.");
+    } finally {
+      setNameSaving(false);
     }
   }
 
@@ -229,6 +271,63 @@ export default function ProfileSettingsForm() {
             ) : null}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+        <h2 className="text-sm font-medium text-slate-900">Your name</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Update your first and last name displayed throughout the app.
+        </p>
+        <form onSubmit={handleNameSubmit} className="mt-3 space-y-3">
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label htmlFor="first_name" className="block text-[11px] font-medium text-slate-600 mb-1">
+                First name
+              </label>
+              <input
+                id="first_name"
+                name="first_name"
+                type="text"
+                value={profile.firstName}
+                onChange={(event) =>
+                  setProfile((prev) =>
+                    prev ? { ...prev, firstName: event.target.value } : prev
+                  )
+                }
+                placeholder="First name"
+                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label htmlFor="last_name" className="block text-[11px] font-medium text-slate-600 mb-1">
+                Last name
+              </label>
+              <input
+                id="last_name"
+                name="last_name"
+                type="text"
+                value={profile.lastName}
+                onChange={(event) =>
+                  setProfile((prev) =>
+                    prev ? { ...prev, lastName: event.target.value } : prev
+                  )
+                }
+                placeholder="Last name"
+                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+          </div>
+
+          {nameError ? <p className="text-xs text-red-600">{nameError}</p> : null}
+          {nameSuccess ? <p className="text-xs text-emerald-600">{nameSuccess}</p> : null}
+          <button
+            type="submit"
+            disabled={nameSaving}
+            className="inline-flex items-center rounded-full border border-sky-200/80 bg-sky-600 px-4 py-1.5 text-xs font-medium text-white shadow-[0_10px_25px_rgba(15,23,42,0.22)] backdrop-blur hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {nameSaving ? "Saving..." : "Save name"}
+          </button>
+        </form>
       </section>
 
       <section className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">

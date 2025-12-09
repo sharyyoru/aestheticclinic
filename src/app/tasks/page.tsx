@@ -30,7 +30,14 @@ type TaskRow = {
   created_at: string;
   created_by_name: string | null;
   assigned_user_name: string | null;
+  assigned_user_id: string | null;
   patient: TaskPatient | null;
+};
+
+type PlatformUser = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
 };
 
 type DateFilter = "today" | "all" | "past" | "future";
@@ -55,6 +62,14 @@ export default function TasksPage() {
 
   const [updatingTaskIds, setUpdatingTaskIds] = useState<string[]>([]);
 
+  // Admin user selector
+  const [allUsers, setAllUsers] = useState<PlatformUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -73,12 +88,20 @@ export default function TasksPage() {
           return;
         }
 
+        // Store current user ID
+        if (!currentUserId) {
+          setCurrentUserId(user.id);
+        }
+
+        // Use selectedUserId if set (admin viewing another user), otherwise use current user
+        const targetUserId = selectedUserId ?? user.id;
+
         const { data, error } = await supabaseClient
           .from("tasks")
           .select(
-            "id, patient_id, name, content, status, priority, type, activity_date, created_at, created_by_name, assigned_user_name, patient:patients(id, first_name, last_name, email, phone)",
+            "id, patient_id, name, content, status, priority, type, activity_date, created_at, created_by_name, assigned_user_name, assigned_user_id, patient:patients(id, first_name, last_name, email, phone)",
           )
-          .eq("assigned_user_id", user.id)
+          .eq("assigned_user_id", targetUserId)
           .order("activity_date", { ascending: false });
 
         if (!isMounted) return;
@@ -105,7 +128,58 @@ export default function TasksPage() {
     return () => {
       isMounted = false;
     };
+  }, [selectedUserId]);
+
+  // Load all users for admin selector
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadUsers() {
+      try {
+        setUsersLoading(true);
+        const response = await fetch("/api/users/list");
+        if (!response.ok) {
+          if (!isMounted) return;
+          setAllUsers([]);
+          setUsersLoading(false);
+          return;
+        }
+        const data = (await response.json()) as PlatformUser[];
+        if (!isMounted) return;
+        setAllUsers(data);
+        setUsersLoading(false);
+      } catch {
+        if (!isMounted) return;
+        setAllUsers([]);
+        setUsersLoading(false);
+      }
+    }
+
+    void loadUsers();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  // Filter users based on search query
+  const filteredUsers = useMemo(() => {
+    const term = userSearchQuery.trim().toLowerCase();
+    if (!term) return allUsers;
+    return allUsers.filter((u) => {
+      const name = (u.full_name ?? "").toLowerCase();
+      const email = (u.email ?? "").toLowerCase();
+      return name.includes(term) || email.includes(term);
+    });
+  }, [allUsers, userSearchQuery]);
+
+  // Get selected user display name
+  const selectedUserDisplay = useMemo(() => {
+    if (!selectedUserId) return "My Tasks";
+    const user = allUsers.find((u) => u.id === selectedUserId);
+    if (!user) return "My Tasks";
+    return user.full_name || user.email || "Unknown User";
+  }, [selectedUserId, allUsers]);
 
   const patientOptions = useMemo(() => {
     const map = new Map<string, TaskPatient>();
@@ -230,8 +304,79 @@ export default function TasksPage() {
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Tasks</h1>
           <p className="text-xs text-slate-500">
-            Tasks assigned to you across all patients.
+            {selectedUserId && selectedUserId !== currentUserId
+              ? `Viewing tasks for ${selectedUserDisplay}`
+              : "Tasks assigned to you across all patients."}
           </p>
+        </div>
+        {/* Admin user selector */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowUserDropdown(!showUserDropdown)}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            <svg className="h-3.5 w-3.5 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z" />
+              <path d="M4 20a6 6 0 0 1 8-5.29A6 6 0 0 1 20 20" />
+            </svg>
+            <span>{selectedUserDisplay}</span>
+            <svg className="h-3 w-3 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+            </svg>
+          </button>
+          {showUserDropdown && (
+            <div className="absolute right-0 z-30 mt-1 w-64 rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+              <div className="px-2 pb-1">
+                <input
+                  type="text"
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  placeholder="Search users..."
+                  className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs focus:border-sky-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedUserId(null);
+                    setShowUserDropdown(false);
+                    setUserSearchQuery("");
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50 ${
+                    !selectedUserId ? "bg-sky-50 text-sky-700" : "text-slate-700"
+                  }`}
+                >
+                  <span className="font-medium">My Tasks</span>
+                </button>
+                {usersLoading ? (
+                  <p className="px-3 py-2 text-slate-500">Loading users...</p>
+                ) : filteredUsers.length === 0 ? (
+                  <p className="px-3 py-2 text-slate-500">No users found</p>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedUserId(user.id);
+                        setShowUserDropdown(false);
+                        setUserSearchQuery("");
+                      }}
+                      className={`flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-slate-50 ${
+                        selectedUserId === user.id ? "bg-sky-50 text-sky-700" : "text-slate-700"
+                      }`}
+                    >
+                      <span className="font-medium">{user.full_name || "Unnamed"}</span>
+                      <span className="text-[10px] text-slate-500">{user.email}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
