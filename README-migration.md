@@ -1,3 +1,29 @@
+# Migration Guide
+
+## Storage Buckets Setup (REQUIRED)
+
+Before using the application, you must create the required storage buckets in Supabase.
+
+### Run the Storage Migration
+
+1. Go to your Supabase Dashboard → SQL Editor
+2. Run the SQL script located at: `supabase/migrations/20241210_create_storage_buckets.sql`
+
+### Required Buckets
+
+| Bucket Name | Purpose | Size Limit |
+|-------------|---------|------------|
+| `avatars` | User profile photos | 5MB |
+| `patient-avatars` | Patient profile photos | 5MB |
+| `patient-documents` | Patient files (before/after, documents) | 50MB |
+| `email-attachments` | Email attachment files | 25MB |
+| `cash-receipts` | Cash receipt uploads | 10MB |
+| `email-assets` | Workflow email images | 10MB |
+
+All buckets are created as **public** with appropriate RLS policies for authenticated users.
+
+---
+
 # Email Migration Guide
 
 ## Overview

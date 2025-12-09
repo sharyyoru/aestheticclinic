@@ -32,6 +32,7 @@ export default function Home() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [mentions, setMentions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userFirstName, setUserFirstName] = useState<string | null>(null);
 
   const { unreadCount } = useMessagesUnread();
 
@@ -60,6 +61,13 @@ export default function Home() {
 
         const { data: authData } = await supabaseClient.auth.getUser();
         const user = authData?.user ?? null;
+
+        // Extract user's first name from metadata
+        if (user) {
+          const meta = (user.user_metadata || {}) as Record<string, unknown>;
+          const firstName = (meta["first_name"] as string) || null;
+          setUserFirstName(firstName);
+        }
 
         const today = new Date();
         const dayStart = new Date(
@@ -389,7 +397,7 @@ export default function Home() {
       <header className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">
-            Hi Dr. Smith
+            Hi{userFirstName ? ` ${userFirstName}` : ""}
           </h1>
           <p className="text-sm text-slate-500">
             Let&apos;s get you on a productive routine today!
