@@ -1,8 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function NewUserForm() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -57,6 +59,7 @@ export default function NewUserForm() {
       } else {
         setSuccess("User created successfully.");
         form.reset();
+        router.refresh();
       }
     } catch (err) {
       setError("Network or server error while creating user.");

@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import NewUserForm from "./NewUserForm";
 
+export const dynamic = "force-dynamic";
+
 type UserRow = {
   id: string;
   email: string | null;
