@@ -2,6 +2,8 @@ import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import NewPatientForm from "../patients/NewPatientForm";
 
+export const dynamic = "force-dynamic";
+
 type Patient = {
   id: string;
   first_name: string;

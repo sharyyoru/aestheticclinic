@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import CollapseSidebarOnMount from "@/components/CollapseSidebarOnMount";
+
 import EditPatientDetailsButton from "./EditPatientDetailsButton";
 import PatientModeToggle from "./PatientModeToggle";
 import PatientDetailsTabs from "./PatientDetailsTabs";
@@ -12,6 +13,8 @@ import PatientDocumentsTab from "./PatientDocumentsTab";
 import PatientModeInitializer from "./PatientModeInitializer";
 import PatientEditingPresence from "./PatientEditingPresence";
 import InvoicePaymentMethodFilter from "./InvoicePaymentMethodFilter";
+
+export const dynamic = "force-dynamic";
 
 interface PatientDetailsProps {
   params: Promise<{ id: string }>;
