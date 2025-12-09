@@ -1,0 +1,405 @@
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const runtime = "nodejs";
+
+const mailgunApiKey = process.env.MAILGUN_API_KEY;
+const mailgunDomain = process.env.MAILGUN_DOMAIN;
+const mailgunFromEmail = process.env.MAILGUN_FROM_EMAIL;
+const mailgunFromName = process.env.MAILGUN_FROM_NAME || "Clinic";
+const mailgunApiBaseUrl =
+  process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
+
+type DealStageChangedPayload = {
+  dealId: string;
+  patientId: string;
+  fromStageId: string | null;
+  toStageId: string;
+  pipeline: string | null;
+};
+
+function resolvePath(object: unknown, path: string): unknown {
+  const parts = path.split(".").map((part) => part.trim()).filter(Boolean);
+
+  return parts.reduce<unknown>((current, key) => {
+    if (!current || typeof current !== "object") return undefined;
+    if (!(key in (current as Record<string, unknown>))) return undefined;
+    return (current as Record<string, unknown>)[key];
+  }, object);
+}
+
+function renderTemplate(template: string, context: unknown): string {
+  if (!template) return "";
+
+  return template.replace(/{{\s*([^}]+?)\s*}}/g, (_match, rawPath) => {
+    const value = resolvePath(context, String(rawPath));
+    if (value === undefined || value === null) return "";
+    return String(value);
+  });
+}
+
+function textToHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  return escaped
+    .split(/\r?\n/g)
+    .map((line) => (line.length === 0 ? "<br />" : line))
+    .join("<br />");
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json()) as Partial<DealStageChangedPayload>;
+
+    const dealId = body.dealId?.trim();
+    const patientId = body.patientId?.trim();
+    const toStageId = body.toStageId?.trim() ?? null;
+    const fromStageId = body.fromStageId?.trim() ?? null;
+    const pipeline = (body.pipeline ?? null) as string | null;
+
+    if (!dealId || !patientId || !toStageId) {
+      return NextResponse.json(
+        { error: "Missing required fields: dealId, patientId, toStageId" },
+        { status: 400 },
+      );
+    }
+
+    const [{ data: deal, error: dealError }, { data: patient, error: patientError }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("deals")
+          .select(
+            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, created_at, updated_at",
+          )
+          .eq("id", dealId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("patients")
+          .select("id, first_name, last_name, email, phone")
+          .eq("id", patientId)
+          .maybeSingle(),
+      ]);
+
+    if (dealError || !deal) {
+      return NextResponse.json(
+        { error: dealError?.message ?? "Deal not found" },
+        { status: 404 },
+      );
+    }
+
+    if (patientError || !patient) {
+      return NextResponse.json(
+        { error: patientError?.message ?? "Patient not found" },
+        { status: 404 },
+      );
+    }
+
+    const safeDeal = deal as {
+      id: string;
+      title: string | null;
+      pipeline: string | null;
+      notes: string | null;
+    };
+
+    const safePatient = patient as {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+      phone: string | null;
+    };
+
+    const stageIdsToFetch: string[] = [];
+    if (fromStageId) stageIdsToFetch.push(fromStageId);
+    if (toStageId) stageIdsToFetch.push(toStageId);
+
+    let fromStage: { id: string; name: string; type: string } | null = null;
+    let toStage: { id: string; name: string; type: string } | null = null;
+
+    if (stageIdsToFetch.length > 0) {
+      const { data: stagesData, error: stagesError } = await supabaseAdmin
+        .from("deal_stages")
+        .select("id, name, type")
+        .in("id", stageIdsToFetch);
+
+      if (!stagesError && stagesData) {
+        for (const row of stagesData as { id: string; name: string; type: string }[]) {
+          if (row.id === fromStageId) {
+            fromStage = row;
+          }
+          if (row.id === toStageId) {
+            toStage = row;
+          }
+        }
+      }
+    }
+
+    const { data: workflows, error: workflowsError } = await supabaseAdmin
+      .from("workflows")
+      .select("id, name, trigger_type, active, config")
+      .eq("trigger_type", "deal_stage_changed")
+      .eq("active", true);
+
+    if (workflowsError) {
+      console.error("Failed to load workflows", workflowsError);
+      return NextResponse.json(
+        { error: "Failed to load workflows" },
+        { status: 500 },
+      );
+    }
+
+    if (!workflows || workflows.length === 0) {
+      return NextResponse.json({ ok: true, workflows: 0, actionsRun: 0 });
+    }
+
+    const matchingWorkflows = (workflows as any[]).filter((workflow) => {
+      const config = (workflow.config || {}) as {
+        from_stage_id?: string | null;
+        to_stage_id?: string | null;
+        pipeline?: string | null;
+      };
+
+      if (config.to_stage_id && config.to_stage_id !== toStageId) {
+        return false;
+      }
+
+      if (config.from_stage_id && config.from_stage_id !== fromStageId) {
+        return false;
+      }
+
+      if (config.pipeline && pipeline) {
+        if (config.pipeline.toLowerCase() !== pipeline.toLowerCase()) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (matchingWorkflows.length === 0) {
+      return NextResponse.json({ ok: true, workflows: 0, actionsRun: 0 });
+    }
+
+    const templateContext = {
+      patient: {
+        id: safePatient.id,
+        first_name: safePatient.first_name,
+        last_name: safePatient.last_name,
+        email: safePatient.email,
+        phone: safePatient.phone,
+      },
+      deal: {
+        id: safeDeal.id,
+        title: safeDeal.title,
+        pipeline: safeDeal.pipeline,
+        notes: safeDeal.notes,
+      },
+      from_stage: fromStage,
+      to_stage: toStage,
+    };
+
+    let actionsRun = 0;
+
+    for (const workflow of matchingWorkflows) {
+      const { data: actions, error: actionsError } = await supabaseAdmin
+        .from("workflow_actions")
+        .select("id, action_type, config, sort_order")
+        .eq("workflow_id", workflow.id)
+        .order("sort_order", { ascending: true });
+
+      if (actionsError || !actions || actions.length === 0) {
+        continue;
+      }
+
+      for (const action of actions as any[]) {
+        if (action.action_type === "draft_email_patient") {
+          const config = (action.config || {}) as {
+            subject_template?: string;
+            body_template?: string;
+            body_html_template?: string;
+            use_html?: boolean;
+            send_mode?: "immediate" | "delay" | "recurring";
+            delay_minutes?: number | null;
+            recurring_every_days?: number | null;
+            recurring_times?: number | null;
+          };
+
+          const subjectTemplate =
+            config.subject_template ??
+            "Your information request has been processed";
+
+          const bodyTemplate =
+            config.body_template ??
+            [
+              "Hi {{patient.first_name}}",
+              "",
+              "We wanted to let you know that your request for information has now been processed.",
+              "",
+              "Deal: {{deal.title}}",
+              "Pipeline: {{deal.pipeline}}",
+              "",
+              "Best regards,",
+              "Your clinic team",
+            ].join("\n");
+
+          if (!safePatient.email) {
+            // No email on file; skip this action for safety.
+            // We still continue with other actions/workflows.
+            continue;
+          }
+
+          const subject = renderTemplate(subjectTemplate, templateContext);
+
+          const now = new Date();
+          const sendMode: "immediate" | "delay" | "recurring" =
+            config.send_mode === "delay" || config.send_mode === "recurring"
+              ? config.send_mode
+              : "immediate";
+
+          const delayMinutes =
+            typeof config.delay_minutes === "number" && config.delay_minutes > 0
+              ? config.delay_minutes
+              : null;
+          const recurringEveryDays =
+            typeof config.recurring_every_days === "number" &&
+            config.recurring_every_days > 0
+              ? config.recurring_every_days
+              : null;
+          const recurringTimes =
+            typeof config.recurring_times === "number" &&
+            config.recurring_times > 0
+              ? Math.min(config.recurring_times, 30)
+              : null;
+
+          async function createAndSendEmail(scheduledAt: Date | null) {
+            let bodyHtml: string;
+            if (
+              config.use_html &&
+              config.body_html_template &&
+              config.body_html_template.trim().length > 0
+            ) {
+              const htmlTemplate = config.body_html_template;
+              bodyHtml = renderTemplate(htmlTemplate, templateContext);
+            } else {
+              const bodyText = renderTemplate(bodyTemplate, templateContext);
+              bodyHtml = textToHtml(bodyText);
+            }
+
+            const effectiveDate = scheduledAt ?? now;
+            const isFuture = effectiveDate.getTime() > now.getTime();
+            const sentStatus = isFuture ? "queued" : "sent";
+            const sentAtIso = effectiveDate.toISOString();
+
+            const { data: inserted, error: insertError } = await supabaseAdmin
+              .from("emails")
+              .insert({
+                patient_id: safePatient.id,
+                deal_id: safeDeal.id,
+                to_address: safePatient.email,
+                from_address: null,
+                subject,
+                body: bodyHtml,
+                status: sentStatus,
+                direction: "outbound",
+                sent_at: sentAtIso,
+              })
+              .select("id")
+              .single();
+
+            if (insertError || !inserted) {
+              console.error("Failed to insert workflow email row", insertError);
+              return;
+            }
+
+            actionsRun += 1;
+
+            if (!mailgunApiKey || !mailgunDomain) {
+              return;
+            }
+
+            try {
+              const domain = mailgunDomain as string;
+              const emailId = (inserted as any).id as string;
+              const replyAlias = emailId ? `reply+${emailId}@${domain}` : null;
+
+              const fromAddress = mailgunFromEmail || `no-reply@${domain}`;
+
+              const params = new URLSearchParams();
+              params.append("from", `${mailgunFromName} <${fromAddress}>`);
+              params.append("to", safePatient.email as string);
+              params.append("subject", subject);
+              params.append("html", bodyHtml);
+
+              if (replyAlias) {
+                params.append("h:Reply-To", replyAlias);
+              }
+
+              if (isFuture) {
+                params.append("o:deliverytime", effectiveDate.toUTCString());
+              }
+
+              const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
+
+              const response = await fetch(
+                `${mailgunApiBaseUrl}/v3/${domain}/messages`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Basic ${auth}`,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                  },
+                  body: params.toString(),
+                },
+              );
+
+              if (!response.ok) {
+                const text = await response.text().catch(() => "");
+                console.error(
+                  "Error sending workflow email via Mailgun",
+                  response.status,
+                  text,
+                );
+              }
+            } catch (sendError) {
+              console.error(
+                "Unexpected error sending workflow email via Mailgun",
+                sendError,
+              );
+            }
+          }
+
+          if (sendMode === "recurring" && recurringEveryDays && recurringTimes) {
+            const intervalMs = recurringEveryDays * 24 * 60 * 60 * 1000;
+            for (let i = 0; i < recurringTimes; i += 1) {
+              const scheduledAt = new Date(now.getTime() + i * intervalMs);
+              // eslint-disable-next-line no-await-in-loop
+              await createAndSendEmail(scheduledAt);
+            }
+          } else if (sendMode === "delay" && delayMinutes) {
+            const scheduledAt = new Date(
+              now.getTime() + delayMinutes * 60 * 1000,
+            );
+            await createAndSendEmail(scheduledAt);
+          } else {
+            await createAndSendEmail(null);
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      workflows: matchingWorkflows.length,
+      actionsRun,
+    });
+  } catch (error) {
+    console.error("Unexpected error in /api/workflows/deal-stage-changed", error);
+    return NextResponse.json(
+      { error: "Unexpected error running workflows" },
+      { status: 500 },
+    );
+  }
+}
