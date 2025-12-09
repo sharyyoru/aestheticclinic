@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import NewUserForm from "./NewUserForm";
@@ -15,6 +15,8 @@ type UserRow = {
   createdAt: string | null;
 };
 
+const ITEMS_PER_PAGE = 10;
+
 export default function UsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -22,6 +24,9 @@ export default function UsersPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     let isMounted = true;
@@ -114,6 +119,36 @@ export default function UsersPage() {
     }
   }
 
+  // Filter users based on search
+  const filteredUsers = useMemo(() => {
+    const term = searchQuery.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter((user) => {
+      const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.toLowerCase();
+      const email = (user.email ?? "").toLowerCase();
+      const role = (user.role ?? "").toLowerCase();
+      const designation = (user.designation ?? "").toLowerCase();
+      return (
+        fullName.includes(term) ||
+        email.includes(term) ||
+        role.includes(term) ||
+        designation.includes(term)
+      );
+    });
+  }, [users, searchQuery]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
+  const paginatedUsers = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredUsers.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredUsers, currentPage]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -124,68 +159,121 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">User Management</h1>
-        <p className="text-sm text-slate-500">
-          {isAdmin
-            ? "Invite, manage, and configure roles for team members using the CRM."
-            : "View team members using the CRM."}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">User Management</h1>
+          <p className="text-sm text-slate-500">
+            {isAdmin
+              ? "Invite, manage, and configure roles for team members using the CRM."
+              : "View team members using the CRM."}
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium shadow-sm transition ${
+              showCreateForm
+                ? "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                : "border-sky-200 bg-sky-600 text-white hover:bg-sky-700"
+            }`}
+          >
+            {showCreateForm ? (
+              <>
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+                Hide Form
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Add User
+              </>
+            )}
+          </button>
+        )}
       </div>
 
-      {isAdmin ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-          <NewUserForm />
-          <UserTable
-            users={users}
-            isAdmin={isAdmin}
-            currentUserId={currentUserId}
-            updatingUserId={updatingUserId}
-            onMakeAdmin={handleMakeAdmin}
-            onRemoveAdmin={handleRemoveAdmin}
-          />
-        </div>
-      ) : (
-        <UserTable
-          users={users}
-          isAdmin={isAdmin}
-          currentUserId={currentUserId}
-          updatingUserId={updatingUserId}
-          onMakeAdmin={handleMakeAdmin}
-          onRemoveAdmin={handleRemoveAdmin}
-        />
+      {isAdmin && showCreateForm && (
+        <NewUserForm />
       )}
+
+      <UserTable
+        users={paginatedUsers}
+        allUsersCount={filteredUsers.length}
+        isAdmin={isAdmin}
+        currentUserId={currentUserId}
+        updatingUserId={updatingUserId}
+        onMakeAdmin={handleMakeAdmin}
+        onRemoveAdmin={handleRemoveAdmin}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        itemsPerPage={ITEMS_PER_PAGE}
+      />
     </div>
   );
 }
 
 function UserTable({
   users,
+  allUsersCount,
   isAdmin,
   currentUserId,
   updatingUserId,
   onMakeAdmin,
   onRemoveAdmin,
+  searchQuery,
+  onSearchChange,
+  currentPage,
+  totalPages,
+  onPageChange,
+  itemsPerPage,
 }: {
   users: UserRow[];
+  allUsersCount: number;
   isAdmin: boolean;
   currentUserId: string | null;
   updatingUserId: string | null;
   onMakeAdmin: (userId: string) => void;
   onRemoveAdmin: (userId: string) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  itemsPerPage: number;
 }) {
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-medium text-slate-800">Team</h2>
           <p className="text-xs text-slate-500">
-            {users.length} team member{users.length !== 1 ? "s" : ""} in the system.
+            {allUsersCount} team member{allUsersCount !== 1 ? "s" : ""} in the system.
           </p>
+        </div>
+        <div className="relative flex-1 max-w-xs min-w-[200px]">
+          <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search by name, email, role..."
+            className="w-full rounded-lg border border-slate-200 bg-slate-50/80 py-1.5 pl-9 pr-3 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
         </div>
       </div>
       {users.length === 0 ? (
-        <p className="text-slate-500">No users found.</p>
+        <p className="text-slate-500 text-xs">No users found{searchQuery ? " matching your search" : ""}.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-xs sm:text-sm">
@@ -273,6 +361,59 @@ function UserTable({
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+          <p className="text-[11px] text-slate-500">
+            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, allUsersCount)} of {allUsersCount} users
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              ←
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum: number;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+              return (
+                <button
+                  key={pageNum}
+                  type="button"
+                  onClick={() => onPageChange(pageNum)}
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] ${
+                    currentPage === pageNum
+                      ? "border-sky-500 bg-sky-500 text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              →
+            </button>
+          </div>
         </div>
       )}
     </div>

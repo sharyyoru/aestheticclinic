@@ -164,9 +164,10 @@ export default function TasksPage() {
 
   // Filter users based on search query
   const filteredUsers = useMemo(() => {
+    const safeUsers = Array.isArray(allUsers) ? allUsers : [];
     const term = userSearchQuery.trim().toLowerCase();
-    if (!term) return allUsers;
-    return allUsers.filter((u) => {
+    if (!term) return safeUsers;
+    return safeUsers.filter((u) => {
       const name = (u.full_name ?? "").toLowerCase();
       const email = (u.email ?? "").toLowerCase();
       return name.includes(term) || email.includes(term);
@@ -176,7 +177,8 @@ export default function TasksPage() {
   // Get selected user display name
   const selectedUserDisplay = useMemo(() => {
     if (!selectedUserId) return "My Tasks";
-    const user = allUsers.find((u) => u.id === selectedUserId);
+    const safeUsers = Array.isArray(allUsers) ? allUsers : [];
+    const user = safeUsers.find((u) => u.id === selectedUserId);
     if (!user) return "My Tasks";
     return user.full_name || user.email || "Unknown User";
   }, [selectedUserId, allUsers]);
