@@ -209,7 +209,7 @@ export default function PatientsPage() {
     dealStatusByPatient,
   ]);
 
-  const pageSize = 50;
+  const pageSize = 15;
   const totalPages = Math.max(1, Math.ceil(filteredPatients.length / pageSize));
   const [page, setPage] = useState(1);
 
@@ -256,6 +256,9 @@ export default function PatientsPage() {
           <h1 className="text-lg font-semibold text-slate-900">Contacts</h1>
           <p className="text-xs text-slate-500">
             Patient contacts for all pipelines. Use filters to narrow down the list.
+          </p>
+          <p className="mt-1 text-xs font-medium text-sky-600">
+            Total Records: {patients.length.toLocaleString()}
           </p>
         </div>
       </div>
@@ -442,7 +445,7 @@ export default function PatientsPage() {
                 Previous
               </button>
               <span>
-                Page {currentPage} of {totalPages}
+                Page {currentPage} of {totalPages} ({filteredPatients.length.toLocaleString()} results)
               </span>
               <button
                 type="button"
