@@ -204,31 +204,112 @@ export async function POST(request: Request) {
     let actionsRun = 0;
 
     for (const workflow of matchingWorkflows) {
-      const { data: actions, error: actionsError } = await supabaseAdmin
-        .from("workflow_actions")
-        .select("id, action_type, config, sort_order")
-        .eq("workflow_id", workflow.id)
-        .order("sort_order", { ascending: true });
+      // Support both old workflow_actions table and new config.nodes format
+      let actionsToRun: { action_type: string; config: any }[] = [];
 
-      if (actionsError || !actions || actions.length === 0) {
+      // Check for new builder format (config.nodes)
+      const workflowConfig = workflow.config as { nodes?: any[] } | null;
+      if (workflowConfig?.nodes && Array.isArray(workflowConfig.nodes)) {
+        // Extract action nodes from the new format
+        actionsToRun = workflowConfig.nodes
+          .filter((node: any) => node.type === "action")
+          .map((node: any) => ({
+            action_type: node.data?.actionType || "",
+            config: node.data?.config || {},
+          }));
+      }
+
+      // Fall back to old workflow_actions table if no nodes in config
+      if (actionsToRun.length === 0) {
+        const { data: actions, error: actionsError } = await supabaseAdmin
+          .from("workflow_actions")
+          .select("id, action_type, config, sort_order")
+          .eq("workflow_id", workflow.id)
+          .order("sort_order", { ascending: true });
+
+        if (!actionsError && actions && actions.length > 0) {
+          actionsToRun = actions.map((a: any) => ({
+            action_type: a.action_type,
+            config: a.config || {},
+          }));
+        }
+      }
+
+      if (actionsToRun.length === 0) {
+        console.log(`Workflow ${workflow.id} has no actions to run`);
         continue;
       }
 
-      for (const action of actions as any[]) {
-        if (action.action_type === "draft_email_patient") {
+      console.log(`Running ${actionsToRun.length} actions for workflow ${workflow.id}`);
+
+      for (const action of actionsToRun) {
+        // Handle create_task action type
+        if (action.action_type === "create_task") {
+          const config = (action.config || {}) as {
+            title?: string;
+            assign_to?: string;
+            due_days?: number;
+          };
+
+          const taskTitle = renderTemplate(config.title || "New Task", templateContext);
+          const dueDays = typeof config.due_days === "number" ? config.due_days : 1;
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + dueDays);
+
+          const { error: taskError } = await supabaseAdmin
+            .from("tasks")
+            .insert({
+              title: taskTitle,
+              status: "pending",
+              due_date: dueDate.toISOString().split("T")[0],
+              assigned_to: config.assign_to || null,
+              patient_id: safePatient.id,
+              deal_id: safeDeal.id,
+            });
+
+          if (taskError) {
+            console.error("Failed to create task:", taskError);
+          } else {
+            console.log(`Created task: ${taskTitle}`);
+            actionsRun += 1;
+          }
+          continue;
+        }
+
+        // Handle send_email action type (new builder format)
+        if (action.action_type === "send_email" || action.action_type === "draft_email_patient") {
           const config = (action.config || {}) as {
             subject_template?: string;
+            subject?: string;
             body_template?: string;
             body_html_template?: string;
+            template_id?: string;
             use_html?: boolean;
             send_mode?: "immediate" | "delay" | "recurring";
             delay_minutes?: number | null;
-            recurring_every_days?: number | null;
+            recurring_days?: number | null;
             recurring_times?: number | null;
+            recurring_every_days?: number | null;
           };
 
+          // Load email template if template_id is specified
+          let templateHtml: string | null = null;
+          let templateSubject: string | null = null;
+          if (config.template_id) {
+            const { data: template } = await supabaseAdmin
+              .from("email_templates")
+              .select("subject_template, body_template, html_content")
+              .eq("id", config.template_id)
+              .single();
+            
+            if (template) {
+              templateHtml = template.html_content || template.body_template;
+              templateSubject = template.subject_template;
+            }
+          }
+
           const subjectTemplate =
-            config.subject_template ??
+            config.subject || config.subject_template || templateSubject ||
             "Your information request has been processed";
 
           const bodyTemplate =
@@ -246,8 +327,7 @@ export async function POST(request: Request) {
             ].join("\n");
 
           if (!safePatient.email) {
-            // No email on file; skip this action for safety.
-            // We still continue with other actions/workflows.
+            console.log("No email on file for patient, skipping email action");
             continue;
           }
 
@@ -264,10 +344,13 @@ export async function POST(request: Request) {
               ? config.delay_minutes
               : null;
           const recurringEveryDays =
-            typeof config.recurring_every_days === "number" &&
+            (typeof config.recurring_days === "number" && config.recurring_days > 0
+              ? config.recurring_days
+              : null) ||
+            (typeof config.recurring_every_days === "number" &&
             config.recurring_every_days > 0
               ? config.recurring_every_days
-              : null;
+              : null);
           const recurringTimes =
             typeof config.recurring_times === "number" &&
             config.recurring_times > 0
@@ -276,7 +359,9 @@ export async function POST(request: Request) {
 
           async function createAndSendEmail(scheduledAt: Date | null) {
             let bodyHtml: string;
-            if (
+            if (templateHtml) {
+              bodyHtml = renderTemplate(templateHtml, templateContext);
+            } else if (
               config.use_html &&
               config.body_html_template &&
               config.body_html_template.trim().length > 0

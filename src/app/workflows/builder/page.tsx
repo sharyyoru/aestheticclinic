@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import EmailTemplateBuilder from "@/components/EmailTemplateBuilder";
+import UserSearchSelect from "@/components/UserSearchSelect";
 
 // Types
 type TriggerType = 
@@ -641,18 +642,11 @@ export default function WorkflowBuilderPage() {
               {(data.config as { recipient?: string }).recipient === "specific_user" && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Select User</label>
-                  <select
+                  <UserSearchSelect
                     value={(data.config as { user_id?: string }).user_id || ""}
-                    onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, user_id: e.target.value } })}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                  >
-                    <option value="">Select user...</option>
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.raw_user_meta_data?.full_name || user.email}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(userId) => updateNodeData(selectedNode.id, { config: { ...data.config, user_id: userId } })}
+                    placeholder="Search for a user..."
+                  />
                 </div>
               )}
 
@@ -753,15 +747,6 @@ export default function WorkflowBuilderPage() {
                 )}
               </div>
 
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={(data.config as { use_html?: boolean }).use_html || false}
-                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, use_html: e.target.checked } })}
-                  className="h-4 w-4 rounded border-slate-300 text-sky-600"
-                />
-                <span className="text-slate-700">Use HTML builder template when sending this email</span>
-              </label>
             </>
           )}
 
@@ -769,19 +754,12 @@ export default function WorkflowBuilderPage() {
             <>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Notify User</label>
-                <select
+                <UserSearchSelect
                   value={(data.config as { user_id?: string }).user_id || ""}
-                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, user_id: e.target.value } })}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                >
-                  <option value="">Select user...</option>
-                  <option value="assigned">Assigned User</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.raw_user_meta_data?.full_name || user.email}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(userId) => updateNodeData(selectedNode.id, { config: { ...data.config, user_id: userId } })}
+                  placeholder="Search for a user..."
+                  includeAssigned
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Message</label>
@@ -792,6 +770,7 @@ export default function WorkflowBuilderPage() {
                   rows={3}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 />
+                <p className="mt-1 text-[10px] text-slate-500">Use {"{{patient.first_name}}"}, {"{{deal.title}}"} etc. for variables</p>
               </div>
             </>
           )}
@@ -804,25 +783,19 @@ export default function WorkflowBuilderPage() {
                   type="text"
                   value={(data.config as { title?: string }).title || ""}
                   onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, title: e.target.value } })}
-                  placeholder="Enter task title..."
+                  placeholder="e.g., Follow up with {{patient.first_name}}"
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 />
+                <p className="mt-1 text-[10px] text-slate-500">Use {"{{patient.first_name}}"}, {"{{patient.last_name}}"}, {"{{deal.title}}"} for variables</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Assign to</label>
-                <select
+                <UserSearchSelect
                   value={(data.config as { assign_to?: string }).assign_to || ""}
-                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, assign_to: e.target.value } })}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                >
-                  <option value="">Select user...</option>
-                  <option value="trigger_user">User who triggered</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.raw_user_meta_data?.full_name || user.email}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(userId) => updateNodeData(selectedNode.id, { config: { ...data.config, assign_to: userId } })}
+                  placeholder="Search for a user..."
+                  includeAssigned
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Due in (days)</label>
