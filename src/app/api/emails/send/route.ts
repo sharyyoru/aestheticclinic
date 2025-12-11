@@ -42,24 +42,38 @@ export async function POST(request: Request) {
 
     const domain = mailgunDomain as string;
 
-    // Use actual user email if provided, otherwise use system default
-    let fromAddress = mailgunFromEmail || `no-reply@${domain}`;
+    // Always send from Mailgun domain so replies are captured
+    // Store actual user email in custom variables for reference
+    const fromAddress = mailgunFromEmail || `no-reply@${domain}`;
+    
+    // Use staff member's name if provided, otherwise use clinic name
+    let fromName = mailgunFromName;
     if (fromUserEmail && fromUserEmail.trim().length > 0) {
-      fromAddress = fromUserEmail.trim();
+      // Extract name from email if available, or use email prefix
+      const emailPrefix = fromUserEmail.split("@")[0];
+      fromName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
     }
 
     const params = new URLSearchParams();
-    params.append("from", `${mailgunFromName} <${fromAddress}>`);
+    params.append("from", `${fromName} <${fromAddress}>`);
     params.append("to", trimmedTo);
     params.append("subject", trimmedSubject);
     params.append("html", trimmedHtml);
     
-    // Add custom header with email ID for reply tracking
+    // Set Reply-To to Mailgun domain so replies come back through webhook
+    // Using clinic address ensures all replies are captured
+    const replyToAddress = `clinic@${domain}`;
+    params.append("h:Reply-To", replyToAddress);
+    
+    // Add custom headers for reply tracking and metadata
     if (emailId) {
       params.append("v:email-id", emailId);
     }
     if (patientId) {
       params.append("v:patient-id", patientId);
+    }
+    if (fromUserEmail && fromUserEmail.trim().length > 0) {
+      params.append("v:sent-by", fromUserEmail.trim());
     }
 
     const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
