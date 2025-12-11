@@ -450,9 +450,9 @@ export default function PatientCrmPreferencesCard({
             <div className="relative">
               <input
                 type="text"
-                value={serviceSearch || lifecycle}
+                value={serviceSearch || (lifecycle && lifecycle !== "request for information" ? lifecycle : "")}
                 onChange={(event) => handleServiceSearchChange(event.target.value)}
-                placeholder="Search services..."
+                placeholder={lifecycle && lifecycle !== "request for information" ? lifecycle : "Search for a Service"}
                 className="block w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 pr-8 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
               {(serviceSearch || lifecycle) && (
