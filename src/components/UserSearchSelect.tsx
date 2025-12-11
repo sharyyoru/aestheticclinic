@@ -5,8 +5,8 @@ import { supabaseClient } from "@/lib/supabaseClient";
 
 type User = {
   id: string;
-  email: string;
-  raw_user_meta_data: { full_name?: string; first_name?: string; last_name?: string } | null;
+  email: string | null;
+  full_name: string | null;
 };
 
 type UserSearchSelectProps = {
@@ -39,8 +39,10 @@ export default function UserSearchSelect({
       try {
         const { data, error } = await supabaseClient
           .from("users")
-          .select("id, email, raw_user_meta_data")
+          .select("id, email, full_name")
           .order("email");
+
+        console.log("UserSearchSelect loaded users:", data, error);
 
         if (!error && data) {
           setUsers(data as User[]);
@@ -69,7 +71,7 @@ export default function UserSearchSelect({
     const searchLower = search.toLowerCase();
     const filtered = users.filter((user) => {
       const name = getUserDisplayName(user).toLowerCase();
-      const email = user.email.toLowerCase();
+      const email = (user.email || "").toLowerCase();
       return name.includes(searchLower) || email.includes(searchLower);
     });
     setFilteredUsers(filtered);
@@ -87,13 +89,10 @@ export default function UserSearchSelect({
   }, []);
 
   function getUserDisplayName(user: User): string {
-    if (user.raw_user_meta_data?.full_name) {
-      return user.raw_user_meta_data.full_name;
+    if (user.full_name) {
+      return user.full_name;
     }
-    if (user.raw_user_meta_data?.first_name || user.raw_user_meta_data?.last_name) {
-      return `${user.raw_user_meta_data.first_name || ""} ${user.raw_user_meta_data.last_name || ""}`.trim();
-    }
-    return user.email.split("@")[0];
+    return user.email?.split("@")[0] || "Unknown";
   }
 
   function handleSelect(user: User | null, specialValue?: string) {

@@ -70,8 +70,8 @@ type DealStage = {
 
 type User = {
   id: string;
-  email: string;
-  raw_user_meta_data: { full_name?: string; first_name?: string; last_name?: string };
+  email: string | null;
+  full_name: string | null;
 };
 
 // Trigger definitions
@@ -216,7 +216,7 @@ export default function WorkflowBuilderPage() {
         
         const [stagesRes, usersRes, templatesRes] = await Promise.all([
           supabaseClient.from("deal_stages").select("id, name, type, sort_order").order("sort_order"),
-          supabaseClient.from("users").select("id, email, raw_user_meta_data"),
+          supabaseClient.from("users").select("id, email, full_name"),
           supabaseClient.from("email_templates").select("id, name, subject_template").order("created_at", { ascending: false }),
         ]);
 
@@ -963,18 +963,23 @@ export default function WorkflowBuilderPage() {
         <header className="mb-8 flex items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <Link href="/workflows/all" className="text-slate-400 hover:text-slate-600">
+              <Link href="/workflows" className="text-slate-400 hover:text-slate-600">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
-              <input
-                type="text"
-                value={workflowName}
-                onChange={(e) => setWorkflowName(e.target.value)}
-                className="text-2xl font-bold text-slate-900 bg-transparent border-none focus:outline-none focus:ring-0"
-                placeholder="Workflow name..."
-              />
+              <div className="relative group">
+                <input
+                  type="text"
+                  value={workflowName}
+                  onChange={(e) => setWorkflowName(e.target.value)}
+                  className="text-2xl font-bold text-slate-900 bg-transparent border-b-2 border-transparent hover:border-slate-300 focus:border-sky-500 focus:outline-none transition-colors px-1 -mx-1"
+                  placeholder="Enter workflow name..."
+                />
+                <svg className="absolute right-0 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </div>
             </div>
             <p className="text-sm text-slate-500">Build custom automations with triggers, actions, and conditions</p>
           </div>
