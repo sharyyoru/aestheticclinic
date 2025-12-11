@@ -893,8 +893,39 @@ export default function PatientActivityCard({
 
     loadEmails();
 
+    // Subscribe to real-time email updates for this patient
+    const emailSubscription = supabaseClient
+      .channel(`emails-${patientId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "emails",
+          filter: `patient_id=eq.${patientId}`,
+        },
+        (payload) => {
+          const newEmail = payload.new as PatientEmail;
+          // Add new email to the top of the list
+          setEmails((prev) => [newEmail, ...prev.filter(e => e.id !== newEmail.id)]);
+          
+          // Show notification for inbound emails
+          if (newEmail.direction === "inbound") {
+            // Browser notification if permitted
+            if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+              new Notification("New Email Reply", {
+                body: `${newEmail.from_address}: ${newEmail.subject}`,
+                icon: "/favicon.ico",
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       isMounted = false;
+      supabaseClient.removeChannel(emailSubscription);
     };
   }, [patientId]);
 
