@@ -160,14 +160,37 @@ export async function POST(request: Request) {
         from_stage_id?: string | null;
         to_stage_id?: string | null;
         pipeline?: string | null;
+        trigger_on_creation?: boolean;
       };
 
-      if (config.to_stage_id && config.to_stage_id !== toStageId) {
-        return false;
-      }
+      // Check if this is a deal creation (no fromStageId means new deal)
+      const isDealCreation = !fromStageId;
+      
+      // If workflow is configured to trigger on creation and this is a new deal
+      if (config.trigger_on_creation && isDealCreation) {
+        // Only need to match the to_stage_id (the initial stage)
+        if (config.to_stage_id && config.to_stage_id !== toStageId) {
+          return false;
+        }
+      } else if (!isDealCreation) {
+        // Normal stage change - check from and to stages
+        if (config.to_stage_id && config.to_stage_id !== toStageId) {
+          return false;
+        }
 
-      if (config.from_stage_id && config.from_stage_id !== fromStageId) {
-        return false;
+        if (config.from_stage_id && config.from_stage_id !== fromStageId) {
+          return false;
+        }
+      } else {
+        // Deal creation but workflow doesn't have trigger_on_creation enabled
+        // Still trigger if to_stage matches and no from_stage is configured
+        if (config.to_stage_id && config.to_stage_id !== toStageId) {
+          return false;
+        }
+        // If workflow expects a from_stage but this is a creation, don't match
+        if (config.from_stage_id) {
+          return false;
+        }
       }
 
       if (config.pipeline && pipeline) {

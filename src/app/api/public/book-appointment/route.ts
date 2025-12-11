@@ -320,15 +320,43 @@ export async function POST(request: Request) {
     // Calculate end time (1 hour duration)
     const endDateObj = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000);
 
+    // Look up provider by name to link to calendar
+    let providerId: string | null = null;
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("id")
+      .ilike("name", `%${doctorName.replace("Dr. ", "")}%`)
+      .single();
+    
+    if (provider) {
+      providerId = provider.id;
+      console.log("Found provider:", provider.id, "for doctor:", doctorName);
+    } else {
+      // Try to find by the slug-based name without "Dr." prefix
+      const simpleName = doctorName.replace("Dr. ", "");
+      const { data: providerBySimpleName } = await supabase
+        .from("providers")
+        .select("id")
+        .ilike("name", `%${simpleName.split(" ")[0]}%`)
+        .single();
+      
+      if (providerBySimpleName) {
+        providerId = providerBySimpleName.id;
+        console.log("Found provider by simple name:", providerBySimpleName.id);
+      } else {
+        console.log("Provider not found for doctor:", doctorName, "- appointment will not be linked to a specific provider");
+      }
+    }
+
     // Build reason field
-    const reason = `${patientName} - ${service} [Doctor: ${doctorName}]${notes ? ` [Notes: ${notes}]` : ""} [Online Booking]`;
+    const reason = `${service}${notes ? ` - ${notes}` : ""} [Online Booking]`;
 
     // Create the appointment
     const { data: appointment, error: appointmentError } = await supabase
       .from("appointments")
       .insert({
         patient_id: patientId,
-        provider_id: null,
+        provider_id: providerId,
         start_time: appointmentDateObj.toISOString(),
         end_time: endDateObj.toISOString(),
         reason,
@@ -348,6 +376,11 @@ export async function POST(request: Request) {
     }
 
     // Send confirmation email to patient
+    console.log("Attempting to send confirmation emails...");
+    console.log("Mailgun configured:", !!mailgunApiKey && !!mailgunDomain);
+    console.log("Patient email:", email);
+    console.log("Doctor email:", doctorEmail);
+    
     try {
       const patientEmailHtml = generatePatientConfirmationEmail(
         patientName,
@@ -361,9 +394,9 @@ export async function POST(request: Request) {
         `Appointment Confirmed - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
         patientEmailHtml
       );
-      console.log("Patient confirmation email sent to:", email);
+      console.log("✓ Patient confirmation email sent successfully to:", email);
     } catch (err) {
-      console.error("Error sending patient email:", err);
+      console.error("✗ Error sending patient email:", err);
     }
 
     // Send notification email to doctor
@@ -383,9 +416,9 @@ export async function POST(request: Request) {
         `New Appointment: ${patientName} - ${formatDate(appointmentDateObj)}`,
         doctorEmailHtml
       );
-      console.log("Doctor notification email sent to:", doctorEmail);
+      console.log("✓ Doctor notification email sent successfully to:", doctorEmail);
     } catch (err) {
-      console.error("Error sending doctor email:", err);
+      console.error("✗ Error sending doctor email:", err);
     }
 
     return NextResponse.json({

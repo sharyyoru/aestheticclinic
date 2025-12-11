@@ -1514,6 +1514,23 @@ export default function PatientActivityCard({
 
         const inserted = data as Deal;
         setDeals((prev) => [inserted, ...prev]);
+        
+        // Trigger workflow for new deal creation
+        try {
+          await fetch("/api/workflows/deal-stage-changed", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              dealId: inserted.id,
+              patientId: patientId,
+              fromStageId: null, // null indicates deal creation
+              toStageId: dealStageId,
+              pipeline: pipeline,
+            }),
+          });
+        } catch (workflowErr) {
+          console.error("Error triggering workflow for new deal:", workflowErr);
+        }
       }
 
       setDealModalOpen(false);

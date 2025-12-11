@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 const DOCTORS: Record<string, {
   name: string;
@@ -63,6 +63,7 @@ type BookingStep = "info" | "datetime" | "service" | "confirm";
 export default function DoctorBookingPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
   const doctor = DOCTORS[slug];
 
@@ -72,11 +73,11 @@ export default function DoctorBookingPage() {
   const [success, setSuccess] = useState(false);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
-  // Form state
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  // Form state - pre-fill from query params if available (magic link support)
+  const [firstName, setFirstName] = useState(searchParams.get("firstName") || "");
+  const [lastName, setLastName] = useState(searchParams.get("lastName") || "");
+  const [email, setEmail] = useState(searchParams.get("email") || "");
+  const [phone, setPhone] = useState(searchParams.get("phone") || "");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [selectedService, setSelectedService] = useState("");
