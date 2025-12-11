@@ -265,7 +265,16 @@ export default function Page() {
               href="/workflows"
               className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
             >
-              <span>Back to workflow editor</span>
+              <span>Email Workflows</span>
+            </Link>
+            <Link
+              href="/workflows/builder"
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Create Workflow</span>
             </Link>
           </div>
         </header>

@@ -396,7 +396,7 @@ export default function AppointmentWorkflowPage() {
                     type="text"
                     value={workflowName}
                     onChange={(e) => setWorkflowName(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
@@ -408,7 +408,7 @@ export default function AppointmentWorkflowPage() {
                     value={selectedStageId}
                     onChange={(e) => setSelectedStageId(e.target.value)}
                     disabled={loading}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   >
                     <option value="">Select stage...</option>
                     {stages.map((stage) => (
@@ -488,7 +488,7 @@ export default function AppointmentWorkflowPage() {
                       max="7"
                       value={reminderDays}
                       onChange={(e) => setReminderDays(e.target.value)}
-                      className="w-16 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-center focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-16 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-900 text-center focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                     <span className="text-sm text-slate-600">day(s) before appointment</span>
                   </div>
