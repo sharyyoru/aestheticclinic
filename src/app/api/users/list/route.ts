@@ -17,20 +17,27 @@ export async function GET() {
 
     const users = data.users.map((user) => {
       const meta = (user.user_metadata || {}) as Record<string, unknown>;
+      const firstName = (meta["first_name"] as string) ?? null;
+      const lastName = (meta["last_name"] as string) ?? null;
+      const fullNameFromMeta = (meta["full_name"] as string) ?? null;
+      
+      const fullName = fullNameFromMeta || 
+        (firstName && lastName ? `${firstName} ${lastName}` : null) ||
+        firstName || lastName;
 
       return {
         id: user.id,
         email: user.email ?? null,
+        full_name: fullName,
         role: (meta["role"] as string) ?? null,
-        firstName: (meta["first_name"] as string) ?? null,
-        lastName: (meta["last_name"] as string) ?? null,
-        fullName: (meta["full_name"] as string) ?? null,
+        first_name: firstName,
+        last_name: lastName,
         designation: (meta["designation"] as string) ?? null,
-        createdAt: (user as any).created_at ?? null,
+        created_at: (user as any).created_at ?? null,
       };
     });
 
-    return NextResponse.json({ users });
+    return NextResponse.json(users);
   } catch (err) {
     return NextResponse.json(
       { error: "Unexpected error listing users" },

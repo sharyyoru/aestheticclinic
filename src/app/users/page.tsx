@@ -54,7 +54,7 @@ export default function UsersPage() {
 
         if (response.ok) {
           const data = await response.json();
-          setUsers(data.users || []);
+          setUsers(Array.isArray(data) ? data : []);
         }
 
         setLoading(false);
