@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import EmailTemplateBuilder from "@/components/EmailTemplateBuilder";
 import UserSearchSelect from "@/components/UserSearchSelect";
+import MultiUserSearchSelect from "@/components/MultiUserSearchSelect";
 
 // Types
 type TriggerType = 
@@ -824,12 +825,14 @@ export default function WorkflowBuilderPage() {
                 />
                 <p className="mt-1 text-[10px] text-slate-500">Use {"{{patient.first_name}}"}, {"{{patient.last_name}}"}, {"{{deal.title}}"} for variables</p>
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Assign to</label>
-                <UserSearchSelect
-                  value={(data.config as { assign_to?: string }).assign_to || ""}
-                  onChange={(userId) => updateNodeData(selectedNode.id, { config: { ...data.config, assign_to: userId } })}
-                  placeholder="Search for a user..."
+                <MultiUserSearchSelect
+                  value={(data.config as { assign_to_users?: string[] }).assign_to_users || []}
+                  onChange={(userIds) => updateNodeData(selectedNode.id, { config: { ...data.config, assign_to_users: userIds } })}
+                  assignmentMode={(data.config as { assignment_mode?: "all" | "round_robin" }).assignment_mode || "all"}
+                  onAssignmentModeChange={(mode) => updateNodeData(selectedNode.id, { config: { ...data.config, assignment_mode: mode } })}
+                  placeholder="Search for users..."
                   includeAssigned
                 />
               </div>
@@ -1007,22 +1010,22 @@ export default function WorkflowBuilderPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="px-3 py-4 sm:px-4 sm:py-6 lg:px-6">
         {/* Header */}
-        <header className="mb-8 flex items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Link href="/workflows" className="text-slate-400 hover:text-slate-600">
+        <header className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 sm:gap-3 mb-1">
+              <Link href="/workflows" className="text-slate-400 hover:text-slate-600 shrink-0">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Link>
-              <div className="relative group">
+              <div className="relative group min-w-0 flex-1">
                 <input
                   type="text"
                   value={workflowName}
                   onChange={(e) => setWorkflowName(e.target.value)}
-                  className="text-2xl font-bold text-slate-900 bg-transparent border-b-2 border-transparent hover:border-slate-300 focus:border-sky-500 focus:outline-none transition-colors px-1 -mx-1"
+                  className="text-lg sm:text-xl font-bold text-slate-900 bg-transparent border-b-2 border-transparent hover:border-slate-300 focus:border-sky-500 focus:outline-none transition-colors px-1 -mx-1 w-full truncate"
                   placeholder="Enter workflow name..."
                 />
                 <svg className="absolute right-0 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1030,10 +1033,10 @@ export default function WorkflowBuilderPage() {
                 </svg>
               </div>
             </div>
-            <p className="text-sm text-slate-500">Build custom automations with triggers, actions, and conditions</p>
+            <p className="text-xs sm:text-sm text-slate-500 truncate">Build custom automations with triggers, actions, and conditions</p>
           </div>
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-sm text-slate-600">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <label className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600">
               <input
                 type="checkbox"
                 checked={workflowActive}
@@ -1045,7 +1048,7 @@ export default function WorkflowBuilderPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 whitespace-nowrap"
             >
               {saving ? "Saving..." : "Save Workflow"}
             </button>
@@ -1053,24 +1056,24 @@ export default function WorkflowBuilderPage() {
         </header>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs sm:text-sm text-red-700">{error}</div>
         )}
         {success && (
-          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs sm:text-sm text-emerald-700">{success}</div>
         )}
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
+        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6">
           {/* Workflow Canvas */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm min-h-[600px]">
-            <h2 className="mb-6 text-lg font-semibold text-slate-900">Workflow Steps</h2>
-            <div className="space-y-0">
+          <div className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm min-h-[400px] overflow-x-auto">
+            <h2 className="mb-4 text-base font-semibold text-slate-900">Workflow Steps</h2>
+            <div className="space-y-0 min-w-[280px]">
               {nodes.map((node, index) => renderNodeCard(node, index))}
             </div>
           </div>
 
           {/* Configuration Panel */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm h-fit sticky top-8">
-            <h2 className="mb-4 text-lg font-semibold text-slate-900">Configuration</h2>
+          <div className="xl:w-[320px] 2xl:w-[360px] shrink-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
+            <h2 className="mb-3 text-base font-semibold text-slate-900">Configuration</h2>
             {renderConfigPanel()}
           </div>
         </div>
