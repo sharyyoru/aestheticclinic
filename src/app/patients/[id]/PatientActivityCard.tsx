@@ -4263,6 +4263,13 @@ export default function PatientActivityCard({
         patientName="Patient"
         dealId={appointmentDeal?.id}
         dealTitle={appointmentDeal?.title}
+        defaultType={
+          appointmentDeal?.stage_id
+            ? dealStages.find((s) => s.id === appointmentDeal.stage_id)?.name.toLowerCase().includes("operation")
+              ? "operation"
+              : "appointment"
+            : "appointment"
+        }
       />
     </div>
   );

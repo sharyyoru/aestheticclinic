@@ -1019,6 +1019,13 @@ export default function DealsPage() {
         }
         dealId={appointmentDeal?.id}
         dealTitle={appointmentDeal?.title}
+        defaultType={
+          appointmentTargetStageId
+            ? dealStages.find((s) => s.id === appointmentTargetStageId)?.name.toLowerCase().includes("operation")
+              ? "operation"
+              : "appointment"
+            : "appointment"
+        }
       />
     </div>
   );

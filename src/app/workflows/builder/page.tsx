@@ -105,6 +105,7 @@ const CONDITION_FIELDS = [
   { value: "deal.pipeline", label: "Deal Pipeline" },
   { value: "deal.value", label: "Deal Value" },
   { value: "deal.stage", label: "Deal Stage" },
+  { value: "deal.service", label: "Deal Service" },
   { value: "appointment.type", label: "Appointment Type" },
   { value: "appointment.provider", label: "Appointment Provider" },
 ];
@@ -205,8 +206,11 @@ export default function WorkflowBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showEmailBuilder, setShowEmailBuilder] = useState(false);
-  const [emailTemplates, setEmailTemplates] = useState<{ id: string; name: string; subject_template: string }[]>([]);
+  const [emailTemplates, setEmailTemplates] = useState<{ id: string; name: string; subject_template: string; html_content?: string | null }[]>([]);
   const [editingEmailNodeId, setEditingEmailNodeId] = useState<string | null>(null);
+  const [previewEmailHtml, setPreviewEmailHtml] = useState<string | null>(null);
+  const [previewEmailSubject, setPreviewEmailSubject] = useState<string | null>(null);
+  const [services, setServices] = useState<{ id: string; name: string }[]>([]);
 
   // Load stages, users, and email templates
   useEffect(() => {
@@ -217,12 +221,28 @@ export default function WorkflowBuilderPage() {
         const [stagesRes, usersRes, templatesRes] = await Promise.all([
           supabaseClient.from("deal_stages").select("id, name, type, sort_order").order("sort_order"),
           supabaseClient.from("users").select("id, email, full_name"),
-          supabaseClient.from("email_templates").select("id, name, subject_template").order("created_at", { ascending: false }),
+          supabaseClient.from("email_templates").select("id, name, subject_template, html_content").order("created_at", { ascending: false }),
         ]);
 
         if (stagesRes.data) setStages(stagesRes.data);
         if (usersRes.data) setUsers(usersRes.data as User[]);
         if (templatesRes.data) setEmailTemplates(templatesRes.data);
+
+        // Load services from Hubspot category
+        const { data: categoryData } = await supabaseClient
+          .from("service_categories")
+          .select("id")
+          .eq("name", "Hubspot")
+          .single();
+
+        if (categoryData) {
+          const { data: servicesData } = await supabaseClient
+            .from("services")
+            .select("id, name")
+            .eq("category_id", categoryData.id)
+            .order("name");
+          if (servicesData) setServices(servicesData);
+        }
 
         // Load existing workflow if editing
         if (editId) {
@@ -610,16 +630,32 @@ export default function WorkflowBuilderPage() {
                     📧 Open Email Builder
                   </button>
                   {(data.config as { template_id?: string }).template_id && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingEmailNodeId(selectedNode.id);
-                        setShowEmailBuilder(true);
-                      }}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      Edit
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingEmailNodeId(selectedNode.id);
+                          setShowEmailBuilder(true);
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const templateId = (data.config as { template_id?: string }).template_id;
+                          const template = emailTemplates.find(t => t.id === templateId);
+                          if (template) {
+                            setPreviewEmailSubject(template.subject_template || "No subject");
+                            setPreviewEmailHtml(template.html_content || "<p>No content</p>");
+                          }
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        👁 Preview
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -891,13 +927,26 @@ export default function WorkflowBuilderPage() {
           {!["is_empty", "is_not_empty"].includes(data.operator) && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Value</label>
-              <input
-                type="text"
-                value={data.value}
-                onChange={(e) => updateNodeData(selectedNode.id, { value: e.target.value })}
-                placeholder="Enter value..."
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-              />
+              {data.field === "deal.service" ? (
+                <select
+                  value={data.value}
+                  onChange={(e) => updateNodeData(selectedNode.id, { value: e.target.value })}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="">Select a service...</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.name}>{service.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={data.value}
+                  onChange={(e) => updateNodeData(selectedNode.id, { value: e.target.value })}
+                  placeholder="Enter value..."
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                />
+              )}
             </div>
           )}
 
@@ -1051,7 +1100,7 @@ export default function WorkflowBuilderPage() {
           // Refresh templates list
           supabaseClient
             .from("email_templates")
-            .select("id, name, subject_template")
+            .select("id, name, subject_template, html_content")
             .order("created_at", { ascending: false })
             .then(({ data }) => {
               if (data) setEmailTemplates(data);
@@ -1063,6 +1112,41 @@ export default function WorkflowBuilderPage() {
             : undefined
         }
       />
+
+      {/* Email Preview Modal */}
+      {previewEmailHtml && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-3xl max-h-[90vh] rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 shrink-0">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Email Preview</h2>
+                <p className="text-sm text-slate-500">Subject: {previewEmailSubject}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewEmailHtml(null);
+                  setPreviewEmailSubject(null);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4 bg-slate-50">
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
+                <iframe
+                  srcDoc={previewEmailHtml}
+                  className="w-full min-h-[500px] border-0"
+                  title="Email Preview"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

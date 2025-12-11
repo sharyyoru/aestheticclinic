@@ -9,6 +9,8 @@ type PlatformUser = {
   email: string | null;
 };
 
+type AppointmentType = "appointment" | "operation";
+
 type AppointmentModalProps = {
   open: boolean;
   onClose: () => void;
@@ -18,6 +20,7 @@ type AppointmentModalProps = {
   patientName: string;
   dealId?: string | null;
   dealTitle?: string | null;
+  defaultType?: AppointmentType;
 };
 
 export type AppointmentData = {
@@ -32,6 +35,7 @@ export type AppointmentData = {
   sendPatientEmail: boolean;
   sendUserEmail: boolean;
   scheduleReminder: boolean;
+  appointmentType: AppointmentType;
 };
 
 function formatDateTimeLocal(date: Date): string {
@@ -48,11 +52,13 @@ export default function AppointmentModal({
   patientName,
   dealId,
   dealTitle,
+  defaultType = "appointment",
 }: AppointmentModalProps) {
   const [title, setTitle] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("15");
   const [location, setLocation] = useState("Geneva");
+  const [appointmentType, setAppointmentType] = useState<AppointmentType>(defaultType);
   const [notes, setNotes] = useState("");
   const [sendPatientEmail, setSendPatientEmail] = useState(true);
   const [sendUserEmail, setSendUserEmail] = useState(true);
@@ -123,12 +129,13 @@ export default function AppointmentModal({
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(10, 0, 0, 0);
       setAppointmentDate(formatDateTimeLocal(tomorrow));
-      setTitle(`Appointment with ${patientName}`);
+      setAppointmentType(defaultType);
+      setTitle(`${defaultType === "operation" ? "Operation" : "Appointment"} with ${patientName}`);
       setError(null);
       setAssignedUserId("");
       setUserSearch("");
     }
-  }, [open, patientName]);
+  }, [open, patientName, defaultType]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -184,7 +191,7 @@ export default function AppointmentModal({
         patientId,
         dealId,
         providerId: assignedUserId || null,
-        title: title.trim() || `Appointment with ${patientName}`,
+        title: title.trim() || `${appointmentType === "operation" ? "Operation" : "Appointment"} with ${patientName}`,
         appointmentDate,
         durationMinutes: parseInt(durationMinutes, 10) || 60,
         location: location.trim(),
@@ -192,6 +199,7 @@ export default function AppointmentModal({
         sendPatientEmail,
         sendUserEmail,
         scheduleReminder,
+        appointmentType,
       });
 
       // Show success message
@@ -266,6 +274,51 @@ export default function AppointmentModal({
               {error}
             </div>
           )}
+
+          {/* Appointment Type Selection */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-700">
+              Type <span className="text-red-500">*</span>
+            </label>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAppointmentType("appointment");
+                  setTitle(`Appointment with ${patientName}`);
+                }}
+                className={`flex-1 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-colors ${
+                  appointmentType === "appointment"
+                    ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-lg">📅</span>
+                  <span>Appointment</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Regular consultation</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAppointmentType("operation");
+                  setTitle(`Operation with ${patientName}`);
+                }}
+                className={`flex-1 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-colors ${
+                  appointmentType === "operation"
+                    ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-lg">🏥</span>
+                  <span>Operation</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Surgical procedure</p>
+              </button>
+            </div>
+          </div>
 
           {/* User/Staff Selection */}
           <div className="space-y-2" ref={userDropdownRef}>
