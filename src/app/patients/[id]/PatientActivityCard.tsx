@@ -878,7 +878,9 @@ export default function PatientActivityCard({
           mentioned_user_id: string;
           read_at: string | null;
         }[]) {
-          const user = userOptions.find((u) => u.id === row.mentioned_user_id);
+          const user = Array.isArray(userOptions) 
+            ? userOptions.find((u) => u.id === row.mentioned_user_id)
+            : null;
           const name =
             (user?.full_name || user?.email || "User").toString();
 
@@ -1020,7 +1022,9 @@ export default function PatientActivityCard({
         const noteId = inserted.id as string;
         const newSummaries: NoteMentionSummary[] = selectedMentionIds.map(
           (mentionedUserId) => {
-            const user = userOptions.find((u) => u.id === mentionedUserId);
+            const user = Array.isArray(userOptions)
+              ? userOptions.find((u) => u.id === mentionedUserId)
+              : null;
             const name =
               (user?.full_name || user?.email || "User").toString();
             return {
@@ -1081,7 +1085,9 @@ export default function PatientActivityCard({
       const assignedUserId = taskAssignedUserId || null;
       let assignedUserName: string | null = null;
       if (assignedUserId) {
-        const assignedUser = userOptions.find((u) => u.id === assignedUserId);
+        const assignedUser = Array.isArray(userOptions)
+          ? userOptions.find((u) => u.id === assignedUserId)
+          : null;
         assignedUserName =
           (assignedUser?.full_name || assignedUser?.email || null) as
             | string
@@ -1793,7 +1799,9 @@ export default function PatientActivityCard({
           mentioned_user_id: string;
           read_at: string | null;
         }[]) {
-          const user = userOptions.find((u) => u.id === row.mentioned_user_id);
+          const user = Array.isArray(userOptions)
+            ? userOptions.find((u) => u.id === row.mentioned_user_id)
+            : null;
           const name =
             (user?.full_name || user?.email || "User").toString();
 
@@ -2804,7 +2812,7 @@ export default function PatientActivityCard({
                     const isMentionActive = activeMentionTaskId === task.id;
                     const mentionQuery = activeMentionQuery.trim();
                     const mentionOptions = isMentionActive
-                      ? userOptions
+                      ? (Array.isArray(userOptions) ? userOptions : [])
                           .filter((u) => {
                             const hay = (
                               u.full_name || u.email || ""
@@ -3196,7 +3204,7 @@ export default function PatientActivityCard({
                     </span>
                   ) : null}
                 </button>
-                {mentionsOpen && userOptions.length > 0 ? (
+                {mentionsOpen && Array.isArray(userOptions) && userOptions.length > 0 ? (
                   <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1">
                     {userOptions.map((user) => {
                       const id = user.id;
@@ -3316,7 +3324,7 @@ export default function PatientActivityCard({
                     className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   >
                     <option value="">Unassigned</option>
-                    {userOptions.map((user) => {
+                    {Array.isArray(userOptions) && userOptions.map((user) => {
                       const label =
                         user.full_name || user.email || "Unnamed user";
                       return (
