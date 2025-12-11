@@ -292,11 +292,13 @@ export async function POST(request: Request) {
     }
 
     // Create the appointment using the existing schema
+    // Note: provider_id has a foreign key to providers table, so we leave it null
+    // when assigning to a platform user (staff info is stored in the reason field)
     const { data: appointment, error: appointmentError } = await supabase
       .from("appointments")
       .insert({
         patient_id: patientId,
-        provider_id: providerId || null,
+        provider_id: null,
         start_time: appointmentDateObj.toISOString(),
         end_time: endDateObj.toISOString(),
         reason,
