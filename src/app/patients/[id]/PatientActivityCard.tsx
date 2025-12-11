@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { stripEmailSignature } from "@/utils/emailCleaner";
@@ -304,7 +304,7 @@ export default function PatientActivityCard({
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const [appointmentDeal, setAppointmentDeal] = useState<Deal | null>(null);
   const [appointmentPreviousStageId, setAppointmentPreviousStageId] = useState<string | null>(null);
-  const [appointmentSuccess, setAppointmentSuccess] = useState(false);
+  const appointmentSuccessRef = useRef(false);
   const [dealTitle, setDealTitle] = useState("");
   const [dealStageId, setDealStageId] = useState<string>("");
   const [dealServiceId, setDealServiceId] = useState<string>("");
@@ -4097,7 +4097,7 @@ export default function PatientActivityCard({
         open={appointmentModalOpen}
         onClose={async () => {
           // Only revert deal stage on cancel if appointment wasn't successful
-          if (!appointmentSuccess && appointmentDeal && appointmentPreviousStageId) {
+          if (!appointmentSuccessRef.current && appointmentDeal && appointmentPreviousStageId) {
             setDeals((prev) =>
               prev.map((deal) =>
                 deal.id === appointmentDeal.id
@@ -4117,10 +4117,10 @@ export default function PatientActivityCard({
           setAppointmentModalOpen(false);
           setAppointmentDeal(null);
           setAppointmentPreviousStageId(null);
-          setAppointmentSuccess(false);
+          appointmentSuccessRef.current = false;
         }}
         onSuccess={() => {
-          setAppointmentSuccess(true);
+          appointmentSuccessRef.current = true;
         }}
         onSubmit={async (data: AppointmentData) => {
           const response = await fetch("/api/appointments/create", {

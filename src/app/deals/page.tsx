@@ -93,7 +93,7 @@ export default function DealsPage() {
   const [appointmentDeal, setAppointmentDeal] = useState<DealRow | null>(null);
   const [appointmentPreviousStageId, setAppointmentPreviousStageId] = useState<string | null>(null);
   const [appointmentTargetStageId, setAppointmentTargetStageId] = useState<string | null>(null);
-  const [appointmentSuccess, setAppointmentSuccess] = useState(false);
+  const appointmentSuccessRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -955,7 +955,7 @@ export default function DealsPage() {
         open={appointmentModalOpen}
         onClose={async () => {
           // Only revert deal stage on cancel if appointment wasn't successful
-          if (!appointmentSuccess && appointmentDeal && appointmentPreviousStageId) {
+          if (!appointmentSuccessRef.current && appointmentDeal && appointmentPreviousStageId) {
             // Revert in UI
             setDeals((prev) =>
               prev.map((deal) =>
@@ -978,10 +978,10 @@ export default function DealsPage() {
           setAppointmentDeal(null);
           setAppointmentPreviousStageId(null);
           setAppointmentTargetStageId(null);
-          setAppointmentSuccess(false);
+          appointmentSuccessRef.current = false;
         }}
         onSuccess={() => {
-          setAppointmentSuccess(true);
+          appointmentSuccessRef.current = true;
         }}
         onSubmit={async (data: AppointmentData) => {
           const response = await fetch("/api/appointments/create", {
