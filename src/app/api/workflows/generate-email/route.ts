@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 
-const openaiApiKey = process.env.OPENAI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY;
 
-let openai: OpenAI | null = null;
-if (openaiApiKey) {
-  openai = new OpenAI({ apiKey: openaiApiKey });
+let genAI: GoogleGenerativeAI | null = null;
+if (geminiApiKey) {
+  genAI = new GoogleGenerativeAI(geminiApiKey);
 }
 
 type TemplateVariable = {
@@ -24,9 +24,9 @@ type GenerateEmailRequestBody = {
 
 export async function POST(request: Request) {
   try {
-    if (!openai) {
+    if (!genAI) {
       return NextResponse.json(
-        { error: "Missing OPENAI_API_KEY environment variable" },
+        { error: "Missing GEMINI_API_KEY environment variable" },
         { status: 500 },
       );
     }
@@ -76,22 +76,25 @@ Requirements:
 - The subject should be short, specific, and appropriate for the email.
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      systemInstruction: systemPrompt,
     });
 
-    const rawContent = completion.choices[0]?.message?.content || "";
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      generationConfig: { temperature: 0.7 },
+    });
+
+    const rawContent = result.response.text() || "";
 
     let subject = "Clinic update";
     let html = "<p>Thank you for your message.</p>";
 
     try {
-      const parsed = JSON.parse(rawContent) as { subject?: string; html?: string };
+      // Remove markdown code blocks if present
+      const cleanedContent = rawContent.replace(/```json\n?|\n?```/g, "").trim();
+      const parsed = JSON.parse(cleanedContent) as { subject?: string; html?: string };
       if (parsed.subject && parsed.subject.trim().length > 0) {
         subject = parsed.subject.trim();
       }
@@ -106,7 +109,7 @@ Requirements:
 
     return NextResponse.json({ subject, html });
   } catch (error) {
-    console.error("Error generating workflow email via OpenAI", error);
+    console.error("Error generating workflow email via Gemini", error);
     return NextResponse.json(
       { error: "Failed to generate email" },
       { status: 500 },
