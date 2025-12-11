@@ -1057,6 +1057,12 @@ export default function Page() {
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href="/workflows/appointment"
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 shadow-sm hover:bg-emerald-100"
+            >
+              <span>📅 Appointment Workflow</span>
+            </Link>
+            <Link
               href="/workflows/all"
               className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
             >

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 
 type DealStageType =
   | "lead"
@@ -76,6 +77,10 @@ export default function DealsPage() {
   // Kanban view load more (per stage)
   const KANBAN_ITEMS_PER_STAGE = 20;
   const [stageLoadMoreCounts, setStageLoadMoreCounts] = useState<Record<string, number>>({});
+
+  // Appointment modal state
+  const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+  const [appointmentDeal, setAppointmentDeal] = useState<DealRow | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -337,6 +342,14 @@ export default function DealsPage() {
           ),
         );
       } else {
+        // Check if the target stage is "Appointment Set" to show the appointment modal
+        const targetStage = dealStages.find((stage) => stage.id === stageId);
+        if (targetStage && targetStage.name.toLowerCase().includes("appointment set")) {
+          // Show the appointment modal
+          setAppointmentDeal(current);
+          setAppointmentModalOpen(true);
+        }
+        
         try {
           void fetch("/api/workflows/deal-stage-changed", {
             method: "POST",
@@ -825,6 +838,48 @@ export default function DealsPage() {
           </div>
         </div>
       )}
+
+      {/* Appointment Modal */}
+      <AppointmentModal
+        open={appointmentModalOpen}
+        onClose={() => {
+          setAppointmentModalOpen(false);
+          setAppointmentDeal(null);
+        }}
+        onSubmit={async (data: AppointmentData) => {
+          const response = await fetch("/api/appointments/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              patientId: data.patientId,
+              dealId: data.dealId,
+              title: data.title,
+              appointmentDate: data.appointmentDate,
+              durationMinutes: data.durationMinutes,
+              location: data.location,
+              notes: data.notes,
+              sendPatientEmail: data.sendPatientEmail,
+              sendUserEmail: data.sendUserEmail,
+              scheduleReminder: data.scheduleReminder,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to create appointment");
+          }
+        }}
+        patientId={appointmentDeal?.patient_id || ""}
+        patientName={
+          appointmentDeal?.patient
+            ? [appointmentDeal.patient.first_name, appointmentDeal.patient.last_name]
+                .filter(Boolean)
+                .join(" ") || "Patient"
+            : "Patient"
+        }
+        dealId={appointmentDeal?.id}
+        dealTitle={appointmentDeal?.title}
+      />
     </div>
   );
 }

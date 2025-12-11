@@ -21,6 +21,12 @@ type WorkflowRow = {
   created_at?: string;
 };
 
+type DuplicateStatus = {
+  workflowId: string;
+  status: "idle" | "duplicating" | "success" | "error";
+  message?: string;
+};
+
 type WorkflowActionRow = {
   id: string;
   workflow_id: string;
@@ -51,6 +57,8 @@ export default function Page() {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [workflowToDelete, setWorkflowToDelete] = useState<WorkflowSummary | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [duplicatingWorkflowId, setDuplicatingWorkflowId] = useState<string | null>(null);
+  const [duplicateSuccess, setDuplicateSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,6 +186,47 @@ export default function Page() {
     };
   }, []);
 
+  async function handleDuplicateWorkflow(workflow: WorkflowSummary) {
+    try {
+      setDuplicatingWorkflowId(workflow.id);
+      setError(null);
+      setDuplicateSuccess(null);
+
+      const response = await fetch("/api/workflows/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workflowId: workflow.id,
+          newName: `${workflow.name} (Copy)`,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to duplicate workflow");
+      }
+
+      // Add the new workflow to the list
+      const newWorkflow: WorkflowSummary = {
+        ...workflow,
+        id: data.workflow.id,
+        name: data.workflow.name,
+        active: false,
+      };
+
+      setWorkflows((prev) => [...prev, newWorkflow]);
+      setDuplicateSuccess(`Workflow "${data.workflow.name}" created successfully!`);
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setDuplicateSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to duplicate workflow");
+    } finally {
+      setDuplicatingWorkflowId(null);
+    }
+  }
+
   function renderSendMode(summary: WorkflowSummary): string {
     if (summary.sendMode === "delay") {
       if (summary.delayMinutes && summary.delayMinutes > 0) {
@@ -224,6 +273,12 @@ export default function Page() {
         {error ? (
           <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
             {error}
+          </div>
+        ) : null}
+
+        {duplicateSuccess ? (
+          <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+            {duplicateSuccess}
           </div>
         ) : null}
 
@@ -337,6 +392,23 @@ export default function Page() {
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDuplicateWorkflow(workflow)}
+                          disabled={duplicatingWorkflowId === workflow.id}
+                          className="rounded-md p-1 text-slate-400 hover:bg-sky-50 hover:text-sky-600 disabled:opacity-50"
+                          title="Duplicate workflow"
+                        >
+                          {duplicatingWorkflowId === workflow.id ? (
+                            <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          )}
                         </button>
                         <button
                           onClick={() => setWorkflowToDelete(workflow)}
