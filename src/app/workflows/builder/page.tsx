@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import EmailTemplateBuilder from "@/components/EmailTemplateBuilder";
 
 // Types
 type TriggerType = 
@@ -202,20 +203,25 @@ export default function WorkflowBuilderPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showEmailBuilder, setShowEmailBuilder] = useState(false);
+  const [emailTemplates, setEmailTemplates] = useState<{ id: string; name: string; subject_template: string }[]>([]);
+  const [editingEmailNodeId, setEditingEmailNodeId] = useState<string | null>(null);
 
-  // Load stages and users
+  // Load stages, users, and email templates
   useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
         
-        const [stagesRes, usersRes] = await Promise.all([
+        const [stagesRes, usersRes, templatesRes] = await Promise.all([
           supabaseClient.from("deal_stages").select("id, name, type, sort_order").order("sort_order"),
           supabaseClient.from("users").select("id, email, raw_user_meta_data"),
+          supabaseClient.from("email_templates").select("id, name, subject_template").order("created_at", { ascending: false }),
         ]);
 
         if (stagesRes.data) setStages(stagesRes.data);
         if (usersRes.data) setUsers(usersRes.data as User[]);
+        if (templatesRes.data) setEmailTemplates(templatesRes.data);
 
         // Load existing workflow if editing
         if (editId) {
@@ -568,6 +574,55 @@ export default function WorkflowBuilderPage() {
 
           {data.actionType === "send_email" && (
             <>
+              {/* Email Template Selection */}
+              <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 space-y-3">
+                <label className="block text-xs font-semibold text-sky-800 uppercase tracking-wide">Email Template</label>
+                <select
+                  value={(data.config as { template_id?: string }).template_id || ""}
+                  onChange={(e) => {
+                    const templateId = e.target.value;
+                    const template = emailTemplates.find(t => t.id === templateId);
+                    updateNodeData(selectedNode.id, { 
+                      config: { 
+                        ...data.config, 
+                        template_id: templateId,
+                        subject: template?.subject_template || (data.config as { subject?: string }).subject
+                      } 
+                    });
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="">Select a template...</option>
+                  {emailTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingEmailNodeId(selectedNode.id);
+                      setShowEmailBuilder(true);
+                    }}
+                    className="flex-1 rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700"
+                  >
+                    📧 Open Email Builder
+                  </button>
+                  {(data.config as { template_id?: string }).template_id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingEmailNodeId(selectedNode.id);
+                        setShowEmailBuilder(true);
+                      }}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Send to</label>
                 <select
@@ -575,11 +630,45 @@ export default function WorkflowBuilderPage() {
                   onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, recipient: e.target.value } })}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value="patient">Patient</option>
+                  <option value="patient">Patient (from trigger)</option>
+                  <option value="deal_patient">Patient (from deal)</option>
                   <option value="assigned_user">Assigned Staff</option>
                   <option value="specific_user">Specific User</option>
+                  <option value="specific_email">Specific Email Address</option>
                 </select>
               </div>
+
+              {(data.config as { recipient?: string }).recipient === "specific_user" && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Select User</label>
+                  <select
+                    value={(data.config as { user_id?: string }).user_id || ""}
+                    onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, user_id: e.target.value } })}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  >
+                    <option value="">Select user...</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.raw_user_meta_data?.full_name || user.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {(data.config as { recipient?: string }).recipient === "specific_email" && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Address</label>
+                  <input
+                    type="email"
+                    value={(data.config as { email_address?: string }).email_address || ""}
+                    onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, email_address: e.target.value } })}
+                    placeholder="Enter email address..."
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Subject</label>
                 <input
@@ -589,6 +678,7 @@ export default function WorkflowBuilderPage() {
                   placeholder="Enter subject..."
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 />
+                <p className="mt-1 text-[10px] text-slate-500">Use {"{{patient.first_name}}"} etc. for variables</p>
               </div>
 
               {/* Sending Behavior */}
@@ -958,6 +1048,43 @@ export default function WorkflowBuilderPage() {
           </div>
         </div>
       </div>
+
+      {/* Email Template Builder Modal */}
+      <EmailTemplateBuilder
+        open={showEmailBuilder}
+        onClose={() => {
+          setShowEmailBuilder(false);
+          setEditingEmailNodeId(null);
+        }}
+        onSelectTemplate={(template) => {
+          if (editingEmailNodeId) {
+            const node = nodes.find(n => n.id === editingEmailNodeId);
+            if (node && node.type === "action") {
+              const data = node.data as ActionNodeData;
+              updateNodeData(editingEmailNodeId, {
+                config: {
+                  ...data.config,
+                  template_id: template.id,
+                  subject: template.subject_template,
+                }
+              });
+            }
+          }
+          // Refresh templates list
+          supabaseClient
+            .from("email_templates")
+            .select("id, name, subject_template")
+            .order("created_at", { ascending: false })
+            .then(({ data }) => {
+              if (data) setEmailTemplates(data);
+            });
+        }}
+        initialTemplateId={
+          editingEmailNodeId
+            ? (nodes.find(n => n.id === editingEmailNodeId)?.data as ActionNodeData | undefined)?.config?.template_id as string | undefined
+            : undefined
+        }
+      />
     </main>
   );
 }
