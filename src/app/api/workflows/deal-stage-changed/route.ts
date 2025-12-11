@@ -243,6 +243,8 @@ export async function POST(request: Request) {
       console.log(`Running ${actionsToRun.length} actions for workflow ${workflow.id}`);
 
       for (const action of actionsToRun) {
+        console.log(`Processing action: ${action.action_type}`, JSON.stringify(action.config));
+        
         // Handle create_task action type
         if (action.action_type === "create_task") {
           const config = (action.config || {}) as {
@@ -251,7 +253,11 @@ export async function POST(request: Request) {
             due_days?: number;
           };
 
+          console.log(`Task config.title: "${config.title}"`);
+          console.log(`Template context patient:`, templateContext.patient);
+          
           const taskName = renderTemplate(config.title || "New Task", templateContext);
+          console.log(`Rendered task name: "${taskName}"`);
           const dueDays = typeof config.due_days === "number" ? config.due_days : 1;
           const activityDate = new Date();
           activityDate.setDate(activityDate.getDate() + dueDays);
