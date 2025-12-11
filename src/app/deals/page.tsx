@@ -244,10 +244,8 @@ export default function DealsPage() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [deals]);
 
-  const boardDeals = useMemo(() => {
-    if (serviceFilter === "all") return deals;
-    return deals.filter((deal) => deal.service?.id === serviceFilter);
-  }, [deals, serviceFilter]);
+  // Board deals should use the same filtered deals as the list view
+  const boardDeals = filteredDeals;
 
   // List view pagination calculations
   const totalListPages = Math.ceil(filteredDeals.length / LIST_ITEMS_PER_PAGE);
@@ -714,10 +712,31 @@ export default function DealsPage() {
               </span>
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 text-xs shadow-sm">
+              {/* Top scrollbar - synced with main board */}
+              <div
+                className="kanban-scroll-top w-full max-w-full overflow-x-auto"
+                onScroll={(e) => {
+                  if (boardScrollRef.current) {
+                    boardScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+                  }
+                }}
+              >
+                <div className="flex gap-3 px-3 md:gap-4" style={{ height: '12px' }}>
+                  {dealStages.map((stage) => (
+                    <div key={stage.id} className="min-w-[260px] max-w-xs flex-shrink-0" />
+                  ))}
+                </div>
+              </div>
               <div
                 className="kanban-scroll w-full max-w-full overflow-x-auto pb-2"
                 ref={boardScrollRef}
                 onDragOver={handleBoardDragOver}
+                onScroll={(e) => {
+                  const topScroller = e.currentTarget.previousElementSibling as HTMLElement;
+                  if (topScroller) {
+                    topScroller.scrollLeft = e.currentTarget.scrollLeft;
+                  }
+                }}
               >
                 <div className="flex gap-3 px-3 py-3 md:gap-4">
                   {dealStages.map((stage) => {

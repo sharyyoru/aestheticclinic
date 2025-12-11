@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { stripEmailSignature } from "@/utils/emailCleaner";
+import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 
 type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals";
 
@@ -298,6 +299,10 @@ export default function PatientActivityCard({
 
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+
+  // Appointment modal state
+  const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+  const [appointmentDeal, setAppointmentDeal] = useState<Deal | null>(null);
   const [dealTitle, setDealTitle] = useState("");
   const [dealStageId, setDealStageId] = useState<string>("");
   const [dealServiceId, setDealServiceId] = useState<string>("");
@@ -1392,6 +1397,13 @@ export default function PatientActivityCard({
         );
 
         if (previousStageId !== updated.stage_id) {
+          // Check if the target stage is "Appointment Set" to show the appointment modal
+          const targetStage = dealStages.find((stage) => stage.id === updated.stage_id);
+          if (targetStage && targetStage.name.toLowerCase().includes("appointment set")) {
+            setAppointmentDeal(updated);
+            setAppointmentModalOpen(true);
+          }
+
           try {
             void fetch("/api/workflows/deal-stage-changed", {
               method: "POST",
@@ -4076,6 +4088,42 @@ export default function PatientActivityCard({
           </div>
         </div>
       ) : null}
+
+      {/* Appointment Modal */}
+      <AppointmentModal
+        open={appointmentModalOpen}
+        onClose={() => {
+          setAppointmentModalOpen(false);
+          setAppointmentDeal(null);
+        }}
+        onSubmit={async (data: AppointmentData) => {
+          const response = await fetch("/api/appointments/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              patientId: data.patientId,
+              dealId: data.dealId,
+              title: data.title,
+              appointmentDate: data.appointmentDate,
+              durationMinutes: data.durationMinutes,
+              location: data.location,
+              notes: data.notes,
+              sendPatientEmail: data.sendPatientEmail,
+              sendUserEmail: data.sendUserEmail,
+              scheduleReminder: data.scheduleReminder,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to create appointment");
+          }
+        }}
+        patientId={appointmentDeal?.patient_id || patientId}
+        patientName="Patient"
+        dealId={appointmentDeal?.id}
+        dealTitle={appointmentDeal?.title}
+      />
     </div>
   );
 }
