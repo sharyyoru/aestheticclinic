@@ -1,0 +1,403 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const mailgunApiKey = process.env.MAILGUN_API_KEY;
+const mailgunDomain = process.env.MAILGUN_DOMAIN;
+const mailgunFromEmail = process.env.MAILGUN_FROM_EMAIL;
+const mailgunFromName = process.env.MAILGUN_FROM_NAME || "Aesthetics Clinic";
+const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
+
+type BookingPayload = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  appointmentDate: string;
+  service: string;
+  doctorSlug: string;
+  doctorName: string;
+  doctorEmail: string;
+  notes?: string;
+  location?: string;
+};
+
+async function sendEmail(to: string, subject: string, html: string) {
+  if (!mailgunApiKey || !mailgunDomain) {
+    console.log("Mailgun not configured, skipping email send");
+    return;
+  }
+
+  const domain = mailgunDomain as string;
+  const fromAddress = mailgunFromEmail || `no-reply@${domain}`;
+
+  const formData = new FormData();
+  formData.append("from", `${mailgunFromName} <${fromAddress}>`);
+  formData.append("to", to);
+  formData.append("subject", subject);
+  formData.append("html", html);
+
+  const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
+
+  const response = await fetch(`${mailgunApiBaseUrl}/v3/${domain}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    console.error("Error sending email via Mailgun", response.status, text);
+    throw new Error(`Failed to send email: ${response.status}`);
+  }
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function generatePatientConfirmationEmail(
+  patientName: string,
+  doctorName: string,
+  appointmentDate: Date,
+  service: string,
+  location: string | null
+): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Appointment Confirmed!</h1>
+    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Thank you for booking with us</p>
+  </div>
+  <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 16px 16px;">
+    <p style="font-size: 18px; margin-bottom: 24px; color: #1e293b;">Dear <strong>${patientName}</strong>,</p>
+    <p style="margin-bottom: 24px; color: #475569;">Your appointment has been successfully scheduled. We look forward to seeing you!</p>
+    
+    <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #bbf7d0;">
+      <h3 style="margin: 0 0 16px 0; color: #166534; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Appointment Details</h3>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Doctor</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${doctorName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Date</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatDate(appointmentDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Time</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatTime(appointmentDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Service</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${service}</td>
+        </tr>
+        ${location ? `
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Location</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${location}</td>
+        </tr>
+        ` : ""}
+      </table>
+    </div>
+    
+    <div style="background: #fffbeb; padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 24px;">
+      <p style="margin: 0; color: #92400e; font-size: 14px;">
+        <strong>Important:</strong> If you need to reschedule or cancel your appointment, please contact us at least 24 hours in advance.
+      </p>
+    </div>
+    
+    <p style="margin-bottom: 0; color: #475569;">Best regards,<br><strong style="color: #1e293b;">Aesthetics Clinic Team</strong></p>
+  </div>
+  <div style="text-align: center; padding: 20px; color: #94a3b8; font-size: 12px;">
+    <p style="margin: 0;">© ${new Date().getFullYear()} Aesthetics Clinic. All rights reserved.</p>
+  </div>
+</body>
+</html>`;
+}
+
+function generateDoctorNotificationEmail(
+  doctorName: string,
+  patientName: string,
+  patientEmail: string,
+  patientPhone: string | null,
+  appointmentDate: Date,
+  service: string,
+  notes: string | null,
+  location: string | null
+): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">New Appointment Booked</h1>
+    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Via Online Booking</p>
+  </div>
+  <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 16px 16px;">
+    <p style="font-size: 18px; margin-bottom: 24px; color: #1e293b;">Hi <strong>${doctorName}</strong>,</p>
+    <p style="margin-bottom: 24px; color: #475569;">A new appointment has been booked through the online booking system.</p>
+    
+    <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #93c5fd;">
+      <h3 style="margin: 0 0 16px 0; color: #1e40af; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Patient Information</h3>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Name</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${patientName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Email</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${patientEmail}</td>
+        </tr>
+        ${patientPhone ? `
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Phone</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${patientPhone}</td>
+        </tr>
+        ` : ""}
+      </table>
+    </div>
+
+    <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #bbf7d0;">
+      <h3 style="margin: 0 0 16px 0; color: #166534; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Appointment Details</h3>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Date</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatDate(appointmentDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Time</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatTime(appointmentDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Service</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${service}</td>
+        </tr>
+        ${location ? `
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Location</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${location}</td>
+        </tr>
+        ` : ""}
+      </table>
+    </div>
+    
+    ${notes ? `
+    <div style="background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+      <p style="margin: 0 0 8px 0; color: #64748b; font-size: 14px; font-weight: 600;">Patient Notes:</p>
+      <p style="margin: 0; color: #1e293b; font-size: 14px;">${notes}</p>
+    </div>
+    ` : ""}
+    
+    <p style="margin-bottom: 0; color: #475569;">This appointment has been added to your agenda.</p>
+  </div>
+  <div style="text-align: center; padding: 20px; color: #94a3b8; font-size: 12px;">
+    <p style="margin: 0;">© ${new Date().getFullYear()} Aesthetics Clinic. All rights reserved.</p>
+  </div>
+</body>
+</html>`;
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json()) as BookingPayload;
+
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      appointmentDate,
+      service,
+      doctorSlug,
+      doctorName,
+      doctorEmail,
+      notes,
+      location,
+    } = body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !email || !appointmentDate || !service || !doctorSlug) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: "Invalid email format" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const patientName = `${firstName} ${lastName}`;
+    const appointmentDateObj = new Date(appointmentDate);
+
+    // Check if time slot is already booked
+    const slotStart = new Date(appointmentDateObj);
+    const slotEnd = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000); // 1 hour
+
+    const { data: existingAppointments } = await supabase
+      .from("appointments")
+      .select("id")
+      .gte("start_time", slotStart.toISOString())
+      .lt("start_time", slotEnd.toISOString())
+      .neq("status", "cancelled");
+
+    if (existingAppointments && existingAppointments.length > 0) {
+      return NextResponse.json(
+        { error: "This time slot is no longer available. Please choose another time." },
+        { status: 409 }
+      );
+    }
+
+    // Check if patient exists or create new
+    let patientId: string;
+    const { data: existingPatient } = await supabase
+      .from("patients")
+      .select("id")
+      .eq("email", email.toLowerCase())
+      .single();
+
+    if (existingPatient) {
+      patientId = existingPatient.id;
+    } else {
+      // Create new patient
+      const { data: newPatient, error: patientError } = await supabase
+        .from("patients")
+        .insert({
+          first_name: firstName,
+          last_name: lastName,
+          email: email.toLowerCase(),
+          phone: phone || null,
+          source: "manual",
+        })
+        .select("id")
+        .single();
+
+      if (patientError || !newPatient) {
+        console.error("Error creating patient:", patientError);
+        return NextResponse.json(
+          { error: "Failed to create patient record" },
+          { status: 500 }
+        );
+      }
+
+      patientId = newPatient.id;
+    }
+
+    // Calculate end time (1 hour duration)
+    const endDateObj = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000);
+
+    // Build reason field
+    const reason = `${patientName} - ${service} [Doctor: ${doctorName}]${notes ? ` [Notes: ${notes}]` : ""} [Online Booking]`;
+
+    // Create the appointment
+    const { data: appointment, error: appointmentError } = await supabase
+      .from("appointments")
+      .insert({
+        patient_id: patientId,
+        provider_id: null,
+        start_time: appointmentDateObj.toISOString(),
+        end_time: endDateObj.toISOString(),
+        reason,
+        location: location || "Geneva",
+        status: "scheduled",
+        source: "manual",
+      })
+      .select("id")
+      .single();
+
+    if (appointmentError || !appointment) {
+      console.error("Error creating appointment:", appointmentError);
+      return NextResponse.json(
+        { error: "Failed to create appointment" },
+        { status: 500 }
+      );
+    }
+
+    // Send confirmation email to patient
+    try {
+      const patientEmailHtml = generatePatientConfirmationEmail(
+        patientName,
+        doctorName,
+        appointmentDateObj,
+        service,
+        location || null
+      );
+      await sendEmail(
+        email,
+        `Appointment Confirmed - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
+        patientEmailHtml
+      );
+      console.log("Patient confirmation email sent to:", email);
+    } catch (err) {
+      console.error("Error sending patient email:", err);
+    }
+
+    // Send notification email to doctor
+    try {
+      const doctorEmailHtml = generateDoctorNotificationEmail(
+        doctorName,
+        patientName,
+        email,
+        phone || null,
+        appointmentDateObj,
+        service,
+        notes || null,
+        location || null
+      );
+      await sendEmail(
+        doctorEmail,
+        `New Appointment: ${patientName} - ${formatDate(appointmentDateObj)}`,
+        doctorEmailHtml
+      );
+      console.log("Doctor notification email sent to:", doctorEmail);
+    } catch (err) {
+      console.error("Error sending doctor email:", err);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      appointmentId: appointment.id,
+      message: "Appointment booked successfully",
+    });
+  } catch (error) {
+    console.error("Error booking appointment:", error);
+    return NextResponse.json(
+      { error: "Failed to book appointment", details: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
+}
