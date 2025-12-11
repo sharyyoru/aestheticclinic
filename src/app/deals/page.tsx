@@ -63,6 +63,12 @@ export default function DealsPage() {
   const [dragDealId, setDragDealId] = useState<string | null>(null);
   const [updatingDealId, setUpdatingDealId] = useState<string | null>(null);
 
+  const [contactOwnerFilter, setContactOwnerFilter] = useState<string>("");
+  const [contactOwnerSearch, setContactOwnerSearch] = useState("");
+  const [contactOwnerDropdownOpen, setContactOwnerDropdownOpen] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [userOptions, setUserOptions] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
+
   // List view pagination
   const [listPage, setListPage] = useState(1);
   const LIST_ITEMS_PER_PAGE = 25;
@@ -70,6 +76,27 @@ export default function DealsPage() {
   // Kanban view load more (per stage)
   const KANBAN_ITEMS_PER_STAGE = 20;
   const [stageLoadMoreCounts, setStageLoadMoreCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadUsers() {
+      try {
+        const response = await fetch("/api/users/list");
+        if (!response.ok) return;
+        const json = await response.json();
+        if (!isMounted) return;
+        setUserOptions(Array.isArray(json) ? json : []);
+      } catch {
+      }
+    }
+
+    loadUsers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -127,32 +154,78 @@ export default function DealsPage() {
     };
   }, []);
 
+  function handleContactOwnerSearchChange(value: string) {
+    setContactOwnerSearch(value);
+    setContactOwnerDropdownOpen(value.trim().length > 0);
+  }
+
+  function handleContactOwnerSelect(userId: string, userName: string) {
+    setContactOwnerFilter(userId);
+    setContactOwnerSearch(userName);
+    setContactOwnerDropdownOpen(false);
+  }
+
+  function handleContactOwnerClear() {
+    setContactOwnerFilter("");
+    setContactOwnerSearch("");
+    setContactOwnerDropdownOpen(false);
+  }
+
   const normalizedSearch = searchQuery.trim().toLowerCase();
+  const normalizedPatientSearch = patientSearch.trim().toLowerCase();
 
   const filteredDeals = useMemo(() => {
-    const base =
-      serviceFilter === "all"
-        ? deals
-        : deals.filter((deal) => deal.service?.id === serviceFilter);
+    let filtered = deals;
 
-    if (!normalizedSearch) return base;
+    // Service filter
+    if (serviceFilter !== "all") {
+      filtered = filtered.filter((deal) => deal.service?.id === serviceFilter);
+    }
 
-    return base.filter((deal) => {
-      const title = (deal.title ?? "").toLowerCase();
-      const pipeline = (deal.pipeline ?? "").toLowerCase();
-      const patientName = `${deal.patient?.first_name ?? ""} ${deal.patient?.last_name ?? ""}`
-        .trim()
-        .toLowerCase();
-      const serviceName = (deal.service?.name ?? "").toLowerCase();
+    // Contact Owner filter (assuming contact_label contains user info - may need DB schema update)
+    // For now, we'll use contact_label as a text filter
+    if (contactOwnerFilter) {
+      const selectedUser = userOptions.find(u => u.id === contactOwnerFilter);
+      if (selectedUser) {
+        const ownerName = (selectedUser.full_name || selectedUser.email || "").toLowerCase();
+        filtered = filtered.filter((deal) => {
+          const contactLabel = (deal.contact_label ?? "").toLowerCase();
+          return contactLabel.includes(ownerName);
+        });
+      }
+    }
 
-      return (
-        title.includes(normalizedSearch) ||
-        pipeline.includes(normalizedSearch) ||
-        patientName.includes(normalizedSearch) ||
-        serviceName.includes(normalizedSearch)
-      );
-    });
-  }, [deals, normalizedSearch, serviceFilter]);
+    // Patient name/email search
+    if (normalizedPatientSearch) {
+      filtered = filtered.filter((deal) => {
+        const patientName = `${deal.patient?.first_name ?? ""} ${deal.patient?.last_name ?? ""}`
+          .trim()
+          .toLowerCase();
+        return patientName.includes(normalizedPatientSearch);
+      });
+    }
+
+    // General search
+    if (normalizedSearch) {
+      filtered = filtered.filter((deal) => {
+        const title = (deal.title ?? "").toLowerCase();
+        const pipeline = (deal.pipeline ?? "").toLowerCase();
+        const patientName = `${deal.patient?.first_name ?? ""} ${deal.patient?.last_name ?? ""}`
+          .trim()
+          .toLowerCase();
+        const serviceName = (deal.service?.name ?? "").toLowerCase();
+
+        return (
+          title.includes(normalizedSearch) ||
+          pipeline.includes(normalizedSearch) ||
+          patientName.includes(normalizedSearch) ||
+          serviceName.includes(normalizedSearch)
+        );
+      });
+    }
+
+    return filtered;
+  }, [deals, normalizedSearch, normalizedPatientSearch, serviceFilter, contactOwnerFilter, userOptions]);
 
   const uniqueServices = useMemo(() => {
     const map = new Map<string, string>();
@@ -366,7 +439,7 @@ export default function DealsPage() {
               </div>
             </div>
 
-            {/* Global service filter (applies to list + board) */}
+            {/* Global filters (applies to list + board) */}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <select
@@ -381,6 +454,64 @@ export default function DealsPage() {
                     </option>
                   ))}
                 </select>
+                
+                {/* Contact Owner Smart Search */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={contactOwnerSearch}
+                    onChange={(event) => handleContactOwnerSearchChange(event.target.value)}
+                    placeholder="Contact Owner..."
+                    className="w-48 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 pr-7 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  {contactOwnerFilter && (
+                    <button
+                      type="button"
+                      onClick={handleContactOwnerClear}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      ×
+                    </button>
+                  )}
+                  {contactOwnerDropdownOpen && (() => {
+                    const query = contactOwnerSearch.trim().toLowerCase();
+                    const filteredUsers = userOptions
+                      .filter((u) => {
+                        const hay = (u.full_name || u.email || "").toLowerCase();
+                        return hay.includes(query);
+                      })
+                      .slice(0, 6);
+
+                    if (filteredUsers.length === 0) return null;
+
+                    return (
+                      <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
+                        {filteredUsers.map((user) => {
+                          const display = user.full_name || user.email || "Unnamed user";
+                          return (
+                            <button
+                              key={user.id}
+                              type="button"
+                              onClick={() => handleContactOwnerSelect(user.id, display)}
+                              className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                            >
+                              {display}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Patient Smart Search */}
+                <input
+                  type="text"
+                  value={patientSearch}
+                  onChange={(event) => setPatientSearch(event.target.value)}
+                  placeholder="Search patient..."
+                  className="w-48 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
               </div>
             </div>
 

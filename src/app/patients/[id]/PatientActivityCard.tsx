@@ -300,6 +300,8 @@ export default function PatientActivityCard({
   const [dealTitle, setDealTitle] = useState("");
   const [dealStageId, setDealStageId] = useState<string>("");
   const [dealServiceId, setDealServiceId] = useState<string>("");
+  const [dealServiceSearch, setDealServiceSearch] = useState("");
+  const [dealServiceDropdownOpen, setDealServiceDropdownOpen] = useState(false);
   const [dealPipeline, setDealPipeline] = useState("Geneva");
   const [dealContactLabel, setDealContactLabel] = useState("Marketing");
   const [dealLocation, setDealLocation] = useState("Geneva");
@@ -1275,10 +1277,29 @@ export default function PatientActivityCard({
     }
   }
 
+  function handleDealServiceSearchChange(value: string) {
+    setDealServiceSearch(value);
+    setDealServiceDropdownOpen(value.trim().length > 0);
+  }
+
+  function handleDealServiceSelect(serviceId: string, serviceName: string) {
+    setDealServiceId(serviceId);
+    setDealServiceSearch(serviceName);
+    setDealServiceDropdownOpen(false);
+  }
+
+  function handleDealServiceClear() {
+    setDealServiceId("");
+    setDealServiceSearch("");
+    setDealServiceDropdownOpen(false);
+  }
+
   function handleOpenCreateDeal() {
     setEditingDeal(null);
     setDealTitle("");
     setDealServiceId("");
+    setDealServiceSearch("");
+    setDealServiceDropdownOpen(false);
     setDealPipeline("Geneva");
     setDealContactLabel("Marketing");
     setDealLocation("Geneva");
@@ -1298,6 +1319,8 @@ export default function PatientActivityCard({
     setEditingDeal(deal);
     setDealTitle(deal.title ?? "");
     setDealServiceId(deal.service_id ?? "");
+    const selectedService = serviceOptions.find((s) => s.id === deal.service_id);
+    setDealServiceSearch(selectedService?.name || "");
     setDealPipeline(deal.pipeline ?? "Geneva");
     setDealContactLabel(deal.contact_label ?? "Marketing");
     setDealLocation(deal.location ?? "Geneva");
@@ -1419,6 +1442,8 @@ export default function PatientActivityCard({
       setDealNotes("");
       setDealStageId("");
       setDealServiceId("");
+      setDealServiceSearch("");
+      setDealServiceDropdownOpen(false);
       setDealPipeline("Geneva");
       setDealContactLabel("Marketing");
       setDealLocation("Geneva");
@@ -3592,18 +3617,50 @@ export default function PatientActivityCard({
                     <label className="block text-[11px] font-medium text-slate-700">
                       Services
                     </label>
-                    <select
-                      value={dealServiceId}
-                      onChange={(event) => setDealServiceId(event.target.value)}
-                      className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    >
-                      <option value="">Select service</option>
-                      {serviceOptions.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={dealServiceSearch}
+                        onChange={(event) => handleDealServiceSearchChange(event.target.value)}
+                        placeholder="Search services..."
+                        className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 pr-7 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                      {dealServiceId && (
+                        <button
+                          type="button"
+                          onClick={handleDealServiceClear}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          ×
+                        </button>
+                      )}
+                      {dealServiceDropdownOpen && (() => {
+                        const query = dealServiceSearch.trim().toLowerCase();
+                        const filteredServices = serviceOptions
+                          .filter((s) => {
+                            const hay = (s.name || "").toLowerCase();
+                            return hay.includes(query);
+                          })
+                          .slice(0, 6);
+
+                        if (filteredServices.length === 0) return null;
+
+                        return (
+                          <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
+                            {filteredServices.map((service) => (
+                              <button
+                                key={service.id}
+                                type="button"
+                                onClick={() => handleDealServiceSelect(service.id, service.name)}
+                                className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                              >
+                                {service.name}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <label className="block text-[11px] font-medium text-slate-700">
