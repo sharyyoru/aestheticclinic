@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useTasksNotifications } from "@/components/TasksNotificationsContext";
+import TaskEditModal from "@/components/TaskEditModal";
 
 type NotificationPatient = {
   id: string;
@@ -23,6 +23,8 @@ type NotificationTask = {
   created_at: string;
   assigned_read_at: string | null;
   created_by_name: string | null;
+  assigned_user_id: string | null;
+  assigned_user_name: string | null;
 };
 
 type TaskNotificationRow = {
@@ -39,6 +41,9 @@ export default function NotificationsPage() {
   const [updatingTaskIds, setUpdatingTaskIds] = useState<string[]>([]);
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<NotificationTask | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<NotificationPatient | null>(null);
   const { refreshOpenTasksCount, setOpenTasksCountOptimistic } =
     useTasksNotifications();
 
@@ -64,7 +69,7 @@ export default function NotificationsPage() {
         const { data, error } = await supabaseClient
           .from("tasks")
           .select(
-            "id, patient_id, name, content, status, priority, type, activity_date, assigned_read_at, created_at, created_by_name, patient:patients(id, first_name, last_name)",
+            "id, patient_id, name, content, status, priority, type, activity_date, assigned_read_at, created_at, created_by_name, assigned_user_id, assigned_user_name, patient:patients(id, first_name, last_name)",
           )
           .eq("assigned_user_id", user.id)
           .order("created_at", { ascending: false });
@@ -92,6 +97,8 @@ export default function NotificationsPage() {
             created_at: row.created_at as string,
             assigned_read_at: (row.assigned_read_at as string | null) ?? null,
             created_by_name: (row.created_by_name as string | null) ?? null,
+            assigned_user_id: (row.assigned_user_id as string | null) ?? null,
+            assigned_user_name: (row.assigned_user_name as string | null) ?? null,
           },
           patient: row.patient
             ? {
@@ -238,6 +245,8 @@ export default function NotificationsPage() {
                     nowIso,
                   created_by_name:
                     (updated.created_by_name as string | null) ?? null,
+                  assigned_user_id: task.assigned_user_id,
+                  assigned_user_name: task.assigned_user_name,
                 },
               }
             : r,
@@ -375,15 +384,16 @@ export default function NotificationsPage() {
                 const isUpdating = updatingTaskIds.includes(task.id);
 
                 return (
-                  <Link
+                  <button
                     key={row.id}
-                    href={
-                      patient
-                        ? `/patients/${patient.id}?mode=crm&tab=tasks`
-                        : "#"
-                    }
-                    onClick={() => void handleMarkNotificationRead(row)}
-                    className="flex items-start justify-between rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
+                    type="button"
+                    onClick={() => {
+                      void handleMarkNotificationRead(row);
+                      setSelectedTask(task);
+                      setSelectedPatient(patient);
+                      setEditModalOpen(true);
+                    }}
+                    className="w-full text-left flex items-start justify-between rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
                   >
                     <div className="pr-4">
                       <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
@@ -437,20 +447,21 @@ export default function NotificationsPage() {
                       </div>
                     </div>
                     {!isCompleted ? (
-                      <button
-                        type="button"
-                        onClick={() => void handleMarkTaskCompleted(row)}
-                        disabled={isUpdating}
-                        className="mt-1 inline-flex items-center rounded-full border border-slate-300 bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-800 shadow-sm hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-70"
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleMarkTaskCompleted(row);
+                        }}
+                        className="mt-1 inline-flex items-center rounded-full border border-slate-300 bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-800 shadow-sm hover:bg-slate-300 cursor-pointer"
                       >
                         {isUpdating ? "Updating..." : "Set complete"}
-                      </button>
+                      </span>
                     ) : (
                       <span className="mt-1 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
                         Completed
                       </span>
                     )}
-                  </Link>
+                  </button>
                 );
               };
 
@@ -478,6 +489,48 @@ export default function NotificationsPage() {
           </div>
         )}
       </div>
+
+      {/* Task Edit Modal */}
+      <TaskEditModal
+        open={editModalOpen}
+        onClose={() => {
+          setEditModalOpen(false);
+          setSelectedTask(null);
+          setSelectedPatient(null);
+        }}
+        task={selectedTask ? {
+          ...selectedTask,
+          patient: selectedPatient ? {
+            id: selectedPatient.id,
+            first_name: selectedPatient.first_name,
+            last_name: selectedPatient.last_name,
+            email: null,
+            phone: null,
+          } : null,
+        } : null}
+        onTaskUpdated={(updatedTask) => {
+          setRows((prev) =>
+            prev.map((r) =>
+              r.task && r.task.id === updatedTask.id
+                ? {
+                    ...r,
+                    task: {
+                      ...r.task,
+                      name: updatedTask.name,
+                      content: updatedTask.content,
+                      status: updatedTask.status,
+                      priority: updatedTask.priority,
+                      type: updatedTask.type,
+                      activity_date: updatedTask.activity_date,
+                      assigned_user_id: updatedTask.assigned_user_id,
+                      assigned_user_name: updatedTask.assigned_user_name,
+                    },
+                  }
+                : r
+            )
+          );
+        }}
+      />
     </div>
   );
 }

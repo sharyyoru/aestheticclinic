@@ -32,18 +32,26 @@ export function MessagesUnreadProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const { count, error } = await supabaseClient
+      // Count unread patient note mentions
+      const { count: noteCount, error: noteError } = await supabaseClient
         .from("patient_note_mentions")
         .select("id", { count: "exact", head: true })
         .eq("mentioned_user_id", user.id)
         .is("read_at", null);
 
-      if (error) {
+      // Count unread task comment mentions
+      const { count: taskCount, error: taskError } = await supabaseClient
+        .from("task_comment_mentions")
+        .select("id", { count: "exact", head: true })
+        .eq("mentioned_user_id", user.id)
+        .is("read_at", null);
+
+      if (noteError && taskError) {
         setUnreadCount(0);
         return;
       }
 
-      setUnreadCount(count ?? 0);
+      setUnreadCount((noteCount ?? 0) + (taskCount ?? 0));
     } catch {
       setUnreadCount(0);
     }

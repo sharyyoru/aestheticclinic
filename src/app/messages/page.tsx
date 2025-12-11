@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useMessagesUnread } from "@/components/MessagesUnreadContext";
+import TaskEditModal from "@/components/TaskEditModal";
 
 type MentionNote = {
   id: string;
@@ -18,14 +19,50 @@ type MentionPatient = {
   last_name: string;
 };
 
-type MentionRow = {
+type NoteMentionRow = {
   id: string;
   created_at: string;
   read_at: string | null;
   patient_id: string;
   note: MentionNote | null;
   patient: MentionPatient | null;
+  type: "note";
 };
+
+type TaskComment = {
+  id: string;
+  body: string;
+  author_name: string | null;
+  created_at: string;
+};
+
+type TaskInfo = {
+  id: string;
+  name: string;
+  content: string | null;
+  status: "not_started" | "in_progress" | "completed";
+  priority: "low" | "medium" | "high";
+  type: "todo" | "call" | "email" | "other";
+  activity_date: string | null;
+  created_at: string;
+  created_by_name: string | null;
+  assigned_user_id: string | null;
+  assigned_user_name: string | null;
+  patient_id: string;
+};
+
+type TaskMentionRow = {
+  id: string;
+  created_at: string;
+  read_at: string | null;
+  task_id: string;
+  comment: TaskComment | null;
+  task: TaskInfo | null;
+  patient: MentionPatient | null;
+  type: "task";
+};
+
+type MentionRow = NoteMentionRow | TaskMentionRow;
 
 export default function MessagesPage() {
   const [mentions, setMentions] = useState<MentionRow[]>([]);
@@ -35,6 +72,8 @@ export default function MessagesPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const { setUnreadCountOptimistic, refreshUnread } = useMessagesUnread();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [selectedTaskMention, setSelectedTaskMention] = useState<TaskMentionRow | null>(null);
 
   const [priorityMode, setPriorityMode] = useState<"crm" | "medical">("crm");
 
@@ -63,7 +102,8 @@ export default function MessagesPage() {
           rawPriority === "medical" ? "medical" : "crm";
         setPriorityMode(next);
 
-        const { data, error } = await supabaseClient
+        // Fetch patient note mentions
+        const { data: noteMentions, error: noteError } = await supabaseClient
           .from("patient_note_mentions")
           .select(
             "id, created_at, read_at, patient_id, note:patient_notes(id, body, author_name, created_at), patient:patients(id, first_name, last_name)",
@@ -71,16 +111,49 @@ export default function MessagesPage() {
           .eq("mentioned_user_id", user.id)
           .order("created_at", { ascending: false });
 
+        // Fetch task comment mentions
+        const { data: taskMentions, error: taskError } = await supabaseClient
+          .from("task_comment_mentions")
+          .select(
+            "id, created_at, read_at, task_id, comment:task_comments(id, body, author_name, created_at), task:tasks(id, name, content, status, priority, type, activity_date, created_at, created_by_name, assigned_user_id, assigned_user_name, patient_id, patient:patients(id, first_name, last_name))",
+          )
+          .eq("mentioned_user_id", user.id)
+          .order("created_at", { ascending: false });
+
         if (!isMounted) return;
 
-        if (error || !data) {
-          setError(error?.message ?? "Failed to load messages.");
+        if (noteError && taskError) {
+          setError("Failed to load messages.");
           setMentions([]);
           setLoading(false);
           return;
         }
 
-        setMentions(data as unknown as MentionRow[]);
+        // Combine and sort both types of mentions
+        const noteRows: NoteMentionRow[] = (noteMentions || []).map((m: any) => ({
+          ...m,
+          type: "note" as const,
+        }));
+
+        const taskRows: TaskMentionRow[] = (taskMentions || []).map((m: any) => ({
+          id: m.id,
+          created_at: m.created_at,
+          read_at: m.read_at,
+          task_id: m.task_id,
+          comment: m.comment,
+          task: m.task ? {
+            ...m.task,
+            patient_id: m.task.patient_id,
+          } : null,
+          patient: m.task?.patient || null,
+          type: "task" as const,
+        }));
+
+        const combined = [...noteRows, ...taskRows].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        setMentions(combined);
         setLoading(false);
       } catch {
         if (!isMounted) return;
@@ -98,31 +171,38 @@ export default function MessagesPage() {
   }, [refreshKey]);
 
   async function handleMarkAllRead() {
-    const unread = mentions.filter((m) => !m.read_at).map((m) => m.id);
-    if (unread.length === 0) return;
+    const unreadNotes = mentions.filter((m) => !m.read_at && m.type === "note").map((m) => m.id);
+    const unreadTasks = mentions.filter((m) => !m.read_at && m.type === "task").map((m) => m.id);
+    if (unreadNotes.length === 0 && unreadTasks.length === 0) return;
 
     try {
       setMarkingRead(true);
       const nowIso = new Date().toISOString();
 
-      const { error } = await supabaseClient
-        .from("patient_note_mentions")
-        .update({ read_at: nowIso })
-        .in("id", unread);
+      // Mark note mentions as read
+      if (unreadNotes.length > 0) {
+        await supabaseClient
+          .from("patient_note_mentions")
+          .update({ read_at: nowIso })
+          .in("id", unreadNotes);
+      }
 
-      if (error) {
-        setMarkingRead(false);
-        return;
+      // Mark task mentions as read
+      if (unreadTasks.length > 0) {
+        await supabaseClient
+          .from("task_comment_mentions")
+          .update({ read_at: nowIso })
+          .in("id", unreadTasks);
       }
 
       setMentions((prev) =>
         prev.map((m) =>
-          m.read_at || !unread.includes(m.id)
+          m.read_at || (!unreadNotes.includes(m.id) && !unreadTasks.includes(m.id))
             ? m
             : { ...m, read_at: nowIso },
         ),
       );
-      setUnreadCountOptimistic((prev) => prev - unread.length);
+      setUnreadCountOptimistic((prev) => prev - unreadNotes.length - unreadTasks.length);
       setToastMessage("All messages marked as read.");
       setMarkingRead(false);
     } catch {
@@ -161,12 +241,19 @@ export default function MessagesPage() {
     setUnreadCountOptimistic((prev) => prev - 1);
 
     try {
+      const tableName = mention.type === "task" ? "task_comment_mentions" : "patient_note_mentions";
       await supabaseClient
-        .from("patient_note_mentions")
+        .from(tableName)
         .update({ read_at: nowIso })
         .eq("id", mention.id);
     } catch {
     }
+  }
+
+  function handleOpenTaskMention(mention: TaskMentionRow) {
+    void handleOpenMention(mention);
+    setSelectedTaskMention(mention);
+    setTaskModalOpen(true);
   }
 
   return (
@@ -225,12 +312,59 @@ export default function MessagesPage() {
                     ? createdDate.toLocaleString()
                     : null;
 
-                const note = mention.note;
                 const patient = mention.patient;
-
                 const patientName = patient
                   ? `${patient.first_name} ${patient.last_name}`
                   : "Unknown patient";
+
+                // Handle task mention
+                if (mention.type === "task") {
+                  const taskMention = mention as TaskMentionRow;
+                  const comment = taskMention.comment;
+                  const task = taskMention.task;
+
+                  return (
+                    <button
+                      key={mention.id}
+                      type="button"
+                      onClick={() => handleOpenTaskMention(taskMention)}
+                      className="w-full text-left block rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="pr-4">
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                            {createdLabel ? <span>{createdLabel}</span> : null}
+                            <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700">
+                              Task Comment
+                            </span>
+                            <span>
+                              Task:{" "}
+                              <span className="font-medium text-purple-700">
+                                {task?.name || "Unknown task"}
+                              </span>
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-slate-800">
+                            {comment?.author_name ? (
+                              <span className="font-medium">{comment.author_name}: </span>
+                            ) : null}
+                            <span>{comment?.body ?? "(Comment unavailable)"}</span>
+                          </p>
+                          <p className="mt-0.5 text-[10px] text-slate-500">
+                            Patient: {patientName}
+                          </p>
+                        </div>
+                        {!mention.read_at ? (
+                          <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-purple-500" />
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                }
+
+                // Handle note mention
+                const noteMention = mention as NoteMentionRow;
+                const note = noteMention.note;
 
                 return (
                   <Link
@@ -243,8 +377,11 @@ export default function MessagesPage() {
                       <div className="pr-4">
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                           {createdLabel ? <span>{createdLabel}</span> : null}
+                          <span className="inline-flex items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-medium text-sky-700">
+                            Patient Note
+                          </span>
                           <span>
-                            Note created for:{" "}
+                            Patient:{" "}
                             <span className="font-medium text-sky-700 hover:text-sky-800">
                               {patientName}
                             </span>
@@ -292,6 +429,25 @@ export default function MessagesPage() {
           </div>
         </div>
       ) : null}
+
+      {/* Task Edit Modal */}
+      <TaskEditModal
+        open={taskModalOpen}
+        onClose={() => {
+          setTaskModalOpen(false);
+          setSelectedTaskMention(null);
+        }}
+        task={selectedTaskMention?.task ? {
+          ...selectedTaskMention.task,
+          patient: selectedTaskMention.patient ? {
+            id: selectedTaskMention.patient.id,
+            first_name: selectedTaskMention.patient.first_name,
+            last_name: selectedTaskMention.patient.last_name,
+            email: null,
+            phone: null,
+          } : null,
+        } : null}
+      />
     </div>
   );
 }

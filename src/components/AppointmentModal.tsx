@@ -130,6 +130,7 @@ export default function AppointmentModal({
       tomorrow.setHours(10, 0, 0, 0);
       setAppointmentDate(formatDateTimeLocal(tomorrow));
       setAppointmentType(defaultType);
+      setDurationMinutes(defaultType === "operation" ? "60" : "15");
       setTitle(`${defaultType === "operation" ? "Operation" : "Appointment"} with ${patientName}`);
       setError(null);
       setAssignedUserId("");
@@ -161,26 +162,30 @@ export default function AppointmentModal({
     const dayEnd = new Date(appointmentDateObj);
     dayEnd.setHours(23, 59, 59, 999);
 
-    try {
-      const response = await fetch(`/api/appointments/check-availability?start=${dayStart.toISOString()}&end=${dayEnd.toISOString()}`);
-      if (response.ok) {
-        const { appointments } = await response.json();
-        // Check for overlapping appointments
-        const hasConflict = appointments?.some((apt: { start_time: string; end_time: string }) => {
-          const aptStart = new Date(apt.start_time);
-          const aptEnd = new Date(apt.end_time);
-          // Check if new appointment overlaps with existing
-          return (appointmentDateObj < aptEnd && endTime > aptStart);
-        });
-        
-        if (hasConflict) {
-          setError("This time slot is already booked. Please choose a different time.");
-          return;
+    // Check for schedule overlap with selected doctor
+    if (assignedUserId) {
+      try {
+        const doctorName = users.find(u => u.id === assignedUserId)?.full_name || "";
+        const response = await fetch(`/api/appointments/check-availability?start=${dayStart.toISOString()}&end=${dayEnd.toISOString()}&doctor=${encodeURIComponent(doctorName)}`);
+        if (response.ok) {
+          const { appointments } = await response.json();
+          // Check for overlapping appointments
+          const hasConflict = appointments?.some((apt: { start_time: string; end_time: string }) => {
+            const aptStart = new Date(apt.start_time);
+            const aptEnd = new Date(apt.end_time);
+            // Check if new appointment overlaps with existing
+            return (appointmentDateObj < aptEnd && endTime > aptStart);
+          });
+          
+          if (hasConflict) {
+            setError("This time slot conflicts with an existing appointment for this doctor. Please choose a different time.");
+            return;
+          }
         }
+      } catch (err) {
+        console.error("Failed to check availability:", err);
+        // Continue with booking even if check fails
       }
-    } catch (err) {
-      console.error("Failed to check availability:", err);
-      // Continue with booking even if check fails
     }
 
     try {
@@ -286,6 +291,7 @@ export default function AppointmentModal({
                 onClick={() => {
                   setAppointmentType("appointment");
                   setTitle(`Appointment with ${patientName}`);
+                  setDurationMinutes("15");
                 }}
                 className={`flex-1 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-colors ${
                   appointmentType === "appointment"
@@ -304,6 +310,7 @@ export default function AppointmentModal({
                 onClick={() => {
                   setAppointmentType("operation");
                   setTitle(`Operation with ${patientName}`);
+                  setDurationMinutes("60");
                 }}
                 className={`flex-1 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-colors ${
                   appointmentType === "operation"
@@ -320,10 +327,10 @@ export default function AppointmentModal({
             </div>
           </div>
 
-          {/* User/Staff Selection */}
+          {/* User/Doctor Selection */}
           <div className="space-y-2" ref={userDropdownRef}>
             <label className="block text-sm font-medium text-slate-700">
-              Assign to Staff <span className="text-red-500">*</span>
+              Assign to Doctor <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <input
@@ -337,7 +344,7 @@ export default function AppointmentModal({
                   }
                 }}
                 onFocus={() => setUserDropdownOpen(true)}
-                placeholder="Search for a staff member..."
+                placeholder="Search for a doctor..."
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
               {assignedUserId && (
@@ -372,13 +379,13 @@ export default function AppointmentModal({
               )}
               {userDropdownOpen && filteredUsers.length === 0 && userSearch.trim() && (
                 <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
-                  No staff members found
+                  No doctors found
                 </div>
               )}
             </div>
             {!assignedUserId && (
               <p className="text-xs text-slate-500">
-                Select which staff member&apos;s calendar this appointment will be added to
+                Select which doctor&apos;s calendar this appointment will be added to
               </p>
             )}
           </div>
@@ -413,14 +420,30 @@ export default function AppointmentModal({
               <label className="block text-sm font-medium text-slate-700">
                 Duration
               </label>
-              <select
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              >
-                <option value="15">15 minutes</option>
-                <option value="45">45 minutes</option>
-              </select>
+              {appointmentType === "operation" ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="15"
+                    step="15"
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <span className="text-sm text-slate-500 whitespace-nowrap">minutes</span>
+                </div>
+              ) : (
+                <select
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="45">45 minutes</option>
+                  <option value="60">60 minutes</option>
+                </select>
+              )}
             </div>
           </div>
 
