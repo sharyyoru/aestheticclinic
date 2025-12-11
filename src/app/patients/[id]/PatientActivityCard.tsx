@@ -553,12 +553,13 @@ export default function PatientActivityCard({
         // Get the most recent appointment for the patient
         const latestAppointment = appointmentsData?.[0] as DealAppointment | undefined;
 
-        // Attach appointment to deals in "Appointment Set" stage
-        const appointmentSetStage = stagesData?.find(
-          (s: DealStage) => s.name.toLowerCase().includes("appointment set")
-        );
+        // Attach appointment to deals in "Appointment Set" or "Operation Scheduled" stages
+        const appointmentStages = stagesData?.filter(
+          (s: DealStage) => s.name.toLowerCase().includes("appointment set") || s.name.toLowerCase().includes("operation scheduled")
+        ) || [];
+        const appointmentStageIds = new Set(appointmentStages.map((s: DealStage) => s.id));
         const dealsWithAppointments = (dealsData as Deal[]).map(deal => {
-          if (appointmentSetStage && deal.stage_id === appointmentSetStage.id && latestAppointment) {
+          if (appointmentStageIds.has(deal.stage_id) && latestAppointment) {
             return { ...deal, appointment: latestAppointment };
           }
           return deal;
@@ -1430,9 +1431,10 @@ export default function PatientActivityCard({
         );
 
         if (previousStageId !== updated.stage_id) {
-          // Check if the target stage is "Appointment Set" to show the appointment modal
+          // Check if the target stage is "Appointment Set" or "Operation Scheduled" to show the appointment modal
           const targetStage = dealStages.find((stage) => stage.id === updated.stage_id);
-          if (targetStage && targetStage.name.toLowerCase().includes("appointment set")) {
+          const stageLower = targetStage?.name.toLowerCase() || "";
+          if (targetStage && (stageLower.includes("appointment set") || stageLower.includes("operation scheduled"))) {
             setAppointmentDeal(updated);
             setAppointmentPreviousStageId(previousStageId);
             setAppointmentModalOpen(true);

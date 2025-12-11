@@ -261,6 +261,22 @@ export async function POST(request: Request) {
       .join(" ") || "Patient";
     const patientEmail = patient.email;
 
+    // Get service name from deal if dealId provided
+    let serviceName: string | null = null;
+    if (dealId) {
+      const { data: dealData } = await supabase
+        .from("deals")
+        .select("service_id, service:services(name)")
+        .eq("id", dealId)
+        .single();
+      
+      if (dealData?.service && Array.isArray(dealData.service) && dealData.service[0]?.name) {
+        serviceName = dealData.service[0].name;
+      } else if (dealData?.service && typeof dealData.service === 'object' && 'name' in dealData.service) {
+        serviceName = (dealData.service as { name: string }).name;
+      }
+    }
+
     // Get user details if providerId (userId) provided
     let assignedUserName = "Staff Member";
     let assignedUserEmail: string | null = null;
@@ -282,8 +298,14 @@ export async function POST(request: Request) {
     // Calculate end time from duration
     const endDateObj = new Date(appointmentDateObj.getTime() + durationMinutes * 60 * 1000);
 
-    // Build reason field (title + notes + status)
-    let reason = title || `Appointment with ${patientName}`;
+    // Build reason field with patient name and service
+    let reason = patientName;
+    if (serviceName) {
+      reason += ` - ${serviceName}`;
+    }
+    if (title && title !== `Appointment with ${patientName}`) {
+      reason += ` [${title}]`;
+    }
     if (assignedUserName && assignedUserName !== "Staff Member") {
       reason += ` [Doctor: ${assignedUserName}]`;
     }

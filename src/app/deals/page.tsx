@@ -173,12 +173,13 @@ export default function DealsPage() {
           }
         }
 
-        // Attach appointments to deals in "Appointment Set" stage
-        const appointmentSetStage = stagesData?.find(
-          (s: DealStage) => s.name.toLowerCase().includes("appointment set")
-        );
+        // Attach appointments to deals in "Appointment Set" or "Operation Scheduled" stages
+        const appointmentStages = stagesData?.filter(
+          (s: DealStage) => s.name.toLowerCase().includes("appointment set") || s.name.toLowerCase().includes("operation scheduled")
+        ) || [];
+        const appointmentStageIds = new Set(appointmentStages.map((s: DealStage) => s.id));
         const dealsWithAppointments = (dealsData as unknown as DealRow[]).map(deal => {
-          if (appointmentSetStage && deal.stage_id === appointmentSetStage.id) {
+          if (appointmentStageIds.has(deal.stage_id)) {
             return { ...deal, appointment: appointmentsByPatient[deal.patient_id] || null };
           }
           return deal;
@@ -382,9 +383,10 @@ export default function DealsPage() {
           ),
         );
       } else {
-        // Check if the target stage is "Appointment Set" to show the appointment modal
+        // Check if the target stage is "Appointment Set" or "Operation Scheduled" to show the appointment modal
         const targetStage = dealStages.find((stage) => stage.id === stageId);
-        if (targetStage && targetStage.name.toLowerCase().includes("appointment set")) {
+        const stageLower = targetStage?.name.toLowerCase() || "";
+        if (targetStage && (stageLower.includes("appointment set") || stageLower.includes("operation scheduled"))) {
           // Show the appointment modal - store stage info for potential revert
           setAppointmentDeal(current);
           setAppointmentPreviousStageId(previousStageId);
