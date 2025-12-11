@@ -13,6 +13,7 @@ import PatientDocumentsTab from "./PatientDocumentsTab";
 import PatientModeInitializer from "./PatientModeInitializer";
 import PatientEditingPresence from "./PatientEditingPresence";
 import InvoicePaymentMethodFilter from "./InvoicePaymentMethodFilter";
+import PatientIntakeDataCard from "./PatientIntakeDataCard";
 
 export const dynamic = "force-dynamic";
 
@@ -726,10 +727,7 @@ export default async function PatientPage({
 
           {medicalTab === "patient_information" ? (
             <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-              <h3 className="text-sm font-semibold text-slate-900">Patient Information</h3>
-              <p className="mt-2 text-xs text-slate-500">
-                Detailed patient information will appear here.
-              </p>
+              <PatientIntakeDataCard patientId={patient.id} />
             </div>
           ) : null}
 
