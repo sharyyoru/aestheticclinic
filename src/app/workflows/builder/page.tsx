@@ -54,6 +54,8 @@ type ConditionNodeData = {
   field: string;
   operator: ConditionOperator;
   value: string;
+  selectedServices?: string[];
+  serviceMatchMode?: "includes" | "excludes";
 };
 
 type DelayNodeData = {
@@ -417,7 +419,7 @@ export default function WorkflowBuilderPage() {
       }
 
       setSuccess("Workflow saved successfully!");
-      setTimeout(() => router.push("/workflows/all"), 1500);
+      setTimeout(() => router.push("/workflows"), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save workflow");
     } finally {
@@ -931,16 +933,94 @@ export default function WorkflowBuilderPage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Value</label>
               {data.field === "deal.service" ? (
-                <select
-                  value={data.value}
-                  onChange={(e) => updateNodeData(selectedNode.id, { value: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                >
-                  <option value="">Select a service...</option>
-                  {services.map((service) => (
-                    <option key={service.id} value={service.name}>{service.name}</option>
-                  ))}
-                </select>
+                <div className="space-y-3">
+                  {/* Service Match Mode */}
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`service_match_${selectedNode.id}`}
+                        checked={(data as any).serviceMatchMode !== "excludes"}
+                        onChange={() => updateNodeData(selectedNode.id, { serviceMatchMode: "includes" })}
+                        className="h-4 w-4 text-sky-600 border-slate-300"
+                      />
+                      <span className="text-sm text-slate-700">Is one of</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`service_match_${selectedNode.id}`}
+                        checked={(data as any).serviceMatchMode === "excludes"}
+                        onChange={() => updateNodeData(selectedNode.id, { serviceMatchMode: "excludes" })}
+                        className="h-4 w-4 text-sky-600 border-slate-300"
+                      />
+                      <span className="text-sm text-slate-700">Is not one of</span>
+                    </label>
+                  </div>
+
+                  {/* Multi-select Services */}
+                  <div className="space-y-2">
+                    {/* Selected services tags */}
+                    {((data as any).selectedServices || []).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {((data as any).selectedServices || []).map((serviceName: string) => (
+                          <span
+                            key={serviceName}
+                            className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700"
+                          >
+                            {serviceName}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const current = (data as any).selectedServices || [];
+                                updateNodeData(selectedNode.id, {
+                                  selectedServices: current.filter((s: string) => s !== serviceName),
+                                  value: current.filter((s: string) => s !== serviceName).join(", ")
+                                });
+                              }}
+                              className="ml-0.5 rounded-full p-0.5 hover:bg-sky-200"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Service dropdown */}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        if (!e.target.value) return;
+                        const current = (data as any).selectedServices || [];
+                        if (!current.includes(e.target.value)) {
+                          const updated = [...current, e.target.value];
+                          updateNodeData(selectedNode.id, {
+                            selectedServices: updated,
+                            value: updated.join(", ")
+                          });
+                        }
+                      }}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    >
+                      <option value="">Add a service...</option>
+                      {services
+                        .filter((s) => !((data as any).selectedServices || []).includes(s.name))
+                        .map((service) => (
+                          <option key={service.id} value={service.name}>{service.name}</option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Help text */}
+                  <p className="text-[10px] text-slate-500">
+                    {(data as any).serviceMatchMode === "excludes" 
+                      ? "Condition is true when service is NOT in the selected list"
+                      : "Condition is true when service IS in the selected list"}
+                  </p>
+                </div>
               ) : (
                 <input
                   type="text"
