@@ -241,6 +241,9 @@ export default function MedicalConsultationsCard({
   const [consultationRecordType, setConsultationRecordType] =
     useState<ConsultationRecordType>("notes");
   const [consultationContentHtml, setConsultationContentHtml] = useState("");
+  const [consultationMentionActive, setConsultationMentionActive] = useState(false);
+  const [consultationMentionQuery, setConsultationMentionQuery] = useState("");
+  const [consultationMentionUserIds, setConsultationMentionUserIds] = useState<string[]>([]);
   const [prescriptionLines, setPrescriptionLines] = useState<PrescriptionLine[]>(
     [],
   );
@@ -1640,15 +1643,74 @@ export default function MedicalConsultationsCard({
                         7
                       </button>
                     </div>
-                    <div
-                      className="min-h-[80px] max-h-64 overflow-y-auto px-2 py-1.5 text-[11px] text-slate-900 focus:outline-none"
-                      contentEditable
-                      onInput={(event) =>
-                        setConsultationContentHtml(
-                          (event.currentTarget as HTMLDivElement).innerHTML,
-                        )
-                      }
-                    />
+                    <div className="relative">
+                      <div
+                        className="min-h-[80px] max-h-64 overflow-y-auto px-2 py-1.5 text-[11px] text-slate-900 focus:outline-none"
+                        contentEditable
+                        onInput={(event) => {
+                          const html = (event.currentTarget as HTMLDivElement).innerHTML;
+                          setConsultationContentHtml(html);
+                          
+                          // Detect @ mentions
+                          const text = (event.currentTarget as HTMLDivElement).textContent || "";
+                          const match = text.match(/@([^\s@]{0,50})$/);
+                          if (match) {
+                            setConsultationMentionActive(true);
+                            setConsultationMentionQuery(match[1].toLowerCase());
+                          } else if (consultationMentionActive) {
+                            setConsultationMentionActive(false);
+                            setConsultationMentionQuery("");
+                          }
+                        }}
+                      />
+                      {consultationMentionActive && (() => {
+                        const mentionQuery = consultationMentionQuery.trim();
+                        const mentionOptions = (Array.isArray(userOptions) ? userOptions : [])
+                          .filter((u) => {
+                            const hay = (u.full_name || u.email || "").toLowerCase();
+                            return hay.includes(mentionQuery);
+                          })
+                          .slice(0, 6);
+
+                        if (mentionOptions.length === 0) return null;
+
+                        return (
+                          <div className="absolute bottom-full left-0 mb-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
+                            {mentionOptions.map((user) => {
+                              const display = user.full_name || user.email || "Unnamed user";
+                              return (
+                                <button
+                                  key={user.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const display = user.full_name || user.email || "User";
+                                    const currentHtml = consultationContentHtml;
+                                    const newHtml = currentHtml.replace(/@([^\s@]{0,50})$/, `@${display} `);
+                                    setConsultationContentHtml(newHtml);
+                                    
+                                    if (!consultationMentionUserIds.includes(user.id)) {
+                                      setConsultationMentionUserIds((prev) => [...prev, user.id]);
+                                    }
+                                    
+                                    setConsultationMentionActive(false);
+                                    setConsultationMentionQuery("");
+                                    
+                                    // Update the contentEditable div
+                                    const editableDiv = document.querySelector('[contenteditable="true"]');
+                                    if (editableDiv) {
+                                      (editableDiv as HTMLDivElement).innerHTML = newHtml;
+                                    }
+                                  }}
+                                  className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                                >
+                                  {display}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
               ) : null}

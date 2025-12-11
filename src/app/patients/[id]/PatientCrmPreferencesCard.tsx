@@ -95,6 +95,8 @@ export default function PatientCrmPreferencesCard({
 
   const [userOptions, setUserOptions] = useState<PlatformUser[]>([]);
   const [serviceOptions, setServiceOptions] = useState<ServiceOption[]>([]);
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -126,9 +128,25 @@ export default function PatientCrmPreferencesCard({
 
     async function loadServices() {
       try {
+        // First get the Hubspot category
+        const { data: categoryData, error: categoryError } = await supabaseClient
+          .from("service_categories")
+          .select("id")
+          .eq("name", "Hubspot")
+          .single();
+
+        if (!isMounted) return;
+
+        if (categoryError || !categoryData) {
+          setServiceOptions([]);
+          return;
+        }
+
+        // Then get services from Hubspot category only
         const { data, error } = await supabaseClient
           .from("services")
           .select("id, name")
+          .eq("category_id", categoryData.id)
           .order("name", { ascending: true });
 
         if (!isMounted) return;
@@ -257,6 +275,25 @@ export default function PatientCrmPreferencesCard({
   function handleLifecycleChange(value: string) {
     setLifecycle(value);
     savePreferences({ lifecycle_stage: value || null } as Partial<PatientRecord>);
+  }
+
+  function handleServiceSearchChange(value: string) {
+    setServiceSearch(value);
+    setServiceDropdownOpen(value.trim().length > 0);
+  }
+
+  function handleServiceSelect(serviceName: string) {
+    setLifecycle(serviceName);
+    setServiceSearch(serviceName);
+    setServiceDropdownOpen(false);
+    savePreferences({ lifecycle_stage: serviceName || null } as Partial<PatientRecord>);
+  }
+
+  function handleServiceClear() {
+    setLifecycle("");
+    setServiceSearch("");
+    setServiceDropdownOpen(false);
+    savePreferences({ lifecycle_stage: null } as Partial<PatientRecord>);
   }
 
   async function handleAssignToMe() {
@@ -410,18 +447,50 @@ export default function PatientCrmPreferencesCard({
 
           <div className="space-y-1">
             <p className="font-medium text-slate-500">Service interest:</p>
-            <select
-              value={lifecycle}
-              onChange={(event) => handleLifecycleChange(event.target.value)}
-              className="block w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            >
-              <option value="">Select</option>
-              {(Array.isArray(serviceOptions) ? serviceOptions : []).map((service) => (
-                <option key={service.id} value={service.name}>
-                  {service.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <input
+                type="text"
+                value={serviceSearch || lifecycle}
+                onChange={(event) => handleServiceSearchChange(event.target.value)}
+                placeholder="Search services..."
+                className="block w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 pr-8 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              {(serviceSearch || lifecycle) && (
+                <button
+                  type="button"
+                  onClick={handleServiceClear}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  ×
+                </button>
+              )}
+              {serviceDropdownOpen && (() => {
+                const query = serviceSearch.trim().toLowerCase();
+                const filteredServices = serviceOptions
+                  .filter((s) => {
+                    const hay = (s.name || "").toLowerCase();
+                    return hay.includes(query);
+                  })
+                  .slice(0, 6);
+
+                if (filteredServices.length === 0) return null;
+
+                return (
+                  <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
+                    {filteredServices.map((service) => (
+                      <button
+                        key={service.id}
+                        type="button"
+                        onClick={() => handleServiceSelect(service.name)}
+                        className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                      >
+                        {service.name}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         </div>
       </div>
