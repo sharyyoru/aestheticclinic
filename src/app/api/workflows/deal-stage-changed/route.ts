@@ -251,26 +251,45 @@ export async function POST(request: Request) {
             due_days?: number;
           };
 
-          const taskTitle = renderTemplate(config.title || "New Task", templateContext);
+          const taskName = renderTemplate(config.title || "New Task", templateContext);
           const dueDays = typeof config.due_days === "number" ? config.due_days : 1;
-          const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + dueDays);
+          const activityDate = new Date();
+          activityDate.setDate(activityDate.getDate() + dueDays);
+
+          // Handle assigned user - skip "assigned" special value (use null)
+          let assignedUserId: string | null = null;
+          let assignedUserName: string | null = null;
+          if (config.assign_to && config.assign_to !== "assigned") {
+            // Look up user name
+            const { data: assignedUser } = await supabaseAdmin
+              .from("users")
+              .select("id, full_name, email")
+              .eq("id", config.assign_to)
+              .single();
+            if (assignedUser) {
+              assignedUserId = assignedUser.id;
+              assignedUserName = assignedUser.full_name || assignedUser.email || null;
+            }
+          }
 
           const { error: taskError } = await supabaseAdmin
             .from("tasks")
             .insert({
-              title: taskTitle,
-              status: "pending",
-              due_date: dueDate.toISOString().split("T")[0],
-              assigned_to: config.assign_to || null,
+              name: taskName,
+              content: `Auto-created by workflow for deal: ${safeDeal.title || safeDeal.id}`,
+              status: "not_started",
+              priority: "medium",
+              type: "todo",
+              activity_date: activityDate.toISOString(),
+              assigned_user_id: assignedUserId,
+              assigned_user_name: assignedUserName,
               patient_id: safePatient.id,
-              deal_id: safeDeal.id,
             });
 
           if (taskError) {
             console.error("Failed to create task:", taskError);
           } else {
-            console.log(`Created task: ${taskTitle}`);
+            console.log(`Created task: ${taskName}`);
             actionsRun += 1;
           }
           continue;
@@ -290,6 +309,9 @@ export async function POST(request: Request) {
             recurring_days?: number | null;
             recurring_times?: number | null;
             recurring_every_days?: number | null;
+            recipient?: string;
+            user_id?: string;
+            email_address?: string;
           };
 
           // Load email template if template_id is specified
@@ -326,8 +348,33 @@ export async function POST(request: Request) {
               "Your clinic team",
             ].join("\n");
 
-          if (!safePatient.email) {
-            console.log("No email on file for patient, skipping email action");
+          // Determine recipient email based on config
+          let recipientEmail: string | null = null;
+          let recipientName: string | null = null;
+
+          if (config.recipient === "specific_user" && config.user_id) {
+            // Look up user email
+            const { data: user } = await supabaseAdmin
+              .from("users")
+              .select("email, full_name")
+              .eq("id", config.user_id)
+              .single();
+            if (user?.email) {
+              recipientEmail = user.email;
+              recipientName = user.full_name || user.email;
+            }
+          } else if (config.recipient === "specific_email" && config.email_address) {
+            recipientEmail = config.email_address;
+          } else if (config.recipient === "assigned_user") {
+            // Use deal's assigned user if available (future enhancement)
+            recipientEmail = safePatient.email;
+          } else {
+            // Default: send to patient (deal_patient or no recipient specified)
+            recipientEmail = safePatient.email;
+          }
+
+          if (!recipientEmail) {
+            console.log("No valid recipient email, skipping email action");
             continue;
           }
 
@@ -383,7 +430,7 @@ export async function POST(request: Request) {
               .insert({
                 patient_id: safePatient.id,
                 deal_id: safeDeal.id,
-                to_address: safePatient.email,
+                to_address: recipientEmail,
                 from_address: null,
                 subject,
                 body: bodyHtml,
@@ -414,7 +461,7 @@ export async function POST(request: Request) {
 
               const params = new URLSearchParams();
               params.append("from", `${mailgunFromName} <${fromAddress}>`);
-              params.append("to", safePatient.email as string);
+              params.append("to", recipientEmail as string);
               params.append("subject", subject);
               params.append("html", bodyHtml);
 
