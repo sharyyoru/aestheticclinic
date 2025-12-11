@@ -32,6 +32,7 @@ export default function IntakePage() {
     { code: "+34", country: "Spain", flag: "🇪🇸" },
     { code: "+971", country: "UAE", flag: "🇦🇪" },
     { code: "+966", country: "Saudi Arabia", flag: "🇸🇦" },
+    { code: "+43", country: "Austria", flag: "🇦🇹" },
   ];
 
   async function handleEmailSearch(e: React.FormEvent) {
@@ -143,14 +144,9 @@ export default function IntakePage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-rose-50 flex flex-col">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
       {/* Header */}
-      <header className="px-6 py-4 flex items-center justify-between border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded border border-slate-200 flex items-center justify-center bg-white">
-            <span className="text-xl font-serif">A</span>
-          </div>
-        </div>
+      <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
         <button className="text-slate-400 hover:text-slate-600 p-2">
           <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -159,13 +155,25 @@ export default function IntakePage() {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+      <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6 sm:py-12">
         <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="flex justify-center mb-6 sm:mb-8">
+            <Image
+              src="/logos/aesthetics-logo.svg"
+              alt="Aesthetics Clinic"
+              width={280}
+              height={80}
+              className="h-16 sm:h-20 w-auto"
+              priority
+            />
+          </div>
+
           {/* Hero Section */}
-          <div className="text-center mb-10">
-            <h1 className="text-3xl font-light text-slate-900 mb-4">
+          <div className="text-center mb-8 sm:mb-10">
+            <h1 className="text-2xl sm:text-3xl font-light text-slate-900 mb-4">
               Advanced Aesthetic Treatments<br />
-              <span className="text-rose-600">Tailored to You</span>
+              <span className="text-black font-medium">Tailored to You</span>
             </h1>
             <p className="text-slate-600 text-sm">
               Easily provide your details and preferences in our simple, multi-step form,
@@ -175,15 +183,15 @@ export default function IntakePage() {
 
           {view === "search" ? (
             /* Email Search Form */
-            <form onSubmit={handleEmailSearch} className="space-y-6">
+            <form onSubmit={handleEmailSearch} className="space-y-4">
               <div>
-                <h2 className="text-lg font-medium text-slate-900 mb-4">Search</h2>
+                <h2 className="text-lg font-medium text-black mb-3">Search</h2>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
-                  className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                   disabled={loading}
                 />
               </div>
@@ -195,7 +203,7 @@ export default function IntakePage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 rounded-full bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 transition-colors disabled:opacity-50"
+                className="w-full py-3 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
                 {loading ? "Searching..." : "Continue"}
               </button>
@@ -208,7 +216,7 @@ export default function IntakePage() {
                     setView("register");
                     setRegEmail(email);
                   }}
-                  className="text-rose-600 hover:underline"
+                  className="text-black font-medium hover:underline"
                 >
                   Register
                 </button>
@@ -216,15 +224,15 @@ export default function IntakePage() {
             </form>
           ) : (
             /* Registration Form */
-            <form onSubmit={handleRegister} className="space-y-5">
-              <h2 className="text-lg font-medium text-slate-900 mb-4">Register</h2>
+            <form onSubmit={handleRegister} className="space-y-4">
+              <h2 className="text-lg font-medium text-black mb-3">Register</h2>
 
               <input
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder="First Name"
-                className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
 
@@ -233,7 +241,7 @@ export default function IntakePage() {
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder="Last Name"
-                className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
 
@@ -241,11 +249,11 @@ export default function IntakePage() {
                 <select
                   value={countryCode}
                   onChange={(e) => setCountryCode(e.target.value)}
-                  className="w-28 px-3 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                  className="w-28 px-3 py-3 rounded-lg border border-slate-300 bg-white text-black focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                   disabled={loading}
                 >
                   {countryCodes.map((c) => (
-                    <option key={c.code} value={c.code}>
+                    <option key={c.code} value={c.code} className="text-black">
                       {c.flag} {c.code}
                     </option>
                   ))}
@@ -255,7 +263,7 @@ export default function IntakePage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="Mobile"
-                  className="flex-1 px-4 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                  className="flex-1 px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                   disabled={loading}
                 />
               </div>
@@ -265,7 +273,7 @@ export default function IntakePage() {
                 value={regEmail}
                 onChange={(e) => setRegEmail(e.target.value)}
                 placeholder="Email"
-                className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
 
@@ -276,7 +284,7 @@ export default function IntakePage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 rounded-full bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 transition-colors disabled:opacity-50"
+                className="w-full py-3 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
                 {loading ? "Registering..." : "Register"}
               </button>
@@ -286,7 +294,7 @@ export default function IntakePage() {
                 <button
                   type="button"
                   onClick={() => setView("search")}
-                  className="text-rose-600 hover:underline"
+                  className="text-black font-medium hover:underline"
                 >
                   Login
                 </button>

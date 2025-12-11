@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, useCallback, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import Image from "next/image";
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
@@ -18,15 +19,15 @@ const STEP_INFO = [
 ];
 
 const TREATMENT_AREAS = [
-  { id: "face", label: "Face", category: "face", icon: "😊" },
-  { id: "neck", label: "Neck", category: "face", icon: "🦒" },
-  { id: "chest", label: "Chest", category: "body", icon: "💪" },
-  { id: "abdomen", label: "Abdomen", category: "body", icon: "🎯" },
-  { id: "arms", label: "Arms", category: "body", icon: "💪" },
-  { id: "back", label: "Back", category: "body", icon: "🔙" },
-  { id: "buttocks", label: "Buttocks", category: "body", icon: "🍑" },
-  { id: "thighs", label: "Thighs", category: "body", icon: "🦵" },
-  { id: "legs", label: "Legs", category: "body", icon: "🦵" },
+  { id: "face", label: "Face", category: "face" },
+  { id: "neck", label: "Neck", category: "face" },
+  { id: "chest", label: "Chest", category: "body" },
+  { id: "abdomen", label: "Abdomen", category: "body" },
+  { id: "arms", label: "Arms", category: "body" },
+  { id: "back", label: "Back", category: "body" },
+  { id: "buttocks", label: "Buttocks", category: "body" },
+  { id: "thighs", label: "Thighs", category: "body" },
+  { id: "legs", label: "Legs", category: "body" },
 ];
 
 const CONCERNS = [
@@ -274,11 +275,8 @@ function IntakeStepsContent() {
 
   if (showIntro) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-rose-50 flex flex-col">
-        <header className="px-6 py-4 flex items-center justify-between border-b border-slate-100">
-          <div className="h-10 w-10 rounded border border-slate-200 flex items-center justify-center bg-white">
-            <span className="text-xl font-serif">A</span>
-          </div>
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
           <button className="text-slate-400 hover:text-slate-600 p-2">
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -286,25 +284,39 @@ function IntakeStepsContent() {
           </button>
         </header>
 
-        <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-          <div className="w-full max-w-lg text-center">
-            <h1 className="text-3xl font-light text-slate-900 mb-10">How it Works</h1>
+        <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6 sm:py-12">
+          <div className="w-full max-w-lg">
+            {/* Logo */}
+            <div className="flex justify-center mb-6 sm:mb-8">
+              <Image
+                src="/logos/aesthetics-logo.svg"
+                alt="Aesthetics Clinic"
+                width={280}
+                height={80}
+                className="h-14 sm:h-16 w-auto"
+                priority
+              />
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-light text-black text-center mb-8 sm:mb-10">How it Works</h1>
             
-            <div className="space-y-6 text-left mb-10">
+            <div className="space-y-5 sm:space-y-6 text-left mb-8 sm:mb-10">
               {STEP_INFO.slice(0, 8).map((s) => (
-                <div key={s.num} className="flex gap-4">
-                  <span className="text-2xl font-light text-rose-400 w-8">{s.num}</span>
-                  <p className="text-slate-600 text-sm pt-1">{s.desc}</p>
+                <div key={s.num} className="flex gap-3 sm:gap-4">
+                  <span className="text-xl sm:text-2xl font-bold text-black w-6 sm:w-8 flex-shrink-0">{s.num}</span>
+                  <p className="text-slate-600 text-sm pt-0.5">{s.desc}</p>
                 </div>
               ))}
             </div>
 
-            <button
-              onClick={() => setShowIntro(false)}
-              className="px-12 py-3 rounded-full bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 transition-colors"
-            >
-              CONTINUE
-            </button>
+            <div className="flex justify-center">
+              <button
+                onClick={() => setShowIntro(false)}
+                className="px-10 sm:px-12 py-3 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors"
+              >
+                CONTINUE
+              </button>
+            </div>
           </div>
         </div>
       </main>
@@ -312,12 +324,16 @@ function IntakeStepsContent() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-rose-50 flex flex-col">
-      <header className="px-6 py-4 flex items-center justify-between border-b border-slate-100">
-        <div className="h-10 w-10 rounded border border-slate-200 flex items-center justify-center bg-white">
-          <span className="text-xl font-serif">A</span>
-        </div>
-        <div className="text-sm text-slate-500">Step {step} of 8</div>
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+      <header className="px-4 sm:px-6 py-3 flex items-center justify-between">
+        <Image
+          src="/logos/aesthetics-logo.svg"
+          alt="Aesthetics Clinic"
+          width={140}
+          height={40}
+          className="h-8 sm:h-10 w-auto"
+        />
+        <div className="text-sm text-black font-medium">Step {step} of 8</div>
         <button className="text-slate-400 hover:text-slate-600 p-2">
           <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -326,14 +342,14 @@ function IntakeStepsContent() {
       </header>
 
       {/* Progress Bar */}
-      <div className="h-1 bg-slate-100">
+      <div className="h-1 bg-slate-200">
         <div
-          className="h-full bg-rose-400 transition-all duration-300"
+          className="h-full bg-black transition-all duration-300"
           style={{ width: `${(step / 8) * 100}%` }}
         />
       </div>
 
-      <div className="flex-1 overflow-auto px-6 py-8">
+      <div className="flex-1 overflow-auto px-4 sm:px-6 py-6 sm:py-8">
         <div className="max-w-lg mx-auto">
           {error && (
             <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
@@ -343,36 +359,36 @@ function IntakeStepsContent() {
 
           {/* Step 1: Preferences */}
           {step === 1 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-light text-slate-900">Your Preferences</h2>
+            <div className="space-y-5">
+              <h2 className="text-xl sm:text-2xl font-light text-black">Your Preferences</h2>
               
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Preferred Language</label>
+                <label className="block text-sm font-medium text-black mb-2">Preferred Language</label>
                 <select
                   value={preferredLanguage}
                   onChange={(e) => setPreferredLanguage(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black focus:border-black focus:outline-none"
                 >
-                  <option value="en">English</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                  <option value="es">Spanish</option>
-                  <option value="ru">Russian</option>
+                  <option value="en" className="text-black">English</option>
+                  <option value="fr" className="text-black">French</option>
+                  <option value="de" className="text-black">German</option>
+                  <option value="es" className="text-black">Spanish</option>
+                  <option value="ru" className="text-black">Russian</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Consultation Type</label>
-                <div className="grid grid-cols-3 gap-3">
+                <label className="block text-sm font-medium text-black mb-2">Consultation Type</label>
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {["in-person", "virtual", "either"].map((type) => (
                     <button
                       key={type}
                       type="button"
                       onClick={() => setConsultationType(type)}
-                      className={`py-2 px-3 rounded-lg text-sm capitalize transition-colors ${
+                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm capitalize transition-colors ${
                         consultationType === type
-                          ? "bg-rose-100 text-rose-700 border-rose-300 border"
-                          : "bg-white border border-slate-200 text-slate-600 hover:border-rose-200"
+                          ? "bg-black text-white border-black border"
+                          : "bg-white border border-slate-300 text-black hover:border-black"
                       }`}
                     >
                       {type}
@@ -382,17 +398,17 @@ function IntakeStepsContent() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Preferred Contact Method</label>
-                <div className="grid grid-cols-3 gap-3">
+                <label className="block text-sm font-medium text-black mb-2">Preferred Contact Method</label>
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {["email", "phone", "whatsapp"].map((method) => (
                     <button
                       key={method}
                       type="button"
                       onClick={() => setContactMethod(method)}
-                      className={`py-2 px-3 rounded-lg text-sm capitalize transition-colors ${
+                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm capitalize transition-colors ${
                         contactMethod === method
-                          ? "bg-rose-100 text-rose-700 border-rose-300 border"
-                          : "bg-white border border-slate-200 text-slate-600 hover:border-rose-200"
+                          ? "bg-black text-white border-black border"
+                          : "bg-white border border-slate-300 text-black hover:border-black"
                       }`}
                     >
                       {method}
@@ -402,17 +418,17 @@ function IntakeStepsContent() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Best Time to Contact</label>
-                <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm font-medium text-black mb-2">Best Time to Contact</label>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   {["morning", "afternoon", "evening", "anytime"].map((time) => (
                     <button
                       key={time}
                       type="button"
                       onClick={() => setContactTime(time)}
-                      className={`py-2 px-3 rounded-lg text-sm capitalize transition-colors ${
+                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm capitalize transition-colors ${
                         contactTime === time
-                          ? "bg-rose-100 text-rose-700 border-rose-300 border"
-                          : "bg-white border border-slate-200 text-slate-600 hover:border-rose-200"
+                          ? "bg-black text-white border-black border"
+                          : "bg-white border border-slate-300 text-black hover:border-black"
                       }`}
                     >
                       {time}
@@ -422,13 +438,13 @@ function IntakeStepsContent() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Additional Notes (Optional)</label>
+                <label className="block text-sm font-medium text-black mb-2">Additional Notes (Optional)</label>
                 <textarea
                   value={additionalNotes}
                   onChange={(e) => setAdditionalNotes(e.target.value)}
                   placeholder="Any specific concerns or preferences..."
                   rows={3}
-                  className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white resize-none"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 resize-none focus:border-black focus:outline-none"
                 />
               </div>
             </div>
@@ -436,11 +452,11 @@ function IntakeStepsContent() {
 
           {/* Step 2: Treatment Areas */}
           {step === 2 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-light text-slate-900">Treatment Areas</h2>
-              <p className="text-sm text-slate-500">Select the areas you'd like to treat</p>
+            <div className="space-y-5">
+              <h2 className="text-xl sm:text-2xl font-light text-black">Treatment Areas</h2>
+              <p className="text-sm text-slate-600">Select the areas you'd like to treat</p>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 {TREATMENT_AREAS.map((area) => (
                   <button
                     key={area.id}
@@ -448,24 +464,23 @@ function IntakeStepsContent() {
                     onClick={() => toggleArea(area.id)}
                     className={`p-4 rounded-xl text-center transition-all ${
                       selectedAreas.includes(area.id)
-                        ? "bg-rose-100 border-2 border-rose-400"
-                        : "bg-white border border-slate-200 hover:border-rose-200"
+                        ? "bg-black text-white border-2 border-black"
+                        : "bg-white border border-slate-300 text-black hover:border-black"
                     }`}
                   >
-                    <span className="text-2xl">{area.icon}</span>
-                    <p className="text-xs mt-1 text-slate-600">{area.label}</p>
+                    <span className="text-base sm:text-lg font-bold">{area.label}</span>
                   </button>
                 ))}
               </div>
 
               {selectedAreas.length > 0 && (
-                <div className="space-y-4 pt-4 border-t border-slate-100">
-                  <h3 className="text-sm font-medium text-slate-700">Specific Concerns</h3>
+                <div className="space-y-4 pt-4 border-t border-slate-200">
+                  <h3 className="text-sm font-medium text-black">Specific Concerns</h3>
                   {selectedAreas.map((areaId) => {
                     const area = TREATMENT_AREAS.find((a) => a.id === areaId);
                     return (
                       <div key={areaId} className="space-y-2">
-                        <p className="text-sm text-slate-600">{area?.label}</p>
+                        <p className="text-sm font-medium text-black">{area?.label}</p>
                         <div className="flex flex-wrap gap-2">
                           {CONCERNS.map((concern) => (
                             <button
@@ -474,8 +489,8 @@ function IntakeStepsContent() {
                               onClick={() => toggleConcern(areaId, concern)}
                               className={`px-3 py-1 rounded-full text-xs transition-colors ${
                                 (areaConcerns[areaId] || []).includes(concern)
-                                  ? "bg-rose-100 text-rose-700"
-                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                  ? "bg-black text-white"
+                                  : "bg-slate-100 text-black hover:bg-slate-200"
                               }`}
                             >
                               {concern}
@@ -492,69 +507,78 @@ function IntakeStepsContent() {
 
           {/* Step 3: Measurements */}
           {step === 3 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-light text-slate-900">Measurements</h2>
-              <p className="text-sm text-slate-500">Enter your body measurements (optional but helpful)</p>
+            <div className="space-y-5">
+              <h2 className="text-xl sm:text-2xl font-light text-black">Measurements</h2>
+              <p className="text-sm text-slate-600">Enter your body measurements (optional but helpful)</p>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Height (cm)</label>
+                  <label className="block text-sm text-black mb-1">Height (cm)</label>
                   <input
                     type="number"
                     value={height}
                     onChange={(e) => setHeight(e.target.value)}
                     placeholder="170"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Weight (kg)</label>
+                  <label className="block text-sm text-black mb-1">Weight (kg)</label>
                   <input
                     type="number"
                     value={weight}
                     onChange={(e) => setWeight(e.target.value)}
                     placeholder="70"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Chest (cm)</label>
+                  <label className="block text-sm text-black mb-1">Chest (cm)</label>
                   <input
                     type="number"
                     value={chest}
                     onChange={(e) => setChest(e.target.value)}
                     placeholder="90"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-1">Waist (cm)</label>
+                  <label className="block text-sm text-black mb-1">Waist (cm)</label>
                   <input
                     type="number"
                     value={waist}
                     onChange={(e) => setWaist(e.target.value)}
                     placeholder="75"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm text-slate-600 mb-1">Hips (cm)</label>
+                  <label className="block text-sm text-black mb-1">Hips (cm)</label>
                   <input
                     type="number"
                     value={hips}
                     onChange={(e) => setHips(e.target.value)}
                     placeholder="95"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
                   />
                 </div>
               </div>
 
               {height && weight && (
-                <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                  <p className="text-sm text-slate-600">
+                <div className="p-4 rounded-lg bg-black text-white">
+                  <p className="text-sm">
                     Calculated BMI:{" "}
-                    <span className="font-medium">
+                    <span className="font-bold text-lg">
                       {(parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(1)}
+                    </span>
+                    <span className="ml-2 text-slate-300">
+                      {(() => {
+                        const bmi = parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2);
+                        if (bmi < 18.5) return "(Underweight)";
+                        if (bmi < 25) return "(Normal)";
+                        if (bmi < 30) return "(Overweight)";
+                        return "(Obese)";
+                      })()}
                     </span>
                   </p>
                 </div>
@@ -564,13 +588,13 @@ function IntakeStepsContent() {
 
           {/* Step 4: Photos */}
           {step === 4 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-light text-slate-900">Upload Photos</h2>
-              <p className="text-sm text-slate-500">
+            <div className="space-y-5">
+              <h2 className="text-xl sm:text-2xl font-light text-black">Upload Photos</h2>
+              <p className="text-sm text-slate-600">
                 Upload clear photos of the areas you wish to treat. This helps our experts better assess your needs.
               </p>
 
-              <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-rose-300 transition-colors">
+              <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 sm:p-8 text-center hover:border-black transition-colors">
                 <input
                   type="file"
                   accept="image/*"
@@ -580,14 +604,19 @@ function IntakeStepsContent() {
                   id="photo-upload"
                 />
                 <label htmlFor="photo-upload" className="cursor-pointer">
-                  <div className="text-4xl mb-3">📷</div>
-                  <p className="text-sm text-slate-600">Click to upload photos</p>
-                  <p className="text-xs text-slate-400 mt-1">JPG, PNG, HEIC up to 10MB each</p>
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-black flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-black font-medium">Click to upload photos</p>
+                  <p className="text-xs text-slate-500 mt-1">JPG, PNG, HEIC up to 10MB each</p>
                 </label>
               </div>
 
               {photos.length > 0 && (
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {photos.map((photo, idx) => (
                     <div key={idx} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100">
                       <img
@@ -597,7 +626,7 @@ function IntakeStepsContent() {
                       />
                       <button
                         onClick={() => removePhoto(idx)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center text-xs"
+                        className="absolute top-1 right-1 w-7 h-7 rounded-full bg-black text-white flex items-center justify-center text-sm font-bold hover:bg-red-600 transition-colors"
                       >
                         ×
                       </button>
@@ -607,25 +636,31 @@ function IntakeStepsContent() {
               )}
 
               {uploadedPhotos.length > 0 && (
-                <p className="text-sm text-emerald-600">
-                  ✓ {uploadedPhotos.length} photo(s) already uploaded
-                </p>
+                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                  <p className="text-sm text-emerald-700">
+                    ✓ {uploadedPhotos.length} photo(s) already uploaded
+                  </p>
+                </div>
               )}
             </div>
           )}
 
           {/* Step 5: Simulation */}
           {step === 5 && (
-            <div className="space-y-6 text-center py-8">
-              <div className="text-6xl">🔮</div>
-              <h2 className="text-2xl font-light text-slate-900">Personalized Simulation</h2>
-              <p className="text-sm text-slate-500">
+            <div className="space-y-5 text-center py-6 sm:py-8">
+              <div className="w-16 h-16 mx-auto rounded-full bg-black flex items-center justify-center">
+                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-light text-black">Personalized Simulation</h2>
+              <p className="text-sm text-slate-600">
                 Based on the information you've provided, our team will create a personalized simulation
                 of your potential results. You'll receive a link to view your simulation after our experts
                 have reviewed your information.
               </p>
-              <div className="p-4 rounded-lg bg-rose-50 border border-rose-100">
-                <p className="text-sm text-rose-700">
+              <div className="p-4 rounded-lg bg-slate-100 border border-slate-200">
+                <p className="text-sm text-black">
                   Simulation will be available within 24-48 hours after submission
                 </p>
               </div>
@@ -634,39 +669,39 @@ function IntakeStepsContent() {
 
           {/* Step 6: Treatment Preferences */}
           {step === 6 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-light text-slate-900">Treatment Preferences</h2>
+            <div className="space-y-5">
+              <h2 className="text-xl sm:text-2xl font-light text-black">Treatment Preferences</h2>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Preferred Date Range</label>
-                <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm font-medium text-black mb-2">Preferred Date Range</label>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <input
                     type="date"
                     value={preferredDateStart}
                     onChange={(e) => setPreferredDateStart(e.target.value)}
-                    className="px-4 py-3 rounded-lg border border-slate-200 bg-white"
+                    className="px-4 py-3 rounded-lg border border-slate-300 bg-white text-black focus:border-black focus:outline-none"
                   />
                   <input
                     type="date"
                     value={preferredDateEnd}
                     onChange={(e) => setPreferredDateEnd(e.target.value)}
-                    className="px-4 py-3 rounded-lg border border-slate-200 bg-white"
+                    className="px-4 py-3 rounded-lg border border-slate-300 bg-white text-black focus:border-black focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Schedule Flexibility</label>
-                <div className="grid grid-cols-3 gap-3">
+                <label className="block text-sm font-medium text-black mb-2">Schedule Flexibility</label>
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {["flexible", "specific_dates", "asap"].map((opt) => (
                     <button
                       key={opt}
                       type="button"
                       onClick={() => setFlexibility(opt)}
-                      className={`py-2 px-3 rounded-lg text-sm transition-colors ${
+                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm transition-colors ${
                         flexibility === opt
-                          ? "bg-rose-100 text-rose-700 border-rose-300 border"
-                          : "bg-white border border-slate-200 text-slate-600"
+                          ? "bg-black text-white border-black border"
+                          : "bg-white border border-slate-300 text-black hover:border-black"
                       }`}
                     >
                       {opt === "specific_dates" ? "Specific" : opt === "asap" ? "ASAP" : "Flexible"}
@@ -676,17 +711,17 @@ function IntakeStepsContent() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Budget Range</label>
-                <div className="grid grid-cols-2 gap-3">
+                <label className="block text-sm font-medium text-black mb-2">Budget Range</label>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   {["economy", "standard", "premium", "no_limit"].map((opt) => (
                     <button
                       key={opt}
                       type="button"
                       onClick={() => setBudgetRange(opt)}
-                      className={`py-2 px-3 rounded-lg text-sm capitalize transition-colors ${
+                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm capitalize transition-colors ${
                         budgetRange === opt
-                          ? "bg-rose-100 text-rose-700 border-rose-300 border"
-                          : "bg-white border border-slate-200 text-slate-600"
+                          ? "bg-black text-white border-black border"
+                          : "bg-white border border-slate-300 text-black hover:border-black"
                       }`}
                     >
                       {opt.replace("_", " ")}
@@ -701,21 +736,21 @@ function IntakeStepsContent() {
                   id="financing"
                   checked={financingInterest}
                   onChange={(e) => setFinancingInterest(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-rose-500 focus:ring-rose-300"
+                  className="w-5 h-5 rounded border-slate-300 text-black focus:ring-black accent-black"
                 />
-                <label htmlFor="financing" className="text-sm text-slate-600">
+                <label htmlFor="financing" className="text-sm text-black">
                   I'm interested in financing options
                 </label>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Special Requests</label>
+                <label className="block text-sm font-medium text-black mb-2">Special Requests</label>
                 <textarea
                   value={specialRequests}
                   onChange={(e) => setSpecialRequests(e.target.value)}
                   placeholder="Any special requirements or requests..."
                   rows={3}
-                  className="w-full px-4 py-3 rounded-lg border border-slate-200 bg-white resize-none"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 resize-none focus:border-black focus:outline-none"
                 />
               </div>
             </div>
@@ -723,18 +758,18 @@ function IntakeStepsContent() {
 
           {/* Step 7: Review */}
           {step === 7 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-light text-slate-900">Review Your Information</h2>
+            <div className="space-y-5">
+              <h2 className="text-xl sm:text-2xl font-light text-black">Review Your Information</h2>
               
-              <div className="space-y-4">
-                <div className="p-4 rounded-lg bg-white border border-slate-200">
-                  <h3 className="text-sm font-medium text-slate-700 mb-2">Treatment Areas</h3>
+              <div className="space-y-3">
+                <div className="p-4 rounded-lg bg-white border border-slate-300">
+                  <h3 className="text-sm font-medium text-black mb-2">Treatment Areas</h3>
                   <div className="flex flex-wrap gap-2">
                     {selectedAreas.map((areaId) => {
                       const area = TREATMENT_AREAS.find((a) => a.id === areaId);
                       return (
-                        <span key={areaId} className="px-3 py-1 rounded-full bg-rose-100 text-rose-700 text-sm">
-                          {area?.icon} {area?.label}
+                        <span key={areaId} className="px-3 py-1 rounded-full bg-black text-white text-sm">
+                          {area?.label}
                         </span>
                       );
                     })}
@@ -744,11 +779,14 @@ function IntakeStepsContent() {
                   </div>
                 </div>
 
-                <div className="p-4 rounded-lg bg-white border border-slate-200">
-                  <h3 className="text-sm font-medium text-slate-700 mb-2">Measurements</h3>
-                  <div className="grid grid-cols-3 gap-2 text-sm text-slate-600">
+                <div className="p-4 rounded-lg bg-white border border-slate-300">
+                  <h3 className="text-sm font-medium text-black mb-2">Measurements</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm text-black">
                     {height && <p>Height: {height}cm</p>}
                     {weight && <p>Weight: {weight}kg</p>}
+                    {height && weight && (
+                      <p>BMI: {(parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(1)}</p>
+                    )}
                     {chest && <p>Chest: {chest}cm</p>}
                     {waist && <p>Waist: {waist}cm</p>}
                     {hips && <p>Hips: {hips}cm</p>}
@@ -756,18 +794,18 @@ function IntakeStepsContent() {
                   </div>
                 </div>
 
-                <div className="p-4 rounded-lg bg-white border border-slate-200">
-                  <h3 className="text-sm font-medium text-slate-700 mb-2">Photos Uploaded</h3>
-                  <p className="text-sm text-slate-600">
+                <div className="p-4 rounded-lg bg-white border border-slate-300">
+                  <h3 className="text-sm font-medium text-black mb-2">Photos Uploaded</h3>
+                  <p className="text-sm text-black">
                     {uploadedPhotos.length + photos.length} photo(s)
                   </p>
                 </div>
 
-                <div className="p-4 rounded-lg bg-white border border-slate-200">
-                  <h3 className="text-sm font-medium text-slate-700 mb-2">Preferences</h3>
-                  <div className="text-sm text-slate-600 space-y-1">
-                    <p>Schedule: {flexibility}</p>
-                    <p>Budget: {budgetRange.replace("_", " ")}</p>
+                <div className="p-4 rounded-lg bg-white border border-slate-300">
+                  <h3 className="text-sm font-medium text-black mb-2">Preferences</h3>
+                  <div className="text-sm text-black space-y-1">
+                    <p>Schedule: <span className="capitalize">{flexibility.replace("_", " ")}</span></p>
+                    <p>Budget: <span className="capitalize">{budgetRange.replace("_", " ")}</span></p>
                     {financingInterest && <p>Interested in financing</p>}
                   </div>
                 </div>
@@ -777,31 +815,45 @@ function IntakeStepsContent() {
 
           {/* Step 8: Complete */}
           {step === 8 && (
-            <div className="space-y-6 text-center py-8">
-              <div className="text-6xl">🎉</div>
-              <h2 className="text-2xl font-light text-slate-900">You're All Set!</h2>
-              <p className="text-sm text-slate-500">
+            <div className="space-y-5 text-center py-6 sm:py-8">
+              <div className="w-16 h-16 mx-auto rounded-full bg-black flex items-center justify-center">
+                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-light text-black">You're All Set!</h2>
+              <p className="text-sm text-slate-600">
                 Thank you for completing the intake form. Your information has been submitted and will be 
                 reviewed by our expert team. We'll reach out to discuss the next steps in your journey.
               </p>
-              <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-100">
+              <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200">
                 <p className="text-sm text-emerald-700">
                   ✓ Your submission has been received
                 </p>
+              </div>
+              
+              {/* Book Appointment Button */}
+              <div className="pt-4">
+                <a
+                  href={`/book-appointment?name=${encodeURIComponent(patientId || "")}&from=intake`}
+                  className="inline-block w-full sm:w-auto px-8 py-3 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors"
+                >
+                  Book an Appointment
+                </a>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Footer with navigation */}
+      {/* Footer with navigation - closer to content */}
       {step < 8 && (
-        <footer className="border-t border-slate-100 px-6 py-4">
-          <div className="max-w-lg mx-auto flex justify-between">
+        <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-3 sm:py-4">
+          <div className="max-w-lg mx-auto flex justify-between items-center gap-4">
             <button
               onClick={() => step > 1 && setStep((prev) => (prev - 1) as Step)}
               disabled={step === 1 || loading}
-              className="px-6 py-2 rounded-full text-slate-500 hover:bg-slate-100 transition-colors disabled:opacity-50"
+              className="px-4 sm:px-6 py-2.5 rounded-full text-black hover:bg-slate-200 transition-colors disabled:opacity-30 text-sm sm:text-base"
             >
               Back
             </button>
@@ -810,7 +862,7 @@ function IntakeStepsContent() {
               <button
                 onClick={handleComplete}
                 disabled={loading}
-                className="px-8 py-2 rounded-full bg-rose-500 text-white font-medium hover:bg-rose-600 transition-colors disabled:opacity-50"
+                className="px-6 sm:px-8 py-2.5 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
               >
                 {loading ? "Submitting..." : "Submit"}
               </button>
@@ -818,7 +870,7 @@ function IntakeStepsContent() {
               <button
                 onClick={handleNext}
                 disabled={loading}
-                className="px-8 py-2 rounded-full bg-slate-100 text-slate-600 font-medium hover:bg-slate-200 transition-colors disabled:opacity-50"
+                className="px-6 sm:px-8 py-2.5 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
               >
                 {loading ? "Saving..." : "Continue"}
               </button>
