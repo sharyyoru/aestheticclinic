@@ -190,6 +190,10 @@ export default function PatientActivityCard({
   const [selectedMentionIds, setSelectedMentionIds] = useState<string[]>([]);
   const [mentionsOpen, setMentionsOpen] = useState(false);
 
+  const [noteMentionActive, setNoteMentionActive] = useState(false);
+  const [noteMentionQuery, setNoteMentionQuery] = useState("");
+  const [noteMentionUserIds, setNoteMentionUserIds] = useState<string[]>([]);
+
   const [noteMentionsByNoteId, setNoteMentionsByNoteId] = useState<
     Record<string, NoteMentionSummary[]>
   >({});
@@ -265,6 +269,8 @@ export default function PatientActivityCard({
   const [taskType, setTaskType] = useState<TaskType>("todo");
   const [taskPriority, setTaskPriority] = useState<TaskPriority>("medium");
   const [taskAssignedUserId, setTaskAssignedUserId] = useState<string | "">("");
+  const [taskAssignedUserSearch, setTaskAssignedUserSearch] = useState("");
+  const [taskAssignedUserDropdownOpen, setTaskAssignedUserDropdownOpen] = useState(false);
   const [taskActivityDate, setTaskActivityDate] = useState("");
   const [taskContent, setTaskContent] = useState("");
   const [taskSaving, setTaskSaving] = useState(false);
@@ -437,9 +443,25 @@ export default function PatientActivityCard({
 
     async function loadServices() {
       try {
+        // First get the Hubspot category
+        const { data: categoryData, error: categoryError } = await supabaseClient
+          .from("service_categories")
+          .select("id")
+          .eq("name", "Hubspot")
+          .single();
+
+        if (!isMounted) return;
+
+        if (categoryError || !categoryData) {
+          setServiceOptions([]);
+          return;
+        }
+
+        // Then get services from Hubspot category only
         const { data, error } = await supabaseClient
           .from("services")
           .select("id, name")
+          .eq("category_id", categoryData.id)
           .order("name", { ascending: true });
 
         if (!isMounted) return;
@@ -679,10 +701,13 @@ export default function PatientActivityCard({
       setEditTask(null);
       setTaskName("");
       setTaskContent("");
-      setTaskActivityDate("");
+      setTaskActivityDate(formatDateTimeLocal(new Date()));
       setTaskAssignedUserId("");
+      setTaskAssignedUserSearch("");
+      setTaskAssignedUserDropdownOpen(false);
       setTaskPriority("medium");
       setTaskType("todo");
+      setTaskSaveError(null);
       setCreateTaskModalOpen(true);
       setCreateTaskFromQueryHandled(true);
     }
@@ -967,6 +992,37 @@ export default function PatientActivityCard({
     };
   }, [patientId]);
 
+  function handleNoteBodyChange(value: string) {
+    setNoteBody(value);
+    setNoteSaveError(null);
+
+    const match = value.match(/@([^\s@]{0,50})$/);
+    if (match) {
+      setNoteMentionActive(true);
+      setNoteMentionQuery(match[1].toLowerCase());
+    } else if (noteMentionActive) {
+      setNoteMentionActive(false);
+      setNoteMentionQuery("");
+    }
+  }
+
+  function handleNoteMentionSelect(user: PlatformUser) {
+    const display =
+      (user.full_name && user.full_name.length > 0
+        ? user.full_name
+        : user.email) || "User";
+
+    const newBody = noteBody.replace(/@([^\s@]{0,50})$/, `@${display} `);
+    setNoteBody(newBody);
+
+    if (!noteMentionUserIds.includes(user.id)) {
+      setNoteMentionUserIds((prev) => [...prev, user.id]);
+    }
+
+    setNoteMentionActive(false);
+    setNoteMentionQuery("");
+  }
+
   async function handleNoteSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = noteBody.trim();
@@ -1010,8 +1066,8 @@ export default function PatientActivityCard({
         return;
       }
 
-      if (selectedMentionIds.length > 0) {
-        const rows = selectedMentionIds.map((mentionedUserId) => ({
+      if (noteMentionUserIds.length > 0) {
+        const rows = noteMentionUserIds.map((mentionedUserId) => ({
           note_id: inserted.id as string,
           patient_id: patientId,
           mentioned_user_id: mentionedUserId,
@@ -1020,7 +1076,7 @@ export default function PatientActivityCard({
         await supabaseClient.from("patient_note_mentions").insert(rows);
 
         const noteId = inserted.id as string;
-        const newSummaries: NoteMentionSummary[] = selectedMentionIds.map(
+        const newSummaries: NoteMentionSummary[] = noteMentionUserIds.map(
           (mentionedUserId) => {
             const user = Array.isArray(userOptions)
               ? userOptions.find((u) => u.id === mentionedUserId)
@@ -1045,12 +1101,32 @@ export default function PatientActivityCard({
       setNoteBody("");
       setSelectedMentionIds([]);
       setMentionsOpen(false);
+      setNoteMentionUserIds([]);
+      setNoteMentionActive(false);
+      setNoteMentionQuery("");
       setNoteModalOpen(false);
       setNoteSaving(false);
     } catch {
       setNoteSaveError("Unexpected error saving note.");
       setNoteSaving(false);
     }
+  }
+
+  function handleTaskAssignedUserSearchChange(value: string) {
+    setTaskAssignedUserSearch(value);
+    setTaskAssignedUserDropdownOpen(value.trim().length > 0);
+  }
+
+  function handleTaskAssignedUserSelect(user: PlatformUser) {
+    setTaskAssignedUserId(user.id);
+    setTaskAssignedUserSearch(user.full_name || user.email || "Unnamed user");
+    setTaskAssignedUserDropdownOpen(false);
+  }
+
+  function handleTaskAssignedUserClear() {
+    setTaskAssignedUserId("");
+    setTaskAssignedUserSearch("");
+    setTaskAssignedUserDropdownOpen(false);
   }
 
   async function handleTaskSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1161,6 +1237,8 @@ export default function PatientActivityCard({
       setTaskContent("");
       setTaskActivityDate("");
       setTaskAssignedUserId("");
+      setTaskAssignedUserSearch("");
+      setTaskAssignedUserDropdownOpen(false);
       setTaskPriority("medium");
       setTaskType("todo");
       setEditTask(null);
@@ -2873,8 +2951,14 @@ export default function PatientActivityCard({
                                   setTaskContent(task.content ?? "");
                                   setTaskPriority(task.priority);
                                   setTaskType(task.type);
+                                  const assignedUser = Array.isArray(userOptions)
+                                    ? userOptions.find((u) => u.id === task.assigned_user_id)
+                                    : null;
                                   setTaskAssignedUserId(
                                     task.assigned_user_id ?? "",
+                                  );
+                                  setTaskAssignedUserSearch(
+                                    assignedUser ? (assignedUser.full_name || assignedUser.email || "Unnamed user") : "",
                                   );
                                   setTaskActivityDate(
                                     task.activity_date
@@ -3183,51 +3267,43 @@ export default function PatientActivityCard({
               Write an internal note about this patient. Use the @ button to mention teammates.
             </p>
             <form onSubmit={handleNoteSubmit} className="mt-3 space-y-3">
-              <textarea
-                value={noteBody}
-                onChange={(event) => setNoteBody(event.target.value)}
-                rows={4}
-                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                placeholder="Write a note..."
-              />
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setMentionsOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                >
-                  <span>@</span>
-                  <span>Mentions</span>
-                  {selectedMentionIds.length > 0 ? (
-                    <span className="ml-1 rounded-full bg-emerald-100 px-1.5 text-[10px] font-semibold text-emerald-700">
-                      {selectedMentionIds.length}
-                    </span>
-                  ) : null}
-                </button>
-                {mentionsOpen && Array.isArray(userOptions) && userOptions.length > 0 ? (
-                  <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1">
-                    {userOptions.map((user) => {
-                      const id = user.id;
-                      const display =
-                        user.full_name || user.email || "Unnamed user";
+              <div className="relative">
+                <textarea
+                  value={noteBody}
+                  onChange={(event) => handleNoteBodyChange(event.target.value)}
+                  rows={4}
+                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  placeholder="Write a note... Use @ to mention."
+                />
+                {noteMentionActive && (() => {
+                  const mentionQuery = noteMentionQuery.trim();
+                  const mentionOptions = (Array.isArray(userOptions) ? userOptions : [])
+                    .filter((u) => {
+                      const hay = (u.full_name || u.email || "").toLowerCase();
+                      return hay.includes(mentionQuery);
+                    })
+                    .slice(0, 6);
 
-                      return (
-                        <label
-                          key={id}
-                          className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-[11px] text-slate-700 hover:bg-white"
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-3 w-3 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                            checked={selectedMentionIds.includes(id)}
-                            onChange={() => toggleMention(id)}
-                          />
-                          <span>{display}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : null}
+                  if (mentionOptions.length === 0) return null;
+
+                  return (
+                    <div className="mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow">
+                      {mentionOptions.map((user) => {
+                        const display = user.full_name || user.email || "Unnamed user";
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => handleNoteMentionSelect(user)}
+                            className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                          >
+                            {display}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
               {noteSaveError ? (
                 <p className="text-[11px] text-red-600">{noteSaveError}</p>
@@ -3316,24 +3392,53 @@ export default function PatientActivityCard({
                   <label className="block text-[11px] font-medium text-slate-700">
                     User
                   </label>
-                  <select
-                    value={taskAssignedUserId}
-                    onChange={(event) =>
-                      setTaskAssignedUserId(event.target.value)
-                    }
-                    className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="">Unassigned</option>
-                    {Array.isArray(userOptions) && userOptions.map((user) => {
-                      const label =
-                        user.full_name || user.email || "Unnamed user";
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={taskAssignedUserSearch}
+                      onChange={(event) => handleTaskAssignedUserSearchChange(event.target.value)}
+                      placeholder="Search users..."
+                      className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 pr-7 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    {taskAssignedUserId && (
+                      <button
+                        type="button"
+                        onClick={handleTaskAssignedUserClear}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        ×
+                      </button>
+                    )}
+                    {taskAssignedUserDropdownOpen && (() => {
+                      const query = taskAssignedUserSearch.trim().toLowerCase();
+                      const filteredUsers = (Array.isArray(userOptions) ? userOptions : [])
+                        .filter((u) => {
+                          const hay = (u.full_name || u.email || "").toLowerCase();
+                          return hay.includes(query);
+                        })
+                        .slice(0, 6);
+
+                      if (filteredUsers.length === 0) return null;
+
                       return (
-                        <option key={user.id} value={user.id}>
-                          {label}
-                        </option>
+                        <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
+                          {filteredUsers.map((user) => {
+                            const display = user.full_name || user.email || "Unnamed user";
+                            return (
+                              <button
+                                key={user.id}
+                                type="button"
+                                onClick={() => handleTaskAssignedUserSelect(user)}
+                                className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                              >
+                                {display}
+                              </button>
+                            );
+                          })}
+                        </div>
                       );
-                    })}
-                  </select>
+                    })()}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-medium text-slate-700">
