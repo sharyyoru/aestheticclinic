@@ -1787,6 +1787,9 @@ export default function PatientActivityCard({
       }
 
       const fromAddress = authUser.email ?? null;
+      const fromName = authUser.user_metadata?.full_name || 
+                       [authUser.user_metadata?.first_name, authUser.user_metadata?.last_name].filter(Boolean).join(" ") ||
+                       null;
 
       let resolvedStatus: EmailStatus = "sent";
       let resolvedSentAt: string | null = null;
@@ -1903,6 +1906,7 @@ export default function PatientActivityCard({
             subject,
             html: finalBody,
             fromUserEmail: fromAddress,
+            fromUserName: fromName,
             emailId: insertedEmail.id,
             patientId: patientId,
           }),

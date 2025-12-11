@@ -26,11 +26,12 @@ type EmailAttachmentRow = {
 
 export async function POST(request: Request) {
   try {
-    const { to, subject, html, fromUserEmail, emailId, patientId } = (await request.json()) as {
+    const { to, subject, html, fromUserEmail, fromUserName, emailId, patientId } = (await request.json()) as {
       to?: string;
       subject?: string;
       html?: string;
       fromUserEmail?: string | null;
+      fromUserName?: string | null;
       emailId?: string | null;
       patientId?: string | null;
     };
@@ -63,9 +64,13 @@ export async function POST(request: Request) {
     if (fromUserEmail && fromUserEmail.trim().length > 0) {
       // Use user's actual email as sender
       fromAddress = fromUserEmail.trim();
-      // Extract name from email
-      const emailPrefix = fromUserEmail.split("@")[0];
-      fromName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+      // Use provided name or extract from email
+      if (fromUserName && fromUserName.trim().length > 0) {
+        fromName = fromUserName.trim();
+      } else {
+        const emailPrefix = fromUserEmail.split("@")[0];
+        fromName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+      }
     }
 
     // Use FormData to support file attachments
