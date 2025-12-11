@@ -26,6 +26,13 @@ export default function ProfileSettingsForm() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameSuccess, setNameSuccess] = useState<string | null>(null);
 
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -189,6 +196,51 @@ export default function ProfileSettingsForm() {
     }
   }
 
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profile) return;
+
+    try {
+      setPasswordSaving(true);
+      setPasswordError(null);
+      setPasswordSuccess(null);
+
+      // Validation
+      if (!newPassword || newPassword.length < 6) {
+        setPasswordError("New password must be at least 6 characters.");
+        setPasswordSaving(false);
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        setPasswordError("Passwords do not match.");
+        setPasswordSaving(false);
+        return;
+      }
+
+      // Update password using Supabase Auth
+      const { error: updateError } = await supabaseClient.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        setPasswordError(updateError.message);
+        setPasswordSaving(false);
+        return;
+      }
+
+      // Clear form on success
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordSuccess("Password updated successfully.");
+    } catch (err) {
+      setPasswordError("Unexpected error updating password.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
   async function handlePriorityChange(nextMode: "crm" | "medical") {
     if (!profile) return;
 
@@ -326,6 +378,55 @@ export default function ProfileSettingsForm() {
             className="inline-flex items-center rounded-full border border-sky-200/80 bg-sky-600 px-4 py-1.5 text-xs font-medium text-white shadow-[0_10px_25px_rgba(15,23,42,0.22)] backdrop-blur hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {nameSaving ? "Saving..." : "Save name"}
+          </button>
+        </form>
+      </section>
+
+      <section className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+        <h2 className="text-sm font-medium text-slate-900">Change password</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Update your account password. Password must be at least 6 characters.
+        </p>
+        <form onSubmit={handlePasswordSubmit} className="mt-3 space-y-3">
+          <div className="space-y-3">
+            <div>
+              <label htmlFor="new_password" className="block text-[11px] font-medium text-slate-600 mb-1">
+                New password
+              </label>
+              <input
+                id="new_password"
+                name="new_password"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                placeholder="Enter new password"
+                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="confirm_password" className="block text-[11px] font-medium text-slate-600 mb-1">
+                Confirm password
+              </label>
+              <input
+                id="confirm_password"
+                name="confirm_password"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                placeholder="Confirm new password"
+                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+          </div>
+
+          {passwordError ? <p className="text-xs text-red-600">{passwordError}</p> : null}
+          {passwordSuccess ? <p className="text-xs text-emerald-600">{passwordSuccess}</p> : null}
+          <button
+            type="submit"
+            disabled={passwordSaving}
+            className="inline-flex items-center rounded-full border border-sky-200/80 bg-sky-600 px-4 py-1.5 text-xs font-medium text-white shadow-[0_10px_25px_rgba(15,23,42,0.22)] backdrop-blur hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {passwordSaving ? "Updating..." : "Update password"}
           </button>
         </form>
       </section>
