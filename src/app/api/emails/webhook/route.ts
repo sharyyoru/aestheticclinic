@@ -178,14 +178,6 @@ export async function POST(request: Request) {
       }
     }
     
-    if (!targetPatientId) {
-      console.log("Could not determine patient for email from:", from);
-      return NextResponse.json({ 
-        message: "Patient not found for reply",
-        received: true 
-      });
-    }
-    
     // Clean the email body to remove signatures and quoted text
     const rawBody = bodyHtml || bodyPlain;
     const isHtml = !!bodyHtml;
@@ -195,11 +187,53 @@ export async function POST(request: Request) {
     const emailMatch = from.match(/<([^>]+)>/) || [null, from];
     const senderEmail = emailMatch[1]?.trim() || from.trim();
     
-    // Log the reply as an inbound email in the database
+    // If no patient found, try to create one from the sender email OR log without patient
+    if (!targetPatientId) {
+      console.log("No patient found for email from:", from);
+      console.log("Attempting to find or create patient record...");
+      
+      // Try to find existing patient by email one more time
+      const { data: existingPatient } = await supabase
+        .from("patients")
+        .select("id")
+        .ilike("email", senderEmail)
+        .maybeSingle();
+      
+      if (existingPatient) {
+        targetPatientId = existingPatient.id;
+        console.log("Found patient by case-insensitive email match:", targetPatientId);
+      } else {
+        // Create a new patient from the sender info
+        const senderName = from.match(/^([^<]+)/) ? from.match(/^([^<]+)/)?.[1]?.trim() : senderEmail.split("@")[0];
+        const nameParts = senderName?.split(" ") || [senderEmail.split("@")[0]];
+        
+        const { data: newPatient, error: createError } = await supabase
+          .from("patients")
+          .insert({
+            first_name: nameParts[0] || "Unknown",
+            last_name: nameParts.slice(1).join(" ") || "",
+            email: senderEmail,
+            source: "inbound_email",
+          })
+          .select("id")
+          .single();
+        
+        if (newPatient) {
+          targetPatientId = newPatient.id;
+          console.log("Created new patient from inbound email:", targetPatientId);
+        } else {
+          console.error("Failed to create patient:", createError);
+          // Still log the email without a patient association
+          console.log("Logging email without patient association");
+        }
+      }
+    }
+    
+    // Log the inbound email in the database
     const { data: insertedEmail, error: insertError } = await supabase
       .from("emails")
       .insert({
-        patient_id: targetPatientId,
+        patient_id: targetPatientId || null,
         from_address: senderEmail,
         to_address: to,
         subject: subject,
