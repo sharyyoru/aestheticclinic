@@ -126,6 +126,15 @@ type DealStage = {
   is_default: boolean;
 };
 
+type DealAppointment = {
+  id: string;
+  start_time: string;
+  end_time: string;
+  status: string;
+  reason: string | null;
+  location: string | null;
+};
+
 type Deal = {
   id: string;
   patient_id: string;
@@ -139,6 +148,7 @@ type Deal = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  appointment?: DealAppointment | null;
 };
 
 type ServiceOption = {
@@ -533,7 +543,28 @@ export default function PatientActivityCard({
           return;
         }
 
-        setDeals(dealsData as Deal[]);
+        // Fetch appointments for this patient to link to deals in "Appointment Set" stage
+        const { data: appointmentsData } = await supabaseClient
+          .from("appointments")
+          .select("id, patient_id, start_time, end_time, status, reason, location")
+          .eq("patient_id", patientId)
+          .order("start_time", { ascending: false });
+
+        // Get the most recent appointment for the patient
+        const latestAppointment = appointmentsData?.[0] as DealAppointment | undefined;
+
+        // Attach appointment to deals in "Appointment Set" stage
+        const appointmentSetStage = stagesData?.find(
+          (s: DealStage) => s.name.toLowerCase().includes("appointment set")
+        );
+        const dealsWithAppointments = (dealsData as Deal[]).map(deal => {
+          if (appointmentSetStage && deal.stage_id === appointmentSetStage.id && latestAppointment) {
+            return { ...deal, appointment: latestAppointment };
+          }
+          return deal;
+        });
+
+        setDeals(dealsWithAppointments);
         setDealsLoading(false);
       } catch {
         if (!isMounted) return;
@@ -3257,6 +3288,34 @@ export default function PatientActivityCard({
                           <span className="font-semibold">Created Date:</span> {" "}
                           {createdLabelForDeal || "—"}
                         </p>
+                        {/* Show appointment details for "Appointment Set" stage */}
+                        {deal.appointment && (
+                          <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 p-2">
+                            <div className="flex items-center gap-1.5 text-emerald-700">
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              <span className="text-[10px] font-semibold">Appointment Scheduled</span>
+                            </div>
+                            <p className="mt-1 text-[10px] text-emerald-600">
+                              {new Date(deal.appointment.start_time).toLocaleDateString("en-US", {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              })}{" "}
+                              at{" "}
+                              {new Date(deal.appointment.start_time).toLocaleTimeString("en-US", {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                            {deal.appointment.location && (
+                              <p className="text-[9px] text-emerald-500">
+                                📍 {deal.appointment.location}
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 self-end sm:self-start">
                         <button
