@@ -97,8 +97,10 @@ export default function DoctorBookingPage() {
       const end = new Date(date);
       end.setHours(23, 59, 59, 999);
 
+      // Pass doctor name to filter availability by specific doctor
+      const doctorNameParam = encodeURIComponent(doctor?.name || "");
       const res = await fetch(
-        `/api/appointments/check-availability?start=${start.toISOString()}&end=${end.toISOString()}`
+        `/api/appointments/check-availability?start=${start.toISOString()}&end=${end.toISOString()}&doctor=${doctorNameParam}`
       );
       const data = await res.json();
 

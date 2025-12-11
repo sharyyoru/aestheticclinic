@@ -88,7 +88,8 @@ function generatePatientConfirmationEmail(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-  <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+  <div style="background: #1e293b; padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+    <img src="https://aestheticclinic.vercel.app/logos/aesthetics-logo.svg" alt="Aesthetics Clinic" style="height: 40px; margin-bottom: 20px; filter: brightness(0) invert(1);">
     <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Appointment Confirmed!</h1>
     <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Thank you for booking with us</p>
   </div>
@@ -96,8 +97,8 @@ function generatePatientConfirmationEmail(
     <p style="font-size: 18px; margin-bottom: 24px; color: #1e293b;">Dear <strong>${patientName}</strong>,</p>
     <p style="margin-bottom: 24px; color: #475569;">Your appointment has been successfully scheduled. We look forward to seeing you!</p>
     
-    <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #bbf7d0;">
-      <h3 style="margin: 0 0 16px 0; color: #166534; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Appointment Details</h3>
+    <div style="background: #f8fafc; padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #e2e8f0;">
+      <h3 style="margin: 0 0 16px 0; color: #1e293b; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Appointment Details</h3>
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
           <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Doctor</td>
@@ -124,8 +125,8 @@ function generatePatientConfirmationEmail(
       </table>
     </div>
     
-    <div style="background: #fffbeb; padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 24px;">
-      <p style="margin: 0; color: #92400e; font-size: 14px;">
+    <div style="background: #fef3c7; padding: 16px; border-radius: 8px; border-left: 4px solid #1e293b; margin-bottom: 24px;">
+      <p style="margin: 0; color: #1e293b; font-size: 14px;">
         <strong>Important:</strong> If you need to reschedule or cancel your appointment, please contact us at least 24 hours in advance.
       </p>
     </div>
@@ -157,7 +158,8 @@ function generateDoctorNotificationEmail(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-  <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+  <div style="background: #1e293b; padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+    <img src="https://aestheticclinic.vercel.app/logos/aesthetics-logo.svg" alt="Aesthetics Clinic" style="height: 40px; margin-bottom: 20px; filter: brightness(0) invert(1);">
     <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">New Appointment Booked</h1>
     <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Via Online Booking</p>
   </div>
@@ -165,8 +167,8 @@ function generateDoctorNotificationEmail(
     <p style="font-size: 18px; margin-bottom: 24px; color: #1e293b;">Hi <strong>${doctorName}</strong>,</p>
     <p style="margin-bottom: 24px; color: #475569;">A new appointment has been booked through the online booking system.</p>
     
-    <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #93c5fd;">
-      <h3 style="margin: 0 0 16px 0; color: #1e40af; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Patient Information</h3>
+    <div style="background: #f8fafc; padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #e2e8f0;">
+      <h3 style="margin: 0 0 16px 0; color: #1e293b; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Patient Information</h3>
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
           <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Name</td>
@@ -185,8 +187,8 @@ function generateDoctorNotificationEmail(
       </table>
     </div>
 
-    <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #bbf7d0;">
-      <h3 style="margin: 0 0 16px 0; color: #166534; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Appointment Details</h3>
+    <div style="background: #f1f5f9; padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #cbd5e1;">
+      <h3 style="margin: 0 0 16px 0; color: #1e293b; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Appointment Details</h3>
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
           <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Date</td>
@@ -348,8 +350,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Build reason field
-    const reason = `${service}${notes ? ` - ${notes}` : ""} [Online Booking]`;
+    // Build reason field - include [Doctor: Name] for calendar filtering
+    const reason = `${service}${notes ? ` - ${notes}` : ""} [Doctor: ${doctorName.replace("Dr. ", "")}] [Online Booking]`;
 
     // Create the appointment
     const { data: appointment, error: appointmentError } = await supabase
