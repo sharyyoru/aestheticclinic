@@ -4103,6 +4103,7 @@ export default function PatientActivityCard({
             body: JSON.stringify({
               patientId: data.patientId,
               dealId: data.dealId,
+              providerId: data.providerId,
               title: data.title,
               appointmentDate: data.appointmentDate,
               durationMinutes: data.durationMinutes,

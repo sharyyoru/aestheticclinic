@@ -33,8 +33,15 @@ const APPOINTMENT_WORKFLOW_STEPS: WorkflowStep[] = [
     id: "action-modal",
     type: "action",
     title: "Show Appointment Modal",
-    description: "Prompt user to enter appointment date and time",
+    description: "Prompt user to select staff member and enter date/time",
     icon: "📅",
+  },
+  {
+    id: "action-assign",
+    type: "action",
+    title: "Assign to Staff Calendar",
+    description: "Add appointment to selected staff member's calendar",
+    icon: "👤",
   },
   {
     id: "action-patient-email",

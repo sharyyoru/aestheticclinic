@@ -13,7 +13,7 @@ const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailg
 type CreateAppointmentPayload = {
   patientId: string;
   dealId?: string | null;
-  userId?: string | null;
+  providerId?: string | null;
   title?: string;
   appointmentDate: string;
   durationMinutes?: number;
@@ -222,7 +222,7 @@ export async function POST(request: Request) {
     const {
       patientId,
       dealId,
-      userId,
+      providerId,
       title,
       appointmentDate,
       durationMinutes = 60,
@@ -261,35 +261,49 @@ export async function POST(request: Request) {
       .join(" ") || "Patient";
     const patientEmail = patient.email;
 
-    // Get user details if userId provided
-    let userName = "Staff Member";
-    let userEmail: string | null = null;
+    // Get provider details if providerId provided
+    let providerName = "Staff Member";
+    let providerEmail: string | null = null;
 
-    if (userId) {
-      const { data: userData } = await supabase.auth.admin.getUserById(userId);
-      if (userData?.user) {
-        const meta = userData.user.user_metadata || {};
-        userName = [meta.first_name, meta.last_name].filter(Boolean).join(" ") || 
-                   userData.user.email?.split("@")[0] || "Staff Member";
-        userEmail = userData.user.email || null;
+    if (providerId) {
+      const { data: providerData } = await supabase
+        .from("providers")
+        .select("id, name, email")
+        .eq("id", providerId)
+        .single();
+      
+      if (providerData) {
+        providerName = providerData.name || "Staff Member";
+        providerEmail = providerData.email || null;
       }
     }
 
     const appointmentDateObj = new Date(appointmentDate);
 
-    // Create the appointment
+    // Calculate end time from duration
+    const endDateObj = new Date(appointmentDateObj.getTime() + durationMinutes * 60 * 1000);
+
+    // Build reason field (title + notes + status)
+    let reason = title || `Appointment with ${patientName}`;
+    if (providerName && providerName !== "Staff Member") {
+      reason += ` [Doctor: ${providerName}]`;
+    }
+    if (notes) {
+      reason += ` [Notes: ${notes}]`;
+    }
+
+    // Create the appointment using the existing schema
     const { data: appointment, error: appointmentError } = await supabase
       .from("appointments")
       .insert({
         patient_id: patientId,
-        deal_id: dealId || null,
-        user_id: userId || null,
-        title: title || `Appointment with ${patientName}`,
-        appointment_date: appointmentDateObj.toISOString(),
-        duration_minutes: durationMinutes,
+        provider_id: providerId || null,
+        start_time: appointmentDateObj.toISOString(),
+        end_time: endDateObj.toISOString(),
+        reason,
         location: location || null,
-        notes: notes || null,
         status: "scheduled",
+        source: "workflow",
       })
       .select("id")
       .single();
@@ -324,11 +338,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // Send notification email to user/staff
-    if (sendUserEmail && userEmail) {
+    // Send notification email to provider/staff
+    if (sendUserEmail && providerEmail) {
       try {
         const userEmailHtml = generateUserEmailHtml(
-          userName,
+          providerName,
           patientName,
           patientEmail || "Not provided",
           appointmentDateObj,
@@ -336,13 +350,13 @@ export async function POST(request: Request) {
           notes || null
         );
         await sendEmail(
-          userEmail,
+          providerEmail,
           `New Appointment: ${patientName} - ${formatAppointmentDate(appointmentDateObj)}`,
           userEmailHtml
         );
-        console.log("User notification email sent to:", userEmail);
+        console.log("Provider notification email sent to:", providerEmail);
       } catch (err) {
-        console.error("Error sending user email:", err);
+        console.error("Error sending provider email:", err);
       }
     }
 
@@ -389,11 +403,11 @@ export async function POST(request: Request) {
           }
         }
 
-        // Schedule user reminder
-        if (userEmail) {
+        // Schedule provider reminder
+        if (providerEmail) {
           try {
-            const userReminderHtml = generateReminderEmailHtml(
-              userName,
+            const providerReminderHtml = generateReminderEmailHtml(
+              providerName,
               false,
               patientName,
               appointmentDateObj,
@@ -403,23 +417,23 @@ export async function POST(request: Request) {
             await supabase.from("scheduled_emails").insert({
               patient_id: patientId,
               appointment_id: appointmentId,
-              recipient_type: "user",
-              recipient_email: userEmail,
+              recipient_type: "provider",
+              recipient_email: providerEmail,
               subject: `Reminder: Appointment with ${patientName} Tomorrow`,
-              body: userReminderHtml,
+              body: providerReminderHtml,
               scheduled_for: reminderDate.toISOString(),
               status: "pending",
             });
 
             await sendEmail(
-              userEmail,
+              providerEmail,
               `Reminder: Appointment with ${patientName} Tomorrow`,
-              userReminderHtml,
+              providerReminderHtml,
               reminderDate
             );
-            console.log("User reminder scheduled for:", reminderDate.toISOString());
+            console.log("Provider reminder scheduled for:", reminderDate.toISOString());
           } catch (err) {
-            console.error("Error scheduling user reminder:", err);
+            console.error("Error scheduling provider reminder:", err);
           }
         }
       }
@@ -431,7 +445,7 @@ export async function POST(request: Request) {
       message: "Appointment created successfully",
       emailsSent: {
         patient: sendPatientEmail && !!patientEmail,
-        user: sendUserEmail && !!userEmail,
+        provider: sendUserEmail && !!providerEmail,
       },
       reminderScheduled: scheduleReminder,
     });
