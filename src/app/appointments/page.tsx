@@ -266,7 +266,7 @@ async function sendAppointmentConfirmationEmail(
         <a href="${preConsultationUrl}">Pre Consultation Link</a>
       </p>
       <p>
-        <strong>Maison Toa</strong><br />
+        <strong>Aesthetics Clinic</strong><br />
         <strong>GENEVE</strong><br />
         Rue du Rhône 17, 1204, Switzerland<br />
         📞 0227322223 ✉️ info@aesthetics-ge.ch<br /><br />

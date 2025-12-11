@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         title,
         record_type: "3d",
         doctor_user_id: null,
-        doctor_name: "Maison Toa 3D",
+        doctor_name: "Aesthetics 3D",
         scheduled_at: nowIso,
         payment_method: null,
         content: JSON.stringify(contentPayload),
