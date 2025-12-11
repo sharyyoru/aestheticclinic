@@ -127,7 +127,14 @@ function IntakeStepsContent() {
       setError(null);
 
       if (currentStep === 1) {
-        await supabaseClient.from("patient_intake_preferences").upsert({
+        // Check if preferences exist for this submission
+        const { data: existingPrefs } = await supabaseClient
+          .from("patient_intake_preferences")
+          .select("id")
+          .eq("submission_id", submissionId)
+          .single();
+
+        const prefsData = {
           submission_id: submissionId,
           patient_id: patientId,
           preferred_language: preferredLanguage,
@@ -135,7 +142,13 @@ function IntakeStepsContent() {
           preferred_contact_method: contactMethod,
           preferred_contact_time: contactTime,
           additional_notes: additionalNotes || null,
-        }, { onConflict: "submission_id" });
+        };
+
+        if (existingPrefs?.id) {
+          await supabaseClient.from("patient_intake_preferences").update(prefsData).eq("id", existingPrefs.id);
+        } else {
+          await supabaseClient.from("patient_intake_preferences").insert(prefsData);
+        }
       }
 
       if (currentStep === 2) {
@@ -167,7 +180,14 @@ function IntakeStepsContent() {
           ? (parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(1)
           : null;
 
-        await supabaseClient.from("patient_measurements").upsert({
+        // Check if measurements exist for this submission
+        const { data: existingMeasurements } = await supabaseClient
+          .from("patient_measurements")
+          .select("id")
+          .eq("submission_id", submissionId)
+          .single();
+
+        const measurementsData = {
           submission_id: submissionId,
           patient_id: patientId,
           height_cm: height ? parseFloat(height) : null,
@@ -176,7 +196,13 @@ function IntakeStepsContent() {
           chest_cm: chest ? parseFloat(chest) : null,
           waist_cm: waist ? parseFloat(waist) : null,
           hips_cm: hips ? parseFloat(hips) : null,
-        }, { onConflict: "submission_id" });
+        };
+
+        if (existingMeasurements?.id) {
+          await supabaseClient.from("patient_measurements").update(measurementsData).eq("id", existingMeasurements.id);
+        } else {
+          await supabaseClient.from("patient_measurements").insert(measurementsData);
+        }
       }
 
       if (currentStep === 4 && photos.length > 0) {
@@ -206,7 +232,14 @@ function IntakeStepsContent() {
       }
 
       if (currentStep === 6) {
-        await supabaseClient.from("patient_treatment_preferences").upsert({
+        // Check if treatment preferences exist for this submission
+        const { data: existingTreatmentPrefs } = await supabaseClient
+          .from("patient_treatment_preferences")
+          .select("id")
+          .eq("submission_id", submissionId)
+          .single();
+
+        const treatmentPrefsData = {
           submission_id: submissionId,
           patient_id: patientId,
           preferred_date_range_start: preferredDateStart || null,
@@ -215,7 +248,13 @@ function IntakeStepsContent() {
           budget_range: budgetRange,
           financing_interest: financingInterest,
           special_requests: specialRequests || null,
-        }, { onConflict: "submission_id" });
+        };
+
+        if (existingTreatmentPrefs?.id) {
+          await supabaseClient.from("patient_treatment_preferences").update(treatmentPrefsData).eq("id", existingTreatmentPrefs.id);
+        } else {
+          await supabaseClient.from("patient_treatment_preferences").insert(treatmentPrefsData);
+        }
       }
 
       // Update submission progress

@@ -351,7 +351,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-slate-500">Language</label>
-                <select value={editPrefs.preferred_language} onChange={(e) => setEditPrefs({ ...editPrefs, preferred_language: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <select value={editPrefs.preferred_language} onChange={(e) => setEditPrefs({ ...editPrefs, preferred_language: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
                   <option value="en">English</option>
                   <option value="fr">French</option>
                   <option value="de">German</option>
@@ -361,7 +361,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               </div>
               <div>
                 <label className="text-xs text-slate-500">Consultation Type</label>
-                <select value={editPrefs.consultation_type} onChange={(e) => setEditPrefs({ ...editPrefs, consultation_type: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <select value={editPrefs.consultation_type} onChange={(e) => setEditPrefs({ ...editPrefs, consultation_type: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
                   <option value="in-person">In Person</option>
                   <option value="virtual">Virtual</option>
                   <option value="either">Either</option>
@@ -369,7 +369,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               </div>
               <div>
                 <label className="text-xs text-slate-500">Contact Method</label>
-                <select value={editPrefs.preferred_contact_method} onChange={(e) => setEditPrefs({ ...editPrefs, preferred_contact_method: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <select value={editPrefs.preferred_contact_method} onChange={(e) => setEditPrefs({ ...editPrefs, preferred_contact_method: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
                   <option value="email">Email</option>
                   <option value="phone">Phone</option>
                   <option value="whatsapp">WhatsApp</option>
@@ -377,7 +377,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               </div>
               <div>
                 <label className="text-xs text-slate-500">Best Time</label>
-                <select value={editPrefs.preferred_contact_time} onChange={(e) => setEditPrefs({ ...editPrefs, preferred_contact_time: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <select value={editPrefs.preferred_contact_time} onChange={(e) => setEditPrefs({ ...editPrefs, preferred_contact_time: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
                   <option value="morning">Morning</option>
                   <option value="afternoon">Afternoon</option>
                   <option value="evening">Evening</option>
@@ -386,7 +386,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               </div>
               <div>
                 <label className="text-xs text-slate-500">Notes</label>
-                <textarea value={editPrefs.additional_notes || ""} onChange={(e) => setEditPrefs({ ...editPrefs, additional_notes: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" rows={2} />
+                <textarea value={editPrefs.additional_notes || ""} onChange={(e) => setEditPrefs({ ...editPrefs, additional_notes: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" rows={2} />
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={() => savePreferences(editPrefs)} disabled={saving} className="px-4 py-2 bg-black text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
@@ -426,23 +426,23 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-slate-500">Height (cm)</label>
-                  <input type="number" value={editMeasurements.height_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, height_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="170" />
+                  <input type="number" value={editMeasurements.height_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, height_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="170" />
                 </div>
                 <div>
                   <label className="text-xs text-slate-500">Weight (kg)</label>
-                  <input type="number" value={editMeasurements.weight_kg || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, weight_kg: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="70" />
+                  <input type="number" value={editMeasurements.weight_kg || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, weight_kg: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="70" />
                 </div>
                 <div>
                   <label className="text-xs text-slate-500">Chest (cm)</label>
-                  <input type="number" value={editMeasurements.chest_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, chest_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="90" />
+                  <input type="number" value={editMeasurements.chest_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, chest_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="90" />
                 </div>
                 <div>
                   <label className="text-xs text-slate-500">Waist (cm)</label>
-                  <input type="number" value={editMeasurements.waist_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, waist_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="75" />
+                  <input type="number" value={editMeasurements.waist_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, waist_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="75" />
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs text-slate-500">Hips (cm)</label>
-                  <input type="number" value={editMeasurements.hips_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, hips_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" placeholder="95" />
+                  <input type="number" value={editMeasurements.hips_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, hips_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="95" />
                 </div>
               </div>
               {editMeasurements.height_cm && editMeasurements.weight_kg && (
@@ -523,16 +523,16 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-slate-500">Start Date</label>
-                  <input type="date" value={editTreatmentPrefs.preferred_date_range_start || ""} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, preferred_date_range_start: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                  <input type="date" value={editTreatmentPrefs.preferred_date_range_start || ""} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, preferred_date_range_start: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" />
                 </div>
                 <div>
                   <label className="text-xs text-slate-500">End Date</label>
-                  <input type="date" value={editTreatmentPrefs.preferred_date_range_end || ""} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, preferred_date_range_end: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                  <input type="date" value={editTreatmentPrefs.preferred_date_range_end || ""} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, preferred_date_range_end: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" />
                 </div>
               </div>
               <div>
                 <label className="text-xs text-slate-500">Flexibility</label>
-                <select value={editTreatmentPrefs.flexibility} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, flexibility: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <select value={editTreatmentPrefs.flexibility} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, flexibility: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
                   <option value="flexible">Flexible</option>
                   <option value="specific_dates">Specific Dates</option>
                   <option value="asap">ASAP</option>
@@ -540,7 +540,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               </div>
               <div>
                 <label className="text-xs text-slate-500">Budget Range</label>
-                <select value={editTreatmentPrefs.budget_range} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, budget_range: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <select value={editTreatmentPrefs.budget_range} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, budget_range: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
                   <option value="economy">Economy</option>
                   <option value="standard">Standard</option>
                   <option value="premium">Premium</option>
@@ -553,7 +553,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               </div>
               <div>
                 <label className="text-xs text-slate-500">Special Requests</label>
-                <textarea value={editTreatmentPrefs.special_requests || ""} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, special_requests: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm" rows={2} />
+                <textarea value={editTreatmentPrefs.special_requests || ""} onChange={(e) => setEditTreatmentPrefs({ ...editTreatmentPrefs, special_requests: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" rows={2} />
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={() => saveTreatmentPrefs(editTreatmentPrefs)} disabled={saving} className="px-4 py-2 bg-black text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
