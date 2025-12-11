@@ -302,7 +302,7 @@ export async function POST(request: Request) {
         reason,
         location: location || null,
         status: "scheduled",
-        source: "workflow",
+        source: "manual",
       })
       .select("id")
       .single();
