@@ -5,6 +5,13 @@ import { extractReplyContent } from "@/utils/emailCleaner";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+type AttachmentInfo = {
+  fileName: string;
+  contentType: string;
+  data: ArrayBuffer;
+  size: number;
+};
+
 export async function POST(request: Request) {
   try {
     // Parse the incoming webhook data from Mailgun
@@ -22,6 +29,47 @@ export async function POST(request: Request) {
     // Get custom variables we set when sending
     const emailId = formData.get("email-id")?.toString() || "";
     const patientId = formData.get("patient-id")?.toString() || "";
+    
+    // Mailgun sends attachment count and individual attachments
+    const attachmentCountStr = formData.get("attachment-count")?.toString() || "0";
+    const attachmentCount = parseInt(attachmentCountStr, 10) || 0;
+    
+    // Collect attachments from form data
+    const attachments: AttachmentInfo[] = [];
+    
+    // Mailgun sends attachments as "attachment-1", "attachment-2", etc. or just "attachment"
+    for (let i = 1; i <= Math.max(attachmentCount, 10); i++) {
+      const attachment = formData.get(`attachment-${i}`) as File | null;
+      if (attachment && attachment instanceof File) {
+        try {
+          const arrayBuffer = await attachment.arrayBuffer();
+          attachments.push({
+            fileName: attachment.name || `attachment-${i}`,
+            contentType: attachment.type || "application/octet-stream",
+            data: arrayBuffer,
+            size: attachment.size,
+          });
+        } catch (err) {
+          console.error(`Error reading attachment-${i}:`, err);
+        }
+      }
+    }
+    
+    // Also check for generic "attachment" field (some Mailgun configurations)
+    const genericAttachment = formData.get("attachment") as File | null;
+    if (genericAttachment && genericAttachment instanceof File) {
+      try {
+        const arrayBuffer = await genericAttachment.arrayBuffer();
+        attachments.push({
+          fileName: genericAttachment.name || "attachment",
+          contentType: genericAttachment.type || "application/octet-stream",
+          data: arrayBuffer,
+          size: genericAttachment.size,
+        });
+      } catch (err) {
+        console.error("Error reading generic attachment:", err);
+      }
+    }
     
     // Initialize Supabase client with service role key
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -100,7 +148,7 @@ export async function POST(request: Request) {
     const senderEmail = emailMatch[1]?.trim() || from.trim();
     
     // Log the reply as an inbound email in the database
-    const { error: insertError } = await supabase
+    const { data: insertedEmail, error: insertError } = await supabase
       .from("emails")
       .insert({
         patient_id: targetPatientId,
@@ -112,14 +160,68 @@ export async function POST(request: Request) {
         direction: "inbound",
         sent_at: timestamp ? new Date(parseInt(timestamp) * 1000).toISOString() : new Date().toISOString(),
         created_at: new Date().toISOString(),
-      });
+      })
+      .select("id")
+      .single();
     
-    if (insertError) {
+    if (insertError || !insertedEmail) {
       console.error("Error inserting reply email:", insertError);
       return NextResponse.json({ 
         error: "Failed to log reply",
-        details: insertError.message 
+        details: insertError?.message || "Unknown error"
       }, { status: 500 });
+    }
+    
+    const newEmailId = insertedEmail.id as string;
+    
+    // Store attachments in Supabase Storage and create records
+    let attachmentErrors: string[] = [];
+    if (attachments.length > 0) {
+      console.log(`Processing ${attachments.length} attachments for email ${newEmailId}`);
+      
+      for (const att of attachments) {
+        try {
+          // Create a safe file name and unique path
+          const safeName = att.fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+          const ext = att.fileName.split(".").pop() || "bin";
+          const storagePath = `inbound/${targetPatientId}/${newEmailId}/${Date.now()}-${safeName}`;
+          
+          // Upload to Supabase Storage
+          const { error: uploadError } = await supabase.storage
+            .from("email_attachments")
+            .upload(storagePath, att.data, {
+              contentType: att.contentType,
+              upsert: false,
+            });
+          
+          if (uploadError) {
+            console.error("Error uploading attachment:", att.fileName, uploadError);
+            attachmentErrors.push(`Upload failed for ${att.fileName}: ${uploadError.message}`);
+            continue;
+          }
+          
+          // Create record in email_attachments table
+          const { error: recordError } = await supabase
+            .from("email_attachments")
+            .insert({
+              email_id: newEmailId,
+              file_name: att.fileName,
+              storage_path: storagePath,
+              mime_type: att.contentType,
+              file_size: att.size,
+            });
+          
+          if (recordError) {
+            console.error("Error creating attachment record:", att.fileName, recordError);
+            attachmentErrors.push(`Record failed for ${att.fileName}: ${recordError.message}`);
+          } else {
+            console.log("Attachment saved successfully:", att.fileName);
+          }
+        } catch (attErr) {
+          console.error("Unexpected error processing attachment:", att.fileName, attErr);
+          attachmentErrors.push(`Error processing ${att.fileName}`);
+        }
+      }
     }
     
     console.log("Email reply logged successfully for patient:", targetPatientId);
@@ -127,7 +229,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ 
       ok: true,
       message: "Reply logged successfully",
-      patientId: targetPatientId
+      patientId: targetPatientId,
+      emailId: newEmailId,
+      attachmentsProcessed: attachments.length,
+      attachmentErrors: attachmentErrors.length > 0 ? attachmentErrors : undefined,
     });
     
   } catch (error) {
