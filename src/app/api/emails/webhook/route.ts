@@ -238,7 +238,7 @@ export async function POST(request: Request) {
         to_address: to,
         subject: subject,
         body: cleanedBody || rawBody,
-        status: "received",
+        status: "sent", // Use 'sent' for now until 'received' enum value is added
         direction: "inbound",
         sent_at: timestamp ? new Date(parseInt(timestamp) * 1000).toISOString() : new Date().toISOString(),
         created_at: new Date().toISOString(),
