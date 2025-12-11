@@ -62,6 +62,9 @@ export default function PatientDocumentsTab({
   const [showBeforeAfterEditor, setShowBeforeAfterEditor] = useState(false);
   const [showPdfEditor, setShowPdfEditor] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [renamingFile, setRenamingFile] = useState<ListedItem | null>(null);
+  const [newFileName, setNewFileName] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -302,6 +305,87 @@ export default function PatientDocumentsTab({
     setSelectedFile(item);
   }
 
+  function handleStartRename(item: ListedItem) {
+    setRenamingFile(item);
+    setNewFileName(item.name);
+  }
+
+  async function handleRename(event: React.FormEvent) {
+    event.preventDefault();
+    if (!renamingFile || !newFileName.trim() || renaming) return;
+
+    const trimmedName = newFileName.trim();
+    if (trimmedName === renamingFile.name) {
+      setRenamingFile(null);
+      return;
+    }
+
+    try {
+      setRenaming(true);
+      setError(null);
+
+      const oldPath = [patientId, renamingFile.path].filter(Boolean).join("/");
+      const newPath = [patientId, currentPrefix, trimmedName].filter(Boolean).join("/");
+
+      // Download the file
+      const { data: fileData, error: downloadError } = await supabaseClient.storage
+        .from(BUCKET_NAME)
+        .download(oldPath);
+
+      if (downloadError) throw downloadError;
+
+      // Upload with new name
+      const { error: uploadError } = await supabaseClient.storage
+        .from(BUCKET_NAME)
+        .upload(newPath, fileData, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Delete old file
+      const { error: deleteError } = await supabaseClient.storage
+        .from(BUCKET_NAME)
+        .remove([oldPath]);
+
+      if (deleteError) {
+        console.error("Failed to delete old file:", deleteError);
+      }
+
+      setRenamingFile(null);
+      setNewFileName("");
+      setSelectedFile(null);
+      setRefreshKey((prev) => prev + 1);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to rename file.");
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function handleDeleteFile(item: ListedItem) {
+    if (!confirm(`Are you sure you want to delete "${item.name}"?`)) return;
+
+    try {
+      setError(null);
+      const fullPath = [patientId, item.path].filter(Boolean).join("/");
+
+      const { error: deleteError } = await supabaseClient.storage
+        .from(BUCKET_NAME)
+        .remove([fullPath]);
+
+      if (deleteError) throw deleteError;
+
+      if (selectedFile?.path === item.path) {
+        setSelectedFile(null);
+      }
+      setRefreshKey((prev) => prev + 1);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to delete file.");
+    }
+  }
+
   const selectedMimeType = (() => {
     if (!selectedFile || selectedFile.kind !== "file") return "";
     const fromMeta = selectedFile.metadata?.mimetype;
@@ -468,15 +552,14 @@ export default function PatientDocumentsTab({
                     ].includes(ext);
 
                     return (
-                      <button
+                      <div
                         key={item.path}
-                        type="button"
-                        onClick={() => handleSelectFile(item)}
-                        className={`flex flex-col gap-1 rounded-lg border px-2 py-2 text-left text-[11px] ${
+                        className={`group relative flex flex-col gap-1 rounded-lg border px-2 py-2 text-left text-[11px] cursor-pointer ${
                           isSelected
                             ? "border-sky-400 bg-sky-50/70 shadow-[0_0_0_1px_rgba(56,189,248,0.4)]"
                             : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/60"
                         }`}
+                        onClick={() => handleSelectFile(item)}
                       >
                         <div className="flex items-center gap-2">
                           <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
@@ -502,7 +585,36 @@ export default function PatientDocumentsTab({
                             </p>
                           </div>
                         </div>
-                      </button>
+                        {/* Action buttons - show on hover */}
+                        <div className="absolute right-1 top-1 hidden group-hover:flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartRename(item);
+                            }}
+                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            title="Rename"
+                          >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFile(item);
+                            }}
+                            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                            title="Delete"
+                          >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -619,6 +731,44 @@ export default function PatientDocumentsTab({
             setRefreshKey((k) => k + 1);
           }}
         />
+      ) : null}
+      {/* Rename Modal */}
+      {renamingFile ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="mb-4 text-sm font-semibold text-slate-900">Rename File</h3>
+            <form onSubmit={handleRename}>
+              <input
+                type="text"
+                value={newFileName}
+                onChange={(e) => setNewFileName(e.target.value)}
+                className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder="Enter new file name..."
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRenamingFile(null);
+                    setNewFileName("");
+                  }}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  disabled={renaming}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={renaming || !newFileName.trim()}
+                  className="rounded-lg bg-sky-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-50"
+                >
+                  {renaming ? "Renaming..." : "Rename"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       ) : null}
     </>
   );
