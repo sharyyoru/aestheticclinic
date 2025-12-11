@@ -13,6 +13,7 @@ type AppointmentModalProps = {
   open: boolean;
   onClose: () => void;
   onSubmit: (data: AppointmentData) => Promise<void>;
+  onSuccess?: () => void;
   patientId: string;
   patientName: string;
   dealId?: string | null;
@@ -42,6 +43,7 @@ export default function AppointmentModal({
   open,
   onClose,
   onSubmit,
+  onSuccess,
   patientId,
   patientName,
   dealId,
@@ -49,7 +51,7 @@ export default function AppointmentModal({
 }: AppointmentModalProps) {
   const [title, setTitle] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState("60");
+  const [durationMinutes, setDurationMinutes] = useState("15");
   const [location, setLocation] = useState("Geneva");
   const [notes, setNotes] = useState("");
   const [sendPatientEmail, setSendPatientEmail] = useState(true);
@@ -57,6 +59,7 @@ export default function AppointmentModal({
   const [scheduleReminder, setScheduleReminder] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   // User selection state
   const [users, setUsers] = useState<PlatformUser[]>([]);
@@ -159,18 +162,30 @@ export default function AppointmentModal({
         scheduleReminder,
       });
 
-      // Reset form
-      setTitle("");
-      setAppointmentDate("");
-      setDurationMinutes("60");
-      setLocation("Geneva");
-      setNotes("");
-      setSendPatientEmail(true);
-      setSendUserEmail(true);
-      setScheduleReminder(true);
-      setAssignedUserId("");
-      setUserSearch("");
-      onClose();
+      // Show success message
+      setSuccess(true);
+      
+      // Call onSuccess callback (to prevent stage revert)
+      if (onSuccess) {
+        onSuccess();
+      }
+      
+      // Auto-close after showing success message
+      setTimeout(() => {
+        // Reset form
+        setTitle("");
+        setAppointmentDate("");
+        setDurationMinutes("15");
+        setLocation("Geneva");
+        setNotes("");
+        setSendPatientEmail(true);
+        setSendUserEmail(true);
+        setScheduleReminder(true);
+        setAssignedUserId("");
+        setUserSearch("");
+        setSuccess(false);
+        onClose();
+      }, 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create appointment.");
     } finally {
@@ -203,6 +218,17 @@ export default function AppointmentModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {success && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 text-center">
+              <div className="flex justify-center mb-2">
+                <svg className="h-8 w-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-emerald-700">Appointment Booked Successfully!</p>
+              <p className="text-xs text-emerald-600 mt-1">Redirecting...</p>
+            </div>
+          )}
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
@@ -308,11 +334,7 @@ export default function AppointmentModal({
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               >
                 <option value="15">15 minutes</option>
-                <option value="30">30 minutes</option>
                 <option value="45">45 minutes</option>
-                <option value="60">1 hour</option>
-                <option value="90">1.5 hours</option>
-                <option value="120">2 hours</option>
               </select>
             </div>
           </div>

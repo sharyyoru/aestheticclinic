@@ -33,6 +33,15 @@ type DealService = {
   name: string | null;
 };
 
+type DealAppointment = {
+  id: string;
+  start_time: string;
+  end_time: string;
+  status: string;
+  reason: string | null;
+  location: string | null;
+};
+
 type DealRow = {
   id: string;
   patient_id: string;
@@ -48,6 +57,7 @@ type DealRow = {
   updated_at: string;
   patient: DealPatient | null;
   service: DealService | null;
+  appointment?: DealAppointment | null;
 };
 
 type DealsView = "list" | "board";
@@ -83,6 +93,7 @@ export default function DealsPage() {
   const [appointmentDeal, setAppointmentDeal] = useState<DealRow | null>(null);
   const [appointmentPreviousStageId, setAppointmentPreviousStageId] = useState<string | null>(null);
   const [appointmentTargetStageId, setAppointmentTargetStageId] = useState<string | null>(null);
+  const [appointmentSuccess, setAppointmentSuccess] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -144,7 +155,36 @@ export default function DealsPage() {
           return;
         }
 
-        setDeals(dealsData as unknown as DealRow[]);
+        // Fetch appointments for patients to link to deals in "Appointment Set" stage
+        const patientIds = [...new Set((dealsData as unknown as DealRow[]).map(d => d.patient_id))];
+        const { data: appointmentsData } = await supabaseClient
+          .from("appointments")
+          .select("id, patient_id, start_time, end_time, status, reason, location")
+          .in("patient_id", patientIds)
+          .order("start_time", { ascending: false });
+
+        // Map appointments by patient_id (most recent first)
+        const appointmentsByPatient: Record<string, DealAppointment> = {};
+        if (appointmentsData) {
+          for (const apt of appointmentsData) {
+            if (!appointmentsByPatient[apt.patient_id]) {
+              appointmentsByPatient[apt.patient_id] = apt as DealAppointment;
+            }
+          }
+        }
+
+        // Attach appointments to deals in "Appointment Set" stage
+        const appointmentSetStage = stagesData?.find(
+          (s: DealStage) => s.name.toLowerCase().includes("appointment set")
+        );
+        const dealsWithAppointments = (dealsData as unknown as DealRow[]).map(deal => {
+          if (appointmentSetStage && deal.stage_id === appointmentSetStage.id) {
+            return { ...deal, appointment: appointmentsByPatient[deal.patient_id] || null };
+          }
+          return deal;
+        });
+
+        setDeals(dealsWithAppointments);
         setLoading(false);
       } catch {
         if (!isMounted) return;
@@ -626,7 +666,27 @@ export default function DealsPage() {
                                 {deal.pipeline || "Geneva"}
                               </td>
                               <td className="py-2 pr-3 align-top text-slate-700">
-                                {stageName}
+                                <span>{stageName}</span>
+                                {/* Show appointment details for "Appointment Set" stage */}
+                                {deal.appointment && (
+                                  <div className="mt-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1">
+                                    <div className="flex items-center gap-1 text-emerald-700">
+                                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      <span className="text-[10px] font-medium">
+                                        {new Date(deal.appointment.start_time).toLocaleDateString("en-US", {
+                                          month: "short",
+                                          day: "numeric",
+                                        })}{" "}
+                                        {new Date(deal.appointment.start_time).toLocaleTimeString("en-US", {
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
                               </td>
                               <td className="py-2 pr-3 align-top text-slate-700">
                                 {serviceName}
@@ -833,6 +893,34 @@ export default function DealsPage() {
                                   <p className="mt-0.5 text-[10px] text-slate-500">
                                     Created: {createdLabel}
                                   </p>
+                                  {/* Show appointment details for "Appointment Set" stage */}
+                                  {deal.appointment && (
+                                    <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 p-2">
+                                      <div className="flex items-center gap-1.5 text-emerald-700">
+                                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        <span className="text-[10px] font-semibold">Appointment Scheduled</span>
+                                      </div>
+                                      <p className="mt-1 text-[10px] text-emerald-600">
+                                        {new Date(deal.appointment.start_time).toLocaleDateString("en-US", {
+                                          weekday: "short",
+                                          month: "short",
+                                          day: "numeric",
+                                        })}{" "}
+                                        at{" "}
+                                        {new Date(deal.appointment.start_time).toLocaleTimeString("en-US", {
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                        })}
+                                      </p>
+                                      {deal.appointment.location && (
+                                        <p className="text-[9px] text-emerald-500">
+                                          📍 {deal.appointment.location}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
                                   {isUpdating ? (
                                     <p className="mt-0.5 text-[9px] text-slate-400">
                                       Updating stage…
@@ -866,8 +954,8 @@ export default function DealsPage() {
       <AppointmentModal
         open={appointmentModalOpen}
         onClose={async () => {
-          // Revert deal stage on cancel
-          if (appointmentDeal && appointmentPreviousStageId) {
+          // Only revert deal stage on cancel if appointment wasn't successful
+          if (!appointmentSuccess && appointmentDeal && appointmentPreviousStageId) {
             // Revert in UI
             setDeals((prev) =>
               prev.map((deal) =>
@@ -890,6 +978,10 @@ export default function DealsPage() {
           setAppointmentDeal(null);
           setAppointmentPreviousStageId(null);
           setAppointmentTargetStageId(null);
+          setAppointmentSuccess(false);
+        }}
+        onSuccess={() => {
+          setAppointmentSuccess(true);
         }}
         onSubmit={async (data: AppointmentData) => {
           const response = await fetch("/api/appointments/create", {
@@ -912,30 +1004,8 @@ export default function DealsPage() {
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            // Revert deal stage on failure
-            if (appointmentDeal && appointmentPreviousStageId) {
-              setDeals((prev) =>
-                prev.map((deal) =>
-                  deal.id === appointmentDeal.id
-                    ? { ...deal, stage_id: appointmentPreviousStageId }
-                    : deal
-                )
-              );
-              try {
-                await supabaseClient
-                  .from("deals")
-                  .update({ stage_id: appointmentPreviousStageId, updated_at: new Date().toISOString() })
-                  .eq("id", appointmentDeal.id);
-              } catch (revertErr) {
-                console.error("Failed to revert deal stage:", revertErr);
-              }
-            }
             throw new Error(errorData.error || "Failed to create appointment");
           }
-          
-          // Success - clear the stage tracking state
-          setAppointmentPreviousStageId(null);
-          setAppointmentTargetStageId(null);
         }}
         patientId={appointmentDeal?.patient_id || ""}
         patientName={
