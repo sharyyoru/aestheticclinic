@@ -13,18 +13,33 @@ type AttachmentInfo = {
 };
 
 export async function POST(request: Request) {
+  // Log that webhook was hit - this helps debug if Mailgun is reaching us
+  console.log("=== MAILGUN INBOUND WEBHOOK HIT ===");
+  console.log("Timestamp:", new Date().toISOString());
+  
   try {
     // Parse the incoming webhook data from Mailgun
     const formData = await request.formData();
     
-    const from = formData.get("from")?.toString() || "";
-    const to = formData.get("To")?.toString() || "";
-    const subject = formData.get("Subject")?.toString() || "";
+    // Log all form data keys for debugging
+    const formDataKeys = Array.from(formData.keys());
+    console.log("Form data keys received:", formDataKeys);
+    
+    const from = formData.get("from")?.toString() || formData.get("From")?.toString() || "";
+    const to = formData.get("To")?.toString() || formData.get("to")?.toString() || formData.get("recipient")?.toString() || "";
+    const subject = formData.get("Subject")?.toString() || formData.get("subject")?.toString() || "";
     const bodyPlain = formData.get("body-plain")?.toString() || "";
     const bodyHtml = formData.get("body-html")?.toString() || "";
     const timestamp = formData.get("timestamp")?.toString() || "";
     const inReplyTo = formData.get("In-Reply-To")?.toString() || "";
     const references = formData.get("References")?.toString() || "";
+    
+    // Log key email details
+    console.log("INBOUND EMAIL DETAILS:");
+    console.log("  From:", from);
+    console.log("  To:", to);
+    console.log("  Subject:", subject);
+    console.log("  Body length:", (bodyPlain || bodyHtml).length);
     
     // Get custom variables we set when sending
     const emailId = formData.get("email-id")?.toString() || "";
