@@ -57,6 +57,7 @@ export default function WorkflowsPage() {
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   
   // Filters
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
@@ -181,6 +182,34 @@ export default function WorkflowsPage() {
       setError(err instanceof Error ? err.message : "Failed to delete workflow");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function duplicateWorkflow(workflow: WorkflowRow) {
+    try {
+      setDuplicatingId(workflow.id);
+
+      // Create a copy of the workflow with a new name
+      const { data: newWorkflow, error } = await supabaseClient
+        .from("workflows")
+        .insert({
+          name: `${workflow.name} (Copy)`,
+          trigger_type: workflow.trigger_type,
+          active: false, // Start as inactive
+          config: workflow.config,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (newWorkflow) {
+        setWorkflows((prev) => [newWorkflow as WorkflowRow, ...prev]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to duplicate workflow");
+    } finally {
+      setDuplicatingId(null);
     }
   }
 
@@ -431,6 +460,16 @@ export default function WorkflowsPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
                     </Link>
+                    <button
+                      onClick={() => duplicateWorkflow(workflow)}
+                      disabled={duplicatingId === workflow.id}
+                      className="rounded-lg p-2 text-slate-400 hover:bg-sky-50 hover:text-sky-500 disabled:opacity-50"
+                      title="Duplicate"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
                     <button
                       onClick={() => deleteWorkflow(workflow)}
                       disabled={deletingId === workflow.id}
