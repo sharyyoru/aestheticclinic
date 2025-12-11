@@ -75,9 +75,42 @@ export async function POST(request: Request) {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     let targetPatientId = patientId;
+    let targetEmailId = emailId;
     let originalSubject = subject;
     
-    // Try to find the original email using multiple methods
+    // Method 0: Parse smart CC/Reply-To address (format: reply+{emailId}+{patientId}@domain)
+    // Check both "to" and "cc" fields for the tracking address
+    const allRecipients = `${to} ${formData.get("Cc")?.toString() || ""}`;
+    const smartAddressMatch = allRecipients.match(/reply\+([a-f0-9-]+)\+([a-f0-9-]+)@/i);
+    if (smartAddressMatch) {
+      targetEmailId = smartAddressMatch[1];
+      targetPatientId = smartAddressMatch[2];
+      console.log("Parsed smart address - emailId:", targetEmailId, "patientId:", targetPatientId);
+    } else {
+      // Try format with just emailId: reply+{emailId}@domain
+      const simpleMatch = allRecipients.match(/reply\+([a-f0-9-]+)@/i);
+      if (simpleMatch) {
+        targetEmailId = simpleMatch[1];
+        console.log("Parsed simple smart address - emailId:", targetEmailId);
+      }
+    }
+    
+    // If we found emailId from smart address, look up the patient
+    if (targetEmailId && !targetPatientId) {
+      const { data: originalEmail } = await supabase
+        .from("emails")
+        .select("patient_id, subject")
+        .eq("id", targetEmailId)
+        .single();
+      
+      if (originalEmail) {
+        targetPatientId = originalEmail.patient_id;
+        originalSubject = originalEmail.subject;
+        console.log("Found patient from emailId:", targetPatientId);
+      }
+    }
+    
+    // Try to find the original email using multiple methods if still not found
     if (!targetPatientId) {
       // Method 1: Check if this is a reply using In-Reply-To header
       if (inReplyTo) {
@@ -112,7 +145,7 @@ export async function POST(request: Request) {
         }
       }
       
-      // Method 3: Try to find by matching recipient email (the "from" in the reply is the patient)
+      // Method 3: Try to find by matching sender email (the "from" in the reply is the patient)
       if (!targetPatientId) {
         // Extract email from "Name <email@domain.com>" format
         const emailMatch = from.match(/<([^>]+)>/) || [null, from];

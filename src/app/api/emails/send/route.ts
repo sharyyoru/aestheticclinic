@@ -55,14 +55,15 @@ export async function POST(request: Request) {
 
     const domain = mailgunDomain as string;
 
-    // Always send from Mailgun domain so replies are captured
-    // Store actual user email in custom variables for reference
-    const fromAddress = mailgunFromEmail || `no-reply@${domain}`;
-    
-    // Use staff member's name if provided, otherwise use clinic name
+    // Use the user's email if provided (must be verified in Mailgun)
+    // Otherwise fall back to the default Mailgun from email
+    let fromAddress = mailgunFromEmail || `clinic@${domain}`;
     let fromName = mailgunFromName;
+    
     if (fromUserEmail && fromUserEmail.trim().length > 0) {
-      // Extract name from email if available, or use email prefix
+      // Use user's actual email as sender
+      fromAddress = fromUserEmail.trim();
+      // Extract name from email
       const emailPrefix = fromUserEmail.split("@")[0];
       fromName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
     }
@@ -74,10 +75,19 @@ export async function POST(request: Request) {
     formData.append("subject", trimmedSubject);
     formData.append("html", trimmedHtml);
     
-    // Set Reply-To to Mailgun domain so replies come back through webhook
-    // Using clinic address ensures all replies are captured
-    const replyToAddress = `clinic@${domain}`;
+    // Create a unique reply-to address with embedded email ID for tracking
+    // Format: reply+{emailId}+{patientId}@mg.domain.com
+    // This allows us to track which email the reply is for
+    let replyToAddress = `clinic@${domain}`;
+    if (emailId && patientId) {
+      replyToAddress = `reply+${emailId}+${patientId}@${domain}`;
+    } else if (emailId) {
+      replyToAddress = `reply+${emailId}@${domain}`;
+    }
     formData.append("h:Reply-To", replyToAddress);
+    
+    // Also CC the tracking address so we always get a copy
+    formData.append("cc", replyToAddress);
     
     // Add custom headers for reply tracking and metadata
     if (emailId) {
