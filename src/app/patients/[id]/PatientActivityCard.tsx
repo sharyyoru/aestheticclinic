@@ -303,6 +303,7 @@ export default function PatientActivityCard({
   // Appointment modal state
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const [appointmentDeal, setAppointmentDeal] = useState<Deal | null>(null);
+  const [appointmentPreviousStageId, setAppointmentPreviousStageId] = useState<string | null>(null);
   const [dealTitle, setDealTitle] = useState("");
   const [dealStageId, setDealStageId] = useState<string>("");
   const [dealServiceId, setDealServiceId] = useState<string>("");
@@ -1401,6 +1402,7 @@ export default function PatientActivityCard({
           const targetStage = dealStages.find((stage) => stage.id === updated.stage_id);
           if (targetStage && targetStage.name.toLowerCase().includes("appointment set")) {
             setAppointmentDeal(updated);
+            setAppointmentPreviousStageId(previousStageId);
             setAppointmentModalOpen(true);
           }
 
@@ -4092,9 +4094,28 @@ export default function PatientActivityCard({
       {/* Appointment Modal */}
       <AppointmentModal
         open={appointmentModalOpen}
-        onClose={() => {
+        onClose={async () => {
+          // Revert deal stage on cancel
+          if (appointmentDeal && appointmentPreviousStageId) {
+            setDeals((prev) =>
+              prev.map((deal) =>
+                deal.id === appointmentDeal.id
+                  ? { ...deal, stage_id: appointmentPreviousStageId }
+                  : deal
+              )
+            );
+            try {
+              await supabaseClient
+                .from("deals")
+                .update({ stage_id: appointmentPreviousStageId, updated_at: new Date().toISOString() })
+                .eq("id", appointmentDeal.id);
+            } catch (err) {
+              console.error("Failed to revert deal stage:", err);
+            }
+          }
           setAppointmentModalOpen(false);
           setAppointmentDeal(null);
+          setAppointmentPreviousStageId(null);
         }}
         onSubmit={async (data: AppointmentData) => {
           const response = await fetch("/api/appointments/create", {
@@ -4117,8 +4138,29 @@ export default function PatientActivityCard({
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            // Revert deal stage on failure
+            if (appointmentDeal && appointmentPreviousStageId) {
+              setDeals((prev) =>
+                prev.map((deal) =>
+                  deal.id === appointmentDeal.id
+                    ? { ...deal, stage_id: appointmentPreviousStageId }
+                    : deal
+                )
+              );
+              try {
+                await supabaseClient
+                  .from("deals")
+                  .update({ stage_id: appointmentPreviousStageId, updated_at: new Date().toISOString() })
+                  .eq("id", appointmentDeal.id);
+              } catch (revertErr) {
+                console.error("Failed to revert deal stage:", revertErr);
+              }
+            }
             throw new Error(errorData.error || "Failed to create appointment");
           }
+          
+          // Success - clear the stage tracking state
+          setAppointmentPreviousStageId(null);
         }}
         patientId={appointmentDeal?.patient_id || patientId}
         patientName="Patient"

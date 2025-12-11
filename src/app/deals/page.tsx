@@ -81,6 +81,8 @@ export default function DealsPage() {
   // Appointment modal state
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const [appointmentDeal, setAppointmentDeal] = useState<DealRow | null>(null);
+  const [appointmentPreviousStageId, setAppointmentPreviousStageId] = useState<string | null>(null);
+  const [appointmentTargetStageId, setAppointmentTargetStageId] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -343,8 +345,10 @@ export default function DealsPage() {
         // Check if the target stage is "Appointment Set" to show the appointment modal
         const targetStage = dealStages.find((stage) => stage.id === stageId);
         if (targetStage && targetStage.name.toLowerCase().includes("appointment set")) {
-          // Show the appointment modal
+          // Show the appointment modal - store stage info for potential revert
           setAppointmentDeal(current);
+          setAppointmentPreviousStageId(previousStageId);
+          setAppointmentTargetStageId(stageId);
           setAppointmentModalOpen(true);
         }
         
@@ -861,9 +865,31 @@ export default function DealsPage() {
       {/* Appointment Modal */}
       <AppointmentModal
         open={appointmentModalOpen}
-        onClose={() => {
+        onClose={async () => {
+          // Revert deal stage on cancel
+          if (appointmentDeal && appointmentPreviousStageId) {
+            // Revert in UI
+            setDeals((prev) =>
+              prev.map((deal) =>
+                deal.id === appointmentDeal.id
+                  ? { ...deal, stage_id: appointmentPreviousStageId }
+                  : deal
+              )
+            );
+            // Revert in database
+            try {
+              await supabaseClient
+                .from("deals")
+                .update({ stage_id: appointmentPreviousStageId, updated_at: new Date().toISOString() })
+                .eq("id", appointmentDeal.id);
+            } catch (err) {
+              console.error("Failed to revert deal stage:", err);
+            }
+          }
           setAppointmentModalOpen(false);
           setAppointmentDeal(null);
+          setAppointmentPreviousStageId(null);
+          setAppointmentTargetStageId(null);
         }}
         onSubmit={async (data: AppointmentData) => {
           const response = await fetch("/api/appointments/create", {
@@ -886,8 +912,30 @@ export default function DealsPage() {
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            // Revert deal stage on failure
+            if (appointmentDeal && appointmentPreviousStageId) {
+              setDeals((prev) =>
+                prev.map((deal) =>
+                  deal.id === appointmentDeal.id
+                    ? { ...deal, stage_id: appointmentPreviousStageId }
+                    : deal
+                )
+              );
+              try {
+                await supabaseClient
+                  .from("deals")
+                  .update({ stage_id: appointmentPreviousStageId, updated_at: new Date().toISOString() })
+                  .eq("id", appointmentDeal.id);
+              } catch (revertErr) {
+                console.error("Failed to revert deal stage:", revertErr);
+              }
+            }
             throw new Error(errorData.error || "Failed to create appointment");
           }
+          
+          // Success - clear the stage tracking state
+          setAppointmentPreviousStageId(null);
+          setAppointmentTargetStageId(null);
         }}
         patientId={appointmentDeal?.patient_id || ""}
         patientName={

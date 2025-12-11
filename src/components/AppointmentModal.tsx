@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 
-type Provider = {
+type PlatformUser = {
   id: string;
-  name: string | null;
+  full_name: string | null;
   email: string | null;
 };
 
@@ -58,58 +58,59 @@ export default function AppointmentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Provider selection state
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [providerId, setProviderId] = useState<string>("");
-  const [providerSearch, setProviderSearch] = useState("");
-  const [providerDropdownOpen, setProviderDropdownOpen] = useState(false);
-  const providerDropdownRef = useRef<HTMLDivElement>(null);
+  // User selection state
+  const [users, setUsers] = useState<PlatformUser[]>([]);
+  const [assignedUserId, setAssignedUserId] = useState<string>("");
+  const [userSearch, setUserSearch] = useState("");
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Load providers on mount
+  // Load platform users on mount
   useEffect(() => {
-    async function loadProviders() {
-      const { data } = await supabaseClient
-        .from("providers")
-        .select("id, name, email")
-        .order("name", { ascending: true });
-      
-      if (data) {
-        setProviders(data as Provider[]);
+    async function loadUsers() {
+      try {
+        const response = await fetch("/api/users/list");
+        if (response.ok) {
+          const data = await response.json();
+          setUsers(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error("Failed to load users:", err);
       }
     }
-    loadProviders();
+    loadUsers();
   }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (providerDropdownRef.current && !providerDropdownRef.current.contains(event.target as Node)) {
-        setProviderDropdownOpen(false);
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setUserDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filter providers based on search
-  const filteredProviders = providers.filter((provider) => {
-    if (!providerSearch.trim()) return true;
-    const search = providerSearch.toLowerCase();
+  // Filter users based on search
+  const filteredUsers = users.filter((user) => {
+    if (!userSearch.trim()) return true;
+    const search = userSearch.toLowerCase();
     return (
-      (provider.name?.toLowerCase() || "").includes(search) ||
-      (provider.email?.toLowerCase() || "").includes(search)
+      (user.full_name?.toLowerCase() || "").includes(search) ||
+      (user.email?.toLowerCase() || "").includes(search)
     );
   });
 
-  function handleProviderSelect(provider: Provider) {
-    setProviderId(provider.id);
-    setProviderSearch(provider.name || provider.email || "");
-    setProviderDropdownOpen(false);
+  function handleUserSelect(user: PlatformUser) {
+    setAssignedUserId(user.id);
+    setUserSearch(user.full_name || user.email || "");
+    setUserDropdownOpen(false);
   }
 
-  function clearProvider() {
-    setProviderId("");
-    setProviderSearch("");
+  function clearUser() {
+    setAssignedUserId("");
+    setUserSearch("");
   }
 
   useEffect(() => {
@@ -121,8 +122,8 @@ export default function AppointmentModal({
       setAppointmentDate(formatDateTimeLocal(tomorrow));
       setTitle(`Appointment with ${patientName}`);
       setError(null);
-      setProviderId("");
-      setProviderSearch("");
+      setAssignedUserId("");
+      setUserSearch("");
     }
   }, [open, patientName]);
 
@@ -147,7 +148,7 @@ export default function AppointmentModal({
       await onSubmit({
         patientId,
         dealId,
-        providerId: providerId || null,
+        providerId: assignedUserId || null,
         title: title.trim() || `Appointment with ${patientName}`,
         appointmentDate,
         durationMinutes: parseInt(durationMinutes, 10) || 60,
@@ -167,8 +168,8 @@ export default function AppointmentModal({
       setSendPatientEmail(true);
       setSendUserEmail(true);
       setScheduleReminder(true);
-      setProviderId("");
-      setProviderSearch("");
+      setAssignedUserId("");
+      setUserSearch("");
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create appointment.");
@@ -208,30 +209,30 @@ export default function AppointmentModal({
             </div>
           )}
 
-          {/* Provider/Staff Selection */}
-          <div className="space-y-2" ref={providerDropdownRef}>
+          {/* User/Staff Selection */}
+          <div className="space-y-2" ref={userDropdownRef}>
             <label className="block text-sm font-medium text-slate-700">
               Assign to Staff <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <input
                 type="text"
-                value={providerSearch}
+                value={userSearch}
                 onChange={(e) => {
-                  setProviderSearch(e.target.value);
-                  setProviderDropdownOpen(true);
+                  setUserSearch(e.target.value);
+                  setUserDropdownOpen(true);
                   if (!e.target.value.trim()) {
-                    setProviderId("");
+                    setAssignedUserId("");
                   }
                 }}
-                onFocus={() => setProviderDropdownOpen(true)}
+                onFocus={() => setUserDropdownOpen(true)}
                 placeholder="Search for a staff member..."
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
-              {providerId && (
+              {assignedUserId && (
                 <button
                   type="button"
-                  onClick={clearProvider}
+                  onClick={clearUser}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -239,32 +240,32 @@ export default function AppointmentModal({
                   </svg>
                 </button>
               )}
-              {providerDropdownOpen && filteredProviders.length > 0 && (
+              {userDropdownOpen && filteredUsers.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-                  {filteredProviders.map((provider) => (
+                  {filteredUsers.map((user) => (
                     <button
-                      key={provider.id}
+                      key={user.id}
                       type="button"
-                      onClick={() => handleProviderSelect(provider)}
+                      onClick={() => handleUserSelect(user)}
                       className={`w-full px-4 py-2.5 text-left text-sm hover:bg-emerald-50 ${
-                        providerId === provider.id ? "bg-emerald-50 text-emerald-700" : "text-slate-700"
+                        assignedUserId === user.id ? "bg-emerald-50 text-emerald-700" : "text-slate-700"
                       }`}
                     >
-                      <div className="font-medium">{provider.name || "Unnamed"}</div>
-                      {provider.email && (
-                        <div className="text-xs text-slate-500">{provider.email}</div>
+                      <div className="font-medium">{user.full_name || "Unnamed"}</div>
+                      {user.email && (
+                        <div className="text-xs text-slate-500">{user.email}</div>
                       )}
                     </button>
                   ))}
                 </div>
               )}
-              {providerDropdownOpen && filteredProviders.length === 0 && providerSearch.trim() && (
+              {userDropdownOpen && filteredUsers.length === 0 && userSearch.trim() && (
                 <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-500 shadow-lg">
                   No staff members found
                 </div>
               )}
             </div>
-            {!providerId && (
+            {!assignedUserId && (
               <p className="text-xs text-slate-500">
                 Select which staff member&apos;s calendar this appointment will be added to
               </p>

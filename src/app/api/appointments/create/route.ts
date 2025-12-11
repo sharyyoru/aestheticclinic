@@ -261,20 +261,19 @@ export async function POST(request: Request) {
       .join(" ") || "Patient";
     const patientEmail = patient.email;
 
-    // Get provider details if providerId provided
-    let providerName = "Staff Member";
-    let providerEmail: string | null = null;
+    // Get user details if providerId (userId) provided
+    let assignedUserName = "Staff Member";
+    let assignedUserEmail: string | null = null;
 
     if (providerId) {
-      const { data: providerData } = await supabase
-        .from("providers")
-        .select("id, name, email")
-        .eq("id", providerId)
-        .single();
-      
-      if (providerData) {
-        providerName = providerData.name || "Staff Member";
-        providerEmail = providerData.email || null;
+      // providerId is actually a user ID from the platform users
+      const { data: userData } = await supabase.auth.admin.getUserById(providerId);
+      if (userData?.user) {
+        const meta = userData.user.user_metadata || {};
+        assignedUserName = meta.full_name || 
+                          [meta.first_name, meta.last_name].filter(Boolean).join(" ") || 
+                          userData.user.email?.split("@")[0] || "Staff Member";
+        assignedUserEmail = userData.user.email || null;
       }
     }
 
@@ -285,8 +284,8 @@ export async function POST(request: Request) {
 
     // Build reason field (title + notes + status)
     let reason = title || `Appointment with ${patientName}`;
-    if (providerName && providerName !== "Staff Member") {
-      reason += ` [Doctor: ${providerName}]`;
+    if (assignedUserName && assignedUserName !== "Staff Member") {
+      reason += ` [Doctor: ${assignedUserName}]`;
     }
     if (notes) {
       reason += ` [Notes: ${notes}]`;
@@ -339,10 +338,10 @@ export async function POST(request: Request) {
     }
 
     // Send notification email to provider/staff
-    if (sendUserEmail && providerEmail) {
+    if (sendUserEmail && assignedUserEmail) {
       try {
         const userEmailHtml = generateUserEmailHtml(
-          providerName,
+          assignedUserName,
           patientName,
           patientEmail || "Not provided",
           appointmentDateObj,
@@ -350,11 +349,11 @@ export async function POST(request: Request) {
           notes || null
         );
         await sendEmail(
-          providerEmail,
+          assignedUserEmail,
           `New Appointment: ${patientName} - ${formatAppointmentDate(appointmentDateObj)}`,
           userEmailHtml
         );
-        console.log("Provider notification email sent to:", providerEmail);
+        console.log("Provider notification email sent to:", assignedUserEmail);
       } catch (err) {
         console.error("Error sending provider email:", err);
       }
@@ -404,10 +403,10 @@ export async function POST(request: Request) {
         }
 
         // Schedule provider reminder
-        if (providerEmail) {
+        if (assignedUserEmail) {
           try {
             const providerReminderHtml = generateReminderEmailHtml(
-              providerName,
+              assignedUserName,
               false,
               patientName,
               appointmentDateObj,
@@ -418,7 +417,7 @@ export async function POST(request: Request) {
               patient_id: patientId,
               appointment_id: appointmentId,
               recipient_type: "provider",
-              recipient_email: providerEmail,
+              recipient_email: assignedUserEmail,
               subject: `Reminder: Appointment with ${patientName} Tomorrow`,
               body: providerReminderHtml,
               scheduled_for: reminderDate.toISOString(),
@@ -426,7 +425,7 @@ export async function POST(request: Request) {
             });
 
             await sendEmail(
-              providerEmail,
+              assignedUserEmail,
               `Reminder: Appointment with ${patientName} Tomorrow`,
               providerReminderHtml,
               reminderDate
@@ -445,7 +444,7 @@ export async function POST(request: Request) {
       message: "Appointment created successfully",
       emailsSent: {
         patient: sendPatientEmail && !!patientEmail,
-        provider: sendUserEmail && !!providerEmail,
+        provider: sendUserEmail && !!assignedUserEmail,
       },
       reminderScheduled: scheduleReminder,
     });
