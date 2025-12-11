@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import BeforeAfterEditorModal from "./BeforeAfterEditorModal";
+import PdfAnnotationEditor from "@/components/PdfAnnotationEditor";
 
 interface PatientDocumentsTabProps {
   patientId: string;
@@ -59,6 +60,7 @@ export default function PatientDocumentsTab({
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [showBeforeAfterEditor, setShowBeforeAfterEditor] = useState(false);
+  const [showPdfEditor, setShowPdfEditor] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -535,11 +537,23 @@ export default function PatientDocumentsTab({
                   className="max-h-[360px] w-auto max-w-full rounded-md border border-slate-200 bg-slate-100 object-contain"
                 />
               ) : isPdf ? (
-                <iframe
-                  src={selectedFilePreviewUrl}
-                  className="h-[360px] w-full rounded-md border border-slate-200 bg-white"
-                  title={selectedFile.name}
-                />
+                <div className="flex flex-col items-center gap-3">
+                  <iframe
+                    src={selectedFilePreviewUrl}
+                    className="h-[320px] w-full rounded-md border border-slate-200 bg-white"
+                    title={selectedFile.name}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPdfEditor(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-sky-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow hover:bg-sky-600"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit PDF
+                  </button>
+                </div>
               ) : isVideo ? (
                 <video
                   src={selectedFilePreviewUrl}
@@ -576,6 +590,34 @@ export default function PatientDocumentsTab({
           patientId={patientId}
           images={beforeAfterImages}
           onError={(message) => setError(message)}
+        />
+      ) : null}
+      {showPdfEditor && selectedFile && isPdf && selectedFilePreviewUrl ? (
+        <PdfAnnotationEditor
+          open={showPdfEditor}
+          onClose={() => setShowPdfEditor(false)}
+          pdfUrl={selectedFilePreviewUrl}
+          fileName={selectedFile.name}
+          onSave={async (blob, newFileName) => {
+            // Upload the annotated PDF to storage
+            const folderPath = [patientId, currentPrefix].filter(Boolean).join("/");
+            const uploadPath = folderPath ? `${folderPath}/${newFileName}` : `${patientId}/${newFileName}`;
+            
+            const { error: uploadError } = await supabaseClient.storage
+              .from(BUCKET_NAME)
+              .upload(uploadPath, blob, {
+                contentType: "application/pdf",
+                upsert: false,
+              });
+            
+            if (uploadError) {
+              setError(`Failed to save annotated PDF: ${uploadError.message}`);
+              throw uploadError;
+            }
+            
+            // Refresh the file list
+            setRefreshKey((k) => k + 1);
+          }}
         />
       ) : null}
     </>
