@@ -13,12 +13,13 @@ if (!mailgunApiKey || !mailgunDomain) {
 
 export async function POST(request: Request) {
   try {
-    const { to, subject, html, fromUserEmail, emailId } = (await request.json()) as {
+    const { to, subject, html, fromUserEmail, emailId, patientId } = (await request.json()) as {
       to?: string;
       subject?: string;
       html?: string;
       fromUserEmail?: string | null;
       emailId?: string | null;
+      patientId?: string | null;
     };
 
     if (!to || !subject || !html) {
@@ -41,17 +42,10 @@ export async function POST(request: Request) {
 
     const domain = mailgunDomain as string;
 
-    const replyAlias = emailId ? `reply+${emailId}@${domain}` : null;
-
+    // Use actual user email if provided, otherwise use system default
     let fromAddress = mailgunFromEmail || `no-reply@${domain}`;
-    let replyTo: string | null = replyAlias;
-
     if (fromUserEmail && fromUserEmail.trim().length > 0) {
-      const userEmail = fromUserEmail.trim();
-      fromAddress = userEmail;
-      if (!replyAlias) {
-        replyTo = userEmail;
-      }
+      fromAddress = fromUserEmail.trim();
     }
 
     const params = new URLSearchParams();
@@ -59,9 +53,13 @@ export async function POST(request: Request) {
     params.append("to", trimmedTo);
     params.append("subject", trimmedSubject);
     params.append("html", trimmedHtml);
-
-    if (replyTo) {
-      params.append("h:Reply-To", replyTo);
+    
+    // Add custom header with email ID for reply tracking
+    if (emailId) {
+      params.append("v:email-id", emailId);
+    }
+    if (patientId) {
+      params.append("v:patient-id", patientId);
     }
 
     const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
@@ -88,7 +86,11 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true });
+    // Get the Message-ID from Mailgun response for reply tracking
+    const mailgunResponse = await response.json();
+    const messageId = mailgunResponse.id || null;
+
+    return NextResponse.json({ ok: true, messageId });
   } catch (error) {
     console.error("Error sending email via Mailgun", error);
     return NextResponse.json(

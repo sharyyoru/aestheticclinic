@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { stripEmailSignature } from "@/utils/emailCleaner";
 
 type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals";
 
@@ -1824,16 +1825,25 @@ export default function PatientActivityCard({
             html: finalBody,
             fromUserEmail: fromAddress,
             emailId: insertedEmail.id,
+            patientId: patientId,
           }),
         });
 
-        let payload: unknown = null;
+        let payload: { ok?: boolean; messageId?: string } | null = null;
         try {
           payload = await response.json();
         } catch {
         }
 
         console.log("/api/emails/send response", response.status, payload);
+
+        // Store Message-ID from Mailgun for reply tracking
+        if (payload?.messageId) {
+          await supabaseClient
+            .from("emails")
+            .update({ message_id: payload.messageId })
+            .eq("id", insertedEmail.id);
+        }
 
         if (!response.ok) {
           setEmailSaveError(
@@ -3805,7 +3815,11 @@ export default function PatientActivityCard({
               </p>
               <div
                 className="prose prose-xs max-w-none text-slate-800 [&_*]:text-[11px]"
-                dangerouslySetInnerHTML={{ __html: viewEmail.body }}
+                dangerouslySetInnerHTML={{ 
+                  __html: viewEmail.direction === "inbound" 
+                    ? stripEmailSignature(viewEmail.body, true) 
+                    : viewEmail.body 
+                }}
               />
             </div>
             <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-800">

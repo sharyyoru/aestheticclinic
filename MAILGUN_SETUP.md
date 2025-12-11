@@ -1,24 +1,37 @@
 # Mailgun Email Reply Logging Setup Guide
 
 ## Overview
-This system allows automatic logging of email replies from patients into the CRM system. When a patient replies to an email sent from the system, their reply is automatically captured and stored in the database.
+This system allows automatic logging of email replies from patients into the CRM system. When a patient replies to an email sent from the system, their reply is automatically captured, cleaned, and stored in the database.
 
 ## How It Works
 
-1. **Outbound Emails**: When sending emails through the system, a unique reply-to address is generated:
-   - Format: `reply+<email_id>@yourdomain.com`
-   - Example: `reply+123e4567-e89b-12d3-a456-426614174000@mg.aesthetics-ge.ch`
+1. **Outbound Emails**: When sending emails through the system:
+   - Emails are sent from the actual user's email address (not a generic no-reply address)
+   - Mailgun generates a unique Message-ID for each email
+   - The system stores this Message-ID in the database for thread tracking
+   - Custom headers include patient_id and email_id for fallback tracking
 
 2. **Inbound Replies**: When a patient replies:
-   - Mailgun receives the reply at the reply-to address
-   - Mailgun forwards the reply to your webhook endpoint
-   - The system extracts the original email ID from the reply-to address
-   - The reply is logged as an inbound email in the database
+   - The reply includes standard email headers: `In-Reply-To` and `References`
+   - Mailgun receives the reply and forwards it to your webhook endpoint
+   - The system matches the reply to the original email using these headers
+   - Email signatures, disclaimers, and quoted text are automatically stripped
+   - The cleaned reply is logged as an inbound email in the database
 
 3. **Database Storage**: Reply emails are stored in the `emails` table with:
    - `direction: "inbound"`
    - `status: "received"`
+   - `from_address`: Shows the actual patient email (not a system alias)
    - Linked to the correct patient via `patient_id`
+   - Clean content without email signatures and jargon
+
+## Key Benefits
+
+✅ **Professional**: Emails come from real staff email addresses, not generic aliases  
+✅ **Clean Display**: Automatic removal of signatures, disclaimers, and quoted text  
+✅ **Smart Tracking**: Uses standard email headers (In-Reply-To, References) for thread matching  
+✅ **Fallback Methods**: Multiple ways to match replies to patients if headers are missing  
+✅ **HTML Support**: Properly renders and cleans HTML emails
 
 ## Mailgun Configuration Steps
 
@@ -32,8 +45,9 @@ This system allows automatic logging of email replies from patients into the CRM
 
 **Match Recipient:**
 ```
-match_recipient("reply\+.*@mg.aesthetics-ge.ch")
+match_recipient(".*@mg.aesthetics-ge.ch")
 ```
+*Note: This catches ALL incoming emails to your domain. The webhook will intelligently match them to patients.*
 
 **Actions:**
 - Select: **Forward to URL**
@@ -42,7 +56,7 @@ match_recipient("reply\+.*@mg.aesthetics-ge.ch")
 
 **Priority:** 1 (or higher than other routes)
 
-**Description:** "Forward email replies to CRM webhook"
+**Description:** "Forward all incoming emails to CRM webhook for reply tracking"
 
 ### Step 3: Test the Setup
 
