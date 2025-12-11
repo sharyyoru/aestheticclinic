@@ -121,6 +121,72 @@ function generateId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// Click-based add step button component
+function AddStepButton({ 
+  nodeId, 
+  onAdd 
+}: { 
+  nodeId: string; 
+  onAdd: (afterNodeId: string, nodeType: "action" | "condition" | "delay") => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="flex justify-center py-2">
+      <div className="relative">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed transition-colors ${
+            isOpen 
+              ? "border-sky-400 bg-sky-50 text-sky-500" 
+              : "border-slate-300 bg-white text-slate-400 hover:border-sky-400 hover:text-sky-500"
+          }`}
+        >
+          <svg className={`h-4 w-4 transition-transform ${isOpen ? "rotate-45" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+        {isOpen && (
+          <div className="absolute left-1/2 top-10 z-20 -translate-x-1/2">
+            <div className="flex gap-1 rounded-lg bg-white p-2 shadow-lg border border-slate-200">
+              <button
+                onClick={() => {
+                  onAdd(nodeId, "action");
+                  setIsOpen(false);
+                }}
+                className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 hover:bg-emerald-50 text-[10px] font-medium text-slate-700"
+              >
+                <span className="text-lg">⚡</span>
+                Action
+              </button>
+              <button
+                onClick={() => {
+                  onAdd(nodeId, "condition");
+                  setIsOpen(false);
+                }}
+                className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 hover:bg-purple-50 text-[10px] font-medium text-slate-700"
+              >
+                <span className="text-lg">🔀</span>
+                Condition
+              </button>
+              <button
+                onClick={() => {
+                  onAdd(nodeId, "delay");
+                  setIsOpen(false);
+                }}
+                className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 hover:bg-blue-50 text-[10px] font-medium text-slate-700"
+              >
+                <span className="text-lg">⏰</span>
+                Delay
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function WorkflowBuilderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -427,41 +493,8 @@ export default function WorkflowBuilderPage() {
           </div>
         </div>
 
-        {/* Add node button */}
-        <div className="flex justify-center py-2">
-          <div className="relative group">
-            <button className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-dashed border-slate-300 bg-white text-slate-400 hover:border-sky-400 hover:text-sky-500 transition-colors">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-            <div className="absolute left-1/2 top-10 z-20 hidden group-hover:block -translate-x-1/2">
-              <div className="flex gap-1 rounded-lg bg-white p-2 shadow-lg border border-slate-200">
-                <button
-                  onClick={() => addNodeAfter(node.id, "action")}
-                  className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 hover:bg-emerald-50 text-[10px] font-medium text-slate-700"
-                >
-                  <span className="text-lg">⚡</span>
-                  Action
-                </button>
-                <button
-                  onClick={() => addNodeAfter(node.id, "condition")}
-                  className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 hover:bg-purple-50 text-[10px] font-medium text-slate-700"
-                >
-                  <span className="text-lg">🔀</span>
-                  Condition
-                </button>
-                <button
-                  onClick={() => addNodeAfter(node.id, "delay")}
-                  className="flex flex-col items-center gap-1 rounded-lg px-3 py-2 hover:bg-blue-50 text-[10px] font-medium text-slate-700"
-                >
-                  <span className="text-lg">⏰</span>
-                  Delay
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Add node button - click to toggle menu */}
+        <AddStepButton nodeId={node.id} onAdd={addNodeAfter} />
       </div>
     );
   };
@@ -557,6 +590,88 @@ export default function WorkflowBuilderPage() {
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 />
               </div>
+
+              {/* Sending Behavior */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wide">Sending Behavior</label>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name={`send_mode_${selectedNode.id}`}
+                      checked={(data.config as { send_mode?: string }).send_mode !== "delay" && (data.config as { send_mode?: string }).send_mode !== "recurring"}
+                      onChange={() => updateNodeData(selectedNode.id, { config: { ...data.config, send_mode: "immediate" } })}
+                      className="h-4 w-4 text-sky-600 border-slate-300"
+                    />
+                    <span className="text-sm text-slate-700">Send immediately</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name={`send_mode_${selectedNode.id}`}
+                      checked={(data.config as { send_mode?: string }).send_mode === "delay"}
+                      onChange={() => updateNodeData(selectedNode.id, { config: { ...data.config, send_mode: "delay" } })}
+                      className="h-4 w-4 text-sky-600 border-slate-300"
+                    />
+                    <span className="text-sm text-slate-700">Delay</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name={`send_mode_${selectedNode.id}`}
+                      checked={(data.config as { send_mode?: string }).send_mode === "recurring"}
+                      onChange={() => updateNodeData(selectedNode.id, { config: { ...data.config, send_mode: "recurring" } })}
+                      className="h-4 w-4 text-sky-600 border-slate-300"
+                    />
+                    <span className="text-sm text-slate-700">Recurring</span>
+                  </label>
+                </div>
+
+                {(data.config as { send_mode?: string }).send_mode === "delay" && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <input
+                      type="number"
+                      min="0"
+                      value={(data.config as { delay_minutes?: number }).delay_minutes || 0}
+                      onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, delay_minutes: parseInt(e.target.value) || 0 } })}
+                      className="w-20 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
+                    />
+                    <span className="text-slate-600">minutes after trigger</span>
+                  </div>
+                )}
+
+                {(data.config as { send_mode?: string }).send_mode === "recurring" && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-slate-600">Every</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={(data.config as { recurring_days?: number }).recurring_days || 1}
+                      onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, recurring_days: parseInt(e.target.value) || 1 } })}
+                      className="w-16 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
+                    />
+                    <span className="text-slate-600">days,</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={(data.config as { recurring_times?: number }).recurring_times || 1}
+                      onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, recurring_times: parseInt(e.target.value) || 1 } })}
+                      className="w-16 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
+                    />
+                    <span className="text-slate-600">occurrences</span>
+                  </div>
+                )}
+              </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={(data.config as { use_html?: boolean }).use_html || false}
+                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, use_html: e.target.checked } })}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600"
+                />
+                <span className="text-slate-700">Use HTML builder template when sending this email</span>
+              </label>
             </>
           )}
 
