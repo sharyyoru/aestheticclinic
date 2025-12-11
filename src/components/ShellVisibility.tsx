@@ -3,9 +3,16 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
+// Routes that should be completely standalone (no sidebar, header, or shell)
+const STANDALONE_ROUTES = ["/login", "/book-appointment"];
+
+function isStandaloneRoute(pathname: string): boolean {
+  return STANDALONE_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"));
+}
+
 export function ShellSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login") {
+  if (isStandaloneRoute(pathname)) {
     return null;
   }
   return <>{children}</>;
@@ -13,7 +20,7 @@ export function ShellSidebar({ children }: { children: ReactNode }) {
 
 export function ShellHeader({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/login") {
+  if (isStandaloneRoute(pathname)) {
     return null;
   }
   return <>{children}</>;
@@ -22,12 +29,9 @@ export function ShellHeader({ children }: { children: ReactNode }) {
 export function ShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
-  if (pathname === "/login") {
-    return (
-      <div className="mx-auto flex max-w-6xl min-h-[80vh] items-center justify-center">
-        {children}
-      </div>
-    );
+  // Standalone pages render without any shell wrapper
+  if (isStandaloneRoute(pathname)) {
+    return <>{children}</>;
   }
 
   if (pathname === "/appointments") {

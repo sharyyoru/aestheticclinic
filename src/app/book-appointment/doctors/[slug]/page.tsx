@@ -225,6 +225,20 @@ export default function DoctorBookingPage() {
       </div>
 
       <div className="relative max-w-4xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+        {/* Logo Header */}
+        <div className="text-center mb-8">
+          <Link href="/book-appointment">
+            <Image
+              src="/logos/aliice-logo.png"
+              alt="Aesthetics Clinic"
+              width={200}
+              height={60}
+              className="h-16 w-auto mx-auto"
+              priority
+            />
+          </Link>
+        </div>
+
         {/* Back Link */}
         <Link
           href="/book-appointment/doctors"

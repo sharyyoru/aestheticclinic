@@ -1,9 +1,21 @@
 "use client";
 
+import { useState, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
 export default function BookAppointmentPage() {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLIFrameElement>(null);
+
+  const handlePlayVideo = () => {
+    setIsPlaying(true);
+  };
+
+  const handleVideoEnd = () => {
+    setIsPlaying(false);
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50">
       {/* Hero Section */}
@@ -14,33 +26,57 @@ export default function BookAppointmentPage() {
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-sky-100 rounded-full opacity-50 blur-3xl" />
         </div>
 
-        <div className="relative max-w-6xl mx-auto px-4 py-16 sm:px-6 lg:px-8">
-          {/* Header */}
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl shadow-lg mb-6">
-              <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
-            <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4">
-              Aesthetics Clinic
-            </h1>
-            <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              Geneva&apos;s Premier Aesthetic Medicine Center
-            </p>
+        <div className="relative max-w-6xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+          {/* Logo Header */}
+          <div className="text-center mb-10">
+            <Image
+              src="/logos/aliice-logo.png"
+              alt="Aesthetics Clinic"
+              width={200}
+              height={60}
+              className="h-16 w-auto mx-auto"
+              priority
+            />
           </div>
 
-          {/* Featured Doctor Card */}
-          <div className="max-w-md mx-auto mb-12">
+          {/* Video Section */}
+          <div className="max-w-sm mx-auto mb-12">
             <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
-              <div className="relative h-64 bg-gradient-to-br from-slate-100 to-slate-50">
-                <Image
-                  src="/doctors/xavier-tenorio.jpg"
-                  alt="Dr. Xavier Tenorio"
-                  fill
-                  className="object-cover object-top"
-                  priority
-                />
+              <div className="relative aspect-[9/16] bg-black">
+                {!isPlaying ? (
+                  <>
+                    {/* Thumbnail with play button */}
+                    <Image
+                      src="/doctors/welcome.jpg"
+                      alt="Welcome Video"
+                      fill
+                      className="object-cover"
+                      priority
+                    />
+                    <button
+                      onClick={handlePlayVideo}
+                      className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors group"
+                    >
+                      <div className="w-20 h-20 rounded-full bg-white/90 flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform">
+                        <svg className="w-10 h-10 text-emerald-600 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                      <span className="absolute bottom-6 left-0 right-0 text-center text-white text-sm font-medium">
+                        Press to Play
+                      </span>
+                    </button>
+                  </>
+                ) : (
+                  <iframe
+                    ref={videoRef}
+                    src="https://www.youtube.com/embed/u8IIOftkpUs?autoplay=1&controls=0&modestbranding=1&rel=0&showinfo=0&loop=0&fs=0&disablekb=1&playsinline=1"
+                    title="Welcome Video"
+                    className="absolute inset-0 w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen={false}
+                  />
+                )}
               </div>
               <div className="p-6 text-center">
                 <h2 className="text-xl font-semibold text-slate-900">Dr. Xavier Tenorio</h2>
