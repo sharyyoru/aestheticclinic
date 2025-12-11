@@ -12,6 +12,7 @@ type WorkflowRow = {
   active: boolean;
   config: unknown;
   created_at?: string;
+  enrollment_count?: number;
 };
 
 type DealStage = {
@@ -58,6 +59,8 @@ export default function WorkflowsPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [enrollmentCounts, setEnrollmentCounts] = useState<Map<string, number>>(new Map());
+  const [showEnrollmentsModal, setShowEnrollmentsModal] = useState<string | null>(null);
   
   // Filters
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
@@ -92,6 +95,23 @@ export default function WorkflowsPage() {
         stageMap.set(stage.id, stage);
       }
       setStages(stageMap);
+
+      // Load enrollment counts for each workflow
+      if (workflowsRes.data && workflowsRes.data.length > 0) {
+        const workflowIds = workflowsRes.data.map((w: any) => w.id);
+        const { data: enrollments } = await supabaseClient
+          .from("workflow_enrollments")
+          .select("workflow_id")
+          .in("workflow_id", workflowIds);
+
+        if (enrollments) {
+          const counts = new Map<string, number>();
+          for (const e of enrollments) {
+            counts.set(e.workflow_id, (counts.get(e.workflow_id) || 0) + 1);
+          }
+          setEnrollmentCounts(counts);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load workflows");
     } finally {
@@ -422,7 +442,7 @@ export default function WorkflowsPage() {
 
                 {/* Actions Summary */}
                 {getActionsCount(workflow) > 0 && (
-                  <div className="mb-4 flex flex-wrap gap-1.5">
+                  <div className="mb-3 flex flex-wrap gap-1.5">
                     {getActionsSummary(workflow).map((action, i) => (
                       <span key={i} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
                         {action}
@@ -433,6 +453,20 @@ export default function WorkflowsPage() {
                     )}
                   </div>
                 )}
+
+                {/* Enrollment Count */}
+                <button
+                  onClick={() => setShowEnrollmentsModal(workflow.id)}
+                  className="mb-4 flex items-center gap-2 text-xs text-slate-500 hover:text-sky-600 transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <span className="font-medium">{enrollmentCounts.get(workflow.id) || 0}</span> patients enrolled
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
 
                 {/* Actions */}
                 <div className="flex items-center justify-between pt-3 border-t border-slate-100">
@@ -487,6 +521,268 @@ export default function WorkflowsPage() {
           </div>
         )}
       </div>
+
+      {/* Enrollments Modal */}
+      {showEnrollmentsModal && (
+        <WorkflowEnrollmentsModal
+          workflowId={showEnrollmentsModal}
+          workflowName={workflows.find((w) => w.id === showEnrollmentsModal)?.name || "Workflow"}
+          onClose={() => setShowEnrollmentsModal(null)}
+        />
+      )}
     </main>
+  );
+}
+
+// Enrollments Modal Component
+type EnrollmentRow = {
+  id: string;
+  patient_id: string;
+  deal_id: string | null;
+  enrolled_at: string;
+  status: string;
+  trigger_data: any;
+  patient: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+  } | null;
+  steps: {
+    id: string;
+    step_type: string;
+    step_action: string | null;
+    status: string;
+    executed_at: string | null;
+    result: any;
+    error_message: string | null;
+  }[];
+};
+
+function WorkflowEnrollmentsModal({
+  workflowId,
+  workflowName,
+  onClose,
+}: {
+  workflowId: string;
+  workflowName: string;
+  onClose: () => void;
+}) {
+  const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadEnrollments();
+  }, [workflowId]);
+
+  async function loadEnrollments() {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data, error: fetchError } = await supabaseClient
+        .from("workflow_enrollments")
+        .select(`
+          id,
+          patient_id,
+          deal_id,
+          enrolled_at,
+          status,
+          trigger_data,
+          patient:patients(id, first_name, last_name, email)
+        `)
+        .eq("workflow_id", workflowId)
+        .order("enrolled_at", { ascending: false });
+
+      if (fetchError) throw fetchError;
+
+      // Load steps for each enrollment
+      const enrollmentsWithSteps: EnrollmentRow[] = [];
+      for (const enrollment of data || []) {
+        const { data: steps } = await supabaseClient
+          .from("workflow_enrollment_steps")
+          .select("id, step_type, step_action, status, executed_at, result, error_message")
+          .eq("enrollment_id", enrollment.id)
+          .order("created_at", { ascending: true });
+
+        enrollmentsWithSteps.push({
+          ...enrollment,
+          patient: enrollment.patient as any,
+          steps: steps || [],
+        });
+      }
+
+      setEnrollments(enrollmentsWithSteps);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load enrollments");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function getPatientName(enrollment: EnrollmentRow): string {
+    if (enrollment.patient) {
+      const first = enrollment.patient.first_name || "";
+      const last = enrollment.patient.last_name || "";
+      if (first || last) return `${first} ${last}`.trim();
+      return enrollment.patient.email || "Unknown";
+    }
+    return "Unknown Patient";
+  }
+
+  function getStepStatusBadge(status: string) {
+    switch (status) {
+      case "completed":
+        return "bg-emerald-100 text-emerald-700";
+      case "failed":
+        return "bg-red-100 text-red-700";
+      case "pending":
+        return "bg-amber-100 text-amber-700";
+      case "skipped":
+        return "bg-slate-100 text-slate-500";
+      default:
+        return "bg-slate-100 text-slate-600";
+    }
+  }
+
+  function getActionIcon(action: string | null) {
+    switch (action) {
+      case "send_email":
+        return "📧";
+      case "create_task":
+        return "📋";
+      case "send_notification":
+        return "🔔";
+      case "update_deal":
+        return "📈";
+      default:
+        return "⚡";
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-5xl max-h-[90vh] rounded-2xl bg-white shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Enrolled Patients</h2>
+            <p className="text-sm text-slate-500">{workflowName}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-sm text-slate-500">Loading enrollments...</p>
+            </div>
+          ) : error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : enrollments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="mb-3 text-4xl">📭</div>
+              <h3 className="font-medium text-slate-900">No patients enrolled yet</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Patients will appear here when the workflow is triggered
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left">
+                    <th className="pb-3 font-medium text-slate-700">Patient</th>
+                    <th className="pb-3 font-medium text-slate-700">Enrolled</th>
+                    <th className="pb-3 font-medium text-slate-700">Status</th>
+                    <th className="pb-3 font-medium text-slate-700">Steps Completed</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {enrollments.map((enrollment) => (
+                    <tr key={enrollment.id} className="group">
+                      <td className="py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-xs font-medium text-sky-700">
+                            {getPatientName(enrollment).charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-900">{getPatientName(enrollment)}</p>
+                            {enrollment.patient?.email && (
+                              <p className="text-xs text-slate-500">{enrollment.patient.email}</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 text-slate-600">
+                        {new Date(enrollment.enrolled_at).toLocaleDateString()}{" "}
+                        <span className="text-slate-400">
+                          {new Date(enrollment.enrolled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </td>
+                      <td className="py-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          enrollment.status === "active"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : enrollment.status === "completed"
+                            ? "bg-sky-100 text-sky-700"
+                            : "bg-slate-100 text-slate-600"
+                        }`}>
+                          {enrollment.status}
+                        </span>
+                      </td>
+                      <td className="py-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {enrollment.steps.length === 0 ? (
+                            <span className="text-slate-400 text-xs">No steps recorded</span>
+                          ) : (
+                            enrollment.steps.map((step) => (
+                              <span
+                                key={step.id}
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${getStepStatusBadge(step.status)}`}
+                                title={step.error_message || (step.result ? JSON.stringify(step.result) : "")}
+                              >
+                                <span>{getActionIcon(step.step_action)}</span>
+                                {step.step_action?.replace("_", " ")}
+                                {step.status === "completed" && " ✓"}
+                                {step.status === "failed" && " ✗"}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-slate-200 px-6 py-4 flex justify-between items-center">
+          <p className="text-sm text-slate-500">
+            {enrollments.length} patient{enrollments.length !== 1 ? "s" : ""} enrolled
+          </p>
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

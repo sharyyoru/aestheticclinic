@@ -227,6 +227,30 @@ export async function POST(request: Request) {
     let actionsRun = 0;
 
     for (const workflow of matchingWorkflows) {
+      // Create workflow enrollment record
+      const { data: enrollment, error: enrollmentError } = await supabaseAdmin
+        .from("workflow_enrollments")
+        .insert({
+          workflow_id: workflow.id,
+          patient_id: safePatient.id,
+          deal_id: safeDeal.id,
+          status: "active",
+          trigger_data: {
+            from_stage: fromStage,
+            to_stage: toStage,
+            deal: safeDeal,
+            patient: safePatient,
+          },
+        })
+        .select("id")
+        .single();
+
+      if (enrollmentError) {
+        console.error("Failed to create workflow enrollment:", enrollmentError);
+      }
+
+      const enrollmentId = enrollment?.id;
+
       // Support both old workflow_actions table and new config.nodes format
       let actionsToRun: { action_type: string; config: any }[] = [];
 
@@ -317,9 +341,33 @@ export async function POST(request: Request) {
 
           if (taskError) {
             console.error("Failed to create task:", taskError);
+            // Log failed step
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "create_task",
+                step_config: config,
+                status: "failed",
+                executed_at: new Date().toISOString(),
+                error_message: taskError.message,
+              });
+            }
           } else {
             console.log(`Created task: ${taskName}`);
             actionsRun += 1;
+            // Log successful step
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "create_task",
+                step_config: config,
+                status: "completed",
+                executed_at: new Date().toISOString(),
+                result: { task_name: taskName },
+              });
+            }
           }
           continue;
         }
@@ -472,10 +520,34 @@ export async function POST(request: Request) {
 
             if (insertError || !inserted) {
               console.error("Failed to insert workflow email row", insertError);
+              // Log failed step
+              if (enrollmentId) {
+                await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                  enrollment_id: enrollmentId,
+                  step_type: "action",
+                  step_action: "send_email",
+                  step_config: config,
+                  status: "failed",
+                  executed_at: new Date().toISOString(),
+                  error_message: insertError?.message || "Failed to insert email",
+                });
+              }
               return;
             }
 
             actionsRun += 1;
+            // Log successful step
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "send_email",
+                step_config: config,
+                status: "completed",
+                executed_at: new Date().toISOString(),
+                result: { email_id: (inserted as any).id, subject, recipient: recipientEmail },
+              });
+            }
 
             if (!mailgunApiKey || !mailgunDomain) {
               return;
