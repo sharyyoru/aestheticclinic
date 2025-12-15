@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useTasksNotifications } from "@/components/TasksNotificationsContext";
 import TaskEditModal from "@/components/TaskEditModal";
@@ -34,6 +35,7 @@ type TaskNotificationRow = {
 };
 
 export default function NotificationsPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<TaskNotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -213,7 +215,7 @@ export default function NotificationsPage() {
         })
         .eq("id", task.id)
         .select(
-          "id, patient_id, name, content, status, priority, type, activity_date, created_at, created_by_name, assigned_read_at",
+          "id, patient_id, name, content, status, priority, type, activity_date, created_at, created_by_name, assigned_read_at, assigned_user_id, assigned_user_name",
         )
         .single();
 
@@ -378,6 +380,7 @@ export default function NotificationsPage() {
                 const patientName = patient
                   ? `${patient.first_name} ${patient.last_name}`
                   : "Unknown patient";
+                const patientId = patient?.id;
 
                 const isCompleted = task.status === "completed";
                 const isRead = !!task.assigned_read_at;
@@ -400,9 +403,22 @@ export default function NotificationsPage() {
                         {createdLabel ? <span>{createdLabel}</span> : null}
                         <span>
                           Task for:{" "}
-                          <span className="font-medium text-sky-700">
-                            {patientName}
-                          </span>
+                          {patientId ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/patients/${patientId}`);
+                              }}
+                              className="font-medium text-sky-700 hover:text-sky-800 hover:underline"
+                            >
+                              {patientName}
+                            </button>
+                          ) : (
+                            <span className="font-medium text-sky-700">
+                              {patientName}
+                            </span>
+                          )}
                         </span>
                       </div>
                       <p className="mt-1 text-[11px] text-slate-800">

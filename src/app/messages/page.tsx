@@ -1,10 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useMessagesUnread } from "@/components/MessagesUnreadContext";
 import TaskEditModal from "@/components/TaskEditModal";
+
+// Helper function to strip HTML tags from text
+function stripHtmlTags(html: string): string {
+  if (!html) return "";
+  // Remove HTML tags
+  const withoutTags = html.replace(/<[^>]*>/g, "");
+  // Decode HTML entities
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = withoutTags;
+  return textarea.value;
+}
 
 type MentionNote = {
   id: string;
@@ -65,6 +76,7 @@ type TaskMentionRow = {
 type MentionRow = NoteMentionRow | TaskMentionRow;
 
 export default function MessagesPage() {
+  const router = useRouter();
   const [mentions, setMentions] = useState<MentionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -316,6 +328,7 @@ export default function MessagesPage() {
                 const patientName = patient
                   ? `${patient.first_name} ${patient.last_name}`
                   : "Unknown patient";
+                const patientId = patient?.id;
 
                 // Handle task mention
                 if (mention.type === "task") {
@@ -348,10 +361,24 @@ export default function MessagesPage() {
                             {comment?.author_name ? (
                               <span className="font-medium">{comment.author_name}: </span>
                             ) : null}
-                            <span>{comment?.body ?? "(Comment unavailable)"}</span>
+                            <span>{stripHtmlTags(comment?.body ?? "(Comment unavailable)")}</span>
                           </p>
                           <p className="mt-0.5 text-[10px] text-slate-500">
-                            Patient: {patientName}
+                            Patient:{" "}
+                            {patientId ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/patients/${patientId}`);
+                                }}
+                                className="font-medium text-purple-700 hover:text-purple-800 hover:underline"
+                              >
+                                {patientName}
+                              </button>
+                            ) : (
+                              <span className="font-medium">{patientName}</span>
+                            )}
                           </p>
                         </div>
                         {!mention.read_at ? (
@@ -367,11 +394,16 @@ export default function MessagesPage() {
                 const note = noteMention.note;
 
                 return (
-                  <Link
+                  <button
                     key={mention.id}
-                    href={patient ? buildPatientHref(patient.id) : "#"}
-                    onClick={() => handleOpenMention(mention)}
-                    className="block rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
+                    type="button"
+                    onClick={() => {
+                      handleOpenMention(mention);
+                      if (patientId) {
+                        router.push(buildPatientHref(patientId));
+                      }
+                    }}
+                    className="w-full text-left block rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
                   >
                     <div className="flex items-start justify-between">
                       <div className="pr-4">
@@ -382,23 +414,36 @@ export default function MessagesPage() {
                           </span>
                           <span>
                             Patient:{" "}
-                            <span className="font-medium text-sky-700 hover:text-sky-800">
-                              {patientName}
-                            </span>
+                            {patientId ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(buildPatientHref(patientId));
+                                }}
+                                className="font-medium text-sky-700 hover:text-sky-800 hover:underline"
+                              >
+                                {patientName}
+                              </button>
+                            ) : (
+                              <span className="font-medium text-sky-700">
+                                {patientName}
+                              </span>
+                            )}
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] text-slate-800">
                           {note?.author_name ? (
                             <span className="font-medium">{note.author_name}: </span>
                           ) : null}
-                          <span>{note?.body ?? "(Note unavailable)"}</span>
+                          <span>{stripHtmlTags(note?.body ?? "(Note unavailable)")}</span>
                         </p>
                       </div>
                       {!mention.read_at ? (
                         <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-sky-500" />
                       ) : null}
                     </div>
-                  </Link>
+                  </button>
                 );
               };
 

@@ -305,6 +305,9 @@ export default function MedicalConsultationsCard({
   const [cashReceiptUploading, setCashReceiptUploading] = useState(false);
   const [cashReceiptError, setCashReceiptError] = useState<string | null>(null);
 
+  const [generatingPdf, setGeneratingPdf] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
   const consultationRecordTypeOptions: {
     value: ConsultationRecordType;
     label: string;
@@ -799,6 +802,45 @@ export default function MedicalConsultationsCard({
       }
     } catch {
       setConsultationsError("Failed to open receipt.");
+    }
+  }
+
+  async function handleGenerateInvoicePdf(consultationId: string) {
+    try {
+      setGeneratingPdf(consultationId);
+      setPdfError(null);
+
+      const response = await fetch("/api/invoices/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ consultationId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate PDF");
+      }
+
+      if (data.pdfUrl && typeof window !== "undefined") {
+        window.open(data.pdfUrl, "_blank", "noopener,noreferrer");
+      }
+
+      if (data.paymentUrl && typeof window !== "undefined") {
+        const copyText = `Payment link: ${data.paymentUrl}`;
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(data.paymentUrl);
+          alert(`Invoice PDF generated!\n\nPayment link copied to clipboard:\n${data.paymentUrl}`);
+        } else {
+          alert(`Invoice PDF generated!\n\nPayment link:\n${data.paymentUrl}`);
+        }
+      }
+
+      setGeneratingPdf(null);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      setPdfError(error instanceof Error ? error.message : "Failed to generate PDF");
+      setGeneratingPdf(null);
     }
   }
 
@@ -2676,6 +2718,16 @@ export default function MedicalConsultationsCard({
                             className="inline-flex items-center rounded-full border border-sky-200 bg-sky-600 px-2 py-0.5 text-[10px] font-medium text-white shadow-sm hover:bg-sky-700"
                           >
                             Open 3D
+                          </button>
+                        ) : null}
+                        {isInvoice && !isComplimentaryInvoice ? (
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateInvoicePdf(row.id)}
+                            disabled={generatingPdf === row.id}
+                            className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-800 shadow-sm hover:bg-purple-100 disabled:opacity-50"
+                          >
+                            {generatingPdf === row.id ? "Generating..." : "Generate PDF"}
                           </button>
                         ) : null}
                         {isCashInvoice && !isComplimentaryInvoice ? (
