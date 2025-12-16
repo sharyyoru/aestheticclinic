@@ -10,6 +10,7 @@ import HeaderMessagesButton from "@/components/HeaderMessagesButton";
 import HeaderNotificationsButton from "@/components/HeaderNotificationsButton";
 import { MessagesUnreadProvider } from "@/components/MessagesUnreadContext";
 import { TasksNotificationsProvider } from "@/components/TasksNotificationsContext";
+import GlobalLoader from "@/components/GlobalLoader";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -37,6 +38,7 @@ export default function RootLayout({
         className={`${manrope.variable} ${geistMono.variable} antialiased`}
       >
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff,_#e0f2fe_40%,_#fdf2ff_80%)] px-4 py-6 sm:px-6 lg:px-8">
+          <GlobalLoader />
           <MessagesUnreadProvider>
           <TasksNotificationsProvider>
           <ShellFrame>

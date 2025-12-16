@@ -73,6 +73,7 @@ export default function DealsPage() {
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [dragDealId, setDragDealId] = useState<string | null>(null);
   const [updatingDealId, setUpdatingDealId] = useState<string | null>(null);
+  const [invoicedDealIds, setInvoicedDealIds] = useState<Set<string>>(new Set());
 
   const [contactOwnerFilter, setContactOwnerFilter] = useState<string>("");
   const [contactOwnerSearch, setContactOwnerSearch] = useState("");
@@ -186,6 +187,26 @@ export default function DealsPage() {
         });
 
         setDeals(dealsWithAppointments);
+
+        // Fetch invoiced deals (consultations with invoice data)
+        const dealIds = dealsWithAppointments.map(d => d.id);
+        if (dealIds.length > 0) {
+          const { data: consultationsData } = await supabaseClient
+            .from("consultations")
+            .select("id, deal_id")
+            .in("deal_id", dealIds)
+            .not("invoice_total_amount", "is", null);
+
+          if (consultationsData) {
+            const invoicedIds = new Set(
+              consultationsData
+                .map(c => c.deal_id)
+                .filter((id): id is string => id !== null)
+            );
+            setInvoicedDealIds(invoicedIds);
+          }
+        }
+
         setLoading(false);
       } catch {
         if (!isMounted) return;
@@ -430,6 +451,47 @@ export default function DealsPage() {
 
   const totalDeals = deals.length;
 
+  // Calculate metrics
+  const metrics = useMemo(() => {
+    // Total Deal Amount: sum of all deal values
+    const totalDealAmount = deals.reduce((sum, deal) => {
+      return sum + (deal.value || 0);
+    }, 0);
+
+    // Weighted Deal: sum of deals that have been invoiced
+    const weightedDeal = deals
+      .filter(deal => invoicedDealIds.has(deal.id))
+      .reduce((sum, deal) => sum + (deal.value || 0), 0);
+
+    // Find "Closed Won" stage
+    const closedWonStage = dealStages.find(
+      stage => stage.name.toLowerCase().includes("closed won")
+    );
+
+    // Open Deal Amount: deals in stages before Closed Won
+    const openDealAmount = deals
+      .filter(deal => {
+        if (!closedWonStage) return true;
+        return deal.stage_id !== closedWonStage.id;
+      })
+      .reduce((sum, deal) => sum + (deal.value || 0), 0);
+
+    // Closed Deal Amount: deals in Closed Won stage
+    const closedDealAmount = deals
+      .filter(deal => {
+        if (!closedWonStage) return 0;
+        return deal.stage_id === closedWonStage.id;
+      })
+      .reduce((sum, deal) => sum + (deal.value || 0), 0);
+
+    return {
+      totalDealAmount,
+      weightedDeal,
+      openDealAmount,
+      closedDealAmount,
+    };
+  }, [deals, dealStages, invoicedDealIds]);
+
   return (
     <div className="space-y-6">
       {/* Main centered container: header, metrics, filter, and list view */}
@@ -476,22 +538,30 @@ export default function DealsPage() {
             <div className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-xl border border-slate-200/80 bg-white/90 p-3 text-xs shadow-sm">
                 <p className="text-[11px] font-medium text-slate-500">Total Deal Amount</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">— CHF</p>
-                <p className="mt-1 text-[11px] text-slate-400">Finance metrics coming soon</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">
+                  {metrics.totalDealAmount.toLocaleString('en-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
+                </p>
+                <p className="mt-1 text-[11px] text-slate-400">Sum of all deal values</p>
               </div>
               <div className="rounded-xl border border-slate-200/80 bg-white/90 p-3 text-xs shadow-sm">
                 <p className="text-[11px] font-medium text-slate-500">Weighted Deal</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">— CHF</p>
-                <p className="mt-1 text-[11px] text-slate-400">Finance metrics coming soon</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">
+                  {metrics.weightedDeal.toLocaleString('en-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
+                </p>
+                <p className="mt-1 text-[11px] text-slate-400">Invoiced deals only</p>
               </div>
               <div className="rounded-xl border border-slate-200/80 bg-white/90 p-3 text-xs shadow-sm">
                 <p className="text-[11px] font-medium text-slate-500">Open Deal Amount</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">— CHF</p>
-                <p className="mt-1 text-[11px] text-slate-400">Finance metrics coming soon</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">
+                  {metrics.openDealAmount.toLocaleString('en-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
+                </p>
+                <p className="mt-1 text-[11px] text-slate-400">Before Closed Won</p>
               </div>
               <div className="rounded-xl border border-slate-200/80 bg-white/90 p-3 text-xs shadow-sm">
                 <p className="text-[11px] font-medium text-slate-500">Closed Deal Amount</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900">— CHF</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">
+                  {metrics.closedDealAmount.toLocaleString('en-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
+                </p>
                 <p className="mt-1 text-[11px] text-slate-400">{totalDeals} total deals</p>
               </div>
             </div>
