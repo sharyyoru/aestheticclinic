@@ -75,9 +75,19 @@ export default function ServicesPage() {
 
   const [categorySearch, setCategorySearch] = useState("");
   const [serviceSearch, setServiceSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [categoryFilterSearch, setCategoryFilterSearch] = useState("");
+  const [categoryFilterDropdownOpen, setCategoryFilterDropdownOpen] = useState(false);
 
   const [groupSearch, setGroupSearch] = useState("");
   const [groupServiceSearch, setGroupServiceSearch] = useState("");
+
+  const [showCreateService, setShowCreateService] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+
+  const [servicesPage, setServicesPage] = useState(1);
+  const [groupsPage, setGroupsPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
 
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(
     null,
@@ -938,14 +948,38 @@ export default function ServicesPage() {
         <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-medium text-slate-800">New service</h2>
+              <h2 className="text-sm font-medium text-slate-800">Services</h2>
               <p className="text-xs text-slate-500">
-                Add individual services under a category. Prices are stored in CHF.
+                Manage individual services under categories. Prices are stored in CHF.
               </p>
             </div>
+            {!showCreateService && (
+              <button
+                type="button"
+                onClick={() => setShowCreateService(true)}
+                className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600"
+              >
+                <span className="inline-flex h-3 w-3 items-center justify-center">
+                  <svg
+                    className="h-3 w-3"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M10 4v12" />
+                    <path d="M4 10h12" />
+                  </svg>
+                </span>
+                <span>Create service</span>
+              </button>
+            )}
           </div>
 
-          <form onSubmit={handleCreateService} className="space-y-3">
+          {showCreateService && (
+            <form onSubmit={handleCreateService} className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <label className="block text-xs font-medium text-slate-700">
@@ -1023,40 +1057,118 @@ export default function ServicesPage() {
               </div>
             </div>
 
-            {serviceMessage ? (
-              <p className="text-xs text-slate-500">{serviceMessage}</p>
-            ) : null}
+              {serviceMessage ? (
+                <p className="text-xs text-slate-500">{serviceMessage}</p>
+              ) : null}
 
-            <button
-              type="submit"
-              disabled={creatingService}
-              className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {creatingService ? "Creating..." : "Create service"}
-            </button>
-          </form>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={creatingService}
+                  className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {creatingService ? "Creating..." : "Create service"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateService(false);
+                    setServiceMessage(null);
+                  }}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
 
-          <div className="mt-5 border-t border-slate-100 pt-4">
+          <div className="border-t border-slate-100 pt-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Existing services
             </h3>
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               <input
                 type="text"
                 value={serviceSearch}
-                onChange={(event) => setServiceSearch(event.target.value)}
-                placeholder="Search services by name or category..."
-                className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                onChange={(event) => {
+                  setServiceSearch(event.target.value);
+                  setServicesPage(1);
+                }}
+                placeholder="Search services by name..."
+                className="flex-1 min-w-[200px] rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
               />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={categoryFilterSearch}
+                  onChange={(event) => {
+                    setCategoryFilterSearch(event.target.value);
+                    setCategoryFilterDropdownOpen(event.target.value.trim().length > 0);
+                  }}
+                  onFocus={() => setCategoryFilterDropdownOpen(categoryFilterSearch.trim().length > 0)}
+                  placeholder="Filter by category..."
+                  className="w-48 rounded-full border border-slate-200 bg-white px-3 py-1.5 pr-7 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                />
+                {categoryFilter !== "all" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryFilter("all");
+                      setCategoryFilterSearch("");
+                      setCategoryFilterDropdownOpen(false);
+                      setServicesPage(1);
+                    }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    ×
+                  </button>
+                )}
+                {categoryFilterDropdownOpen && (() => {
+                  const query = categoryFilterSearch.trim().toLowerCase();
+                  const filteredCategories = categories
+                    .filter((c) => {
+                      const hay = c.name.toLowerCase();
+                      return hay.includes(query);
+                    })
+                    .slice(0, 6);
+
+                  if (filteredCategories.length === 0) return null;
+
+                  return (
+                    <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
+                      {filteredCategories.map((category) => (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => {
+                            setCategoryFilter(category.id);
+                            setCategoryFilterSearch(category.name);
+                            setCategoryFilterDropdownOpen(false);
+                            setServicesPage(1);
+                          }}
+                          className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                        >
+                          {category.name}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
             {loading ? (
               <p className="mt-2 text-xs text-slate-500">Loading services...</p>
             ) : services.length === 0 ? (
               <p className="mt-2 text-xs text-slate-500">No services yet.</p>
-            ) : (
-              <div className="mt-2 space-y-1 text-xs">
-                {services
+            ) : (() => {
+                const filteredServices = services
                   .filter((service) => {
+                    // Category filter
+                    if (categoryFilter !== "all" && service.category_id !== categoryFilter) {
+                      return false;
+                    }
+                    // Search filter
                     const term = serviceSearch.trim().toLowerCase();
                     if (!term) return true;
                     const category = categoriesById.get(service.category_id);
@@ -1064,8 +1176,17 @@ export default function ServicesPage() {
                       service.description ?? ""
                     } ${category ? category.name : ""}`.toLowerCase();
                     return haystack.includes(term);
-                  })
-                  .map((service) => {
+                  });
+
+                const totalPages = Math.ceil(filteredServices.length / ITEMS_PER_PAGE);
+                const startIndex = (servicesPage - 1) * ITEMS_PER_PAGE;
+                const endIndex = startIndex + ITEMS_PER_PAGE;
+                const paginatedServices = filteredServices.slice(startIndex, endIndex);
+
+                return (
+                  <>
+                    <div className="mt-2 space-y-1 text-xs">
+                      {paginatedServices.map((service) => {
                     const category = categoriesById.get(service.category_id);
                     const isEditing = editingServiceId === service.id;
                     const isSaving = savingServiceId === service.id;
@@ -1207,10 +1328,65 @@ export default function ServicesPage() {
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
-              </div>
-            )}
+                        );
+                      })}
+                    </div>
+
+                    {/* Pagination controls */}
+                    {totalPages > 1 && (
+                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                        <p className="text-[11px] text-slate-500">
+                          Showing {startIndex + 1} to {Math.min(endIndex, filteredServices.length)} of {filteredServices.length} services
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setServicesPage((p) => Math.max(1, p - 1))}
+                            disabled={servicesPage === 1}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            ←
+                          </button>
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (servicesPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (servicesPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = servicesPage - 2 + i;
+                            }
+                            return (
+                              <button
+                                key={pageNum}
+                                type="button"
+                                onClick={() => setServicesPage(pageNum)}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] ${
+                                  servicesPage === pageNum
+                                    ? "border-emerald-500 bg-emerald-500 text-white"
+                                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => setServicesPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={servicesPage === totalPages}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            →
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
             {error ? (
               <p className="mt-2 text-xs text-red-600">{error}</p>
@@ -1220,13 +1396,18 @@ export default function ServicesPage() {
       ) : null}
 
       {activeTab === "groups" ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
-            <h2 className="text-sm font-medium text-slate-800">New group</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Create reusable bundles of services that can be referenced elsewhere.
-            </p>
-            <form onSubmit={handleCreateGroup} className="mt-3 space-y-3">
+        <div className="space-y-6">
+          {showCreateGroup && (
+            <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-medium text-slate-800">New group</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Create reusable bundles of services that can be referenced elsewhere.
+                  </p>
+                </div>
+              </div>
+              <form onSubmit={handleCreateGroup} className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-slate-700">
                   Group name
@@ -1401,30 +1582,73 @@ export default function ServicesPage() {
                 </div>
               </div>
 
-              {groupMessage ? (
-                <p className="text-xs text-slate-500">{groupMessage}</p>
-              ) : null}
+                {groupMessage ? (
+                  <p className="text-xs text-slate-500">{groupMessage}</p>
+                ) : null}
 
-              <button
-                type="submit"
-                disabled={creatingGroup}
-                className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {creatingGroup ? "Creating..." : "Create group"}
-              </button>
-            </form>
-          </div>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={creatingGroup}
+                    className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {creatingGroup ? "Creating..." : "Create group"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateGroup(false);
+                      setGroupMessage(null);
+                    }}
+                    className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
 
           <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
-            <h2 className="text-sm font-medium text-slate-800">Groups</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Existing service bundles.
-            </p>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-medium text-slate-800">Groups</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Existing service bundles.
+                </p>
+              </div>
+              {!showCreateGroup && (
+                <button
+                  type="button"
+                  onClick={() => setShowCreateGroup(true)}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-600"
+                >
+                  <span className="inline-flex h-3 w-3 items-center justify-center">
+                    <svg
+                      className="h-3 w-3"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M10 4v12" />
+                      <path d="M4 10h12" />
+                    </svg>
+                  </span>
+                  <span>Create group</span>
+                </button>
+              )}
+            </div>
             <div className="mt-2">
               <input
                 type="text"
                 value={groupSearch}
-                onChange={(event) => setGroupSearch(event.target.value)}
+                onChange={(event) => {
+                  setGroupSearch(event.target.value);
+                  setGroupsPage(1);
+                }}
                 placeholder="Search groups..."
                 className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
               />
@@ -1433,9 +1657,8 @@ export default function ServicesPage() {
               <p className="mt-2 text-xs text-slate-500">Loading groups...</p>
             ) : serviceGroups.length === 0 ? (
               <p className="mt-2 text-xs text-slate-500">No groups yet.</p>
-            ) : (
-              <ul className="mt-3 space-y-1 text-xs text-slate-700">
-                {serviceGroups
+            ) : (() => {
+                const filteredGroups = serviceGroups
                   .slice()
                   .sort((a, b) => a.name.localeCompare(b.name))
                   .filter((group) => {
@@ -1445,8 +1668,17 @@ export default function ServicesPage() {
                       group.description ?? ""
                     }`.toLowerCase();
                     return haystack.includes(term);
-                  })
-                  .map((group) => {
+                  });
+
+                const totalPages = Math.ceil(filteredGroups.length / ITEMS_PER_PAGE);
+                const startIndex = (groupsPage - 1) * ITEMS_PER_PAGE;
+                const endIndex = startIndex + ITEMS_PER_PAGE;
+                const paginatedGroups = filteredGroups.slice(startIndex, endIndex);
+
+                return (
+                  <>
+                    <ul className="mt-3 space-y-1 text-xs text-slate-700">
+                      {paginatedGroups.map((group) => {
                     const links = groupServices.filter(
                       (link) => link.group_id === group.id,
                     );
@@ -1592,10 +1824,65 @@ export default function ServicesPage() {
                           </ul>
                         ) : null}
                       </li>
-                    );
-                  })}
-              </ul>
-            )}
+                        );
+                      })}
+                    </ul>
+
+                    {/* Pagination controls */}
+                    {totalPages > 1 && (
+                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                        <p className="text-[11px] text-slate-500">
+                          Showing {startIndex + 1} to {Math.min(endIndex, filteredGroups.length)} of {filteredGroups.length} groups
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setGroupsPage((p) => Math.max(1, p - 1))}
+                            disabled={groupsPage === 1}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            ←
+                          </button>
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (groupsPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (groupsPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = groupsPage - 2 + i;
+                            }
+                            return (
+                              <button
+                                key={pageNum}
+                                type="button"
+                                onClick={() => setGroupsPage(pageNum)}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] ${
+                                  groupsPage === pageNum
+                                    ? "border-emerald-500 bg-emerald-500 text-white"
+                                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={() => setGroupsPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={groupsPage === totalPages}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            →
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
           </div>
         </div>
       ) : null}
