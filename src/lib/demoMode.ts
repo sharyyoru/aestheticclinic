@@ -25,10 +25,11 @@ export async function isDemoUser(): Promise<boolean> {
     .eq("id", user.id)
     .single();
 
-  cachedDemoStatus = userData?.is_demo ?? false;
+  const demoStatus = userData?.is_demo ?? false;
+  cachedDemoStatus = demoStatus;
   cacheTimestamp = now;
   
-  return cachedDemoStatus;
+  return demoStatus;
 }
 
 export function clearDemoCache() {

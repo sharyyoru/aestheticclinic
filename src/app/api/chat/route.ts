@@ -3,15 +3,6 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  throw new Error("Missing GEMINI_API_KEY environment variable for Gemini client");
-}
-
-const genAI = new GoogleGenerativeAI(apiKey);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
 type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
@@ -19,6 +10,18 @@ type ChatMessage = {
 
 export async function POST(request: Request) {
   try {
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "Missing GEMINI_API_KEY environment variable" },
+        { status: 500 },
+      );
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
     const { messages, patientId } = (await request.json()) as {
       messages?: ChatMessage[];
       patientId?: string | null;
