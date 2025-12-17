@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { clearDemoCache } from "@/lib/demoMode";
 
 interface CurrentUserInfo {
   fullName: string;
@@ -64,6 +65,7 @@ export default function HeaderUser() {
 
   async function confirmLogout() {
     await supabaseClient.auth.signOut();
+    clearDemoCache();
     router.replace("/login");
     router.refresh();
   }
