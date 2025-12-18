@@ -26,6 +26,7 @@ type DealPatient = {
   id: string;
   first_name: string | null;
   last_name: string | null;
+  contact_owner_name: string | null;
 };
 
 type DealService = {
@@ -133,7 +134,7 @@ export default function DealsPage() {
           supabaseClient
             .from("deals")
             .select(
-              "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, created_at, updated_at, patient:patients(id, first_name, last_name), service:services(id, name)",
+              "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, created_at, updated_at, patient:patients(id, first_name, last_name, contact_owner_name), service:services(id, name)",
             )
             .order("created_at", { ascending: false }),
         ]);
@@ -251,15 +252,14 @@ export default function DealsPage() {
       filtered = filtered.filter((deal) => deal.service?.id === serviceFilter);
     }
 
-    // Contact Owner filter (assuming contact_label contains user info - may need DB schema update)
-    // For now, we'll use contact_label as a text filter
+    // Contact Owner filter - filter by patient's contact_owner_name
     if (contactOwnerFilter) {
       const selectedUser = userOptions.find(u => u.id === contactOwnerFilter);
       if (selectedUser) {
         const ownerName = (selectedUser.full_name || selectedUser.email || "").toLowerCase();
         filtered = filtered.filter((deal) => {
-          const contactLabel = (deal.contact_label ?? "").toLowerCase();
-          return contactLabel.includes(ownerName);
+          const patientOwner = (deal.patient?.contact_owner_name ?? "").toLowerCase();
+          return patientOwner.includes(ownerName);
         });
       }
     }
