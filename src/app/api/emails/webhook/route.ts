@@ -270,7 +270,7 @@ export async function POST(request: Request) {
           
           // Upload to Supabase Storage
           const { error: uploadError } = await supabase.storage
-            .from("email_attachments")
+            .from("email-attachments")
             .upload(storagePath, att.data, {
               contentType: att.contentType,
               upsert: false,

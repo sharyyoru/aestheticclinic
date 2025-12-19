@@ -119,7 +119,7 @@ export async function POST(request: Request) {
           for (const att of attachments as EmailAttachmentRow[]) {
             try {
               const { data: fileData, error: downloadError } = await supabase.storage
-                .from("email_attachments")
+                .from("email-attachments")
                 .download(att.storage_path);
 
               if (!downloadError && fileData) {

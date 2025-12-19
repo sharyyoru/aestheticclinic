@@ -816,7 +816,7 @@ export default function PatientActivityCard({
         const attachments: EmailAttachment[] = (data as any[]).map((row) => {
           const path = (row.storage_path as string) || "";
           const { data: publicData } = supabaseClient.storage
-            .from("email_attachments")
+            .from("email-attachments")
             .getPublicUrl(path);
 
           let size: number | null = null;
@@ -1875,7 +1875,7 @@ export default function PatientActivityCard({
             const path = `${authUser.id}/${insertedEmail.id}/${Date.now()}.${ext}-${safeName}`;
 
             const { error: uploadError } = await supabaseClient.storage
-              .from("email_attachments")
+              .from("email-attachments")
               .upload(path, file, { upsert: false });
 
             if (uploadError) {
