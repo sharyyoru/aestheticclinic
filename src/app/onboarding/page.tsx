@@ -376,10 +376,17 @@ export default function OnboardingPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center p-4">
+        <Image
+          src="/logos/aliice-logo.png"
+          alt="Aliice"
+          width={120}
+          height={32}
+          className="h-8 w-auto brightness-0 invert mb-8"
+        />
         <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Validating your access...</p>
+          <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-sm sm:text-base">Validating your access...</p>
         </div>
       </main>
     );
@@ -387,18 +394,25 @@ export default function OnboardingPage() {
 
   if (error && !submissionId) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center p-4">
+        <Image
+          src="/logos/aliice-logo.png"
+          alt="Aliice"
+          width={120}
+          height={32}
+          className="h-8 w-auto brightness-0 invert mb-8"
+        />
+        <div className="bg-white rounded-xl sm:rounded-2xl p-6 sm:p-8 max-w-md w-full text-center">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 sm:w-8 sm:h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-slate-900 mb-2">Access Error</h1>
-          <p className="text-slate-600 mb-6">{error}</p>
+          <h1 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">Access Error</h1>
+          <p className="text-slate-600 mb-6 text-sm sm:text-base">{error}</p>
           <a
             href="mailto:support@aliice.io"
-            className="inline-block px-6 py-3 bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors"
+            className="inline-block px-6 py-3 bg-slate-900 text-white rounded-full hover:bg-slate-800 transition-colors text-sm sm:text-base"
           >
             Contact Support
           </a>
@@ -409,18 +423,25 @@ export default function OnboardingPage() {
 
   if (completed) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center p-4">
+        <Image
+          src="/logos/aliice-logo.png"
+          alt="Aliice"
+          width={120}
+          height={32}
+          className="h-8 w-auto brightness-0 invert mb-8"
+        />
+        <div className="bg-white rounded-xl sm:rounded-2xl p-6 sm:p-8 max-w-md w-full text-center">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 sm:w-8 sm:h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-2xl font-semibold text-slate-900 mb-2">Onboarding Complete!</h1>
-          <p className="text-slate-600 mb-6">
+          <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 mb-2">Onboarding Complete!</h1>
+          <p className="text-slate-600 mb-6 text-sm sm:text-base">
             Thank you for completing the onboarding form. Our team will review your information and reach out within 24-48 hours.
           </p>
-          <p className="text-sm text-slate-500">
+          <p className="text-xs sm:text-sm text-slate-500">
             Questions? Contact us at{" "}
             <a href="mailto:support@aliice.io" className="text-blue-600 hover:underline">
               support@aliice.io
@@ -435,42 +456,44 @@ export default function OnboardingPage() {
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
       <header className="border-b border-slate-700/50 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">A</span>
-            </div>
-            <div>
-              <h1 className="text-white font-semibold">Aliice</h1>
-              <p className="text-slate-400 text-xs">Clinic Onboarding</p>
-            </div>
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Image
+              src="/logos/aliice-logo.png"
+              alt="Aliice"
+              width={100}
+              height={28}
+              className="h-6 sm:h-7 w-auto brightness-0 invert"
+            />
+            <span className="text-slate-400 text-xs hidden sm:inline">|</span>
+            <span className="text-slate-300 text-xs hidden sm:inline">Clinic Onboarding</span>
           </div>
           <div className="text-right">
-            <p className="text-slate-400 text-sm">Step {currentStep} of 6</p>
-            <p className="text-white text-sm font-medium">{STEPS[currentStep - 1].title}</p>
+            <p className="text-slate-400 text-xs sm:text-sm">Step {currentStep} of 6</p>
+            <p className="text-white text-xs sm:text-sm font-medium">{STEPS[currentStep - 1].title}</p>
           </div>
         </div>
       </header>
 
       {/* Progress Bar */}
-      <div className="max-w-5xl mx-auto px-4 py-6">
-        <div className="flex items-center gap-2">
+      <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+        <div className="flex items-center gap-1 sm:gap-2">
           {STEPS.map((step, i) => (
             <div key={step.num} className="flex-1 flex items-center">
               <button
                 onClick={() => step.num < currentStep && setCurrentStep(step.num as Step)}
                 disabled={step.num > currentStep}
-                className={`w-full h-2 rounded-full transition-colors ${
+                className={`w-full h-1.5 sm:h-2 rounded-full transition-colors ${
                   step.num <= currentStep
                     ? "bg-gradient-to-r from-blue-500 to-purple-600"
                     : "bg-slate-700"
                 } ${step.num < currentStep ? "cursor-pointer hover:opacity-80" : ""}`}
               />
-              {i < STEPS.length - 1 && <div className="w-2" />}
+              {i < STEPS.length - 1 && <div className="w-1 sm:w-2" />}
             </div>
           ))}
         </div>
-        <div className="flex justify-between mt-2 text-xs text-slate-500">
+        <div className="hidden sm:flex justify-between mt-2 text-xs text-slate-500">
           {STEPS.map((step) => (
             <span key={step.num} className={currentStep === step.num ? "text-white" : ""}>
               {step.desc}
@@ -480,8 +503,8 @@ export default function OnboardingPage() {
       </div>
 
       {/* Form Content */}
-      <div className="max-w-3xl mx-auto px-4 pb-12">
-        <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8">
+      <div className="max-w-3xl mx-auto px-3 sm:px-4 pb-8 sm:pb-12">
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
               {error}
@@ -1172,13 +1195,13 @@ export default function OnboardingPage() {
           )}
 
           {/* Navigation */}
-          <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-200">
+          <div className="flex items-center justify-between mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-200">
             {currentStep > 1 ? (
               <button
                 type="button"
                 onClick={() => setCurrentStep((currentStep - 1) as Step)}
                 disabled={saving}
-                className="px-6 py-2 text-slate-600 hover:text-slate-900 font-medium disabled:opacity-50"
+                className="px-4 sm:px-6 py-2 text-slate-600 hover:text-slate-900 font-medium disabled:opacity-50 text-sm sm:text-base"
               >
                 Back
               </button>
@@ -1191,7 +1214,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={() => saveStep(currentStep, (currentStep + 1) as Step)}
                 disabled={saving}
-                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                className="px-5 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2 text-sm sm:text-base"
               >
                 {saving ? (
                   <>
@@ -1201,7 +1224,7 @@ export default function OnboardingPage() {
                 ) : (
                   <>
                     Continue
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </>
@@ -1212,7 +1235,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={() => saveStep(6)}
                 disabled={saving || !gdprConsent || !hipaaAcknowledgment || !termsAccepted}
-                className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-full font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                className="px-5 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-full font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2 text-sm sm:text-base"
               >
                 {saving ? (
                   <>
@@ -1221,8 +1244,9 @@ export default function OnboardingPage() {
                   </>
                 ) : (
                   <>
-                    Submit Onboarding
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <span className="hidden sm:inline">Submit Onboarding</span>
+                    <span className="sm:hidden">Submit</span>
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                   </>
