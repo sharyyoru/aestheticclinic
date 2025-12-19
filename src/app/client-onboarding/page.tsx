@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { supabaseClient } from "@/lib/supabaseClient";
 
 interface OnboardingToken {
   id: string;
@@ -59,37 +58,31 @@ export default function ClientOnboardingPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // Load tokens
-      const { data: tokenData, error: tokenError } = await supabaseClient
-        .from("clinic_onboarding_tokens")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const res = await fetch("/api/onboarding/list");
+      const data = await res.json();
 
-      if (tokenError) throw tokenError;
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to load data");
+      }
 
-      // Load submissions
-      const { data: submissionData, error: subError } = await supabaseClient
-        .from("clinic_onboarding_submissions")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (subError) throw subError;
+      const tokenData = data.tokens || [];
+      const submissionData = data.submissions || [];
 
       // Map submissions to tokens
       const submissionMap = new Map<string, OnboardingSubmission>();
-      (submissionData || []).forEach((sub: OnboardingSubmission) => {
+      submissionData.forEach((sub: OnboardingSubmission) => {
         if (sub.token_id) {
           submissionMap.set(sub.token_id, sub);
         }
       });
 
-      const tokensWithSubs = (tokenData || []).map((token: OnboardingToken) => ({
+      const tokensWithSubs = tokenData.map((token: OnboardingToken) => ({
         ...token,
         submission: submissionMap.get(token.id),
       }));
 
       setTokens(tokensWithSubs);
-      setSubmissions(submissionData || []);
+      setSubmissions(submissionData);
     } catch (err) {
       console.error("Error loading data:", err);
       setError("Failed to load data");
