@@ -339,6 +339,29 @@ export default function RootLayout({
                     <span>Chat with Aliice</span>
                   </Link>
                 </div>
+                <div className="border-b border-slate-100/80">
+                  <Link
+                    href="/client-onboarding"
+                    className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-[0_6px_18px_rgba(15,23,42,0.18)] backdrop-blur group-hover:from-blue-600 group-hover:to-purple-700">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101" />
+                        <path d="M10.172 13.828a4 4 0 0 0 5.656 0l4-4a4 4 0 1 0-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                    </span>
+                    <span>Client Onboarding</span>
+                  </Link>
+                </div>
               </nav>
             </aside>
             </ShellSidebar>
