@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS user_availability (
   start_time TIME NOT NULL DEFAULT '08:00',
   end_time TIME NOT NULL DEFAULT '19:00',
   is_available BOOLEAN NOT NULL DEFAULT true,
-  location TEXT DEFAULT 'Geneva',
+  location TEXT DEFAULT 'Champel',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(user_id, day_of_week, location)
