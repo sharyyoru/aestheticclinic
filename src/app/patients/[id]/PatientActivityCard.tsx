@@ -179,11 +179,13 @@ export default function PatientActivityCard({
   createdAt,
   createdBy,
   patientEmail,
+  contactOwnerName,
 }: {
   patientId: string;
   createdAt: string | null;
   createdBy: string | null;
   patientEmail: string | null;
+  contactOwnerName: string | null;
 }) {
   const [activeTab, setActiveTab] = useState<ActivityTab>("activity");
 
@@ -322,7 +324,7 @@ export default function PatientActivityCard({
   const [dealServiceDropdownOpen, setDealServiceDropdownOpen] = useState(false);
   const [dealPipeline, setDealPipeline] = useState("Geneva");
   const [dealContactLabel, setDealContactLabel] = useState("Marketing");
-  const [dealLocation, setDealLocation] = useState("Geneva");
+  const [dealLocation, setDealLocation] = useState("Champel");
   const [dealNotes, setDealNotes] = useState("");
   const [dealSaving, setDealSaving] = useState(false);
   const [dealSaveError, setDealSaveError] = useState<string | null>(null);
@@ -1373,7 +1375,7 @@ export default function PatientActivityCard({
     setDealServiceDropdownOpen(false);
     setDealPipeline("Geneva");
     setDealContactLabel("Marketing");
-    setDealLocation("Geneva");
+    setDealLocation("Champel");
     setDealNotes("");
 
     const sortedStages = [...dealStages].sort(
@@ -1394,7 +1396,7 @@ export default function PatientActivityCard({
     setDealServiceSearch(selectedService?.name || "");
     setDealPipeline(deal.pipeline ?? "Geneva");
     setDealContactLabel(deal.contact_label ?? "Marketing");
-    setDealLocation(deal.location ?? "Geneva");
+    setDealLocation(deal.location ?? "Champel");
     setDealNotes(deal.notes ?? "");
     setDealStageId(deal.stage_id);
     setDealSaveError(null);
@@ -1422,7 +1424,7 @@ export default function PatientActivityCard({
 
     const pipeline = dealPipeline.trim() || "Geneva";
     const contactLabel = dealContactLabel.trim() || "Marketing";
-    const location = dealLocation.trim() || "Geneva";
+    const location = dealLocation.trim() || "Champel";
     const notes = dealNotes.trim();
 
     try {
@@ -1543,7 +1545,7 @@ export default function PatientActivityCard({
       setDealServiceDropdownOpen(false);
       setDealPipeline("Geneva");
       setDealContactLabel("Marketing");
-      setDealLocation("Geneva");
+      setDealLocation("Champel");
       setDealSaving(false);
     } catch {
       setDealSaveError("Unexpected error saving deal.");
@@ -2450,7 +2452,7 @@ export default function PatientActivityCard({
 
                       const pipelineLabel = deal.pipeline || "Geneva";
                       const contactLabel = deal.contact_label || "Marketing";
-                      const locationLabel = deal.location || "Geneva";
+                      const locationLabel = deal.location || "Champel";
 
                       const service = serviceOptions.find(
                         (candidate) => candidate.id === (deal.service_id ?? ""),
@@ -3288,7 +3290,7 @@ export default function PatientActivityCard({
 
                   const pipelineLabel = deal.pipeline || "Geneva";
                   const contactLabel = deal.contact_label || "Marketing";
-                  const locationLabel = deal.location || "Geneva";
+                  const locationLabel = deal.location || "Champel";
 
                   const service = serviceOptions.find(
                     (candidate) => candidate.id === (deal.service_id ?? ""),
@@ -3333,6 +3335,10 @@ export default function PatientActivityCard({
                         <p className="text-[11px] text-slate-600">
                           <span className="font-semibold">Contact Label:</span> {" "}
                           {contactLabel}
+                        </p>
+                        <p className="text-[11px] text-slate-600">
+                          <span className="font-semibold">Contact Owner:</span> {" "}
+                          <span className="font-medium text-emerald-700">{contactOwnerName || "—"}</span>
                         </p>
                         <p className="text-[11px] text-slate-600">
                           <span className="font-semibold">Location:</span> {" "}
@@ -3728,7 +3734,7 @@ export default function PatientActivityCard({
                       className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     >
                       <option value="Geneva">Geneva</option>
-                      <option value="Gstaad &amp; Montreux">Gstaad &amp; Montreux</option>
+                      <option value="Gstaad & Montreux">Gstaad & Montreux</option>
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -3820,8 +3826,9 @@ export default function PatientActivityCard({
                       onChange={(event) => setDealLocation(event.target.value)}
                       className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     >
-                      <option value="Geneva">Geneva</option>
-                      <option value="Montreaux">Montreaux</option>
+                      <option value="Champel">Champel</option>
+                      <option value="Rhône">Rhône</option>
+                      <option value="Montreux">Montreux</option>
                       <option value="Gstaad">Gstaad</option>
                     </select>
                   </div>
@@ -4008,8 +4015,8 @@ export default function PatientActivityCard({
       ) : null}
 
       {emailModalOpen ? (
-        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm py-6 sm:py-8">
-          <div className="w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
+        <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm py-6 sm:py-8">
+          <div className="w-full max-w-2xl max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 p-5 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
             <h2 className="text-sm font-semibold text-slate-900">Compose email</h2>
             <p className="mt-1 text-[11px] text-slate-500">
               This will be recorded on the patient timeline as an outbound email.
@@ -4049,7 +4056,7 @@ export default function PatientActivityCard({
                   id="email_body"
                   value={emailBody}
                   onChange={(event) => setEmailBody(event.target.value)}
-                  rows={6}
+                  rows={10}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   placeholder="Write your email..."
                 />

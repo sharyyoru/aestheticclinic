@@ -42,7 +42,7 @@ const TIME_OPTIONS = [
   "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00",
 ];
 
-const LOCATIONS = ["Geneva", "Montreaux", "Gstaad"];
+const LOCATIONS = ["Champel", "Rhône", "Montreux", "Gstaad"];
 
 const DEFAULT_SCHEDULE: DaySchedule[] = [
   { dayOfWeek: 0, startTime: "08:00", endTime: "19:00", isAvailable: false },
@@ -65,7 +65,7 @@ function formatTime(time: string): string {
 export default function ControllersPage() {
   const [users, setUsers] = useState<PlatformUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>("");
-  const [selectedLocation, setSelectedLocation] = useState<string>("Geneva");
+  const [selectedLocation, setSelectedLocation] = useState<string>("Champel");
   const [availability, setAvailability] = useState<AvailabilityEntry[]>([]);
   const [schedule, setSchedule] = useState<DaySchedule[]>(DEFAULT_SCHEDULE);
   const [loading, setLoading] = useState(false);

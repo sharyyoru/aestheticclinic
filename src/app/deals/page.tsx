@@ -697,6 +697,7 @@ export default function DealsPage() {
                           <th className="py-2 pr-3 font-medium">Stage</th>
                           <th className="py-2 pr-3 font-medium">Service</th>
                           <th className="py-2 pr-3 font-medium">Patient</th>
+                          <th className="py-2 pr-3 font-medium">Contact Owner</th>
                           <th className="py-2 pr-3 font-medium">Created</th>
                         </tr>
                       </thead>
@@ -767,6 +768,9 @@ export default function DealsPage() {
                                 <span className="text-sky-700 underline-offset-2 hover:underline">
                                   {patientName}
                                 </span>
+                              </td>
+                              <td className="py-2 pr-3 align-top text-slate-600">
+                                {deal.patient?.contact_owner_name || "—"}
                               </td>
                               <td className="py-2 pr-3 align-top text-slate-500">
                                 {createdLabel}
@@ -951,7 +955,7 @@ export default function DealsPage() {
                                     Pipeline: {deal.pipeline || "Geneva"}
                                   </p>
                                   <p className="mt-0.5 text-[10px] text-slate-600">
-                                    Location: {deal.location || "Geneva"}
+                                    Location: {deal.location || "Champel"}
                                   </p>
                                   <p className="mt-0.5 text-[10px] text-slate-600">
                                     Service:{" "}
@@ -961,6 +965,9 @@ export default function DealsPage() {
                                   </p>
                                   <p className="mt-0.5 text-[10px] text-slate-600">
                                     Contact label: {deal.contact_label || "Marketing"}
+                                  </p>
+                                  <p className="mt-0.5 text-[10px] text-slate-600">
+                                    Contact Owner: <span className="font-medium text-emerald-700">{deal.patient?.contact_owner_name || "—"}</span>
                                   </p>
                                   <p className="mt-0.5 text-[10px] text-slate-500">
                                     Created: {createdLabel}
