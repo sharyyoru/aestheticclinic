@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { stripEmailSignature } from "@/utils/emailCleaner";
@@ -217,6 +218,7 @@ export default function PatientActivityCard({
   const [emailsError, setEmailsError] = useState<string | null>(null);
 
   const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailFullscreen, setEmailFullscreen] = useState(false);
   const [emailTo, setEmailTo] = useState(patientEmail ?? "");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
@@ -1967,6 +1969,7 @@ export default function PatientActivityCard({
       setEmailScheduledFor("");
       setEmailAttachments([]);
       setEmailModalOpen(false);
+      setEmailFullscreen(false);
       setUseSignature(true);
       setEmailSaving(false);
     } catch {
@@ -4014,13 +4017,57 @@ export default function PatientActivityCard({
         </div>
       ) : null}
 
-      {emailModalOpen ? (
-        <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm py-6 sm:py-8">
-          <div className="w-full max-w-2xl max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 p-5 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
-            <h2 className="text-sm font-semibold text-slate-900">Compose email</h2>
-            <p className="mt-1 text-[11px] text-slate-500">
-              This will be recorded on the patient timeline as an outbound email.
-            </p>
+      {emailModalOpen && typeof document !== "undefined" ? createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-start justify-center overflow-y-auto bg-slate-900/50 backdrop-blur-sm py-6 sm:py-8">
+          <div className={`w-full ${emailFullscreen ? "max-w-none m-0 h-full rounded-none" : "max-w-2xl mx-4"} max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white p-5 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]`}>
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Compose email</h2>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  This will be recorded on the patient timeline as an outbound email.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setEmailFullscreen(!emailFullscreen)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                  title={emailFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                >
+                  {emailFullscreen ? (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (emailSaving) return;
+                    setEmailModalOpen(false);
+                    setEmailFullscreen(false);
+                    setEmailSaveError(null);
+                    setEmailScheduleEnabled(false);
+                    setEmailScheduledFor("");
+                    setEmailAttachments([]);
+                    setEmailAttachmentsError(null);
+                    setUseSignature(true);
+                    setComposeFromQueryHandled(false);
+                    router.replace(`/patients/${patientId}`);
+                  }}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                  title="Close"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
             <form onSubmit={handleEmailSubmit} className="mt-3 space-y-3">
               <div className="space-y-1">
                 <label htmlFor="email_to" className="block text-[11px] font-medium text-slate-700">
@@ -4186,6 +4233,7 @@ export default function PatientActivityCard({
                   onClick={() => {
                     if (emailSaving) return;
                     setEmailModalOpen(false);
+                    setEmailFullscreen(false);
                     setEmailSaveError(null);
                     setEmailScheduleEnabled(false);
                     setEmailScheduledFor("");
@@ -4209,7 +4257,8 @@ export default function PatientActivityCard({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
 
       {/* Appointment Modal */}
