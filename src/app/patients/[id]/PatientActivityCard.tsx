@@ -214,6 +214,8 @@ export default function PatientActivityCard({
     Record<string, NoteMentionSummary[]>
   >({});
 
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   const [emails, setEmails] = useState<PatientEmail[]>([]);
   const [emailsLoading, setEmailsLoading] = useState(false);
   const [emailsError, setEmailsError] = useState<string | null>(null);
@@ -432,6 +434,12 @@ export default function PatientActivityCard({
       try {
         setNotesLoading(true);
         setNotesError(null);
+
+        // Get current user ID
+        const { data: authData } = await supabaseClient.auth.getUser();
+        if (authData?.user?.id) {
+          setCurrentUserId(authData.user.id);
+        }
 
         const { data, error } = await supabaseClient
           .from("patient_notes")
@@ -1223,6 +1231,34 @@ export default function PatientActivityCard({
     setNoteBody(note.body);
     setNoteSaveError(null);
     setNoteModalOpen(true);
+  }
+
+  // Function to mark note mention as read
+  async function handleMarkNoteMentionAsRead(noteId: string, mentionedUserId: string) {
+    if (!currentUserId || currentUserId !== mentionedUserId) return;
+
+    const nowIso = new Date().toISOString();
+
+    // Optimistic update
+    setNoteMentionsByNoteId((prev) => {
+      const mentions = prev[noteId] ?? [];
+      return {
+        ...prev,
+        [noteId]: mentions.map((m) =>
+          m.mentioned_user_id === mentionedUserId ? { ...m, read_at: nowIso } : m
+        ),
+      };
+    });
+
+    try {
+      await supabaseClient
+        .from("patient_note_mentions")
+        .update({ read_at: nowIso })
+        .eq("note_id", noteId)
+        .eq("mentioned_user_id", mentionedUserId);
+    } catch {
+      // Revert on error - reload mentions
+    }
   }
 
   // Auto-save note when switching tabs (if there's content)
@@ -2716,30 +2752,45 @@ export default function PatientActivityCard({
                         </div>
                       </div>
                       {mentions.length > 0 ? (
-                        <p className="mt-0.5 text-[10px] text-slate-500">
-                          Mentions:{" "}
-                          {mentions.map((m, index) => (
-                            <span
-                              key={`${m.mentioned_user_id}-${m.read_at ?? ""}`}
-                            >
-                              <span className="font-medium">
-                                {m.mentioned_name}
-                              </span>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <p className="text-[10px] text-slate-500">
+                            Mentions:{" "}
+                            {mentions.map((m, index) => (
                               <span
-                                className={
-                                  "ml-1 inline-block h-1.5 w-1.5 rounded-full " +
-                                  (m.read_at
-                                    ? "bg-emerald-500"
-                                    : "bg-sky-500")
-                                }
-                                title={m.read_at ? "Read" : "Unread"}
-                              />
-                              {index < mentions.length - 1 ? (
-                                <span className="text-slate-400">, </span>
-                              ) : null}
-                            </span>
-                          ))}
-                        </p>
+                                key={`${m.mentioned_user_id}-${m.read_at ?? ""}`}
+                              >
+                                <span className="font-medium">
+                                  {m.mentioned_name}
+                                </span>
+                                <span
+                                  className={
+                                    "ml-1 inline-block h-1.5 w-1.5 rounded-full " +
+                                    (m.read_at
+                                      ? "bg-emerald-500"
+                                      : "bg-sky-500")
+                                  }
+                                  title={m.read_at ? "Read" : "Unread"}
+                                />
+                                {index < mentions.length - 1 ? (
+                                  <span className="text-slate-400">, </span>
+                                ) : null}
+                              </span>
+                            ))}
+                          </p>
+                          {/* Show Mark as Read button if current user is mentioned and hasn't read */}
+                          {currentUserId && mentions.some((m) => m.mentioned_user_id === currentUserId && !m.read_at) ? (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkNoteMentionAsRead(note.id, currentUserId)}
+                              className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[9px] font-medium text-sky-700 hover:bg-sky-100"
+                            >
+                              <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Mark as Read
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   );
@@ -4100,7 +4151,27 @@ export default function PatientActivityCard({
                 </ul>
               )}
             </div>
-            <div className="mt-3 flex justify-end">
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  // Create follow-up task from email
+                  setTaskName(`Follow up: ${viewEmail.subject}`);
+                  setTaskContent(`Follow-up task for email: "${viewEmail.subject}"\nFrom: ${viewEmail.from_address || "N/A"}\nTo: ${viewEmail.to_address}`);
+                  setTaskType("email");
+                  setTaskPriority("medium");
+                  setEditTask(null);
+                  setTaskSaveError(null);
+                  setCreateTaskModalOpen(true);
+                  setViewEmail(null);
+                }}
+                className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-[11px] font-medium text-amber-700 shadow-sm hover:bg-amber-100"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Create Follow-up Task
+              </button>
               <button
                 type="button"
                 onClick={() => setViewEmail(null)}

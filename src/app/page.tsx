@@ -104,12 +104,13 @@ export default function Home() {
           ? supabaseClient
               .from("tasks")
               .select(
-                "id, name, content, activity_date, created_at, patient:patients(id, first_name, last_name)",
+                "id, name, content, activity_date, created_at, patient_id, patient:patients(id, first_name, last_name)",
               )
               .eq("assigned_user_id", user.id)
               .neq("status", "completed")
+              .lte("activity_date", dayEnd) // Only show tasks up to today (not future)
               .order("activity_date", { ascending: true })
-              .limit(3)
+              .limit(5)
           : Promise.resolve({ data: [], error: null } as any);
 
         const mentionsPromise = user
@@ -769,6 +770,19 @@ export default function Home() {
                             </span>
                           ) : null}
                         </p>
+                      ) : null}
+                      {task?.patient_id ? (
+                        <div className="mt-3 flex gap-2">
+                          <Link
+                            href={`/patients/${task.patient_id}?tab=tasks`}
+                            className="inline-flex items-center gap-1 rounded-full border border-emerald-200/80 bg-emerald-500 px-3 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-emerald-600"
+                          >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit Task
+                          </Link>
+                        </div>
                       ) : null}
                     </>
                   );
