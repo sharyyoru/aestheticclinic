@@ -43,7 +43,7 @@ export function ShellFrame({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="mx-auto flex max-w-6xl min-h-[80vh] overflow-x-hidden overflow-y-auto rounded-3xl border border-white/60 bg-white/80 shadow-[0_22px_60px_rgba(15,23,42,0.12)] backdrop-blur-xl">
+    <div className="mx-auto flex max-w-[1614px] min-h-[80vh] overflow-x-hidden overflow-y-auto rounded-3xl border border-white/60 bg-white/80 shadow-[0_22px_60px_rgba(15,23,42,0.12)] backdrop-blur-xl">
       {children}
     </div>
   );
