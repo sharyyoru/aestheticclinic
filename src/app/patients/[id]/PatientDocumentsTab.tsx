@@ -66,6 +66,13 @@ export default function PatientDocumentsTab({
   const [newFileName, setNewFileName] = useState("");
   const [renaming, setRenaming] = useState(false);
 
+  // New state for Documents features
+  const [sortBy, setSortBy] = useState<"name" | "date">("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [enlargedImage, setEnlargedImage] = useState<{ url: string; name: string } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -144,6 +151,25 @@ export default function PatientDocumentsTab({
         ...files,
       ];
 
+      // Sort files based on sortBy and sortOrder
+      combined.sort((a, b) => {
+        // Folders always come first
+        if (a.kind === "folder" && b.kind !== "folder") return -1;
+        if (a.kind !== "folder" && b.kind === "folder") return 1;
+        if (a.kind === "folder" && b.kind === "folder") {
+          return a.name.localeCompare(b.name);
+        }
+        // Sort files
+        if (sortBy === "date") {
+          const aDate = a.updated_at || a.created_at || "";
+          const bDate = b.updated_at || b.created_at || "";
+          const comparison = aDate.localeCompare(bDate);
+          return sortOrder === "desc" ? -comparison : comparison;
+        }
+        const comparison = a.name.localeCompare(b.name);
+        return sortOrder === "desc" ? -comparison : comparison;
+      });
+
       setItems(combined);
 
       if (!selectedFile) {
@@ -173,6 +199,55 @@ export default function PatientDocumentsTab({
 
     return result;
   }, [currentPrefix]);
+
+  // Filtered and searched items
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      // Search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        if (!item.name.toLowerCase().includes(query)) {
+          return false;
+        }
+      }
+      // Type filter (only for files)
+      if (filterType !== "all" && item.kind === "file") {
+        const ext = getExtension(item.name);
+        if (filterType === "images") {
+          if (!["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) {
+            return false;
+          }
+        } else if (filterType === "documents") {
+          if (!["pdf", "doc", "docx", "txt", "rtf"].includes(ext)) {
+            return false;
+          }
+        } else if (filterType === "videos") {
+          if (!["mp4", "webm", "ogg", "mov", "avi"].includes(ext)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+  }, [items, searchQuery, filterType]);
+
+  // Get unique file types for filter dropdown
+  const availableTypes = useMemo(() => {
+    const types = new Set<string>();
+    items.forEach((item) => {
+      if (item.kind === "file") {
+        const ext = getExtension(item.name);
+        if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) {
+          types.add("images");
+        } else if (["pdf", "doc", "docx", "txt", "rtf"].includes(ext)) {
+          types.add("documents");
+        } else if (["mp4", "webm", "ogg", "mov", "avi"].includes(ext)) {
+          types.add("videos");
+        }
+      }
+    });
+    return Array.from(types);
+  }, [items]);
 
   const beforeAfterImages = useMemo(
     () =>
@@ -491,20 +566,92 @@ export default function PatientDocumentsTab({
           </div>
         ) : null}
 
+        {/* Search, Sort, and Filter Controls */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {/* Text Search */}
+          <div className="relative flex-1 min-w-[150px] max-w-[250px]">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search files..."
+              className="h-7 w-full rounded-full border border-slate-200 pl-8 pr-3 text-[11px] focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+            />
+            <svg
+              className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+
+          {/* Sort By */}
+          <div className="flex items-center gap-1 text-[11px]">
+            <span className="text-slate-500">Sort:</span>
+            <button
+              type="button"
+              onClick={() => setSortBy("name")}
+              className={`rounded-full px-2 py-0.5 ${
+                sortBy === "name"
+                  ? "bg-sky-100 text-sky-700 border border-sky-200"
+                  : "border border-slate-200 text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              Name
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortBy("date")}
+              className={`rounded-full px-2 py-0.5 ${
+                sortBy === "date"
+                  ? "bg-sky-100 text-sky-700 border border-sky-200"
+                  : "border border-slate-200 text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              Date
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+              className="rounded-full border border-slate-200 px-2 py-0.5 text-slate-600 hover:bg-slate-100"
+              title={sortOrder === "asc" ? "Ascending" : "Descending"}
+            >
+              {sortOrder === "asc" ? "↑" : "↓"}
+            </button>
+          </div>
+
+          {/* Filter by Type */}
+          <div className="flex items-center gap-1 text-[11px]">
+            <span className="text-slate-500">Type:</span>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="h-7 rounded-full border border-slate-200 px-2 text-[11px] focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+            >
+              <option value="all">All</option>
+              <option value="images">Images</option>
+              <option value="documents">Documents</option>
+              <option value="videos">Videos</option>
+            </select>
+          </div>
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span>Items</span>
+              <span>Items ({filteredItems.length})</span>
               {loading ? <span className="text-slate-400">Loading…</span> : null}
             </div>
             <div className="max-h-80 overflow-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2">
-              {items.length === 0 ? (
+              {filteredItems.length === 0 ? (
                 <div className="flex h-24 items-center justify-center text-[11px] text-slate-500">
                   No documents yet. Use the Upload button to add files.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
-                  {items.map((item) => {
+                  {filteredItems.map((item) => {
                     const isSelected =
                       item.kind === "file" && selectedFile && selectedFile.path === item.path;
 
@@ -642,12 +789,25 @@ export default function PatientDocumentsTab({
                   Unable to generate a preview URL for this file.
                 </p>
               ) : isImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={selectedFilePreviewUrl}
-                  alt={selectedFile.name}
-                  className="max-h-[360px] w-auto max-w-full rounded-md border border-slate-200 bg-slate-100 object-contain"
-                />
+                <div className="relative group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={selectedFilePreviewUrl}
+                    alt={selectedFile.name}
+                    className="max-h-[360px] w-auto max-w-full rounded-md border border-slate-200 bg-slate-100 object-contain cursor-pointer transition-transform hover:scale-[1.02]"
+                    onClick={() => setEnlargedImage({ url: selectedFilePreviewUrl, name: selectedFile.name })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEnlargedImage({ url: selectedFilePreviewUrl, name: selectedFile.name })}
+                    className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                    Enlarge
+                  </button>
+                </div>
               ) : isPdf ? (
                 <div className="flex flex-col items-center gap-3">
                   <iframe
@@ -767,6 +927,34 @@ export default function PatientDocumentsTab({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+      {/* Enlarged Image Modal */}
+      {enlargedImage ? (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setEnlargedImage(null)}
+        >
+          <div className="relative max-h-[90vh] max-w-[90vw]">
+            <button
+              type="button"
+              onClick={() => setEnlargedImage(null)}
+              className="absolute -top-10 right-0 inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/30"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Close
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={enlargedImage.url}
+              alt={enlargedImage.name}
+              className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <p className="mt-2 text-center text-sm text-white/80">{enlargedImage.name}</p>
           </div>
         </div>
       ) : null}

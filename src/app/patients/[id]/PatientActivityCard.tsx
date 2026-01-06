@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState, useRef } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
@@ -200,6 +200,7 @@ export default function PatientActivityCard({
   const [noteBody, setNoteBody] = useState("");
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaveError, setNoteSaveError] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState<PatientNote | null>(null);
 
   const [userOptions, setUserOptions] = useState<PlatformUser[]>([]);
   const [selectedMentionIds, setSelectedMentionIds] = useState<string[]>([]);
@@ -310,6 +311,7 @@ export default function PatientActivityCard({
     null,
   );
   const [activeMentionQuery, setActiveMentionQuery] = useState("");
+  const taskCommentInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
@@ -1126,6 +1128,32 @@ export default function PatientActivityCard({
       const fullName =
         [first, last].filter(Boolean).join(" ") || authUser.email || null;
 
+      // Handle editing existing note
+      if (editingNote) {
+        const { data: updated, error: updateError } = await supabaseClient
+          .from("patient_notes")
+          .update({ body: trimmed })
+          .eq("id", editingNote.id)
+          .select("id, body, author_name, created_at")
+          .single();
+
+        if (updateError || !updated) {
+          setNoteSaveError(updateError?.message ?? "Failed to update note.");
+          setNoteSaving(false);
+          return;
+        }
+
+        setNotes((prev) =>
+          prev.map((n) => (n.id === updated.id ? (updated as PatientNote) : n))
+        );
+        setEditingNote(null);
+        setNoteBody("");
+        setNoteModalOpen(false);
+        setNoteSaving(false);
+        return;
+      }
+
+      // Create new note
       const { data: inserted, error: insertError } = await supabaseClient
         .from("patient_notes")
         .insert({
@@ -1187,6 +1215,50 @@ export default function PatientActivityCard({
       setNoteSaveError("Unexpected error saving note.");
       setNoteSaving(false);
     }
+  }
+
+  // Function to start editing a note
+  function handleEditNote(note: PatientNote) {
+    setEditingNote(note);
+    setNoteBody(note.body);
+    setNoteSaveError(null);
+    setNoteModalOpen(true);
+  }
+
+  // Auto-save note when switching tabs (if there's content)
+  async function handleTabChange(newTab: ActivityTab) {
+    // If we're leaving notes tab and have unsaved content, save it
+    if (activeTab === "notes" && noteBody.trim() && !noteModalOpen) {
+      try {
+        const { data: authData } = await supabaseClient.auth.getUser();
+        const authUser = authData?.user;
+        if (authUser) {
+          const meta = (authUser.user_metadata || {}) as Record<string, unknown>;
+          const first = (meta["first_name"] as string) || "";
+          const last = (meta["last_name"] as string) || "";
+          const fullName = [first, last].filter(Boolean).join(" ") || authUser.email || null;
+
+          const { data: inserted } = await supabaseClient
+            .from("patient_notes")
+            .insert({
+              patient_id: patientId,
+              author_user_id: authUser.id,
+              author_name: fullName,
+              body: noteBody.trim(),
+            })
+            .select("id, body, author_name, created_at")
+            .single();
+
+          if (inserted) {
+            setNotes((prev) => [inserted as PatientNote, ...prev]);
+            setNoteBody("");
+          }
+        }
+      } catch {
+        // Silent fail - don't block tab change
+      }
+    }
+    setActiveTab(newTab);
   }
 
   function handleTaskAssignedUserSearchChange(value: string) {
@@ -1634,6 +1706,14 @@ export default function PatientActivityCard({
 
     setActiveMentionTaskId(null);
     setActiveMentionQuery("");
+    
+    // Refocus the input after selecting a mention to prevent "kicking out"
+    setTimeout(() => {
+      const inputRef = taskCommentInputRefs.current[taskId];
+      if (inputRef) {
+        inputRef.focus();
+      }
+    }, 0);
   }
 
   async function handleTaskCommentSubmit(taskId: string) {
@@ -2132,7 +2212,7 @@ export default function PatientActivityCard({
             <button
               key={tab.key}
               type="button"
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => handleTabChange(tab.key)}
               className={
                 "relative px-3 py-1.5 text-[11px] font-medium transition-colors rounded-t-lg border border-b-0 " +
                 (activeTab === tab.key
@@ -2608,7 +2688,7 @@ export default function PatientActivityCard({
                       className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-800"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div>
+                        <div className="flex-1">
                           <p className="font-medium">
                             {note.author_name || "Unknown"}
                           </p>
@@ -2616,11 +2696,24 @@ export default function PatientActivityCard({
                             {note.body}
                           </p>
                         </div>
-                        {noteLabel ? (
-                          <p className="shrink-0 text-[10px] text-slate-400">
-                            {noteLabel}
-                          </p>
-                        ) : null}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleEditNote(note)}
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800"
+                            title="Edit note"
+                          >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit
+                          </button>
+                          {noteLabel ? (
+                            <span className="text-[10px] text-slate-400">
+                              {noteLabel}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       {mentions.length > 0 ? (
                         <p className="mt-0.5 text-[10px] text-slate-500">
@@ -3188,6 +3281,7 @@ export default function PatientActivityCard({
                             >
                               <div className="relative flex items-center gap-1">
                                 <input
+                                  ref={(el) => { taskCommentInputRefs.current[task.id] = el; }}
                                   type="text"
                                   value={commentInput}
                                   onChange={(event) =>
@@ -3434,9 +3528,9 @@ export default function PatientActivityCard({
       {noteModalOpen ? (
         <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm py-6 sm:py-8">
           <div className="w-full max-w-md max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
-            <h2 className="text-sm font-semibold text-slate-900">New note</h2>
+            <h2 className="text-sm font-semibold text-slate-900">{editingNote ? "Edit note" : "New note"}</h2>
             <p className="mt-1 text-[11px] text-slate-500">
-              Write an internal note about this patient. Use the @ button to mention teammates.
+              {editingNote ? "Update this note." : "Write an internal note about this patient. Use the @ button to mention teammates."}
             </p>
             <form onSubmit={handleNoteSubmit} className="mt-3 space-y-3">
               <div className="relative">
@@ -3487,6 +3581,8 @@ export default function PatientActivityCard({
                     if (noteSaving) return;
                     setNoteModalOpen(false);
                     setNoteSaveError(null);
+                    setEditingNote(null);
+                    setNoteBody("");
                   }}
                   className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
                 >
@@ -3497,7 +3593,7 @@ export default function PatientActivityCard({
                   disabled={noteSaving}
                   className="inline-flex items-center rounded-full border border-emerald-200/80 bg-emerald-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {noteSaving ? "Saving..." : "Save note"}
+                  {noteSaving ? "Saving..." : editingNote ? "Update note" : "Save note"}
                 </button>
               </div>
             </form>

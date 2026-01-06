@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -105,6 +105,7 @@ export default function TaskEditModal({
   const [commentSaving, setCommentSaving] = useState(false);
   const [commentMentionUserIds, setCommentMentionUserIds] = useState<string[]>([]);
   const [activeMentionQuery, setActiveMentionQuery] = useState("");
+  const commentInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open && task) {
@@ -220,6 +221,10 @@ export default function TaskEditModal({
       return [...prev, user.id];
     });
     setActiveMentionQuery("");
+    // Refocus the input after selecting a mention to prevent "kicking out"
+    setTimeout(() => {
+      commentInputRef.current?.focus();
+    }, 0);
   }
 
   async function handleCommentSubmit() {
@@ -340,7 +345,7 @@ export default function TaskEditModal({
     : "Unknown patient";
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-slate-900/50 px-4 pt-16 pb-6 overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 px-4 py-6 overflow-y-auto">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
@@ -517,6 +522,7 @@ export default function TaskEditModal({
             >
               <div className="relative flex items-center gap-2">
                 <input
+                  ref={commentInputRef}
                   type="text"
                   value={commentInput}
                   onChange={(e) => handleCommentInputChange(e.target.value)}

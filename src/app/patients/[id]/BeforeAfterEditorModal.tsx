@@ -33,6 +33,13 @@ export default function BeforeAfterEditorModal({
   const [exporting, setExporting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
+  // Pan/drag state for x and y axis movement
+  const [beforePosition, setBeforePosition] = useState({ x: 0, y: 0 });
+  const [afterPosition, setAfterPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState<"before" | "after" | null>(null);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [dragStartPosition, setDragStartPosition] = useState({ x: 0, y: 0 });
+
   if (!open) {
     return null;
   }
@@ -40,11 +47,44 @@ export default function BeforeAfterEditorModal({
   function handleAssignImage(side: "before" | "after", image: BeforeAfterImage) {
     if (side === "before") {
       setBeforeImage(image);
+      setBeforePosition({ x: 0, y: 0 }); // Reset position when new image is assigned
     } else {
       setAfterImage(image);
+      setAfterPosition({ x: 0, y: 0 }); // Reset position when new image is assigned
     }
     setActiveSide(side);
     setLocalError(null);
+  }
+
+  // Mouse/touch drag handlers for panning
+  function handleMouseDown(event: React.MouseEvent, side: "before" | "after") {
+    event.preventDefault();
+    setIsDragging(side);
+    setDragStart({ x: event.clientX, y: event.clientY });
+    setDragStartPosition(side === "before" ? beforePosition : afterPosition);
+  }
+
+  function handleMouseMove(event: React.MouseEvent) {
+    if (!isDragging) return;
+    const dx = event.clientX - dragStart.x;
+    const dy = event.clientY - dragStart.y;
+    const newPosition = {
+      x: dragStartPosition.x + dx,
+      y: dragStartPosition.y + dy,
+    };
+    if (isDragging === "before") {
+      setBeforePosition(newPosition);
+    } else {
+      setAfterPosition(newPosition);
+    }
+  }
+
+  function handleMouseUp() {
+    setIsDragging(null);
+  }
+
+  function handleMouseLeave() {
+    setIsDragging(null);
   }
 
   function handleGalleryClick(image: BeforeAfterImage) {
@@ -129,14 +169,17 @@ export default function BeforeAfterEditorModal({
         image: HTMLImageElement,
         side: "before" | "after",
         zoom: number,
+        position: { x: number; y: number },
       ) {
         const sideX = side === "before" ? 0 : sideWidth;
         const baseScale = Math.max(sideWidth / image.width, height / image.height);
         const scale = baseScale * zoom;
         const drawWidth = image.width * scale;
         const drawHeight = image.height * scale;
-        const dx = sideX + sideWidth / 2 - drawWidth / 2;
-        const dy = height / 2 - drawHeight / 2;
+        // Apply position offset (scaled proportionally to canvas size)
+        const positionScale = width / 1024; // Scale factor for position
+        const dx = sideX + sideWidth / 2 - drawWidth / 2 + (position.x * positionScale);
+        const dy = height / 2 - drawHeight / 2 + (position.y * positionScale);
 
         drawingContext.save();
         drawingContext.beginPath();
@@ -146,8 +189,8 @@ export default function BeforeAfterEditorModal({
         drawingContext.restore();
       }
 
-      drawSide(context, beforeEl, "before", beforeZoom);
-      drawSide(context, afterEl, "after", afterZoom);
+      drawSide(context, beforeEl, "before", beforeZoom, beforePosition);
+      drawSide(context, afterEl, "after", afterZoom, afterPosition);
 
       const headerHeight = 72;
       const headerY = 24;
@@ -208,6 +251,8 @@ export default function BeforeAfterEditorModal({
       setAfterImage(null);
       setBeforeZoom(1);
       setAfterZoom(1);
+      setBeforePosition({ x: 0, y: 0 });
+      setAfterPosition({ x: 0, y: 0 });
     } catch (err: any) {
       const message = err?.message ?? "Failed to export before and after image.";
       setLocalError(message);
@@ -343,17 +388,39 @@ export default function BeforeAfterEditorModal({
                 >
                   <div className="mb-1 flex items-center justify-between text-[10px] text-slate-300">
                     <span>Before</span>
-                    <span className="text-slate-500">Zoom: {beforeZoom.toFixed(2)}x</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500">Zoom: {beforeZoom.toFixed(2)}x</span>
+                      <button
+                        type="button"
+                        onClick={() => setBeforePosition({ x: 0, y: 0 })}
+                        className="text-[9px] text-slate-400 hover:text-slate-200"
+                        title="Reset position"
+                      >
+                        Reset
+                      </button>
+                    </div>
                   </div>
-                  <div className="relative h-[340px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-950 md:h-[380px] lg:h-[420px]">
+                  <div 
+                    className={`relative h-[340px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-950 md:h-[380px] lg:h-[420px] ${isDragging === "before" ? "cursor-grabbing" : "cursor-grab"}`}
+                    onMouseDown={(e) => beforeImage && handleMouseDown(e, "before")}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseLeave}
+                  >
                     {beforeImage ? (
-                      <div className="flex h-full w-full items-center justify-center overflow-hidden">
+                      <div 
+                        className="flex h-full w-full items-center justify-center overflow-hidden select-none"
+                        style={{ 
+                          transform: `translate(${beforePosition.x}px, ${beforePosition.y}px)`,
+                        }}
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={beforeImage.url}
                           alt={beforeImage.name}
-                          className="max-h-full max-w-none object-cover"
+                          className="max-h-full max-w-none object-cover pointer-events-none"
                           style={{ transform: `scale(${beforeZoom})` }}
+                          draggable={false}
                         />
                       </div>
                     ) : (
@@ -362,6 +429,7 @@ export default function BeforeAfterEditorModal({
                       </div>
                     )}
                   </div>
+                  <p className="mt-1 text-[9px] text-slate-500 text-center">Drag image to reposition</p>
                   <input
                     type="range"
                     min={0.8}
@@ -369,7 +437,7 @@ export default function BeforeAfterEditorModal({
                     step={0.05}
                     value={beforeZoom}
                     onChange={(event) => setBeforeZoom(Number(event.target.value))}
-                    className="mt-2 h-1 w-full cursor-pointer rounded-full bg-slate-700"
+                    className="mt-1 h-1 w-full cursor-pointer rounded-full bg-slate-700"
                   />
                 </div>
 
@@ -380,17 +448,39 @@ export default function BeforeAfterEditorModal({
                 >
                   <div className="mb-1 flex items-center justify-between text-[10px] text-slate-300">
                     <span>After</span>
-                    <span className="text-slate-500">Zoom: {afterZoom.toFixed(2)}x</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500">Zoom: {afterZoom.toFixed(2)}x</span>
+                      <button
+                        type="button"
+                        onClick={() => setAfterPosition({ x: 0, y: 0 })}
+                        className="text-[9px] text-slate-400 hover:text-slate-200"
+                        title="Reset position"
+                      >
+                        Reset
+                      </button>
+                    </div>
                   </div>
-                  <div className="relative h-[340px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-950 md:h-[380px] lg:h-[420px]">
+                  <div 
+                    className={`relative h-[340px] w-full overflow-hidden rounded-md border border-slate-800 bg-slate-950 md:h-[380px] lg:h-[420px] ${isDragging === "after" ? "cursor-grabbing" : "cursor-grab"}`}
+                    onMouseDown={(e) => afterImage && handleMouseDown(e, "after")}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseLeave}
+                  >
                     {afterImage ? (
-                      <div className="flex h-full w-full items-center justify-center overflow-hidden">
+                      <div 
+                        className="flex h-full w-full items-center justify-center overflow-hidden select-none"
+                        style={{ 
+                          transform: `translate(${afterPosition.x}px, ${afterPosition.y}px)`,
+                        }}
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={afterImage.url}
                           alt={afterImage.name}
-                          className="max-h-full max-w-none object-cover"
+                          className="max-h-full max-w-none object-cover pointer-events-none"
                           style={{ transform: `scale(${afterZoom})` }}
+                          draggable={false}
                         />
                       </div>
                     ) : (
@@ -399,6 +489,7 @@ export default function BeforeAfterEditorModal({
                       </div>
                     )}
                   </div>
+                  <p className="mt-1 text-[9px] text-slate-500 text-center">Drag image to reposition</p>
                   <input
                     type="range"
                     min={0.8}
@@ -406,7 +497,7 @@ export default function BeforeAfterEditorModal({
                     step={0.05}
                     value={afterZoom}
                     onChange={(event) => setAfterZoom(Number(event.target.value))}
-                    className="mt-2 h-1 w-full cursor-pointer rounded-full bg-slate-700"
+                    className="mt-1 h-1 w-full cursor-pointer rounded-full bg-slate-700"
                   />
                 </div>
               </div>
