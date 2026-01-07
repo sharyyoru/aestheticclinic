@@ -2030,8 +2030,17 @@ export default function CalendarPage() {
           </div>
         )}
         {editModalOpen && editingAppointment ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white/95 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)]">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
+            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !savingEdit) {
+                setEditModalOpen(false);
+                setEditingAppointment(null);
+              }
+            }}
+          >
+            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)]" style={{ touchAction: 'auto' } as React.CSSProperties}>
               <div className="flex items-start justify-between gap-2">
                 <h2 className="text-sm font-semibold text-slate-900">Edit appointment</h2>
                 <button
@@ -2180,8 +2189,16 @@ export default function CalendarPage() {
           </div>
         ) : null}
         {createModalOpen ? (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white/95 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
+          <div 
+            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40"
+            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !savingCreate) {
+                setCreateModalOpen(false);
+              }
+            }}
+          >
+            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]" style={{ touchAction: 'auto' } as React.CSSProperties}>
               <div className="flex items-start justify-between gap-2">
                 <h2 className="text-sm font-semibold text-slate-900">Add appointment</h2>
                 <button
@@ -2482,8 +2499,16 @@ export default function CalendarPage() {
           </div>
         ) : null}
         {newPatientModalOpen ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white/95 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)]">
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50"
+            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !savingNewPatient) {
+                setNewPatientModalOpen(false);
+              }
+            }}
+          >
+            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)]" style={{ touchAction: 'auto' } as React.CSSProperties}>
               <div className="flex items-start justify-between gap-2">
                 <h2 className="text-sm font-semibold text-slate-900">New patient</h2>
                 <button
