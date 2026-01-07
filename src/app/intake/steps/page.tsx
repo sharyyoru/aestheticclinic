@@ -1,47 +1,40 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense, useMemo } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Image from "next/image";
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
 
 const STEP_INFO = [
-  { num: 1, title: "Preferences", desc: "Fill Out the Form with all your preferences." },
-  { num: 2, title: "Treatment Areas", desc: "Choose the areas of your body you'd like to treat." },
-  { num: 3, title: "Measurements", desc: "Enter Measurements." },
-  { num: 4, title: "Photos", desc: "Upload clear photos of the areas you wish to treat to help our experts assess your needs." },
-  { num: 5, title: "Simulation", desc: "If available, view a personalized simulation of your potential results or receive a link to the simulation after review." },
-  { num: 6, title: "Treatment Options", desc: "Select your treatment preferences and finalize your choices, including preferred dates and any additional options." },
-  { num: 7, title: "Review", desc: "Review all your information before final submission." },
-  { num: 8, title: "Complete", desc: "You're All Set! Once submitted, your information will be reviewed by our expert team, and we'll reach out to discuss the next steps in your journey." },
+  { num: 1, desc: "Fill Out the Form with all your preferences." },
+  { num: 2, desc: "Choose the areas of your body you'd like to treat." },
+  { num: 3, desc: "Enter Measurements." },
+  { num: 4, desc: "Upload clear photos of the areas you wish to treat to help our experts assess your needs." },
+  { num: 5, desc: "If available, view a personalized simulation of your potential results or receive a link to the simulation after review." },
+  { num: 6, desc: "Select your treatment preferences and finalize your choices, including preferred dates and any additional options." },
+  { num: 7, desc: "Select your treatment preferences and finalize your choices, including preferred dates and any additional options." },
+  { num: 8, desc: "You're All Set! Once submitted, your information will be reviewed by our expert team, and we'll reach out to discuss the next steps in your journey." },
 ];
 
-const TREATMENT_AREAS = [
-  { id: "face", label: "Face", category: "face" },
-  { id: "neck", label: "Neck", category: "face" },
-  { id: "chest", label: "Chest", category: "body" },
-  { id: "abdomen", label: "Abdomen", category: "body" },
-  { id: "arms", label: "Arms", category: "body" },
-  { id: "back", label: "Back", category: "body" },
-  { id: "buttocks", label: "Buttocks", category: "body" },
-  { id: "thighs", label: "Thighs", category: "body" },
-  { id: "legs", label: "Legs", category: "body" },
+const NATIONALITIES = [
+  "Swiss", "French", "German", "Italian", "British", "American", "Spanish",
+  "Portuguese", "Russian", "Chinese", "Japanese", "Brazilian", "Other"
 ];
 
-const CONCERNS = [
-  "Wrinkles & Fine Lines",
-  "Sagging Skin",
-  "Excess Fat",
-  "Scars",
-  "Cellulite",
-  "Stretch Marks",
-  "Pigmentation",
-  "Volume Loss",
-  "Skin Texture",
-  "Other",
+const MARITAL_STATUSES = [
+  "Single", "Married", "Divorced", "Widowed", "Separated", "Domestic Partnership"
 ];
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+const ALCOHOL_OPTIONS = ["Never", "Rarely", "Occasionally", "Frequently", "Daily"];
+const SPORTS_OPTIONS = ["Never", "Rarely", "Occasionally", "Frequently", "Daily"];
+const BIRTH_TYPES = ["Natural", "C-section"];
 
 function IntakeStepsContent() {
   const router = useRouter();
@@ -51,72 +44,87 @@ function IntakeStepsContent() {
 
   const [step, setStep] = useState<Step>(1);
   const [showIntro, setShowIntro] = useState(true);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState("en");
 
-  // Step 1: Preferences
-  const [preferredLanguage, setPreferredLanguage] = useState("en");
-  const [consultationType, setConsultationType] = useState("either");
-  const [contactMethod, setContactMethod] = useState("email");
-  const [contactTime, setContactTime] = useState("anytime");
-  const [additionalNotes, setAdditionalNotes] = useState("");
+  // Step 1: Personal Information
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [dobDay, setDobDay] = useState("");
+  const [dobMonth, setDobMonth] = useState("");
+  const [dobYear, setDobYear] = useState("");
+  const [maritalStatus, setMaritalStatus] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [town, setTown] = useState("");
+  const [email, setEmail] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [profession, setProfession] = useState("");
+  const [currentEmployer, setCurrentEmployer] = useState("");
 
-  // Step 2: Treatment Areas
-  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
-  const [areaConcerns, setAreaConcerns] = useState<Record<string, string[]>>({});
+  // Step 2: Insurance Information
+  const [insuranceProvider, setInsuranceProvider] = useState("");
+  const [insuranceCardNumber, setInsuranceCardNumber] = useState("");
+  const [insuranceType, setInsuranceType] = useState("");
 
-  // Step 3: Measurements
-  const [height, setHeight] = useState("");
+  // Step 3: Health Background & Lifestyle
   const [weight, setWeight] = useState("");
-  const [chest, setChest] = useState("");
-  const [waist, setWaist] = useState("");
-  const [hips, setHips] = useState("");
+  const [height, setHeight] = useState("");
+  const [knownIllnesses, setKnownIllnesses] = useState("");
+  const [previousSurgeries, setPreviousSurgeries] = useState("");
+  const [allergies, setAllergies] = useState("");
+  const [cigarettes, setCigarettes] = useState("");
+  const [alcohol, setAlcohol] = useState("");
+  const [sports, setSports] = useState("");
+  const [medications, setMedications] = useState("");
+  const [generalPractitioner, setGeneralPractitioner] = useState("");
+  const [gynecologist, setGynecologist] = useState("");
+  const [childrenCount, setChildrenCount] = useState("");
+  const [birthType1, setBirthType1] = useState("");
+  const [birthType2, setBirthType2] = useState("");
 
-  // Step 4: Photos
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  // Step 4: Contact Preference
+  const [contactPreference, setContactPreference] = useState("");
 
-  // Step 6: Treatment Preferences
-  const [preferredDateStart, setPreferredDateStart] = useState("");
-  const [preferredDateEnd, setPreferredDateEnd] = useState("");
-  const [flexibility, setFlexibility] = useState("flexible");
-  const [budgetRange, setBudgetRange] = useState("standard");
-  const [financingInterest, setFinancingInterest] = useState(false);
-  const [specialRequests, setSpecialRequests] = useState("");
+  // Step 5: Terms acceptance
+  const [termsAccepted, setTermsAccepted] = useState(false);
+
+  // Patient info for confirmation
+  const [patientName, setPatientName] = useState("");
+  const [patientEmail, setPatientEmail] = useState("");
 
   useEffect(() => {
     if (!submissionId || !patientId) {
       router.push("/intake");
+    } else {
+      const fetchPatient = async () => {
+        const { data } = await supabaseClient
+          .from("patients")
+          .select("first_name, last_name, email, phone")
+          .eq("id", patientId)
+          .single();
+        if (data) {
+          setPatientName(`${data.first_name} ${data.last_name}`);
+          setPatientEmail(data.email || "");
+          setFirstName(data.first_name || "");
+          setLastName(data.last_name || "");
+          setEmail(data.email || "");
+          setMobile(data.phone || "");
+        }
+      };
+      fetchPatient();
     }
   }, [submissionId, patientId, router]);
 
-  const toggleArea = (areaId: string) => {
-    setSelectedAreas((prev) =>
-      prev.includes(areaId)
-        ? prev.filter((a) => a !== areaId)
-        : [...prev, areaId]
-    );
-  };
-
-  const toggleConcern = (areaId: string, concern: string) => {
-    setAreaConcerns((prev) => {
-      const current = prev[areaId] || [];
-      const updated = current.includes(concern)
-        ? current.filter((c) => c !== concern)
-        : [...current, concern];
-      return { ...prev, [areaId]: updated };
-    });
-  };
-
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      setPhotos((prev) => [...prev, ...Array.from(files)]);
+  const calculateBMI = () => {
+    if (weight && height) {
+      const bmi = parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2);
+      return bmi.toFixed(2);
     }
-  };
-
-  const removePhoto = (index: number) => {
-    setPhotos((prev) => prev.filter((_, i) => i !== index));
+    return "";
   };
 
   const saveStepData = useCallback(async (currentStep: Step) => {
@@ -126,8 +134,93 @@ function IntakeStepsContent() {
       setLoading(true);
       setError(null);
 
+      // Save personal information to patient record
       if (currentStep === 1) {
-        // Check if preferences exist for this submission
+        const dob = dobYear && dobMonth && dobDay 
+          ? `${dobYear}-${dobMonth.padStart(2, '0')}-${dobDay.padStart(2, '0')}`
+          : null;
+
+        await supabaseClient
+          .from("patients")
+          .update({
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            phone: mobile,
+            date_of_birth: dob,
+            street_address: streetAddress || null,
+            postal_code: postalCode || null,
+            city: town || null,
+            nationality: nationality || null,
+            marital_status: maritalStatus || null,
+            profession: profession || null,
+            employer: currentEmployer || null,
+          })
+          .eq("id", patientId);
+      }
+
+      // Save insurance information
+      if (currentStep === 2) {
+        const { data: existingInsurance } = await supabaseClient
+          .from("patient_insurance")
+          .select("id")
+          .eq("patient_id", patientId)
+          .single();
+
+        const insuranceData = {
+          patient_id: patientId,
+          submission_id: submissionId,
+          provider_name: insuranceProvider,
+          card_number: insuranceCardNumber,
+          insurance_type: insuranceType,
+        };
+
+        if (existingInsurance?.id) {
+          await supabaseClient.from("patient_insurance").update(insuranceData).eq("id", existingInsurance.id);
+        } else {
+          await supabaseClient.from("patient_insurance").insert(insuranceData);
+        }
+      }
+
+      // Save health background
+      if (currentStep === 3) {
+        const bmi = calculateBMI();
+        
+        const { data: existingHealth } = await supabaseClient
+          .from("patient_health_background")
+          .select("id")
+          .eq("submission_id", submissionId)
+          .single();
+
+        const healthData = {
+          patient_id: patientId,
+          submission_id: submissionId,
+          weight_kg: weight ? parseFloat(weight) : null,
+          height_cm: height ? parseFloat(height) : null,
+          bmi: bmi ? parseFloat(bmi) : null,
+          known_illnesses: knownIllnesses || null,
+          previous_surgeries: previousSurgeries || null,
+          allergies: allergies || null,
+          cigarettes: cigarettes || null,
+          alcohol_consumption: alcohol || null,
+          sports_activity: sports || null,
+          medications: medications || null,
+          general_practitioner: generalPractitioner || null,
+          gynecologist: gynecologist || null,
+          children_count: childrenCount ? parseInt(childrenCount) : null,
+          birth_type_1: birthType1 || null,
+          birth_type_2: birthType2 || null,
+        };
+
+        if (existingHealth?.id) {
+          await supabaseClient.from("patient_health_background").update(healthData).eq("id", existingHealth.id);
+        } else {
+          await supabaseClient.from("patient_health_background").insert(healthData);
+        }
+      }
+
+      // Save contact preference
+      if (currentStep === 4) {
         const { data: existingPrefs } = await supabaseClient
           .from("patient_intake_preferences")
           .select("id")
@@ -137,123 +230,13 @@ function IntakeStepsContent() {
         const prefsData = {
           submission_id: submissionId,
           patient_id: patientId,
-          preferred_language: preferredLanguage,
-          consultation_type: consultationType,
-          preferred_contact_method: contactMethod,
-          preferred_contact_time: contactTime,
-          additional_notes: additionalNotes || null,
+          preferred_contact_method: contactPreference,
         };
 
         if (existingPrefs?.id) {
           await supabaseClient.from("patient_intake_preferences").update(prefsData).eq("id", existingPrefs.id);
         } else {
           await supabaseClient.from("patient_intake_preferences").insert(prefsData);
-        }
-      }
-
-      if (currentStep === 2) {
-        // Delete existing areas first
-        await supabaseClient
-          .from("patient_treatment_areas")
-          .delete()
-          .eq("submission_id", submissionId);
-
-        // Insert new areas
-        if (selectedAreas.length > 0) {
-          const areaRows = selectedAreas.map((areaId, idx) => {
-            const area = TREATMENT_AREAS.find((a) => a.id === areaId);
-            return {
-              submission_id: submissionId,
-              patient_id: patientId,
-              area_name: areaId,
-              area_category: area?.category || "body",
-              specific_concerns: areaConcerns[areaId] || [],
-              priority: idx + 1,
-            };
-          });
-          await supabaseClient.from("patient_treatment_areas").insert(areaRows);
-        }
-      }
-
-      if (currentStep === 3) {
-        const bmi = height && weight
-          ? (parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(1)
-          : null;
-
-        // Check if measurements exist for this submission
-        const { data: existingMeasurements } = await supabaseClient
-          .from("patient_measurements")
-          .select("id")
-          .eq("submission_id", submissionId)
-          .single();
-
-        const measurementsData = {
-          submission_id: submissionId,
-          patient_id: patientId,
-          height_cm: height ? parseFloat(height) : null,
-          weight_kg: weight ? parseFloat(weight) : null,
-          bmi: bmi ? parseFloat(bmi) : null,
-          chest_cm: chest ? parseFloat(chest) : null,
-          waist_cm: waist ? parseFloat(waist) : null,
-          hips_cm: hips ? parseFloat(hips) : null,
-        };
-
-        if (existingMeasurements?.id) {
-          await supabaseClient.from("patient_measurements").update(measurementsData).eq("id", existingMeasurements.id);
-        } else {
-          await supabaseClient.from("patient_measurements").insert(measurementsData);
-        }
-      }
-
-      if (currentStep === 4 && photos.length > 0) {
-        // Upload photos to storage
-        for (const photo of photos) {
-          const ext = photo.name.split(".").pop();
-          const path = `${patientId}/${submissionId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-
-          const { error: uploadError } = await supabaseClient.storage
-            .from("patient-intake-photos")
-            .upload(path, photo);
-
-          if (!uploadError) {
-            await supabaseClient.from("patient_intake_photos").insert({
-              submission_id: submissionId,
-              patient_id: patientId,
-              photo_type: "area_specific",
-              storage_path: path,
-              file_name: photo.name,
-              mime_type: photo.type,
-              file_size: photo.size,
-            });
-            setUploadedPhotos((prev) => [...prev, path]);
-          }
-        }
-        setPhotos([]);
-      }
-
-      if (currentStep === 6) {
-        // Check if treatment preferences exist for this submission
-        const { data: existingTreatmentPrefs } = await supabaseClient
-          .from("patient_treatment_preferences")
-          .select("id")
-          .eq("submission_id", submissionId)
-          .single();
-
-        const treatmentPrefsData = {
-          submission_id: submissionId,
-          patient_id: patientId,
-          preferred_date_range_start: preferredDateStart || null,
-          preferred_date_range_end: preferredDateEnd || null,
-          flexibility,
-          budget_range: budgetRange,
-          financing_interest: financingInterest,
-          special_requests: specialRequests || null,
-        };
-
-        if (existingTreatmentPrefs?.id) {
-          await supabaseClient.from("patient_treatment_preferences").update(treatmentPrefsData).eq("id", existingTreatmentPrefs.id);
-        } else {
-          await supabaseClient.from("patient_treatment_preferences").insert(treatmentPrefsData);
         }
       }
 
@@ -269,12 +252,12 @@ function IntakeStepsContent() {
     } finally {
       setLoading(false);
     }
-  }, [submissionId, patientId, preferredLanguage, consultationType, contactMethod, contactTime, additionalNotes, selectedAreas, areaConcerns, height, weight, chest, waist, hips, photos, preferredDateStart, preferredDateEnd, flexibility, budgetRange, financingInterest, specialRequests]);
+  }, [submissionId, patientId, firstName, lastName, dobDay, dobMonth, dobYear, maritalStatus, nationality, streetAddress, postalCode, town, email, mobile, profession, currentEmployer, insuranceProvider, insuranceCardNumber, insuranceType, weight, height, knownIllnesses, previousSurgeries, allergies, cigarettes, alcohol, sports, medications, generalPractitioner, gynecologist, childrenCount, birthType1, birthType2, contactPreference]);
 
   const handleNext = async () => {
     try {
       await saveStepData(step);
-      if (step < 8) {
+      if (step < 6) {
         setStep((prev) => (prev + 1) as Step);
       }
     } catch {
@@ -282,16 +265,24 @@ function IntakeStepsContent() {
     }
   };
 
-  const handleComplete = async () => {
+  const handleBack = () => {
+    if (step > 1) {
+      setStep((prev) => (prev - 1) as Step);
+    }
+  };
+
+  const handleAcceptTerms = async () => {
     try {
       setLoading(true);
-      
+
       // Mark submission as completed
       await supabaseClient
         .from("patient_intake_submissions")
         .update({
           status: "completed",
           completed_at: new Date().toISOString(),
+          terms_accepted: true,
+          terms_accepted_at: new Date().toISOString(),
         })
         .eq("id", submissionId);
 
@@ -304,7 +295,7 @@ function IntakeStepsContent() {
         })
         .eq("id", patientId);
 
-      setStep(8);
+      setShowConfirmation(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to complete");
     } finally {
@@ -312,10 +303,101 @@ function IntakeStepsContent() {
     }
   };
 
+  // Language selector component
+  const LanguageSelector = () => (
+    <div className="flex items-center gap-1 text-sm text-slate-600">
+      <span>Language:</span>
+      <select
+        value={language}
+        onChange={(e) => setLanguage(e.target.value)}
+        className="bg-transparent border-none text-slate-600 cursor-pointer focus:outline-none"
+      >
+        <option value="en">English</option>
+        <option value="fr">French</option>
+        <option value="de">German</option>
+      </select>
+      <span>▼</span>
+    </div>
+  );
+
+  // User icon component
+  const UserIcon = () => (
+    <div className="flex justify-center mb-6">
+      <svg className="w-16 h-16 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+    </div>
+  );
+
+  // Confirmation page
+  if (showConfirmation) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-between">
+          <Image
+            src="/logos/aesthetics-logo.svg"
+            alt="Aesthetics Clinic"
+            width={60}
+            height={60}
+            className="h-12 w-auto"
+          />
+          <button 
+            onClick={() => router.push("/")}
+            className="text-slate-400 hover:text-slate-600 p-2"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-8">
+          <div className="w-full max-w-md text-center">
+            <h1 className="text-2xl sm:text-3xl font-light text-slate-800 mb-2">
+              We're so Glad to Have you at
+            </h1>
+            <h2 className="text-2xl sm:text-3xl font-medium text-amber-600 mb-8">
+              Aliice Aesthetics Team!
+            </h2>
+
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
+              <h3 className="text-lg font-medium text-amber-600 mb-2">Booking Confirmed!</h3>
+              <p className="text-sm text-amber-600 mb-4">
+                Thank you for booking your consultation with us! Here are your appointment details:
+              </p>
+              <div className="space-y-2 text-sm">
+                <p><span className="font-semibold text-slate-700">Name:</span> <span className="text-amber-600">{patientName}</span></p>
+                <p><span className="font-semibold text-slate-700">Email:</span> <span className="text-amber-600">{patientEmail}</span></p>
+              </div>
+            </div>
+
+            <div className="text-center">
+              <p className="text-lg italic text-amber-600 mb-4">Have any questions<br />in mind?</p>
+              <div className="flex items-center justify-center gap-2 text-slate-600">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                </svg>
+                <span className="text-sm">info@aesthetics-ge.ch</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // How it Works intro page
   if (showIntro) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
-        <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-between">
+          <Image
+            src="/logos/aesthetics-logo.svg"
+            alt="Aesthetics Clinic"
+            width={60}
+            height={60}
+            className="h-12 w-auto"
+          />
           <button className="text-slate-400 hover:text-slate-600 p-2">
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -323,26 +405,18 @@ function IntakeStepsContent() {
           </button>
         </header>
 
+        <div className="absolute top-4 right-16">
+          <LanguageSelector />
+        </div>
+
         <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6 sm:py-12">
           <div className="w-full max-w-lg">
-            {/* Logo */}
-            <div className="flex justify-center mb-6 sm:mb-8">
-              <Image
-                src="/logos/aesthetics-logo.svg"
-                alt="Aesthetics Clinic"
-                width={280}
-                height={80}
-                className="h-14 sm:h-16 w-auto"
-                priority
-              />
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-light text-black text-center mb-8 sm:mb-10 italic">How it Works</h1>
 
-            <h1 className="text-2xl sm:text-3xl font-light text-black text-center mb-8 sm:mb-10">How it Works</h1>
-            
             <div className="space-y-5 sm:space-y-6 text-left mb-8 sm:mb-10">
-              {STEP_INFO.slice(0, 8).map((s) => (
+              {STEP_INFO.map((s) => (
                 <div key={s.num} className="flex gap-3 sm:gap-4">
-                  <span className="text-xl sm:text-2xl font-bold text-black w-6 sm:w-8 flex-shrink-0">{s.num}</span>
+                  <span className="text-xl sm:text-2xl font-light text-slate-800 w-6 sm:w-8 flex-shrink-0">{s.num}</span>
                   <p className="text-slate-600 text-sm pt-0.5">{s.desc}</p>
                 </div>
               ))}
@@ -351,7 +425,7 @@ function IntakeStepsContent() {
             <div className="flex justify-center">
               <button
                 onClick={() => setShowIntro(false)}
-                className="px-10 sm:px-12 py-3 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors"
+                className="px-10 sm:px-12 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors"
               >
                 CONTINUE
               </button>
@@ -362,72 +436,382 @@ function IntakeStepsContent() {
     );
   }
 
+  // Terms and Conditions step (Step 5)
+  if (step === 5) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
+          <LanguageSelector />
+        </header>
+
+        <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
+          <div className="w-full max-w-md">
+            <UserIcon />
+
+            <div className="text-slate-600 text-sm leading-relaxed mb-8">
+              <p className="italic mb-4">
+                I, the undersigned, certify that the information provided is truthful, and I am not subject to any lawsuits, nor any act of default, assuming all responsibility for any inaccuracies. Furthermore, I have been informed that the 1st consultation is paid on the spot. I also authorize my doctor, in the event that I do not pay my bills, to inform the authorities of the nature of my debts and to proceed to their recovery by legal means. For any dispute, the legal executive is in Geneva.
+              </p>
+              <p>
+                By clicking "I accept," you accept and agree to the terms and conditions above.
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={handleAcceptTerms}
+              disabled={loading}
+              className="w-full py-3 rounded-full border-2 border-slate-300 text-slate-700 font-medium hover:bg-slate-100 transition-colors disabled:opacity-50"
+            >
+              {loading ? "Processing..." : "ACCEPT"}
+            </button>
+          </div>
+        </div>
+
+        <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-4">
+          <div className="max-w-md mx-auto flex justify-center items-center gap-4">
+            <button
+              onClick={handleBack}
+              className="p-3 rounded-full hover:bg-slate-200 transition-colors"
+            >
+              <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          </div>
+        </footer>
+      </main>
+    );
+  }
+
+  // Contact Preference step (Step 4)
+  if (step === 4) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+        <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
+          <div className="w-full max-w-md">
+            <UserIcon />
+
+            <p className="text-slate-600 text-sm mb-6 italic">Just a few more things</p>
+
+            <div className="mb-6">
+              <label className="block text-[#1a4d7c] text-sm font-medium mb-3">
+                Where do you prefer to be contacted <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-3">
+                {[
+                  { value: "email", label: "Through Email" },
+                  { value: "phone", label: "Through phone call" },
+                  { value: "text", label: "Text message" },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setContactPreference(option.value)}
+                    className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${
+                      contactPreference === option.value
+                        ? "bg-slate-800 text-white border-slate-800"
+                        : "bg-white border-slate-300 text-slate-700 hover:border-slate-400"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
+                {error}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-4">
+          <div className="max-w-md mx-auto flex justify-center items-center gap-4">
+            <button
+              onClick={handleBack}
+              className="p-3 rounded-full hover:bg-slate-200 transition-colors"
+            >
+              <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={handleNext}
+              disabled={loading || !contactPreference}
+              className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors disabled:opacity-50"
+            >
+              {loading ? "Saving..." : "NEXT"}
+            </button>
+          </div>
+        </footer>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
       <header className="px-4 sm:px-6 py-3 flex items-center justify-between">
         <Image
           src="/logos/aesthetics-logo.svg"
           alt="Aesthetics Clinic"
-          width={140}
-          height={40}
-          className="h-8 sm:h-10 w-auto"
+          width={60}
+          height={60}
+          className="h-10 w-auto"
         />
-        <div className="text-sm text-black font-medium">Step {step} of 8</div>
-        <button className="text-slate-400 hover:text-slate-600 p-2">
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <UserIcon />
+        <LanguageSelector />
       </header>
 
-      {/* Progress Bar */}
-      <div className="h-1 bg-slate-200">
-        <div
-          className="h-full bg-black transition-all duration-300"
-          style={{ width: `${(step / 8) * 100}%` }}
-        />
-      </div>
-
       <div className="flex-1 overflow-auto px-4 sm:px-6 py-6 sm:py-8">
-        <div className="max-w-lg mx-auto">
+        <div className="max-w-md mx-auto">
           {error && (
             <div className="mb-6 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
               {error}
             </div>
           )}
 
-          {/* Step 1: Preferences */}
+          {/* Step 1: Personal Information */}
           {step === 1 && (
-            <div className="space-y-5">
-              <h2 className="text-xl sm:text-2xl font-light text-black">Your Preferences</h2>
-              
+            <div className="space-y-4">
+              <p className="text-slate-600 text-sm mb-4">Please Enter your Personal Information</p>
+
               <div>
-                <label className="block text-sm font-medium text-black mb-2">Preferred Language</label>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  First Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="First Name"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Last Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Last Name"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Date of Birth</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={dobDay}
+                    onChange={(e) => setDobDay(e.target.value)}
+                    placeholder="DD"
+                    maxLength={2}
+                    className="w-20 px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none text-center"
+                  />
+                  <span className="flex items-center text-slate-400">/</span>
+                  <select
+                    value={dobMonth}
+                    onChange={(e) => setDobMonth(e.target.value)}
+                    className="flex-1 px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
+                  >
+                    <option value="">MM</option>
+                    {MONTHS.map((month, idx) => (
+                      <option key={month} value={String(idx + 1).padStart(2, '0')}>{month}</option>
+                    ))}
+                  </select>
+                  <span className="flex items-center text-slate-400">/</span>
+                  <input
+                    type="text"
+                    value={dobYear}
+                    onChange={(e) => setDobYear(e.target.value)}
+                    placeholder="YYYY"
+                    maxLength={4}
+                    className="w-24 px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none text-center"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Marital Status</label>
                 <select
-                  value={preferredLanguage}
-                  onChange={(e) => setPreferredLanguage(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black focus:border-black focus:outline-none"
+                  value={maritalStatus}
+                  onChange={(e) => setMaritalStatus(e.target.value)}
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                 >
-                  <option value="en" className="text-black">English</option>
-                  <option value="fr" className="text-black">French</option>
-                  <option value="de" className="text-black">German</option>
-                  <option value="es" className="text-black">Spanish</option>
-                  <option value="ru" className="text-black">Russian</option>
+                  <option value="">Marital Status</option>
+                  {MARITAL_STATUSES.map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-2">Consultation Type</label>
-                <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                  {["in-person", "virtual", "either"].map((type) => (
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Nationality <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={nationality}
+                  onChange={(e) => setNationality(e.target.value)}
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
+                >
+                  <option value="">Nationality</option>
+                  {NATIONALITIES.map((nat) => (
+                    <option key={nat} value={nat}>{nat}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Street Address <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={streetAddress}
+                  onChange={(e) => setStreetAddress(e.target.value)}
+                  placeholder="Street Address"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Postal Code <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  placeholder="Postal Code"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Town <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={town}
+                  onChange={(e) => setTown(e.target.value)}
+                  placeholder="Town"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Mobile <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  value={mobile}
+                  onChange={(e) => setMobile(e.target.value)}
+                  placeholder="Mobile"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Profession <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={profession}
+                  onChange={(e) => setProfession(e.target.value)}
+                  placeholder="Profession"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Current Employer <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={currentEmployer}
+                  onChange={(e) => setCurrentEmployer(e.target.value)}
+                  placeholder="Current Employer"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Insurance Information */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <UserIcon />
+              <p className="text-slate-600 text-sm mb-4">Please Enter your Insurance Information</p>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Name of Insurance Provider <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={insuranceProvider}
+                  onChange={(e) => setInsuranceProvider(e.target.value)}
+                  placeholder="Name"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Insurance Card Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={insuranceCardNumber}
+                  onChange={(e) => setInsuranceCardNumber(e.target.value)}
+                  placeholder="Card Number"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Type of Insurance <span className="text-red-500">*</span>
+                </label>
+                <div className="space-y-3">
+                  {["PRIVATE", "SEMI-PRIVATE", "BASIC"].map((type) => (
                     <button
                       key={type}
                       type="button"
-                      onClick={() => setConsultationType(type)}
-                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm capitalize transition-colors ${
-                        consultationType === type
-                          ? "bg-black text-white border-black border"
-                          : "bg-white border border-slate-300 text-black hover:border-black"
+                      onClick={() => setInsuranceType(type)}
+                      className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${
+                        insuranceType === type
+                          ? "bg-slate-800 text-white border-slate-800"
+                          : "bg-white border-slate-300 text-slate-700 hover:border-slate-400"
                       }`}
                     >
                       {type}
@@ -435,488 +819,241 @@ function IntakeStepsContent() {
                   ))}
                 </div>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Preferred Contact Method</label>
-                <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                  {["email", "phone", "whatsapp"].map((method) => (
-                    <button
-                      key={method}
-                      type="button"
-                      onClick={() => setContactMethod(method)}
-                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm capitalize transition-colors ${
-                        contactMethod === method
-                          ? "bg-black text-white border-black border"
-                          : "bg-white border border-slate-300 text-black hover:border-black"
-                      }`}
-                    >
-                      {method}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Best Time to Contact</label>
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  {["morning", "afternoon", "evening", "anytime"].map((time) => (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => setContactTime(time)}
-                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm capitalize transition-colors ${
-                        contactTime === time
-                          ? "bg-black text-white border-black border"
-                          : "bg-white border border-slate-300 text-black hover:border-black"
-                      }`}
-                    >
-                      {time}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Additional Notes (Optional)</label>
-                <textarea
-                  value={additionalNotes}
-                  onChange={(e) => setAdditionalNotes(e.target.value)}
-                  placeholder="Any specific concerns or preferences..."
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 resize-none focus:border-black focus:outline-none"
-                />
-              </div>
             </div>
           )}
 
-          {/* Step 2: Treatment Areas */}
-          {step === 2 && (
-            <div className="space-y-5">
-              <h2 className="text-xl sm:text-2xl font-light text-black">Treatment Areas</h2>
-              <p className="text-sm text-slate-600">Select the areas you'd like to treat</p>
-
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {TREATMENT_AREAS.map((area) => (
-                  <button
-                    key={area.id}
-                    type="button"
-                    onClick={() => toggleArea(area.id)}
-                    className={`p-4 rounded-xl text-center transition-all ${
-                      selectedAreas.includes(area.id)
-                        ? "bg-black text-white border-2 border-black"
-                        : "bg-white border border-slate-300 text-black hover:border-black"
-                    }`}
-                  >
-                    <span className="text-base sm:text-lg font-bold">{area.label}</span>
-                  </button>
-                ))}
-              </div>
-
-              {selectedAreas.length > 0 && (
-                <div className="space-y-4 pt-4 border-t border-slate-200">
-                  <h3 className="text-sm font-medium text-black">Specific Concerns</h3>
-                  {selectedAreas.map((areaId) => {
-                    const area = TREATMENT_AREAS.find((a) => a.id === areaId);
-                    return (
-                      <div key={areaId} className="space-y-2">
-                        <p className="text-sm font-medium text-black">{area?.label}</p>
-                        <div className="flex flex-wrap gap-2">
-                          {CONCERNS.map((concern) => (
-                            <button
-                              key={concern}
-                              type="button"
-                              onClick={() => toggleConcern(areaId, concern)}
-                              className={`px-3 py-1 rounded-full text-xs transition-colors ${
-                                (areaConcerns[areaId] || []).includes(concern)
-                                  ? "bg-black text-white"
-                                  : "bg-slate-100 text-black hover:bg-slate-200"
-                              }`}
-                            >
-                              {concern}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 3: Measurements */}
+          {/* Step 3: Health Background & Lifestyle */}
           {step === 3 && (
-            <div className="space-y-5">
-              <h2 className="text-xl sm:text-2xl font-light text-black">Measurements</h2>
-              <p className="text-sm text-slate-600">Enter your body measurements (optional but helpful)</p>
+            <div className="space-y-4">
+              <UserIcon />
+              <p className="text-slate-600 text-sm mb-4">Please enter your Health Background & Lifestyle Information</p>
 
-              <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-sm text-black mb-1">Height (cm)</label>
-                  <input
-                    type="number"
-                    value={height}
-                    onChange={(e) => setHeight(e.target.value)}
-                    placeholder="170"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-black mb-1">Weight (kg)</label>
-                  <input
-                    type="number"
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    placeholder="70"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-black mb-1">Chest (cm)</label>
-                  <input
-                    type="number"
-                    value={chest}
-                    onChange={(e) => setChest(e.target.value)}
-                    placeholder="90"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-black mb-1">Waist (cm)</label>
-                  <input
-                    type="number"
-                    value={waist}
-                    onChange={(e) => setWaist(e.target.value)}
-                    placeholder="75"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm text-black mb-1">Hips (cm)</label>
-                  <input
-                    type="number"
-                    value={hips}
-                    onChange={(e) => setHips(e.target.value)}
-                    placeholder="95"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {height && weight && (
-                <div className="p-4 rounded-lg bg-black text-white">
-                  <p className="text-sm">
-                    Calculated BMI:{" "}
-                    <span className="font-bold text-lg">
-                      {(parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(1)}
-                    </span>
-                    <span className="ml-2 text-slate-300">
-                      {(() => {
-                        const bmi = parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2);
-                        if (bmi < 18.5) return "(Underweight)";
-                        if (bmi < 25) return "(Normal)";
-                        if (bmi < 30) return "(Overweight)";
-                        return "(Obese)";
-                      })()}
-                    </span>
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 4: Photos */}
-          {step === 4 && (
-            <div className="space-y-5">
-              <h2 className="text-xl sm:text-2xl font-light text-black">Upload Photos</h2>
-              <p className="text-sm text-slate-600">
-                Upload clear photos of the areas you wish to treat. This helps our experts better assess your needs.
-              </p>
-
-              <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 sm:p-8 text-center hover:border-black transition-colors">
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                  id="photo-upload"
-                />
-                <label htmlFor="photo-upload" className="cursor-pointer">
-                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-black flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm text-black font-medium">Click to upload photos</p>
-                  <p className="text-xs text-slate-500 mt-1">JPG, PNG, HEIC up to 10MB each</p>
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Indicate Weight in (kilograms) <span className="text-red-500">*</span>
                 </label>
-              </div>
-
-              {photos.length > 0 && (
-                <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                  {photos.map((photo, idx) => (
-                    <div key={idx} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100">
-                      <img
-                        src={URL.createObjectURL(photo)}
-                        alt={`Upload ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <button
-                        onClick={() => removePhoto(idx)}
-                        className="absolute top-1 right-1 w-7 h-7 rounded-full bg-black text-white flex items-center justify-center text-sm font-bold hover:bg-red-600 transition-colors"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {uploadedPhotos.length > 0 && (
-                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                  <p className="text-sm text-emerald-700">
-                    ✓ {uploadedPhotos.length} photo(s) already uploaded
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 5: Simulation */}
-          {step === 5 && (
-            <div className="space-y-5 text-center py-6 sm:py-8">
-              <div className="w-16 h-16 mx-auto rounded-full bg-black flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-light text-black">Personalized Simulation</h2>
-              <p className="text-sm text-slate-600">
-                Based on the information you've provided, our team will create a personalized simulation
-                of your potential results. You'll receive a link to view your simulation after our experts
-                have reviewed your information.
-              </p>
-              <div className="p-4 rounded-lg bg-slate-100 border border-slate-200">
-                <p className="text-sm text-black">
-                  Simulation will be available within 24-48 hours after submission
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Step 6: Treatment Preferences */}
-          {step === 6 && (
-            <div className="space-y-5">
-              <h2 className="text-xl sm:text-2xl font-light text-black">Treatment Preferences</h2>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Preferred Date Range</label>
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <input
-                    type="date"
-                    value={preferredDateStart}
-                    onChange={(e) => setPreferredDateStart(e.target.value)}
-                    className="px-4 py-3 rounded-lg border border-slate-300 bg-white text-black focus:border-black focus:outline-none"
-                  />
-                  <input
-                    type="date"
-                    value={preferredDateEnd}
-                    onChange={(e) => setPreferredDateEnd(e.target.value)}
-                    className="px-4 py-3 rounded-lg border border-slate-300 bg-white text-black focus:border-black focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Schedule Flexibility</label>
-                <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                  {["flexible", "specific_dates", "asap"].map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setFlexibility(opt)}
-                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm transition-colors ${
-                        flexibility === opt
-                          ? "bg-black text-white border-black border"
-                          : "bg-white border border-slate-300 text-black hover:border-black"
-                      }`}
-                    >
-                      {opt === "specific_dates" ? "Specific" : opt === "asap" ? "ASAP" : "Flexible"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2">Budget Range</label>
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  {["economy", "standard", "premium", "no_limit"].map((opt) => (
-                    <button
-                      key={opt}
-                      type="button"
-                      onClick={() => setBudgetRange(opt)}
-                      className={`py-2 px-2 sm:px-3 rounded-lg text-xs sm:text-sm capitalize transition-colors ${
-                        budgetRange === opt
-                          ? "bg-black text-white border-black border"
-                          : "bg-white border border-slate-300 text-black hover:border-black"
-                      }`}
-                    >
-                      {opt.replace("_", " ")}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
                 <input
-                  type="checkbox"
-                  id="financing"
-                  checked={financingInterest}
-                  onChange={(e) => setFinancingInterest(e.target.checked)}
-                  className="w-5 h-5 rounded border-slate-300 text-black focus:ring-black accent-black"
+                  type="number"
+                  value={weight}
+                  onChange={(e) => setWeight(e.target.value)}
+                  placeholder="Weight"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
-                <label htmlFor="financing" className="text-sm text-black">
-                  I'm interested in financing options
-                </label>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-2">Special Requests</label>
-                <textarea
-                  value={specialRequests}
-                  onChange={(e) => setSpecialRequests(e.target.value)}
-                  placeholder="Any special requirements or requests..."
-                  rows={3}
-                  className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 resize-none focus:border-black focus:outline-none"
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Indicate Height in (cm) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={height}
+                  onChange={(e) => setHeight(e.target.value)}
+                  placeholder="Height"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
-            </div>
-          )}
 
-          {/* Step 7: Review */}
-          {step === 7 && (
-            <div className="space-y-5">
-              <h2 className="text-xl sm:text-2xl font-light text-black">Review Your Information</h2>
-              
-              <div className="space-y-3">
-                <div className="p-4 rounded-lg bg-white border border-slate-300">
-                  <h3 className="text-sm font-medium text-black mb-2">Treatment Areas</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedAreas.map((areaId) => {
-                      const area = TREATMENT_AREAS.find((a) => a.id === areaId);
-                      return (
-                        <span key={areaId} className="px-3 py-1 rounded-full bg-black text-white text-sm">
-                          {area?.label}
-                        </span>
-                      );
-                    })}
-                    {selectedAreas.length === 0 && (
-                      <span className="text-sm text-slate-400">No areas selected</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-lg bg-white border border-slate-300">
-                  <h3 className="text-sm font-medium text-black mb-2">Measurements</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm text-black">
-                    {height && <p>Height: {height}cm</p>}
-                    {weight && <p>Weight: {weight}kg</p>}
-                    {height && weight && (
-                      <p>BMI: {(parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(1)}</p>
-                    )}
-                    {chest && <p>Chest: {chest}cm</p>}
-                    {waist && <p>Waist: {waist}cm</p>}
-                    {hips && <p>Hips: {hips}cm</p>}
-                    {!height && !weight && <p className="text-slate-400">Not provided</p>}
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-lg bg-white border border-slate-300">
-                  <h3 className="text-sm font-medium text-black mb-2">Photos Uploaded</h3>
-                  <p className="text-sm text-black">
-                    {uploadedPhotos.length + photos.length} photo(s)
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-lg bg-white border border-slate-300">
-                  <h3 className="text-sm font-medium text-black mb-2">Preferences</h3>
-                  <div className="text-sm text-black space-y-1">
-                    <p>Schedule: <span className="capitalize">{flexibility.replace("_", " ")}</span></p>
-                    <p>Budget: <span className="capitalize">{budgetRange.replace("_", " ")}</span></p>
-                    {financingInterest && <p>Interested in financing</p>}
-                  </div>
-                </div>
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">BMI <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={calculateBMI()}
+                  readOnly
+                  placeholder="Auto-calculated"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-slate-100 text-black placeholder:text-slate-400"
+                />
               </div>
-            </div>
-          )}
 
-          {/* Step 8: Complete */}
-          {step === 8 && (
-            <div className="space-y-5 text-center py-6 sm:py-8">
-              <div className="w-16 h-16 mx-auto rounded-full bg-black flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Known Illnesses (separate multiple with commas, write n/a if none) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={knownIllnesses}
+                  onChange={(e) => setKnownIllnesses(e.target.value)}
+                  placeholder="Known illnesses"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
               </div>
-              <h2 className="text-xl sm:text-2xl font-light text-black">You're All Set!</h2>
-              <p className="text-sm text-slate-600">
-                Thank you for completing the intake form. Your information has been submitted and will be 
-                reviewed by our expert team. We'll reach out to discuss the next steps in your journey.
-              </p>
-              <div className="p-4 rounded-lg bg-emerald-50 border border-emerald-200">
-                <p className="text-sm text-emerald-700">
-                  ✓ Your submission has been received
-                </p>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Previous Surgeries (indicate n/a if none) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={previousSurgeries}
+                  onChange={(e) => setPreviousSurgeries(e.target.value)}
+                  placeholder="Previous surgeries"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
               </div>
-              
-              {/* Book Appointment Button */}
-              <div className="pt-4">
-                <a
-                  href={`/book-appointment?name=${encodeURIComponent(patientId || "")}&from=intake`}
-                  className="inline-block w-full sm:w-auto px-8 py-3 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors"
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Allergies (indicate n/a if none) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={allergies}
+                  onChange={(e) => setAllergies(e.target.value)}
+                  placeholder="Allergies"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Cigarettes (indicate n/a if none) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={cigarettes}
+                  onChange={(e) => setCigarettes(e.target.value)}
+                  placeholder="Cigarettes per day"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Alcohol <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={alcohol}
+                  onChange={(e) => setAlcohol(e.target.value)}
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                 >
-                  Book an Appointment
-                </a>
+                  <option value="">Select frequency</option>
+                  {ALCOHOL_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
               </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Sports <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={sports}
+                  onChange={(e) => setSports(e.target.value)}
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
+                >
+                  <option value="">Select frequency</option>
+                  {SPORTS_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  Medications (separate multiple with commas, write n/a if none) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={medications}
+                  onChange={(e) => setMedications(e.target.value)}
+                  placeholder="Current medications"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
+                  General Practitioner <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={generalPractitioner}
+                  onChange={(e) => setGeneralPractitioner(e.target.value)}
+                  placeholder="Doctor's name"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Gynecologist</label>
+                <input
+                  type="text"
+                  value={gynecologist}
+                  onChange={(e) => setGynecologist(e.target.value)}
+                  placeholder="Doctor's name"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Do you have Children?</label>
+                <input
+                  type="number"
+                  value={childrenCount}
+                  onChange={(e) => setChildrenCount(e.target.value)}
+                  placeholder="Number of children"
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                />
+              </div>
+
+              {parseInt(childrenCount) >= 1 && (
+                <div>
+                  <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Birth Type 1</label>
+                  <select
+                    value={birthType1}
+                    onChange={(e) => setBirthType1(e.target.value)}
+                    className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
+                  >
+                    <option value="">Select type</option>
+                    {BIRTH_TYPES.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {parseInt(childrenCount) >= 2 && (
+                <div>
+                  <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Birth Type 2</label>
+                  <select
+                    value={birthType2}
+                    onChange={(e) => setBirthType2(e.target.value)}
+                    className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
+                  >
+                    <option value="">Select type</option>
+                    {BIRTH_TYPES.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Footer with navigation - closer to content */}
-      {step < 8 && (
-        <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-3 sm:py-4">
-          <div className="max-w-lg mx-auto flex justify-between items-center gap-4">
-            <button
-              onClick={() => step > 1 && setStep((prev) => (prev - 1) as Step)}
-              disabled={step === 1 || loading}
-              className="px-4 sm:px-6 py-2.5 rounded-full text-black hover:bg-slate-200 transition-colors disabled:opacity-30 text-sm sm:text-base"
-            >
-              Back
-            </button>
-            
-            {step === 7 ? (
-              <button
-                onClick={handleComplete}
-                disabled={loading}
-                className="px-6 sm:px-8 py-2.5 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
-              >
-                {loading ? "Submitting..." : "Submit"}
-              </button>
-            ) : (
-              <button
-                onClick={handleNext}
-                disabled={loading}
-                className="px-6 sm:px-8 py-2.5 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 text-sm sm:text-base"
-              >
-                {loading ? "Saving..." : "Continue"}
-              </button>
-            )}
-          </div>
-        </footer>
-      )}
+      {/* Footer with navigation */}
+      <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-4">
+        <div className="max-w-md mx-auto flex justify-center items-center gap-4">
+          <button
+            onClick={handleBack}
+            disabled={step === 1}
+            className="p-3 rounded-full hover:bg-slate-200 transition-colors disabled:opacity-30"
+          >
+            <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={handleNext}
+            disabled={loading}
+            className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors disabled:opacity-50"
+          >
+            {loading ? "Saving..." : "NEXT"}
+          </button>
+        </div>
+      </footer>
     </main>
   );
 }
