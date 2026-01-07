@@ -566,7 +566,6 @@ function IntakeStepsContent() {
           height={60}
           className="h-10 w-auto"
         />
-        <UserIcon />
         <LanguageSelector />
       </header>
 
@@ -581,6 +580,7 @@ function IntakeStepsContent() {
           {/* Step 1: Personal Information */}
           {step === 1 && (
             <div className="space-y-4">
+              <UserIcon />
               <p className="text-slate-600 text-sm mb-4">Please Enter your Personal Information</p>
 
               <div>
