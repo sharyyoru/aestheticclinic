@@ -661,8 +661,7 @@ export default function CalendarPage() {
         const { data, error } = await supabaseClient
           .from("patients")
           .select("id, first_name, last_name, email, phone")
-          .order("created_at", { ascending: false })
-          .limit(500);
+          .order("created_at", { ascending: false });
 
         if (!isMounted) return;
 
