@@ -59,7 +59,35 @@ type TreatmentPreferences = {
   special_requests: string | null;
 };
 
-type EditingSection = "preferences" | "measurements" | "treatment_prefs" | null;
+type HealthBackground = {
+  id?: string;
+  submission_id?: string;
+  weight_kg: number | null;
+  height_cm: number | null;
+  bmi: number | null;
+  known_illnesses: string | null;
+  previous_surgeries: string | null;
+  allergies: string | null;
+  cigarettes: string | null;
+  alcohol_consumption: string | null;
+  sports_activity: string | null;
+  medications: string | null;
+  general_practitioner: string | null;
+  gynecologist: string | null;
+  children_count: number | null;
+  birth_type_1: string | null;
+  birth_type_2: string | null;
+};
+
+type PatientInsurance = {
+  id?: string;
+  patient_id?: string;
+  provider_name: string | null;
+  card_number: string | null;
+  insurance_type: string | null;
+};
+
+type EditingSection = "preferences" | "measurements" | "treatment_prefs" | "health_background" | null;
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
@@ -107,6 +135,8 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
   const [photos, setPhotos] = useState<IntakePhoto[]>([]);
   const [treatmentPrefs, setTreatmentPrefs] = useState<TreatmentPreferences | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [healthBackground, setHealthBackground] = useState<HealthBackground | null>(null);
+  const [insurance, setInsurance] = useState<PatientInsurance | null>(null);
   
   // Edit mode states
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
@@ -144,7 +174,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
     setSubmission(sub);
 
     // Load all related data in parallel
-    const [prefsRes, areasRes, measRes, photosRes, treatPrefsRes] = await Promise.all([
+    const [prefsRes, areasRes, measRes, photosRes, treatPrefsRes, healthRes, insuranceRes] = await Promise.all([
       supabaseClient
         .from("patient_intake_preferences")
         .select("*")
@@ -170,6 +200,16 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
         .select("*")
         .eq("submission_id", sub.id)
         .maybeSingle(),
+      supabaseClient
+        .from("patient_health_background")
+        .select("*")
+        .eq("submission_id", sub.id)
+        .maybeSingle(),
+      supabaseClient
+        .from("patient_insurance")
+        .select("*")
+        .eq("patient_id", patientId)
+        .maybeSingle(),
     ]);
 
     if (prefsRes.data) setPreferences(prefsRes.data as IntakePreferences);
@@ -177,6 +217,8 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
     if (measRes.data) setMeasurements(measRes.data as Measurements);
     if (photosRes.data) setPhotos(photosRes.data as IntakePhoto[]);
     if (treatPrefsRes.data) setTreatmentPrefs(treatPrefsRes.data as TreatmentPreferences);
+    if (healthRes.data) setHealthBackground(healthRes.data as HealthBackground);
+    if (insuranceRes.data) setInsurance(insuranceRes.data as PatientInsurance);
 
     // Get signed URLs for photos
     if (photosRes.data && photosRes.data.length > 0) {
@@ -570,6 +612,87 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
             </div>
           ) : (
             <p className="text-sm text-slate-400 italic">No treatment preferences set. Click Edit to add.</p>
+          )}
+        </div>
+
+        {/* Insurance Card */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
+              <svg className="w-4 h-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <h4 className="font-medium text-slate-900">Insurance Information</h4>
+          </div>
+          {insurance ? (
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-slate-500">Provider</span><span className="text-slate-900 font-medium">{insurance.provider_name || "N/A"}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Card Number</span><span className="text-slate-900 font-medium">{insurance.card_number || "N/A"}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Type</span><span className="text-slate-900 font-medium">{insurance.insurance_type || "N/A"}</span></div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400 italic">No insurance information provided.</p>
+          )}
+        </div>
+
+        {/* Health Background Card */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <svg className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </div>
+            <h4 className="font-medium text-slate-900">Health Background & Lifestyle</h4>
+          </div>
+          {healthBackground ? (
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-slate-500 text-xs mb-1">Physical</p>
+                <div className="space-y-1">
+                  <div className="flex justify-between"><span className="text-slate-500">Weight</span><span className="text-slate-900 font-medium">{healthBackground.weight_kg ? `${healthBackground.weight_kg} kg` : "N/A"}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Height</span><span className="text-slate-900 font-medium">{healthBackground.height_cm ? `${healthBackground.height_cm} cm` : "N/A"}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">BMI</span><span className="text-slate-900 font-medium">{healthBackground.bmi || "N/A"}</span></div>
+                </div>
+              </div>
+              <div>
+                <p className="text-slate-500 text-xs mb-1">Medical History</p>
+                <div className="space-y-1">
+                  <div><span className="text-slate-500">Illnesses:</span> <span className="text-slate-900">{healthBackground.known_illnesses || "N/A"}</span></div>
+                  <div><span className="text-slate-500">Surgeries:</span> <span className="text-slate-900">{healthBackground.previous_surgeries || "N/A"}</span></div>
+                  <div><span className="text-slate-500">Allergies:</span> <span className="text-slate-900">{healthBackground.allergies || "N/A"}</span></div>
+                  <div><span className="text-slate-500">Medications:</span> <span className="text-slate-900">{healthBackground.medications || "N/A"}</span></div>
+                </div>
+              </div>
+              <div>
+                <p className="text-slate-500 text-xs mb-1">Lifestyle</p>
+                <div className="space-y-1">
+                  <div className="flex justify-between"><span className="text-slate-500">Cigarettes</span><span className="text-slate-900 font-medium">{healthBackground.cigarettes || "N/A"}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Alcohol</span><span className="text-slate-900 font-medium">{healthBackground.alcohol_consumption || "N/A"}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Sports</span><span className="text-slate-900 font-medium">{healthBackground.sports_activity || "N/A"}</span></div>
+                </div>
+              </div>
+              <div>
+                <p className="text-slate-500 text-xs mb-1">Healthcare Providers</p>
+                <div className="space-y-1">
+                  <div><span className="text-slate-500">GP:</span> <span className="text-slate-900">{healthBackground.general_practitioner || "N/A"}</span></div>
+                  <div><span className="text-slate-500">Gynecologist:</span> <span className="text-slate-900">{healthBackground.gynecologist || "N/A"}</span></div>
+                </div>
+              </div>
+              {healthBackground.children_count && healthBackground.children_count > 0 && (
+                <div>
+                  <p className="text-slate-500 text-xs mb-1">Children</p>
+                  <div className="space-y-1">
+                    <div className="flex justify-between"><span className="text-slate-500">Count</span><span className="text-slate-900 font-medium">{healthBackground.children_count}</span></div>
+                    {healthBackground.birth_type_1 && <div className="flex justify-between"><span className="text-slate-500">Birth 1</span><span className="text-slate-900 font-medium">{healthBackground.birth_type_1}</span></div>}
+                    {healthBackground.birth_type_2 && <div className="flex justify-between"><span className="text-slate-500">Birth 2</span><span className="text-slate-900 font-medium">{healthBackground.birth_type_2}</span></div>}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400 italic">No health background information provided.</p>
           )}
         </div>
       </div>
