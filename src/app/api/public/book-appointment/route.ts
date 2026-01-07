@@ -292,6 +292,7 @@ export async function POST(request: Request) {
       .eq("email", email.toLowerCase())
       .single();
 
+    let isNewPatient = false;
     if (existingPatient) {
       patientId = existingPatient.id;
     } else {
@@ -303,7 +304,7 @@ export async function POST(request: Request) {
           last_name: lastName,
           email: email.toLowerCase(),
           phone: phone || null,
-          source: "manual",
+          source: "online_booking",
         })
         .select("id")
         .single();
@@ -317,6 +318,7 @@ export async function POST(request: Request) {
       }
 
       patientId = newPatient.id;
+      isNewPatient = true;
     }
 
     // Calculate end time (1 hour duration)
@@ -375,6 +377,25 @@ export async function POST(request: Request) {
         { error: "Failed to create appointment" },
         { status: 500 }
       );
+    }
+
+    // If this is a new patient, trigger the patient-created workflow to create deal and task
+    if (isNewPatient) {
+      try {
+        // Get the base URL from the request
+        const url = new URL(request.url);
+        const baseUrl = `${url.protocol}//${url.host}`;
+        
+        await fetch(`${baseUrl}/api/workflows/patient-created`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patient_id: patientId }),
+        });
+        console.log("✓ Triggered patient-created workflow for new patient:", patientId);
+      } catch (err) {
+        console.error("✗ Failed to trigger patient-created workflow:", err);
+        // Don't fail the booking if workflow trigger fails
+      }
     }
 
     // Send confirmation email to patient

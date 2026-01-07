@@ -361,9 +361,9 @@ function IntakeStepsContent() {
             </h2>
 
             <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-              <h3 className="text-lg font-medium text-amber-600 mb-2">Booking Confirmed!</h3>
+              <h3 className="text-lg font-medium text-amber-600 mb-2">Thank you for Registering!</h3>
               <p className="text-sm text-amber-600 mb-4">
-                Thank you for booking your consultation with us! Here are your appointment details:
+                Your registration has been submitted successfully. Our team will contact you shortly to discuss the next steps.
               </p>
               <div className="space-y-2 text-sm">
                 <p><span className="font-semibold text-slate-700">Name:</span> <span className="text-amber-600">{patientName}</span></p>
