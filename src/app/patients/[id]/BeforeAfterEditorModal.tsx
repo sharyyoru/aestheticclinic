@@ -87,6 +87,37 @@ export default function BeforeAfterEditorModal({
     setIsDragging(null);
   }
 
+  // Touch event handlers for iPad support
+  function handleTouchStart(event: React.TouchEvent, side: "before" | "after") {
+    if (event.touches.length !== 1) return;
+    event.preventDefault();
+    const touch = event.touches[0];
+    setIsDragging(side);
+    setDragStart({ x: touch.clientX, y: touch.clientY });
+    setDragStartPosition(side === "before" ? beforePosition : afterPosition);
+  }
+
+  function handleTouchMove(event: React.TouchEvent) {
+    if (!isDragging || event.touches.length !== 1) return;
+    event.preventDefault();
+    const touch = event.touches[0];
+    const dx = touch.clientX - dragStart.x;
+    const dy = touch.clientY - dragStart.y;
+    const newPosition = {
+      x: dragStartPosition.x + dx,
+      y: dragStartPosition.y + dy,
+    };
+    if (isDragging === "before") {
+      setBeforePosition(newPosition);
+    } else {
+      setAfterPosition(newPosition);
+    }
+  }
+
+  function handleTouchEnd() {
+    setIsDragging(null);
+  }
+
   function handleGalleryClick(image: BeforeAfterImage) {
     handleAssignImage(activeSide, image);
   }
@@ -406,6 +437,10 @@ export default function BeforeAfterEditorModal({
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
                     onMouseLeave={handleMouseLeave}
+                    onTouchStart={(e) => beforeImage && handleTouchStart(e, "before")}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    style={{ touchAction: 'none' } as React.CSSProperties}
                   >
                     {beforeImage ? (
                       <div 
@@ -466,6 +501,10 @@ export default function BeforeAfterEditorModal({
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
                     onMouseLeave={handleMouseLeave}
+                    onTouchStart={(e) => afterImage && handleTouchStart(e, "after")}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    style={{ touchAction: 'none' } as React.CSSProperties}
                   >
                     {afterImage ? (
                       <div 
