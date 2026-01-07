@@ -46,6 +46,8 @@ export default function NotificationsPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<NotificationTask | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<NotificationPatient | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const { refreshOpenTasksCount, setOpenTasksCountOptimistic } =
     useTasksNotifications();
 
@@ -277,7 +279,10 @@ export default function NotificationsPage() {
           <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/80 px-1 py-0.5 text-[11px] text-slate-500">
             <button
               type="button"
-              onClick={() => setFilter("all")}
+              onClick={() => {
+                setFilter("all");
+                setCurrentPage(1);
+              }}
               className={
                 "rounded-full px-2 py-0.5 text-[11px] " +
                 (filter === "all"
@@ -289,7 +294,10 @@ export default function NotificationsPage() {
             </button>
             <button
               type="button"
-              onClick={() => setFilter("unread")}
+              onClick={() => {
+                setFilter("unread");
+                setCurrentPage(1);
+              }}
               className={
                 "rounded-full px-2 py-0.5 text-[11px] " +
                 (filter === "unread"
@@ -301,7 +309,10 @@ export default function NotificationsPage() {
             </button>
             <button
               type="button"
-              onClick={() => setFilter("read")}
+              onClick={() => {
+                setFilter("read");
+                setCurrentPage(1);
+              }}
               className={
                 "rounded-full px-2 py-0.5 text-[11px] " +
                 (filter === "read"
@@ -359,6 +370,21 @@ export default function NotificationsPage() {
                 (row) => row.task && row.task.status !== "completed",
               );
               const completedRows = filteredRows.filter(
+                (row) => row.task && row.task.status === "completed",
+              );
+
+              // Calculate pagination
+              const allRows = [...openRows, ...completedRows];
+              const totalPages = Math.ceil(allRows.length / itemsPerPage);
+              const startIndex = (currentPage - 1) * itemsPerPage;
+              const endIndex = startIndex + itemsPerPage;
+              const paginatedRows = allRows.slice(startIndex, endIndex);
+
+              // Separate paginated rows
+              const paginatedOpen = paginatedRows.filter(
+                (row) => row.task && row.task.status !== "completed",
+              );
+              const paginatedCompleted = paginatedRows.filter(
                 (row) => row.task && row.task.status === "completed",
               );
 
@@ -483,20 +509,46 @@ export default function NotificationsPage() {
 
               return (
                 <>
-                  {openRows.length > 0 && (
+                  {paginatedOpen.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-slate-600">
                         Open tasks
                       </p>
-                      {openRows.map((row) => renderRow(row))}
+                      {paginatedOpen.map((row) => renderRow(row))}
                     </div>
                   )}
-                  {completedRows.length > 0 && (
+                  {paginatedCompleted.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-slate-600">
                         Completed
                       </p>
-                      {completedRows.map((row) => renderRow(row))}
+                      {paginatedCompleted.map((row) => renderRow(row))}
+                    </div>
+                  )}
+                  {allRows.length === 0 && (
+                    <p className="text-xs text-slate-500">No notifications in this category.</p>
+                  )}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-[11px] text-slate-600">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Next
+                      </button>
                     </div>
                   )}
                 </>

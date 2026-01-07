@@ -247,6 +247,15 @@ export default function PatientActivityCard({
     null,
   );
 
+  const [emailCreateFollowUpTask, setEmailCreateFollowUpTask] = useState(false);
+  const [emailFollowUpDate, setEmailFollowUpDate] = useState<"3days" | "1week" | "custom">("3days");
+  const [emailFollowUpCustomDate, setEmailFollowUpCustomDate] = useState("");
+  const [emailFollowUpAssignedUserId, setEmailFollowUpAssignedUserId] = useState("");
+  const [emailFollowUpAssignedUserSearch, setEmailFollowUpAssignedUserSearch] = useState("");
+  const [emailFollowUpUserDropdownOpen, setEmailFollowUpUserDropdownOpen] = useState(false);
+  const [platformUsers, setPlatformUsers] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
+  const [platformUsersLoaded, setPlatformUsersLoaded] = useState(false);
+
   const [viewEmailAttachments, setViewEmailAttachments] = useState<
     EmailAttachment[]
   >([]);
@@ -792,6 +801,42 @@ export default function PatientActivityCard({
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!emailModalOpen || platformUsersLoaded) return;
+
+    let isMounted = true;
+
+    async function loadUsersAndSetDefault() {
+      try {
+        const response = await fetch("/api/users/list");
+        if (response.ok) {
+          const data = await response.json();
+          if (!isMounted) return;
+          setPlatformUsers(Array.isArray(data) ? data : []);
+          setPlatformUsersLoaded(true);
+
+          // Set default to logged-in user
+          const { data: authData } = await supabaseClient.auth.getUser();
+          const authUser = authData?.user;
+          if (authUser && Array.isArray(data)) {
+            const currentUser = data.find((u: any) => u.id === authUser.id);
+            if (currentUser) {
+              setEmailFollowUpAssignedUserId(currentUser.id);
+              setEmailFollowUpAssignedUserSearch(currentUser.full_name || currentUser.email || "Me");
+            }
+          }
+        }
+      } catch {
+      }
+    }
+
+    loadUsersAndSetDefault();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [emailModalOpen, platformUsersLoaded]);
 
   useEffect(() => {
     if (!viewEmail) {
@@ -2077,6 +2122,46 @@ export default function PatientActivityCard({
         );
       }
 
+      // Create follow-up task if requested
+      if (emailCreateFollowUpTask) {
+        try {
+          let followUpDate: Date | null = null;
+          
+          if (emailFollowUpDate === "3days") {
+            followUpDate = new Date();
+            followUpDate.setDate(followUpDate.getDate() + 3);
+          } else if (emailFollowUpDate === "1week") {
+            followUpDate = new Date();
+            followUpDate.setDate(followUpDate.getDate() + 7);
+          } else if (emailFollowUpDate === "custom" && emailFollowUpCustomDate) {
+            followUpDate = new Date(emailFollowUpCustomDate);
+          }
+
+          if (followUpDate && !Number.isNaN(followUpDate.getTime())) {
+            const { data: newTask } = await supabaseClient.from("tasks").insert({
+              patient_id: patientId,
+              name: `Follow up on: ${subject || "Email"}`,
+              content: `Follow up regarding email sent on ${new Date().toLocaleDateString()}`,
+              type: "email",
+              priority: "medium",
+              status: "not_started",
+              activity_date: followUpDate.toISOString(),
+              assigned_user_id: emailFollowUpAssignedUserId || authUser.id,
+              assigned_user_name: emailFollowUpAssignedUserSearch || null,
+              created_by_user_id: authUser.id,
+              created_by_name: fromName,
+            }).select().single();
+
+            // Add task to the list if successful
+            if (newTask) {
+              setTasks((prev) => [newTask as Task, ...prev]);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to create follow-up task", error);
+        }
+      }
+
       setEmails((prev) => [insertedEmail, ...prev]);
       setEmailTo(defaultEmailTo);
       setEmailSubject("");
@@ -2084,6 +2169,9 @@ export default function PatientActivityCard({
       setEmailScheduleEnabled(false);
       setEmailScheduledFor("");
       setEmailAttachments([]);
+      setEmailCreateFollowUpTask(false);
+      setEmailFollowUpDate("3days");
+      setEmailFollowUpCustomDate("");
       setEmailModalOpen(false);
       setEmailFullscreen(false);
       setUseSignature(true);
@@ -4391,6 +4479,135 @@ export default function PatientActivityCard({
                   )}
                 </label>
               </div>
+              
+              {/* Create Follow-up Task Section */}
+              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-[11px]">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-3 w-3 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    checked={emailCreateFollowUpTask}
+                    onChange={(event) => setEmailCreateFollowUpTask(event.target.checked)}
+                  />
+                  <span className="font-medium text-emerald-800">Create Follow-up Task</span>
+                </label>
+                
+                {emailCreateFollowUpTask && (
+                  <div className="mt-2 space-y-2">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-medium text-emerald-700">Follow-up Date</label>
+                      <div className="space-y-1">
+                        <label className="inline-flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="followUpDate"
+                            value="3days"
+                            checked={emailFollowUpDate === "3days"}
+                            onChange={() => setEmailFollowUpDate("3days")}
+                            className="h-3 w-3 border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="text-slate-700">3 Days</span>
+                        </label>
+                        <label className="inline-flex items-center gap-2 ml-4">
+                          <input
+                            type="radio"
+                            name="followUpDate"
+                            value="1week"
+                            checked={emailFollowUpDate === "1week"}
+                            onChange={() => setEmailFollowUpDate("1week")}
+                            className="h-3 w-3 border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="text-slate-700">1 Week</span>
+                        </label>
+                        <label className="inline-flex items-center gap-2 ml-4">
+                          <input
+                            type="radio"
+                            name="followUpDate"
+                            value="custom"
+                            checked={emailFollowUpDate === "custom"}
+                            onChange={() => setEmailFollowUpDate("custom")}
+                            className="h-3 w-3 border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="text-slate-700">Custom Date</span>
+                        </label>
+                      </div>
+                      {emailFollowUpDate === "custom" && (
+                        <input
+                          type="datetime-local"
+                          value={emailFollowUpCustomDate}
+                          onChange={(event) => setEmailFollowUpCustomDate(event.target.value)}
+                          className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      )}
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-medium text-emerald-700">Assign To</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={emailFollowUpAssignedUserSearch}
+                          onChange={(event) => {
+                            setEmailFollowUpAssignedUserSearch(event.target.value);
+                            setEmailFollowUpUserDropdownOpen(true);
+                            if (!event.target.value.trim()) {
+                              setEmailFollowUpAssignedUserId("");
+                            }
+                          }}
+                          onFocus={() => setEmailFollowUpUserDropdownOpen(true)}
+                          placeholder="Search user..."
+                          className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                        {emailFollowUpAssignedUserId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEmailFollowUpAssignedUserId("");
+                              setEmailFollowUpAssignedUserSearch("");
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                        {emailFollowUpUserDropdownOpen && platformUsers.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                            {platformUsers
+                              .filter((user) => {
+                                if (!emailFollowUpAssignedUserSearch.trim()) return true;
+                                const search = emailFollowUpAssignedUserSearch.toLowerCase();
+                                return (
+                                  (user.full_name?.toLowerCase() || "").includes(search) ||
+                                  (user.email?.toLowerCase() || "").includes(search)
+                                );
+                              })
+                              .map((user) => (
+                                <button
+                                  key={user.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setEmailFollowUpAssignedUserId(user.id);
+                                    setEmailFollowUpAssignedUserSearch(user.full_name || user.email || "");
+                                    setEmailFollowUpUserDropdownOpen(false);
+                                  }}
+                                  className={`w-full px-3 py-1.5 text-left text-[11px] hover:bg-emerald-50 ${
+                                    emailFollowUpAssignedUserId === user.id ? "bg-emerald-50 text-emerald-700" : "text-slate-700"
+                                  }`}
+                                >
+                                  <div className="font-medium">{user.full_name || "Unnamed"}</div>
+                                  {user.email && <div className="text-[10px] text-slate-500">{user.email}</div>}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
               {emailSaveError ? (
                 <p className="text-[11px] text-red-600">{emailSaveError}</p>
               ) : null}

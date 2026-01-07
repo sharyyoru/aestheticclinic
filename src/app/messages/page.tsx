@@ -86,6 +86,9 @@ export default function MessagesPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedTaskMention, setSelectedTaskMention] = useState<TaskMentionRow | null>(null);
+  const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const [priorityMode, setPriorityMode] = useState<"crm" | "medical">("crm");
 
@@ -263,9 +266,28 @@ export default function MessagesPage() {
   }
 
   function handleOpenTaskMention(mention: TaskMentionRow) {
-    void handleOpenMention(mention);
     setSelectedTaskMention(mention);
     setTaskModalOpen(true);
+  }
+
+  async function handleMarkTaskMentionAsRead() {
+    if (!selectedTaskMention) return;
+    
+    const nowIso = new Date().toISOString();
+    
+    setMentions((prev) =>
+      prev.map((m) => (m.id === selectedTaskMention.id ? { ...m, read_at: nowIso } : m)),
+    );
+    
+    setUnreadCountOptimistic((prev) => prev - 1);
+    
+    try {
+      await supabaseClient
+        .from("task_comment_mentions")
+        .update({ read_at: nowIso })
+        .eq("id", selectedTaskMention.id);
+    } catch {
+    }
   }
 
   return (
@@ -278,6 +300,53 @@ export default function MessagesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white/80 px-1 py-0.5 text-[11px] text-slate-500">
+            <button
+              type="button"
+              onClick={() => {
+                setFilter("all");
+                setCurrentPage(1);
+              }}
+              className={
+                "rounded-full px-2 py-0.5 text-[11px] " +
+                (filter === "all"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900")
+              }
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFilter("unread");
+                setCurrentPage(1);
+              }}
+              className={
+                "rounded-full px-2 py-0.5 text-[11px] " +
+                (filter === "unread"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900")
+              }
+            >
+              Unread
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFilter("read");
+                setCurrentPage(1);
+              }}
+              className={
+                "rounded-full px-2 py-0.5 text-[11px] " +
+                (filter === "read"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900")
+              }
+            >
+              Read
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => {
@@ -312,8 +381,27 @@ export default function MessagesPage() {
         ) : (
           <div className="space-y-4 text-xs">
             {(() => {
-              const unreadMentions = mentions.filter((m) => !m.read_at);
-              const readMentions = mentions.filter((m) => m.read_at);
+              // Apply filter
+              const filteredMentions = mentions.filter((m) => {
+                const isRead = !!m.read_at;
+                if (filter === "unread") return !isRead;
+                if (filter === "read") return isRead;
+                return true;
+              });
+
+              const unreadMentions = filteredMentions.filter((m) => !m.read_at);
+              const readMentions = filteredMentions.filter((m) => m.read_at);
+
+              // Calculate pagination
+              const allMentions = [...unreadMentions, ...readMentions];
+              const totalPages = Math.ceil(allMentions.length / itemsPerPage);
+              const startIndex = (currentPage - 1) * itemsPerPage;
+              const endIndex = startIndex + itemsPerPage;
+              const paginatedMentions = allMentions.slice(startIndex, endIndex);
+
+              // Separate paginated mentions
+              const paginatedUnread = paginatedMentions.filter((m) => !m.read_at);
+              const paginatedRead = paginatedMentions.filter((m) => m.read_at);
 
               const renderMentionRow = (mention: MentionRow) => {
                 const createdDate = mention.created_at
@@ -449,16 +537,42 @@ export default function MessagesPage() {
 
               return (
                 <>
-                  {unreadMentions.length > 0 && (
+                  {paginatedUnread.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-slate-600">Unread</p>
-                      {unreadMentions.map((m) => renderMentionRow(m))}
+                      {paginatedUnread.map((m) => renderMentionRow(m))}
                     </div>
                   )}
-                  {readMentions.length > 0 && (
+                  {paginatedRead.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-semibold text-slate-600">Read</p>
-                      {readMentions.map((m) => renderMentionRow(m))}
+                      {paginatedRead.map((m) => renderMentionRow(m))}
+                    </div>
+                  )}
+                  {allMentions.length === 0 && (
+                    <p className="text-xs text-slate-500">No messages in this category.</p>
+                  )}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-[11px] text-slate-600">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage === totalPages}
+                        className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Next
+                      </button>
                     </div>
                   )}
                 </>
@@ -492,6 +606,9 @@ export default function MessagesPage() {
             phone: null,
           } : null,
         } : null}
+        showMarkAsRead={true}
+        isMessageRead={!!selectedTaskMention?.read_at}
+        onMarkAsRead={() => void handleMarkTaskMentionAsRead()}
       />
     </div>
   );

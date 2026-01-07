@@ -51,6 +51,9 @@ type TaskEditModalProps = {
   onClose: () => void;
   task: Task | null;
   onTaskUpdated?: (updatedTask: Task) => void;
+  showMarkAsRead?: boolean;
+  onMarkAsRead?: () => void;
+  isMessageRead?: boolean;
 };
 
 function renderTextWithMentions(text: string): React.ReactNode {
@@ -83,6 +86,9 @@ export default function TaskEditModal({
   onClose,
   task,
   onTaskUpdated,
+  showMarkAsRead = false,
+  onMarkAsRead,
+  isMessageRead = true,
 }: TaskEditModalProps) {
   const [taskName, setTaskName] = useState("");
   const [taskType, setTaskType] = useState<TaskType>("todo");
@@ -563,23 +569,38 @@ export default function TaskEditModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleUpdateTask()}
-            disabled={saving}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? "Updating..." : "Update Task"}
-          </button>
+        <div className="flex justify-between items-center gap-3 border-t border-slate-200 px-5 py-4">
+          <div>
+            {showMarkAsRead && !isMessageRead && onMarkAsRead && (
+              <button
+                type="button"
+                onClick={() => {
+                  onMarkAsRead();
+                }}
+                className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+              >
+                Mark as Read
+              </button>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleUpdateTask()}
+              disabled={saving}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Updating..." : "Update Task"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
