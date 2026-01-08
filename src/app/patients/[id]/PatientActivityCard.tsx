@@ -4243,6 +4243,33 @@ export default function PatientActivityCard({
               <button
                 type="button"
                 onClick={() => {
+                  // Reply to email - pre-fill compose modal
+                  const replyTo = viewEmail.direction === "inbound" 
+                    ? viewEmail.from_address 
+                    : viewEmail.to_address;
+                  const replySubject = viewEmail.subject?.startsWith("Re: ") 
+                    ? viewEmail.subject 
+                    : `Re: ${viewEmail.subject || ""}`;
+                  
+                  setEmailTo(replyTo || "");
+                  setEmailSubject(replySubject);
+                  setEmailBody("");
+                  setEmailSaveError(null);
+                  setEmailAttachments([]);
+                  setEmailAttachmentsError(null);
+                  setViewEmail(null);
+                  setEmailModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1 rounded-full border border-sky-200/80 bg-sky-50 px-3 py-1.5 text-[11px] font-medium text-sky-700 shadow-sm hover:bg-sky-100"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                Reply
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   // Create follow-up task from email
                   setTaskName(`Follow up: ${viewEmail.subject}`);
                   setTaskContent(`Follow-up task for email: "${viewEmail.subject}"\nFrom: ${viewEmail.from_address || "N/A"}\nTo: ${viewEmail.to_address}`);
