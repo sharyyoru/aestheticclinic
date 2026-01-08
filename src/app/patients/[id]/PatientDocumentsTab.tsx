@@ -48,6 +48,43 @@ function getExtension(name: string): string {
   return parts[parts.length - 1].toLowerCase();
 }
 
+function formatUploadDate(dateString: string | undefined | null): string {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+  
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return `Today at ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+  } else if (diffDays === 1) {
+    return `Yesterday at ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`;
+  }
+  
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getMimeType(name: string, metadata?: { mimetype?: string } | null): string {
+  if (metadata?.mimetype) return metadata.mimetype;
+  const ext = getExtension(name);
+  if (ext === "pdf") return "application/pdf";
+  if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) {
+    return `image/${ext === "jpg" ? "jpeg" : ext}`;
+  }
+  if (["mp4", "webm", "ogg", "mov"].includes(ext)) return `video/${ext}`;
+  return "";
+}
+
 export default function PatientDocumentsTab({
   patientId,
 }: PatientDocumentsTabProps) {
@@ -67,11 +104,14 @@ export default function PatientDocumentsTab({
   const [renaming, setRenaming] = useState(false);
 
   // New state for Documents features
-  const [sortBy, setSortBy] = useState<"name" | "date">("name");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortBy, setSortBy] = useState<"name" | "date">("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
   const [filterType, setFilterType] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; name: string } | null>(null);
+  const [previewModal, setPreviewModal] = useState<{ url: string; name: string; mimeType: string; uploadedAt: string | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -230,6 +270,18 @@ export default function PatientDocumentsTab({
       return true;
     });
   }, [items, searchQuery, filterType]);
+
+  // Paginated items
+  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+  const paginatedItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredItems.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredItems, currentPage, ITEMS_PER_PAGE]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterType, sortBy, sortOrder]);
 
   // Get unique file types for filter dropdown
   const availableTypes = useMemo(() => {
@@ -641,17 +693,17 @@ export default function PatientDocumentsTab({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span>Items ({filteredItems.length})</span>
+              <span>Items ({filteredItems.length}){totalPages > 1 ? ` • Page ${currentPage} of ${totalPages}` : ""}</span>
               {loading ? <span className="text-slate-400">Loading…</span> : null}
             </div>
-            <div className="max-h-80 overflow-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2">
+            <div className="max-h-[420px] overflow-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2">
               {filteredItems.length === 0 ? (
                 <div className="flex h-24 items-center justify-center text-[11px] text-slate-500">
                   No documents yet. Use the Upload button to add files.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
-                  {filteredItems.map((item) => {
+                <div className="space-y-2">
+                  {paginatedItems.map((item) => {
                     const isSelected =
                       item.kind === "file" && selectedFile && selectedFile.path === item.path;
 
@@ -661,21 +713,19 @@ export default function PatientDocumentsTab({
                           key={item.path}
                           type="button"
                           onClick={() => handleOpenFolder(item)}
-                          className="flex flex-col items-start gap-1 rounded-lg border border-slate-200 bg-white px-2 py-2 text-left text-[11px] hover:border-sky-300 hover:bg-sky-50/60"
+                          className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[11px] hover:border-sky-300 hover:bg-sky-50/60 transition-all"
                         >
-                          <div className="flex items-center gap-1 text-slate-700">
-                            <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-sky-100 text-sky-600">
-                              <svg
-                                viewBox="0 0 20 20"
-                                className="h-3.5 w-3.5"
-                                fill="currentColor"
-                                aria-hidden="true"
-                              >
-                                <path d="M3 5a2 2 0 0 1 2-2h3l2 2h5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5Z" />
-                              </svg>
-                            </span>
-                            <span className="truncate font-medium">{item.name}</span>
-                          </div>
+                          <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-sky-100 to-sky-50 text-sky-600 shadow-sm">
+                            <svg
+                              viewBox="0 0 20 20"
+                              className="h-5 w-5"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M3 5a2 2 0 0 1 2-2h3l2 2h5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5Z" />
+                            </svg>
+                          </span>
+                          <span className="truncate font-medium text-slate-700">{item.name}</span>
                         </button>
                       );
                     }
@@ -697,53 +747,84 @@ export default function PatientDocumentsTab({
                       "gif",
                       "webp",
                     ].includes(ext);
+                    const uploadDate = item.created_at || item.updated_at;
+                    const mimeType = getMimeType(item.name, item.metadata);
 
                     return (
                       <div
                         key={item.path}
-                        className={`group relative flex flex-col gap-1 rounded-lg border px-2 py-2 text-left text-[11px] cursor-pointer ${
+                        className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[11px] cursor-pointer transition-all ${
                           isSelected
-                            ? "border-sky-400 bg-sky-50/70 shadow-[0_0_0_1px_rgba(56,189,248,0.4)]"
-                            : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/60"
+                            ? "border-sky-400 bg-gradient-to-r from-sky-50 to-white shadow-[0_0_0_1px_rgba(56,189,248,0.4)]"
+                            : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/60 hover:shadow-sm"
                         }`}
                         onClick={() => handleSelectFile(item)}
                       >
-                        <div className="flex items-center gap-2">
-                          <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
-                            {isImageThumb && thumbUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={thumbUrl}
-                                alt={item.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-slate-200 text-[10px] font-semibold text-slate-700">
-                                {ext ? ext.toUpperCase() : "FILE"}
-                              </span>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-[11px] font-medium text-slate-800">
-                              {item.name}
-                            </p>
+                        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm">
+                          {isImageThumb && thumbUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={thumbUrl}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="inline-flex h-full w-full items-center justify-center rounded-lg bg-gradient-to-br from-slate-100 to-slate-50 text-[10px] font-bold text-slate-600">
+                              {ext ? ext.toUpperCase() : "FILE"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[12px] font-medium text-slate-800">
+                            {item.name}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
                             <p className="text-[10px] text-slate-500">
                               {formatFileSize((item.metadata as any)?.size)}
                             </p>
+                            {uploadDate && (
+                              <>
+                                <span className="text-slate-300">•</span>
+                                <p className="text-[10px] text-slate-400">
+                                  {formatUploadDate(uploadDate)}
+                                </p>
+                              </>
+                            )}
                           </div>
                         </div>
+                        {/* Preview button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewModal({
+                              url: thumbUrl,
+                              name: item.name,
+                              mimeType,
+                              uploadedAt: uploadDate || null,
+                            });
+                          }}
+                          className="flex-shrink-0 inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[10px] font-medium text-sky-700 hover:bg-sky-100 hover:border-sky-300 transition-colors"
+                          title="Preview"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          Preview
+                        </button>
                         {/* Action buttons - show on hover */}
-                        <div className="absolute right-1 top-1 hidden group-hover:flex items-center gap-0.5">
+                        <div className="flex-shrink-0 hidden group-hover:flex items-center gap-1">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleStartRename(item);
                             }}
-                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
                             title="Rename"
                           >
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
@@ -753,10 +834,10 @@ export default function PatientDocumentsTab({
                               e.stopPropagation();
                               handleDeleteFile(item);
                             }}
-                            className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
                             title="Delete"
                           >
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           </button>
@@ -767,6 +848,47 @@ export default function PatientDocumentsTab({
                 </div>
               )}
             </div>
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-[11px] font-medium transition-colors ${
+                        currentPage === page
+                          ? "bg-sky-500 text-white shadow-sm"
+                          : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -955,6 +1077,100 @@ export default function PatientDocumentsTab({
               onClick={(e) => e.stopPropagation()}
             />
             <p className="mt-2 text-center text-sm text-white/80">{enlargedImage.name}</p>
+          </div>
+        </div>
+      ) : null}
+      {/* Document Preview Modal */}
+      {previewModal ? (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4"
+          onClick={() => setPreviewModal(null)}
+        >
+          <div 
+            className="relative flex flex-col w-full max-w-4xl max-h-[90vh] rounded-2xl bg-white shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-4">
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-base font-semibold text-slate-900">{previewModal.name}</h3>
+                {previewModal.uploadedAt && (
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    Uploaded {formatUploadDate(previewModal.uploadedAt)}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 ml-4">
+                <a
+                  href={previewModal.url}
+                  download={previewModal.name}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal(null)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-medium text-white hover:bg-slate-800 transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Close
+                </button>
+              </div>
+            </div>
+            {/* Content */}
+            <div className="flex-1 overflow-auto bg-slate-50 p-6">
+              <div className="flex items-center justify-center min-h-[400px]">
+                {previewModal.mimeType.startsWith("image/") ? (
+                  <div className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={previewModal.url}
+                      alt={previewModal.name}
+                      className="max-h-[70vh] max-w-full rounded-xl border border-slate-200 bg-white object-contain shadow-lg"
+                    />
+                  </div>
+                ) : previewModal.mimeType === "application/pdf" ? (
+                  <iframe
+                    src={previewModal.url}
+                    className="h-[70vh] w-full rounded-xl border border-slate-200 bg-white shadow-lg"
+                    title={previewModal.name}
+                  />
+                ) : previewModal.mimeType.startsWith("video/") ? (
+                  <video
+                    src={previewModal.url}
+                    controls
+                    className="max-h-[70vh] max-w-full rounded-xl border border-slate-200 bg-black shadow-lg"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                    <div className="inline-flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-lg font-bold text-slate-600">
+                      {getExtension(previewModal.name).toUpperCase() || "FILE"}
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-slate-700">Preview not available</p>
+                      <p className="mt-1 text-[11px] text-slate-500">Download the file to view its contents</p>
+                    </div>
+                    <a
+                      href={previewModal.url}
+                      download={previewModal.name}
+                      className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition-colors"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download File
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
