@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Image from "next/image";
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6;
+type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 const STEP_INFO = [
   { num: 1, desc: "Fill Out the Form with all your preferences." },
@@ -42,12 +42,19 @@ function IntakeStepsContent() {
   const submissionId = searchParams.get("sid");
   const patientId = searchParams.get("pid");
 
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>(0);
   const [showIntro, setShowIntro] = useState(true);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState("en");
+  
+  // Magic link state
+  const [magicLink, setMagicLink] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
+  
+  // Consultation category selection
+  const [consultationCategory, setConsultationCategory] = useState("");
 
   // Step 1: Personal Information
   const [firstName, setFirstName] = useState("");
@@ -454,7 +461,11 @@ function IntakeStepsContent() {
   const handleNext = async () => {
     try {
       await saveStepData(step);
-      if (step < 6) {
+      // Navigate to next step based on current step
+      if (step === 4) {
+        // After contact preference, go to magic link step
+        setStep(5);
+      } else if (step < 4) {
         setStep((prev) => (prev + 1) as Step);
       }
     } catch {
@@ -463,7 +474,11 @@ function IntakeStepsContent() {
   };
 
   const handleBack = () => {
-    if (step > 1) {
+    if (step === 5) {
+      setStep(4);
+    } else if (step === 6) {
+      setStep(5);
+    } else if (step > 1) {
       setStep((prev) => (prev - 1) as Step);
     }
   };
@@ -633,8 +648,8 @@ function IntakeStepsContent() {
     );
   }
 
-  // Terms and Conditions step (Step 5)
-  if (step === 5) {
+  // Terms and Conditions step (Step 0 - FIRST before any data entry)
+  if (step === 0) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
         <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
@@ -646,7 +661,7 @@ function IntakeStepsContent() {
             <UserIcon />
 
             <div className="text-slate-600 text-sm leading-relaxed mb-8">
-              <p className="italic mb-4">
+              <p className="mb-4">
                 I, the undersigned, certify that the information provided is truthful, and I am not subject to any lawsuits, nor any act of default, assuming all responsibility for any inaccuracies. Furthermore, I have been informed that the 1st consultation is paid on the spot. I also authorize my doctor, in the event that I do not pay my bills, to inform the authorities of the nature of my debts and to proceed to their recovery by legal means. For any dispute, the legal executive is in Geneva.
               </p>
               <p>
@@ -661,12 +676,84 @@ function IntakeStepsContent() {
             )}
 
             <button
-              onClick={handleAcceptTerms}
-              disabled={loading}
-              className="w-full py-3 rounded-full border-2 border-slate-300 text-slate-700 font-medium hover:bg-slate-100 transition-colors disabled:opacity-50"
+              onClick={() => {
+                setTermsAccepted(true);
+                setStep(1);
+              }}
+              className="w-full py-3 rounded-full border-2 border-slate-300 text-slate-700 font-medium hover:bg-slate-100 transition-colors"
             >
-              {loading ? "Processing..." : "ACCEPT"}
+              ACCEPT
             </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Magic Link step (Step 5 - skippable)
+  if (step === 5) {
+    const generateMagicLink = () => {
+      const baseUrl = window.location.origin;
+      const link = `${baseUrl}/intake/consultation?pid=${patientId}&sid=${submissionId}`;
+      setMagicLink(link);
+    };
+
+    if (!magicLink) {
+      generateMagicLink();
+    }
+
+    const copyLink = async () => {
+      try {
+        await navigator.clipboard.writeText(magicLink);
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
+      } catch (err) {
+        console.error("Failed to copy:", err);
+      }
+    };
+
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
+          <LanguageSelector />
+        </header>
+
+        <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
+          <div className="w-full max-w-md">
+            <UserIcon />
+
+            <h2 className="text-xl font-medium text-slate-800 mb-2 text-center">Share Your Intake Link</h2>
+            <p className="text-slate-600 text-sm mb-6 text-center">
+              You can share this magic link to continue your consultation later or on another device.
+            </p>
+
+            <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+              <label className="block text-xs text-slate-500 mb-2">Your Magic Link</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={magicLink}
+                  readOnly
+                  className="flex-1 px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-black truncate"
+                />
+                <button
+                  onClick={copyLink}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    linkCopied 
+                      ? "bg-emerald-500 text-white" 
+                      : "bg-slate-800 text-white hover:bg-slate-700"
+                  }`}
+                >
+                  {linkCopied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
+                {error}
+              </div>
+            )}
           </div>
         </div>
 
@@ -679,6 +766,124 @@ function IntakeStepsContent() {
               <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
+            </button>
+            <button
+              onClick={() => setStep(6)}
+              className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors"
+            >
+              NEXT
+            </button>
+            <button
+              onClick={() => setStep(6)}
+              className="text-sm text-slate-500 hover:text-slate-700 underline"
+            >
+              Skip
+            </button>
+          </div>
+        </footer>
+      </main>
+    );
+  }
+
+  // Consultation Category Selection (Step 6)
+  if (step === 6) {
+    const handleSelectCategory = async (category: string) => {
+      setConsultationCategory(category);
+      setLoading(true);
+      setError(null);
+      
+      try {
+        // Save consultation category to submission
+        await supabaseClient
+          .from("patient_intake_submissions")
+          .update({
+            consultation_category: category,
+            status: "completed",
+            completed_at: new Date().toISOString(),
+            terms_accepted: true,
+            terms_accepted_at: new Date().toISOString(),
+          })
+          .eq("id", submissionId);
+
+        // Update patient record
+        await supabaseClient
+          .from("patients")
+          .update({
+            intake_submission_id: submissionId,
+            intake_completed_at: new Date().toISOString(),
+          })
+          .eq("id", patientId);
+
+        // Redirect to the specific consultation path
+        router.push(`/intake/consultation/${category}?pid=${patientId}&sid=${submissionId}`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to save");
+        setLoading(false);
+      }
+    };
+
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
+          <LanguageSelector />
+        </header>
+
+        <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
+          <div className="w-full max-w-md">
+            <UserIcon />
+
+            <p className="text-slate-600 text-sm mb-2 italic">Just a few more things</p>
+            
+            <div className="mb-6">
+              <label className="block text-[#1a4d7c] text-sm font-medium mb-4">
+                What category are you interested in? <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-3">
+                {[
+                  { value: "liposuction", label: "Liposuction consultation" },
+                  { value: "breast", label: "Breast consultation" },
+                  { value: "face", label: "Face consultation" }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setConsultationCategory(option.value)}
+                    className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${
+                      consultationCategory === option.value
+                        ? "bg-slate-800 text-white border-slate-800"
+                        : "bg-white border-slate-300 text-slate-700 hover:border-slate-400"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
+                {error}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-4">
+          <div className="max-w-md mx-auto flex justify-center items-center gap-4">
+            <button
+              onClick={handleBack}
+              className="p-3 rounded-full hover:bg-slate-200 transition-colors"
+            >
+              <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={() => consultationCategory && handleSelectCategory(consultationCategory)}
+              disabled={loading || !consultationCategory}
+              className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors disabled:opacity-50"
+            >
+              {loading ? "Processing..." : "next"}
             </button>
           </div>
         </footer>
@@ -1000,18 +1205,22 @@ function IntakeStepsContent() {
                   Type of Insurance <span className="text-red-500">*</span>
                 </label>
                 <div className="space-y-3">
-                  {["PRIVATE", "SEMI-PRIVATE", "BASIC"].map((type) => (
+                  {[
+                    { value: "private", label: "PRIVATE" },
+                    { value: "semi-private", label: "SEMI-PRIVATE" },
+                    { value: "basic", label: "BASIC" }
+                  ].map((type) => (
                     <button
-                      key={type}
+                      key={type.value}
                       type="button"
-                      onClick={() => setInsuranceType(type)}
+                      onClick={() => setInsuranceType(type.value)}
                       className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${
-                        insuranceType === type
+                        insuranceType === type.value
                           ? "bg-slate-800 text-white border-slate-800"
                           : "bg-white border-slate-300 text-slate-700 hover:border-slate-400"
                       }`}
                     >
-                      {type}
+                      {type.label}
                     </button>
                   ))}
                 </div>
