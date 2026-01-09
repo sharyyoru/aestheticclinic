@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { supabaseClient } from "@/lib/supabaseClient";
 
 const DOCTORS: Record<string, {
   name: string;
@@ -82,6 +83,34 @@ export default function DoctorBookingPage() {
   const [selectedTime, setSelectedTime] = useState("");
   const [selectedService, setSelectedService] = useState("");
   const [notes, setNotes] = useState("");
+
+  // Autofill from patient data if coming from intake form
+  const patientId = searchParams.get("pid");
+  const autofill = searchParams.get("autofill");
+
+  useEffect(() => {
+    if (autofill === "true" && patientId) {
+      const fetchPatientData = async () => {
+        try {
+          const { data: patient } = await supabaseClient
+            .from("patients")
+            .select("first_name, last_name, email, phone")
+            .eq("id", patientId)
+            .single();
+
+          if (patient) {
+            setFirstName(patient.first_name || "");
+            setLastName(patient.last_name || "");
+            setEmail(patient.email || "");
+            setPhone(patient.phone || "");
+          }
+        } catch (err) {
+          console.error("Error fetching patient data for autofill:", err);
+        }
+      };
+      fetchPatientData();
+    }
+  }, [autofill, patientId]);
 
   // Check availability when date changes
   useEffect(() => {
