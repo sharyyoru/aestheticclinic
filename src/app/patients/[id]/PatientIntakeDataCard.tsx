@@ -375,18 +375,27 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
   const saveInsurance = async (data: Partial<PatientInsurance>) => {
     setSaving(true);
     try {
+      const saveData = {
+        provider_name: data.provider_name || null,
+        card_number: data.card_number || null,
+        insurance_type: data.insurance_type || null,
+      };
+
       if (insurance?.id) {
-        await supabaseClient.from("patient_insurances").update(data).eq("id", insurance.id);
+        const { error } = await supabaseClient.from("patient_insurances").update(saveData).eq("id", insurance.id);
+        if (error) throw error;
       } else {
-        await supabaseClient.from("patient_insurances").insert({
-          ...data,
+        const { error } = await supabaseClient.from("patient_insurances").insert({
+          ...saveData,
           patient_id: patientId,
         });
+        if (error) throw error;
       }
       await loadIntakeData();
       setEditingSection(null);
     } catch (err) {
       console.error("Failed to save insurance:", err);
+      alert(`Failed to save insurance: ${err instanceof Error ? err.message : String(err)}`);
     }
     setSaving(false);
   };
@@ -640,9 +649,9 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
                 <label className="text-xs text-slate-500">Insurance Type</label>
                 <select value={editInsurance.insurance_type || ""} onChange={(e) => setEditInsurance({ ...editInsurance, insurance_type: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
                   <option value="">Select Type</option>
-                  <option value="PRIVATE">Private</option>
-                  <option value="SEMI-PRIVATE">Semi-Private</option>
-                  <option value="BASIC">Basic</option>
+                  <option value="private">Private</option>
+                  <option value="semi-private">Semi-Private</option>
+                  <option value="basic">Basic</option>
                 </select>
               </div>
               <div className="flex gap-2 pt-2">
