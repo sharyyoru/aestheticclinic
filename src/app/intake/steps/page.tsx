@@ -278,11 +278,105 @@ function IntakeStepsContent() {
       const errorMessage = err instanceof Error ? err.message : "Failed to save data. Please try again or contact support.";
       setError(errorMessage);
       console.error("Intake form save error:", err);
+      
+      // Send error notification email with form data for manual record creation
+      try {
+        const formData = {
+          step: currentStep,
+          error: errorMessage,
+          submissionId,
+          patientId,
+          personalInfo: {
+            firstName, lastName, email, mobile,
+            dob: dobYear && dobMonth && dobDay ? `${dobYear}-${dobMonth}-${dobDay}` : null,
+            maritalStatus, nationality, streetAddress, postalCode, town,
+            profession, currentEmployer
+          },
+          insurance: { insuranceProvider, insuranceCardNumber, insuranceType },
+          healthBackground: {
+            weight, height, bmi: calculateBMI(),
+            knownIllnesses, previousSurgeries, allergies,
+            cigarettes, alcohol, sports, medications,
+            generalPractitioner, gynecologist,
+            childrenCount, birthType1, birthType2
+          },
+          contactPreference,
+          timestamp: new Date().toISOString()
+        };
+
+        await fetch("/api/emails/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: "wilson@mutant.ae",
+            subject: `[INTAKE FORM ERROR] Failed submission for ${firstName} ${lastName}`,
+            html: `
+              <h2>Intake Form Submission Failed</h2>
+              <p><strong>Error:</strong> ${errorMessage}</p>
+              <p><strong>Step:</strong> ${currentStep}</p>
+              <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+              
+              <h3>Patient Information</h3>
+              <ul>
+                <li><strong>Name:</strong> ${firstName} ${lastName}</li>
+                <li><strong>Email:</strong> ${email}</li>
+                <li><strong>Phone:</strong> ${mobile}</li>
+                <li><strong>DOB:</strong> ${formData.personalInfo.dob || "Not provided"}</li>
+                <li><strong>Nationality:</strong> ${nationality || "Not provided"}</li>
+                <li><strong>Address:</strong> ${streetAddress}, ${postalCode} ${town}</li>
+                <li><strong>Marital Status:</strong> ${maritalStatus || "Not provided"}</li>
+                <li><strong>Profession:</strong> ${profession || "Not provided"}</li>
+                <li><strong>Employer:</strong> ${currentEmployer || "Not provided"}</li>
+              </ul>
+              
+              <h3>Insurance Information</h3>
+              <ul>
+                <li><strong>Provider:</strong> ${insuranceProvider || "Not provided"}</li>
+                <li><strong>Card Number:</strong> ${insuranceCardNumber || "Not provided"}</li>
+                <li><strong>Type:</strong> ${insuranceType || "Not provided"}</li>
+              </ul>
+              
+              <h3>Health Background</h3>
+              <ul>
+                <li><strong>Weight:</strong> ${weight || "Not provided"} kg</li>
+                <li><strong>Height:</strong> ${height || "Not provided"} cm</li>
+                <li><strong>BMI:</strong> ${formData.healthBackground.bmi || "Not calculated"}</li>
+                <li><strong>Known Illnesses:</strong> ${knownIllnesses || "Not provided"}</li>
+                <li><strong>Previous Surgeries:</strong> ${previousSurgeries || "Not provided"}</li>
+                <li><strong>Allergies:</strong> ${allergies || "Not provided"}</li>
+                <li><strong>Cigarettes:</strong> ${cigarettes || "Not provided"}</li>
+                <li><strong>Alcohol:</strong> ${alcohol || "Not provided"}</li>
+                <li><strong>Sports:</strong> ${sports || "Not provided"}</li>
+                <li><strong>Medications:</strong> ${medications || "Not provided"}</li>
+                <li><strong>GP:</strong> ${generalPractitioner || "Not provided"}</li>
+                <li><strong>Gynecologist:</strong> ${gynecologist || "Not provided"}</li>
+                <li><strong>Children:</strong> ${childrenCount || "0"}</li>
+              </ul>
+              
+              <h3>Contact Preference</h3>
+              <p>${contactPreference || "Not provided"}</p>
+              
+              <h3>System IDs</h3>
+              <ul>
+                <li><strong>Patient ID:</strong> ${patientId}</li>
+                <li><strong>Submission ID:</strong> ${submissionId}</li>
+              </ul>
+              
+              <hr>
+              <p><em>This email was automatically sent because the intake form failed to save data. Please create the record manually if needed.</em></p>
+            `
+          })
+        });
+        console.log("Error notification email sent to wilson@mutant.ae");
+      } catch (emailErr) {
+        console.error("Failed to send error notification email:", emailErr);
+      }
+      
       throw err;
     } finally {
       setLoading(false);
     }
-  }, [submissionId, patientId, firstName, lastName, dobDay, dobMonth, dobYear, maritalStatus, nationality, streetAddress, postalCode, town, email, mobile, profession, currentEmployer, insuranceProvider, insuranceCardNumber, insuranceType, weight, height, knownIllnesses, previousSurgeries, allergies, cigarettes, alcohol, sports, medications, generalPractitioner, gynecologist, childrenCount, birthType1, birthType2, contactPreference]);
+  }, [submissionId, patientId, firstName, lastName, dobDay, dobMonth, dobYear, maritalStatus, nationality, streetAddress, postalCode, town, email, mobile, profession, currentEmployer, insuranceProvider, insuranceCardNumber, insuranceType, weight, height, knownIllnesses, previousSurgeries, allergies, cigarettes, alcohol, sports, medications, generalPractitioner, gynecologist, childrenCount, birthType1, birthType2, contactPreference, calculateBMI]);
 
   const handleNext = async () => {
     try {
