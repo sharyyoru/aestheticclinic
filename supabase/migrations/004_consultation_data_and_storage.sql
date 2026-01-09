@@ -7,8 +7,9 @@ CREATE TABLE IF NOT EXISTS patient_consultation_data (
   patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   submission_id UUID REFERENCES patient_intake_submissions(id) ON DELETE SET NULL,
   consultation_type TEXT NOT NULL, -- 'liposuction', 'breast', 'face'
-  selected_areas TEXT[], -- Array of selected body areas
+  selected_areas TEXT[], -- Array of selected body areas (for liposuction)
   measurements JSONB, -- JSON object with measurement values
+  breast_data JSONB, -- JSON object with breast consultation specific data
   upload_mode TEXT DEFAULT 'later', -- 'now' or 'later'
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
