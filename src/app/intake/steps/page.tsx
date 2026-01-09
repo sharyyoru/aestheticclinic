@@ -147,14 +147,14 @@ function IntakeStepsContent() {
             last_name: lastName,
             email: email,
             phone: mobile,
-            date_of_birth: dob,
+            dob: dob,
             street_address: streetAddress || null,
             postal_code: postalCode || null,
-            city: town || null,
+            town: town || null,
             nationality: nationality || null,
             marital_status: maritalStatus || null,
             profession: profession || null,
-            employer: currentEmployer || null,
+            current_employer: currentEmployer || null,
           })
           .eq("id", patientId);
       }
@@ -162,23 +162,22 @@ function IntakeStepsContent() {
       // Save insurance information
       if (currentStep === 2) {
         const { data: existingInsurance } = await supabaseClient
-          .from("patient_insurance")
+          .from("patient_insurances")
           .select("id")
           .eq("patient_id", patientId)
           .single();
 
         const insuranceData = {
           patient_id: patientId,
-          submission_id: submissionId,
           provider_name: insuranceProvider,
           card_number: insuranceCardNumber,
           insurance_type: insuranceType,
         };
 
         if (existingInsurance?.id) {
-          await supabaseClient.from("patient_insurance").update(insuranceData).eq("id", existingInsurance.id);
+          await supabaseClient.from("patient_insurances").update(insuranceData).eq("id", existingInsurance.id);
         } else {
-          await supabaseClient.from("patient_insurance").insert(insuranceData);
+          await supabaseClient.from("patient_insurances").insert(insuranceData);
         }
       }
 

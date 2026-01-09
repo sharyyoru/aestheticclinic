@@ -206,7 +206,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
         .eq("submission_id", sub.id)
         .maybeSingle(),
       supabaseClient
-        .from("patient_insurance")
+        .from("patient_insurances")
         .select("*")
         .eq("patient_id", patientId)
         .maybeSingle(),
