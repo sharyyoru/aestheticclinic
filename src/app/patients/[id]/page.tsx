@@ -38,7 +38,7 @@ async function getPatientWithDetails(id: string) {
   const { data: patient, error } = await supabaseClient
     .from("patients")
     .select(
-      "id, first_name, last_name, email, phone, gender, dob, marital_status, nationality, street_address, postal_code, town, profession, current_employer, source, notes, avatar_url, language_preference, clinic_preference, lifecycle_stage, contact_owner_name, contact_owner_email, created_by, created_at, updated_at",
+      "id, first_name, last_name, email, phone, gender, dob, date_of_birth, marital_status, nationality, street_address, postal_code, town, city, profession, current_employer, employer, source, notes, avatar_url, language_preference, clinic_preference, lifecycle_stage, contact_owner_name, contact_owner_email, created_by, created_at, updated_at",
     )
     .eq("id", id)
     .single();
@@ -47,13 +47,35 @@ async function getPatientWithDetails(id: string) {
     return { patient: null, insurance: [] } as const;
   }
 
-  const { data: insurance } = await supabaseClient
+  // Normalize legacy field names to current field names
+  const normalizedPatient = {
+    ...patient,
+    dob: patient.dob || (patient as any).date_of_birth || null,
+    town: patient.town || (patient as any).city || null,
+    current_employer: patient.current_employer || (patient as any).employer || null,
+  };
+
+  // Try patient_insurances first, fall back to patient_insurance for legacy data
+  let { data: insurance } = await supabaseClient
     .from("patient_insurances")
     .select("id, provider_name, card_number, insurance_type, created_at")
     .eq("patient_id", id)
     .order("created_at", { ascending: false });
 
-  return { patient, insurance: insurance ?? [] } as const;
+  // If no insurance found, try legacy table
+  if (!insurance || insurance.length === 0) {
+    const { data: legacyInsurance } = await supabaseClient
+      .from("patient_insurance")
+      .select("id, provider_name, card_number, insurance_type, created_at")
+      .eq("patient_id", id)
+      .order("created_at", { ascending: false });
+    
+    if (legacyInsurance && legacyInsurance.length > 0) {
+      insurance = legacyInsurance;
+    }
+  }
+
+  return { patient: normalizedPatient, insurance: insurance ?? [] } as const;
 }
 
 function extractInvoiceInfoFromContent(content: string | null): {

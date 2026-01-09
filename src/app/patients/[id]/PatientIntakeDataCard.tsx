@@ -218,7 +218,21 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
     if (photosRes.data) setPhotos(photosRes.data as IntakePhoto[]);
     if (treatPrefsRes.data) setTreatmentPrefs(treatPrefsRes.data as TreatmentPreferences);
     if (healthRes.data) setHealthBackground(healthRes.data as HealthBackground);
-    if (insuranceRes.data) setInsurance(insuranceRes.data as PatientInsurance);
+    
+    // Handle insurance with fallback to legacy table
+    if (insuranceRes.data) {
+      setInsurance(insuranceRes.data as PatientInsurance);
+    } else {
+      // Try legacy patient_insurance table
+      const { data: legacyInsurance } = await supabaseClient
+        .from("patient_insurance")
+        .select("*")
+        .eq("patient_id", patientId)
+        .maybeSingle();
+      if (legacyInsurance) {
+        setInsurance(legacyInsurance as PatientInsurance);
+      }
+    }
 
     // Get signed URLs for photos
     if (photosRes.data && photosRes.data.length > 0) {
