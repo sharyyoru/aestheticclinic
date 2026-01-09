@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS patient_consultation_data (
   selected_areas TEXT[], -- Array of selected body areas (for liposuction)
   measurements JSONB, -- JSON object with measurement values
   breast_data JSONB, -- JSON object with breast consultation specific data
+  face_data JSONB, -- JSON object with face consultation specific data
   upload_mode TEXT DEFAULT 'later', -- 'now' or 'later'
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

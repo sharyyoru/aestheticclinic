@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense, useRef } from "react";
+import { useEffect, useState, Suspense, useRef, useCallback } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { supabaseClient } from "@/lib/supabaseClient";
@@ -9,8 +9,26 @@ const LIPOSUCTION_AREAS = [
   "Tummy", "Flancs", "Back", "Arms", "Thighs", "Legs", "Breast", "Chin", "Other"
 ];
 
-const FACE_OPTIONS = [
-  "Facelift", "Rhinoplasty", "Blepharoplasty", "Botox", "Fillers", "Other"
+// Face consultation specific
+const FACE_EFFECTS = [
+  "Looking less saggy", "Less angry", "Less tired", "More attractive", 
+  "More feminine", "Masculine", "More young"
+];
+
+const FACE_PRIORITY_AREAS = [
+  "Wrinkles", "Eyebags", "Nasolabial Fold", "Jaw Line", "Neck"
+];
+
+const FACE_BUDGET_OPTIONS = [
+  "$ 500", "$ 1,000", "$ 2,000", "$ 2,000 +"
+];
+
+const FACE_PHOTO_POSITIONS = [
+  { id: "left_45", label: "Left 45 Image" },
+  { id: "front", label: "Front Image" },
+  { id: "right_45", label: "Right 45 Image" },
+  { id: "right_profile", label: "right profile face" },
+  { id: "left_profile", label: "left profile face" },
 ];
 
 // Measurement fields based on selected areas
@@ -105,6 +123,18 @@ function ConsultationContent() {
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  // Auto-save refs
+  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isSavingRef = useRef<boolean>(false);
+
+  // Face consultation specific state
+  const [hadFaceTreatments, setHadFaceTreatments] = useState<"yes" | "no" | null>(null);
+  const [faceTreatmentKind, setFaceTreatmentKind] = useState("");
+  const [faceTreatmentWhen, setFaceTreatmentWhen] = useState("");
+  const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
+  const [selectedFaceAreas, setSelectedFaceAreas] = useState<string[]>([]);
+  const [selectedBudget, setSelectedBudget] = useState("");
+
   const toggleArea = (area: string) => {
     setSelectedAreas(prev => 
       prev.includes(area) 
@@ -143,6 +173,112 @@ function ConsultationContent() {
     );
   };
 
+  const toggleEffect = (effect: string) => {
+    setSelectedEffects(prev =>
+      prev.includes(effect) ? prev.filter(e => e !== effect) : [...prev, effect]
+    );
+  };
+
+  const toggleFaceArea = (area: string) => {
+    setSelectedFaceAreas(prev =>
+      prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]
+    );
+  };
+
+  // Auto-save function for consultation data
+  const autoSaveConsultation = useCallback(async () => {
+    if (!patientId || !submissionId || isSavingRef.current) return;
+    
+    isSavingRef.current = true;
+    try {
+      const consultationData: Record<string, unknown> = {
+        patient_id: patientId,
+        submission_id: submissionId,
+        consultation_type: category,
+        measurements: measurements,
+        upload_mode: uploadMode,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (category === "liposuction") {
+        consultationData.selected_areas = selectedAreas;
+      } else if (category === "breast") {
+        consultationData.breast_data = {
+          had_surgery: hadBreastSurgery,
+          surgery_types: breastSurgeryTypes,
+          had_breastfeed: hadBreastfeed,
+          breastfeed_how_long: breastfeedHowLong,
+          had_conditions: hadBreastConditions,
+          conditions_details: breastConditionsDetails,
+          had_ultrasound: hadUltrasound,
+          ultrasound_how_long: ultrasoundHowLong,
+          ultrasound_why: ultrasoundWhy,
+          had_previous_consultation: hadPreviousConsultation,
+          procedure_types: selectedProcedureTypes,
+          augmentation_option: augmentationOption,
+          desired_cup_size: desiredCupSize,
+          reduction_comments: reductionComments,
+          lift_comments: liftComments,
+        };
+      } else if (category === "face") {
+        consultationData.face_data = {
+          had_treatments: hadFaceTreatments,
+          treatment_kind: faceTreatmentKind,
+          treatment_when: faceTreatmentWhen,
+          effects: selectedEffects,
+          priority_areas: selectedFaceAreas,
+          budget: selectedBudget,
+        };
+      }
+
+      await supabaseClient
+        .from("patient_consultation_data")
+        .upsert(consultationData, { onConflict: "patient_id,consultation_type" });
+
+      console.log("Consultation auto-save completed");
+    } catch (err) {
+      console.error("Consultation auto-save error:", err);
+    } finally {
+      isSavingRef.current = false;
+    }
+  }, [patientId, submissionId, category, measurements, uploadMode, selectedAreas,
+      hadBreastSurgery, breastSurgeryTypes, hadBreastfeed, breastfeedHowLong,
+      hadBreastConditions, breastConditionsDetails, hadUltrasound, ultrasoundHowLong,
+      ultrasoundWhy, hadPreviousConsultation, selectedProcedureTypes, augmentationOption,
+      desiredCupSize, reductionComments, liftComments, hadFaceTreatments, faceTreatmentKind,
+      faceTreatmentWhen, selectedEffects, selectedFaceAreas, selectedBudget]);
+
+  // Set up auto-save on window close and idle timeout
+  useEffect(() => {
+    if (!patientId || !submissionId) return;
+
+    const handleBeforeUnload = () => {
+      autoSaveConsultation();
+    };
+
+    const resetIdleTimer = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => {
+        autoSaveConsultation();
+      }, 60000);
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("mousemove", resetIdleTimer);
+    window.addEventListener("keydown", resetIdleTimer);
+    window.addEventListener("click", resetIdleTimer);
+
+    resetIdleTimer();
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("mousemove", resetIdleTimer);
+      window.removeEventListener("keydown", resetIdleTimer);
+      window.removeEventListener("click", resetIdleTimer);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [patientId, submissionId, autoSaveConsultation]);
+
   const saveAndProceed = async () => {
     setLoading(true);
     setError(null);
@@ -179,6 +315,15 @@ function ConsultationContent() {
           reduction_comments: reductionComments,
           lift_comments: liftComments,
         };
+      } else if (category === "face") {
+        consultationData.face_data = {
+          had_treatments: hadFaceTreatments,
+          treatment_kind: faceTreatmentKind,
+          treatment_when: faceTreatmentWhen,
+          effects: selectedEffects,
+          priority_areas: selectedFaceAreas,
+          budget: selectedBudget,
+        };
       }
 
       const { error: saveError } = await supabaseClient
@@ -205,8 +350,8 @@ function ConsultationContent() {
         setUploading(false);
       }
 
-      // Redirect to book appointment with patient info
-      router.push(`/book-appointment/doctors?pid=${patientId}&sid=${submissionId}&autofill=true`);
+      // Redirect to book appointment with patient info and consultation type
+      router.push(`/book-appointment/doctors?pid=${patientId}&sid=${submissionId}&autofill=true&ctype=${category}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
       setLoading(false);
@@ -699,40 +844,153 @@ function ConsultationContent() {
     );
   }
 
-  // Face consultation (generic)
+  // Face consultation flow (5 steps)
+  const faceHandleNext = () => {
+    if (step < 5) setStep((prev) => (prev + 1) as ConsultationStep);
+    else saveAndProceed();
+  };
+
+  const faceHandleBack = () => {
+    if (step > 1) setStep((prev) => (prev - 1) as ConsultationStep);
+    else window.history.back();
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
       <header className="px-4 sm:px-6 py-4 flex items-center justify-between">
         <Image src="/logos/aesthetics-logo.svg" alt="Aesthetics Clinic" width={60} height={60} className="h-12 w-auto" />
       </header>
 
-      <div className="flex-1 px-4 sm:px-6 py-6">
+      <div className="flex-1 overflow-auto px-4 sm:px-6 py-6">
         <div className="max-w-md mx-auto">
-          <h1 className="text-2xl font-light text-slate-800 mb-6">Customize Your Face Consultation</h1>
-          <p className="text-slate-600 text-sm mb-4">A.) What type of facial procedure are you interested in?</p>
+          {error && <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">{error}</div>}
 
-          <div className="space-y-3 mb-8">
-            {FACE_OPTIONS.map((option: string) => (
-              <button key={option} type="button" onClick={() => toggleArea(option)}
-                className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${selectedAreas.includes(option) ? "bg-sky-100 text-sky-700 border-sky-400" : "bg-white border-slate-300 text-slate-700 hover:border-slate-400"}`}>
-                {option}
-              </button>
-            ))}
-          </div>
+          {/* Step 1: Previous treatments */}
+          {step === 1 && (
+            <>
+              <h1 className="text-2xl font-light text-slate-800 mb-6">Let us know if you&apos;ve had injectables, lasers, or other facial treatments before.</h1>
+
+              <p className="text-amber-600 text-sm mb-3">Have you ever had injectables, laser treatments, or other facial rejuvenation procedures before?</p>
+              <div className="space-y-2 mb-4">
+                {["yes", "no"].map((opt) => (
+                  <button key={opt} onClick={() => setHadFaceTreatments(opt as "yes" | "no")}
+                    className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${hadFaceTreatments === opt ? "bg-sky-100 text-sky-700 border-sky-400" : "bg-white border-slate-300 text-slate-700"}`}>
+                    {opt === "yes" ? "Yes" : "No"}
+                  </button>
+                ))}
+              </div>
+
+              {hadFaceTreatments === "yes" && (
+                <div className="mb-4">
+                  <h3 className="text-xl font-light text-slate-800 mb-4">Please tell us more about your previous treatments</h3>
+                  <label className="text-slate-600 text-sm">What kind of treatment?</label>
+                  <input type="text" value={faceTreatmentKind} onChange={(e) => setFaceTreatmentKind(e.target.value)}
+                    placeholder="e.g., Botox, Laser" className="w-full mt-1 mb-3 px-4 py-3 rounded-full border border-slate-300 bg-white text-black" />
+                  <label className="text-slate-600 text-sm">When did you have it?</label>
+                  <input type="text" value={faceTreatmentWhen} onChange={(e) => setFaceTreatmentWhen(e.target.value)}
+                    placeholder="e.g., 6 months ago" className="w-full mt-1 px-4 py-3 rounded-full border border-slate-300 bg-white text-black" />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Step 2: Effect/emotion multi-select */}
+          {step === 2 && (
+            <>
+              <p className="text-amber-600 text-sm italic mb-4">What effect emotion are you looking for?</p>
+              <div className="space-y-2">
+                {FACE_EFFECTS.map((effect) => (
+                  <button key={effect} onClick={() => toggleEffect(effect)}
+                    className={`w-full py-3 px-4 rounded-full border text-left transition-colors ${selectedEffects.includes(effect) ? "bg-sky-100 text-sky-700 border-sky-400" : "bg-white border-slate-300 text-slate-700"}`}>
+                    {effect}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Step 3: Face area priority multi-select */}
+          {step === 3 && (
+            <>
+              <h1 className="text-2xl font-light text-slate-800 mb-6">What area in your face is a priority to treat?</h1>
+              <div className="space-y-2">
+                {FACE_PRIORITY_AREAS.map((area) => (
+                  <button key={area} onClick={() => toggleFaceArea(area)}
+                    className={`w-full py-3 px-4 rounded-full border text-left transition-colors ${selectedFaceAreas.includes(area) ? "bg-sky-100 text-sky-700 border-sky-400" : "bg-white border-slate-300 text-slate-700"}`}>
+                    {area}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Step 4: Budget selection */}
+          {step === 4 && (
+            <>
+              <h1 className="text-2xl font-light text-slate-800 mb-2">Set your budget.</h1>
+              <p className="text-amber-600 text-sm italic mb-4">What&apos;s your estimated budget for this treatment? (This helps us tailor the best plan for your needs)</p>
+              <div className="space-y-2">
+                {FACE_BUDGET_OPTIONS.map((budget) => (
+                  <button key={budget} onClick={() => setSelectedBudget(budget)}
+                    className={`w-full py-3 px-4 rounded-full border text-left transition-colors ${selectedBudget === budget ? "bg-sky-100 text-sky-700 border-sky-400" : "bg-white border-slate-300 text-slate-700"}`}>
+                    {budget}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Step 5: Photo Upload */}
+          {step === 5 && (
+            <>
+              <h1 className="text-2xl font-light text-slate-800 mb-4 italic">Upload Your Photos</h1>
+
+              <div className="flex justify-center gap-2 mb-4">
+                <button onClick={() => setUploadMode("now")} className={`px-6 py-2 rounded-full text-sm font-medium ${uploadMode === "now" ? "bg-slate-800 text-white" : "bg-white border border-slate-300 text-slate-600"}`}>Upload Now</button>
+                <button onClick={() => setUploadMode("later")} className={`px-6 py-2 rounded-full text-sm font-medium ${uploadMode === "later" ? "bg-slate-800 text-white" : "bg-white border border-slate-300 text-slate-600"}`}>Upload Later</button>
+              </div>
+
+              {uploadMode === "now" ? (
+                <>
+                  <p className="text-sky-600 text-sm italic mb-2">Let&apos;s get a closer look at your skin to tailor the perfect treatment for you.</p>
+                  <p className="text-slate-600 text-xs mb-2">Please upload clear, well-lit images of the area you&apos;d like treated.</p>
+                  <p className="text-slate-600 text-xs mb-4">Include front, side, and rear views of your face if possible. You can upload files, or take a photo directly on mobile.</p>
+
+                  <div className="space-y-4">
+                    {FACE_PHOTO_POSITIONS.map((pos) => (
+                      <div key={pos.id}>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">{pos.label}</label>
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => fileInputRefs.current[pos.id]?.click()}
+                            className="px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-200">Choose file</button>
+                          <span className="text-sm text-slate-500">{photos[pos.id]?.name || "No file chosen"}</span>
+                          <input ref={(el) => { fileInputRefs.current[pos.id] = el; }} type="file" accept="image/*" className="hidden"
+                            onChange={(e) => handleFileChange(pos.id, e.target.files?.[0] || null)} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-sky-600 text-sm">We will send you a link to your email to upload the photos.</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
       <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-4">
         <div className="max-w-md mx-auto flex justify-center items-center gap-4">
-          <button onClick={() => window.history.back()} className="p-3 rounded-full hover:bg-slate-200 transition-colors">
+          <button onClick={faceHandleBack} className="p-3 rounded-full hover:bg-slate-200 transition-colors">
             <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <button onClick={() => router.push(`/book-appointment/doctors?pid=${patientId}&sid=${submissionId}&autofill=true`)}
-            disabled={selectedAreas.length === 0}
+          <button onClick={faceHandleNext} disabled={loading || uploading}
             className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors disabled:opacity-50">
-            NEXT
+            {loading || uploading ? "Processing..." : "NEXT"}
           </button>
         </div>
       </footer>

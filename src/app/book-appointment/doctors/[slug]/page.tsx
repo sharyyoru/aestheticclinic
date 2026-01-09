@@ -87,6 +87,19 @@ export default function DoctorBookingPage() {
   // Autofill from patient data if coming from intake form
   const patientId = searchParams.get("pid");
   const autofill = searchParams.get("autofill");
+  const consultationType = searchParams.get("ctype"); // liposuction, breast, face
+
+  // Map consultation type to service
+  const getServiceFromConsultationType = (type: string | null): string => {
+    switch (type) {
+      case "liposuction": return "Body Contouring";
+      case "breast": return "Body Contouring";
+      case "face": return "Facial Rejuvenation";
+      default: return "";
+    }
+  };
+
+  const lockedService = consultationType ? getServiceFromConsultationType(consultationType) : null;
 
   useEffect(() => {
     if (autofill === "true" && patientId) {
@@ -104,13 +117,32 @@ export default function DoctorBookingPage() {
             setEmail(patient.email || "");
             setPhone(patient.phone || "");
           }
+
+          // Also fetch consultation data to determine service
+          const { data: consultation } = await supabaseClient
+            .from("patient_consultation_data")
+            .select("consultation_type")
+            .eq("patient_id", patientId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+
+          if (consultation) {
+            const service = getServiceFromConsultationType(consultation.consultation_type);
+            if (service) setSelectedService(service);
+          }
         } catch (err) {
           console.error("Error fetching patient data for autofill:", err);
         }
       };
       fetchPatientData();
     }
-  }, [autofill, patientId]);
+
+    // If consultation type is provided in URL, lock the service
+    if (lockedService) {
+      setSelectedService(lockedService);
+    }
+  }, [autofill, patientId, lockedService]);
 
   // Check availability when date changes
   useEffect(() => {
@@ -487,14 +519,27 @@ export default function DoctorBookingPage() {
             {step === "service" && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Select Service</h3>
+                
+                {/* Show locked service message if coming from intake */}
+                {lockedService && (
+                  <div className="mb-4 p-4 bg-sky-50 border border-sky-200 rounded-xl">
+                    <p className="text-sm text-sky-700">
+                      <span className="font-medium">Service auto-selected:</span> Based on your consultation, we&apos;ve pre-selected the most relevant service for your appointment.
+                    </p>
+                  </div>
+                )}
+
                 <div className="grid sm:grid-cols-2 gap-3">
                   {SERVICE_OPTIONS.map((service) => (
                     <button
                       key={service}
-                      onClick={() => setSelectedService(service)}
+                      onClick={() => !lockedService && setSelectedService(service)}
+                      disabled={!!lockedService && service !== selectedService}
                       className={`p-4 rounded-xl text-left transition-all border-2 ${
                         selectedService === service
                           ? "border-slate-900 bg-slate-50"
+                          : lockedService
+                          ? "border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed"
                           : "border-slate-200 hover:border-slate-300"
                       }`}
                     >

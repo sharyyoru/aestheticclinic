@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, useCallback, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Image from "next/image";
@@ -98,6 +98,172 @@ function IntakeStepsContent() {
   // Patient info for confirmation
   const [patientName, setPatientName] = useState("");
   const [patientEmail, setPatientEmail] = useState("");
+
+  // Auto-save refs
+  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastActivityRef = useRef<number>(Date.now());
+  const isSavingRef = useRef<boolean>(false);
+
+  // Auto-save function that saves all current form data
+  const autoSaveData = useCallback(async () => {
+    if (!submissionId || !patientId || isSavingRef.current) return;
+    
+    isSavingRef.current = true;
+    try {
+      // Save personal info
+      const dob = dobYear && dobMonth && dobDay 
+        ? `${dobYear}-${dobMonth.padStart(2, '0')}-${dobDay.padStart(2, '0')}`
+        : null;
+
+      await supabaseClient.from("patients").update({
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
+        email: email || undefined,
+        phone: mobile || undefined,
+        dob: dob,
+        street_address: streetAddress || null,
+        postal_code: postalCode || null,
+        town: town || null,
+        nationality: nationality || null,
+        marital_status: maritalStatus || null,
+        profession: profession || null,
+        current_employer: currentEmployer || null,
+      }).eq("id", patientId);
+
+      // Save insurance if any data exists
+      if (insuranceProvider || insuranceCardNumber || insuranceType) {
+        const { data: existingIns } = await supabaseClient
+          .from("patient_insurances")
+          .select("id")
+          .eq("patient_id", patientId)
+          .maybeSingle();
+
+        const insData = {
+          patient_id: patientId,
+          provider_name: insuranceProvider || null,
+          card_number: insuranceCardNumber || null,
+          insurance_type: insuranceType || null,
+        };
+
+        if (existingIns?.id) {
+          await supabaseClient.from("patient_insurances").update(insData).eq("id", existingIns.id);
+        } else {
+          await supabaseClient.from("patient_insurances").insert(insData);
+        }
+      }
+
+      // Save health background if any data exists
+      if (weight || height || knownIllnesses || previousSurgeries || allergies) {
+        const bmi = weight && height ? (parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(2) : null;
+        
+        const { data: existingHealth } = await supabaseClient
+          .from("patient_health_background")
+          .select("id")
+          .eq("submission_id", submissionId)
+          .maybeSingle();
+
+        const healthData = {
+          patient_id: patientId,
+          submission_id: submissionId,
+          weight_kg: weight ? parseFloat(weight) : null,
+          height_cm: height ? parseFloat(height) : null,
+          bmi: bmi ? parseFloat(bmi) : null,
+          known_illnesses: knownIllnesses || null,
+          previous_surgeries: previousSurgeries || null,
+          allergies: allergies || null,
+          cigarettes: cigarettes || null,
+          alcohol_consumption: alcohol || null,
+          sports_activity: sports || null,
+          medications: medications || null,
+          general_practitioner: generalPractitioner || null,
+          gynecologist: gynecologist || null,
+          children_count: childrenCount ? parseInt(childrenCount) : null,
+          birth_type_1: birthType1 || null,
+          birth_type_2: birthType2 || null,
+        };
+
+        if (existingHealth?.id) {
+          await supabaseClient.from("patient_health_background").update(healthData).eq("id", existingHealth.id);
+        } else {
+          await supabaseClient.from("patient_health_background").insert(healthData);
+        }
+      }
+
+      // Save contact preference
+      if (contactPreference) {
+        const { data: existingPrefs } = await supabaseClient
+          .from("patient_intake_preferences")
+          .select("id")
+          .eq("submission_id", submissionId)
+          .maybeSingle();
+
+        const prefsData = {
+          submission_id: submissionId,
+          patient_id: patientId,
+          preferred_contact_method: contactPreference,
+        };
+
+        if (existingPrefs?.id) {
+          await supabaseClient.from("patient_intake_preferences").update(prefsData).eq("id", existingPrefs.id);
+        } else {
+          await supabaseClient.from("patient_intake_preferences").insert(prefsData);
+        }
+      }
+
+      console.log("Auto-save completed successfully");
+    } catch (err) {
+      console.error("Auto-save error:", err);
+    } finally {
+      isSavingRef.current = false;
+    }
+  }, [submissionId, patientId, firstName, lastName, email, mobile, dobYear, dobMonth, dobDay,
+      streetAddress, postalCode, town, nationality, maritalStatus, profession, currentEmployer,
+      insuranceProvider, insuranceCardNumber, insuranceType, weight, height, knownIllnesses,
+      previousSurgeries, allergies, cigarettes, alcohol, sports, medications, generalPractitioner,
+      gynecologist, childrenCount, birthType1, birthType2, contactPreference]);
+
+  // Set up auto-save on window close and idle timeout
+  useEffect(() => {
+    if (!submissionId || !patientId) return;
+
+    // Handle beforeunload (window/tab close)
+    const handleBeforeUnload = () => {
+      autoSaveData();
+    };
+
+    // Reset idle timer on any user activity
+    const resetIdleTimer = () => {
+      lastActivityRef.current = Date.now();
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+      // Set new timer for 1 minute (60000ms)
+      idleTimerRef.current = setTimeout(() => {
+        autoSaveData();
+      }, 60000);
+    };
+
+    // Add event listeners
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("mousemove", resetIdleTimer);
+    window.addEventListener("keydown", resetIdleTimer);
+    window.addEventListener("click", resetIdleTimer);
+    window.addEventListener("scroll", resetIdleTimer);
+
+    // Start initial idle timer
+    resetIdleTimer();
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("mousemove", resetIdleTimer);
+      window.removeEventListener("keydown", resetIdleTimer);
+      window.removeEventListener("click", resetIdleTimer);
+      window.removeEventListener("scroll", resetIdleTimer);
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+    };
+  }, [submissionId, patientId, autoSaveData]);
 
   useEffect(() => {
     if (!submissionId || !patientId) {
