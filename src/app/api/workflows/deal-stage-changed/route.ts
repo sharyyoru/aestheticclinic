@@ -3,6 +3,9 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
+// Sales team users for round-robin assignment
+const SALES_TEAM_NAMES = ["Charline", "Elite", "Audrey", "Bubuque", "Victoria"];
+
 const mailgunApiKey = process.env.MAILGUN_API_KEY;
 const mailgunDomain = process.env.MAILGUN_DOMAIN;
 const mailgunFromEmail = process.env.MAILGUN_FROM_EMAIL;
@@ -309,20 +312,42 @@ export async function POST(request: Request) {
           const activityDate = new Date();
           activityDate.setDate(activityDate.getDate() + dueDays);
 
-          // Handle assigned user - skip "assigned" special value (use null)
+          // ROUND-ROBIN ASSIGNMENT: Always assign to sales team in rotation
           let assignedUserId: string | null = null;
           let assignedUserName: string | null = null;
-          if (config.assign_to && config.assign_to !== "assigned") {
-            // Look up user name
-            const { data: assignedUser } = await supabaseAdmin
-              .from("users")
-              .select("id, full_name, email")
-              .eq("id", config.assign_to)
-              .single();
-            if (assignedUser) {
-              assignedUserId = assignedUser.id;
-              assignedUserName = assignedUser.full_name || assignedUser.email || null;
+          
+          // Get sales team users from the users table
+          const { data: allUsers } = await supabaseAdmin
+            .from("users")
+            .select("id, full_name, email");
+          
+          const salesTeamUsers: Array<{ id: string; name: string }> = [];
+          if (allUsers) {
+            for (const user of allUsers) {
+              const fullName = user.full_name || user.email || "";
+              const matchesSalesTeam = SALES_TEAM_NAMES.some(name => 
+                fullName.toLowerCase().includes(name.toLowerCase())
+              );
+              if (matchesSalesTeam) {
+                salesTeamUsers.push({ id: user.id, name: fullName });
+              }
             }
+          }
+
+          if (salesTeamUsers.length > 0) {
+            // Round-robin: Get count of recent tasks to determine next assignee
+            const { count: taskCount } = await supabaseAdmin
+              .from("tasks")
+              .select("*", { count: "exact", head: true })
+              .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+
+            const assigneeIndex = (taskCount || 0) % salesTeamUsers.length;
+            const assignee = salesTeamUsers[assigneeIndex];
+            assignedUserId = assignee.id;
+            assignedUserName = assignee.name;
+            console.log(`Round-robin assigned to: ${assignee.name} (index ${assigneeIndex} of ${salesTeamUsers.length})`);
+          } else {
+            console.warn("No sales team users found for round-robin assignment");
           }
 
           const { error: taskError } = await supabaseAdmin
