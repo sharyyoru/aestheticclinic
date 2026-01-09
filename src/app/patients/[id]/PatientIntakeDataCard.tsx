@@ -87,6 +87,17 @@ type PatientInsurance = {
   insurance_type: string | null;
 };
 
+type ConsultationData = {
+  id: string;
+  consultation_type: string;
+  selected_areas: string[] | null;
+  measurements: Record<string, string> | null;
+  breast_data: Record<string, unknown> | null;
+  face_data: Record<string, unknown> | null;
+  upload_mode: string;
+  created_at: string;
+};
+
 type EditingSection = "preferences" | "measurements" | "treatment_prefs" | "health_background" | "insurance" | null;
 
 const LANGUAGE_LABELS: Record<string, string> = {
@@ -137,6 +148,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [healthBackground, setHealthBackground] = useState<HealthBackground | null>(null);
   const [insurance, setInsurance] = useState<PatientInsurance | null>(null);
+  const [consultationData, setConsultationData] = useState<ConsultationData[]>([]);
   
   // Edit mode states
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
@@ -242,6 +254,17 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
     if (measRes.data) setMeasurements(measRes.data as Measurements);
     if (photosRes.data) setPhotos(photosRes.data as IntakePhoto[]);
     if (treatPrefsRes.data) setTreatmentPrefs(treatPrefsRes.data as TreatmentPreferences);
+
+    // Fetch consultation data (liposuction, breast, face)
+    const { data: consultations } = await supabaseClient
+      .from("patient_consultation_data")
+      .select("*")
+      .eq("patient_id", patientId)
+      .order("created_at", { ascending: false });
+    
+    if (consultations) {
+      setConsultationData(consultations as ConsultationData[]);
+    }
     
     // Insurance: try patient_insurances first, then patient_insurance (legacy table) as fallback
     if (insuranceRes.data) {
@@ -516,7 +539,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
           )}
         </div>
 
-        {/* Treatment Areas Card - Always show */}
+        {/* Treatment Areas Card - Shows consultation data */}
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center">
@@ -526,7 +549,92 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
             </div>
             <h4 className="font-medium text-slate-900">Treatment Areas</h4>
           </div>
-          {treatmentAreas.length > 0 ? (
+          {consultationData.length > 0 ? (
+            <div className="space-y-4">
+              {consultationData.map((consultation) => (
+                <div key={consultation.id} className="border-l-2 border-rose-300 pl-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-medium text-slate-900 capitalize">{consultation.consultation_type} Consultation</span>
+                    <span className="text-xs text-white bg-rose-500 px-2 py-0.5 rounded-full">
+                      {consultation.upload_mode === "now" ? "Photos Uploaded" : "Photos Pending"}
+                    </span>
+                  </div>
+                  
+                  {/* Liposuction: show selected areas */}
+                  {consultation.consultation_type === "liposuction" && consultation.selected_areas && (
+                    <div className="mb-2">
+                      <span className="text-xs text-slate-500">Selected Areas:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {consultation.selected_areas.map((area: string) => (
+                          <span key={area} className="text-xs bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full">{area}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Breast: show procedure types */}
+                  {consultation.consultation_type === "breast" && consultation.breast_data && (
+                    <div className="mb-2">
+                      <span className="text-xs text-slate-500">Procedure Types:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {((consultation.breast_data as Record<string, unknown>).procedure_types as string[] || []).map((proc: string) => (
+                          <span key={proc} className="text-xs bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full">{proc}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Face: show effects and priority areas */}
+                  {consultation.consultation_type === "face" && consultation.face_data && (
+                    <div className="space-y-2">
+                      {((consultation.face_data as Record<string, unknown>).effects as string[] || []).length > 0 && (
+                        <div>
+                          <span className="text-xs text-slate-500">Desired Effects:</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {((consultation.face_data as Record<string, unknown>).effects as string[]).map((effect: string) => (
+                              <span key={effect} className="text-xs bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full">{effect}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {((consultation.face_data as Record<string, unknown>).priority_areas as string[] || []).length > 0 && (
+                        <div>
+                          <span className="text-xs text-slate-500">Priority Areas:</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {((consultation.face_data as Record<string, unknown>).priority_areas as string[]).map((area: string) => (
+                              <span key={area} className="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">{area}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {typeof (consultation.face_data as Record<string, unknown>).budget === 'string' && (
+                        <div className="text-xs text-slate-600">
+                          <span className="text-slate-500">Budget:</span> {(consultation.face_data as Record<string, string>).budget}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Measurements if available */}
+                  {consultation.measurements && Object.keys(consultation.measurements).length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-100">
+                      <span className="text-xs text-slate-500">Measurements:</span>
+                      <div className="grid grid-cols-2 gap-1 mt-1 text-xs">
+                        {Object.entries(consultation.measurements).slice(0, 4).map(([key, value]) => (
+                          <div key={key} className="text-slate-600">
+                            <span className="capitalize">{key.replace(/_/g, ' ')}:</span> {value}cm
+                          </div>
+                        ))}
+                        {Object.keys(consultation.measurements).length > 4 && (
+                          <div className="text-slate-400">+{Object.keys(consultation.measurements).length - 4} more</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : treatmentAreas.length > 0 ? (
             <div className="space-y-3">
               {treatmentAreas.map((area, idx) => (
                 <div key={area.id} className="border-l-2 border-rose-300 pl-3">

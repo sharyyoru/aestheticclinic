@@ -103,6 +103,8 @@ function ConsultationContent() {
   const [uploadMode, setUploadMode] = useState<"now" | "later">("now");
   const [photos, setPhotos] = useState<Record<string, File | null>>({});
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [uploadedPhotos, setUploadedPhotos] = useState<Record<string, boolean>>({});
 
   // Breast consultation specific state
   const [hadBreastSurgery, setHadBreastSurgery] = useState<"yes" | "no" | null>(null);
@@ -335,8 +337,15 @@ function ConsultationContent() {
       // Upload photos if mode is "now"
       if (uploadMode === "now") {
         setUploading(true);
-        for (const [position, file] of Object.entries(photos)) {
+        const photosToUpload = Object.entries(photos).filter(([, file]) => file !== null);
+        const totalPhotos = photosToUpload.length;
+        
+        for (let i = 0; i < photosToUpload.length; i++) {
+          const [position, file] = photosToUpload[i];
           if (file) {
+            // Set progress to 50% while uploading
+            setUploadProgress(prev => ({ ...prev, [position]: 50 }));
+            
             const fileName = `${patientId}/${category}/${position}_${Date.now()}.${file.name.split('.').pop()}`;
             const { error: uploadError } = await supabaseClient.storage
               .from("patient-photos")
@@ -344,6 +353,11 @@ function ConsultationContent() {
             
             if (uploadError) {
               console.error(`Failed to upload ${position}:`, uploadError);
+              setUploadProgress(prev => ({ ...prev, [position]: 0 }));
+            } else {
+              // Mark as completed
+              setUploadProgress(prev => ({ ...prev, [position]: 100 }));
+              setUploadedPhotos(prev => ({ ...prev, [position]: true }));
             }
           }
         }
@@ -507,13 +521,19 @@ function ConsultationContent() {
                         <div className="flex items-center gap-3">
                           <button
                             onClick={() => fileInputRefs.current[position]?.click()}
-                            className="px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-200"
+                            disabled={uploading}
+                            className="px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-200 disabled:opacity-50"
                           >
                             Choose file
                           </button>
-                          <span className="text-sm text-slate-500">
+                          <span className="text-sm text-slate-500 flex-1">
                             {photos[position]?.name || "No file chosen"}
                           </span>
+                          {uploadedPhotos[position] && (
+                            <svg className="w-5 h-5 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          )}
                           <input
                             ref={(el) => { fileInputRefs.current[position] = el; }}
                             type="file"
@@ -522,6 +542,12 @@ function ConsultationContent() {
                             onChange={(e) => handleFileChange(position, e.target.files?.[0] || null)}
                           />
                         </div>
+                        {/* Progress bar */}
+                        {uploadProgress[position] !== undefined && uploadProgress[position] > 0 && uploadProgress[position] < 100 && (
+                          <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
+                            <div className="bg-sky-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress[position]}%` }}></div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -807,12 +833,22 @@ function ConsultationContent() {
                         <div key={pos.id}>
                           <label className="block text-sm font-medium text-slate-700 mb-2">{pos.label}</label>
                           <div className="flex items-center gap-3">
-                            <button onClick={() => fileInputRefs.current[pos.id]?.click()}
-                              className="px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-200">Choose file</button>
-                            <span className="text-sm text-slate-500">{photos[pos.id]?.name || "No file chosen"}</span>
+                            <button onClick={() => fileInputRefs.current[pos.id]?.click()} disabled={uploading}
+                              className="px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-200 disabled:opacity-50">Choose file</button>
+                            <span className="text-sm text-slate-500 flex-1">{photos[pos.id]?.name || "No file chosen"}</span>
+                            {uploadedPhotos[pos.id] && (
+                              <svg className="w-5 h-5 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                            )}
                             <input ref={(el) => { fileInputRefs.current[pos.id] = el; }} type="file" accept="image/*" className="hidden"
                               onChange={(e) => handleFileChange(pos.id, e.target.files?.[0] || null)} />
                           </div>
+                          {uploadProgress[pos.id] !== undefined && uploadProgress[pos.id] > 0 && uploadProgress[pos.id] < 100 && (
+                            <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
+                              <div className="bg-sky-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress[pos.id]}%` }}></div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -961,12 +997,22 @@ function ConsultationContent() {
                       <div key={pos.id}>
                         <label className="block text-sm font-medium text-slate-700 mb-2">{pos.label}</label>
                         <div className="flex items-center gap-3">
-                          <button onClick={() => fileInputRefs.current[pos.id]?.click()}
-                            className="px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-200">Choose file</button>
-                          <span className="text-sm text-slate-500">{photos[pos.id]?.name || "No file chosen"}</span>
+                          <button onClick={() => fileInputRefs.current[pos.id]?.click()} disabled={uploading}
+                            className="px-4 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-200 disabled:opacity-50">Choose file</button>
+                          <span className="text-sm text-slate-500 flex-1">{photos[pos.id]?.name || "No file chosen"}</span>
+                          {uploadedPhotos[pos.id] && (
+                            <svg className="w-5 h-5 text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          )}
                           <input ref={(el) => { fileInputRefs.current[pos.id] = el; }} type="file" accept="image/*" className="hidden"
                             onChange={(e) => handleFileChange(pos.id, e.target.files?.[0] || null)} />
                         </div>
+                        {uploadProgress[pos.id] !== undefined && uploadProgress[pos.id] > 0 && uploadProgress[pos.id] < 100 && (
+                          <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
+                            <div className="bg-sky-500 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress[pos.id]}%` }}></div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

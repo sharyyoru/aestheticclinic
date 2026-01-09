@@ -51,6 +51,11 @@ function IntakeStepsContent() {
   
   // Consultation category selection
   const [consultationCategory, setConsultationCategory] = useState("");
+  
+  // Track if data already exists (for showing summary screen)
+  const [hasExistingData, setHasExistingData] = useState(false);
+  const [showDataSummary, setShowDataSummary] = useState(false);
+  const [dataCompletionPercent, setDataCompletionPercent] = useState(0);
 
   // Step 1: Personal Information
   const [firstName, setFirstName] = useState("");
@@ -355,6 +360,39 @@ function IntakeStepsContent() {
         
         if (prefsData) {
           setContactPreference(prefsData.preferred_contact_method || "");
+        }
+
+        // Calculate completion percentage and check if data exists
+        let filledFields = 0;
+        let totalFields = 0;
+
+        // Personal info fields (10 fields)
+        const personalFields = [patientData?.first_name, patientData?.last_name, patientData?.email, 
+          patientData?.phone, patientData?.dob, patientData?.street_address, 
+          patientData?.postal_code, patientData?.town, patientData?.nationality, patientData?.marital_status];
+        personalFields.forEach(f => { totalFields++; if (f) filledFields++; });
+
+        // Insurance fields (3 fields)
+        const insuranceFields = [insuranceData?.provider_name, insuranceData?.card_number, insuranceData?.insurance_type];
+        insuranceFields.forEach(f => { totalFields++; if (f) filledFields++; });
+
+        // Health fields (5 key fields)
+        const healthFields = [healthData?.weight_kg, healthData?.height_cm, healthData?.known_illnesses, 
+          healthData?.previous_surgeries, healthData?.allergies];
+        healthFields.forEach(f => { totalFields++; if (f) filledFields++; });
+
+        // Contact preference (1 field)
+        totalFields++;
+        if (prefsData?.preferred_contact_method) filledFields++;
+
+        const completionPercent = Math.round((filledFields / totalFields) * 100);
+        setDataCompletionPercent(completionPercent);
+
+        // If we have meaningful data (at least name and email), show summary
+        if (patientData?.first_name && patientData?.email && completionPercent > 20) {
+          setHasExistingData(true);
+          setShowDataSummary(true);
+          setShowIntro(false);
         }
       };
       fetchExistingData();
@@ -746,6 +784,97 @@ function IntakeStepsContent() {
                 </svg>
                 <span className="text-sm">info@aesthetics-ge.ch</span>
               </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Data Summary Screen (when data already exists)
+  if (showDataSummary && hasExistingData) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-between">
+          <Image src="/logos/aesthetics-logo.svg" alt="Aesthetics Clinic" width={60} height={60} className="h-12 w-auto" />
+          <LanguageSelector />
+        </header>
+
+        <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
+          <div className="w-full max-w-md text-center">
+            {/* Success Icon */}
+            <div className="mb-6">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-100 flex items-center justify-center">
+                <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-medium text-slate-800 mb-2">Your Changes Have Been Saved!</h2>
+              <p className="text-slate-600">Hi <span className="font-semibold text-amber-600">{firstName || patientName}</span></p>
+            </div>
+
+            {/* Completion Progress */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-slate-700">Form Completion</span>
+                <span className="text-sm font-semibold text-emerald-600">{dataCompletionPercent}%</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3 mb-4">
+                <div 
+                  className="bg-emerald-500 h-3 rounded-full transition-all duration-500" 
+                  style={{ width: `${dataCompletionPercent}%` }}
+                ></div>
+              </div>
+              
+              <div className="text-left space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <svg className={`w-4 h-4 ${firstName && lastName ? 'text-emerald-500' : 'text-slate-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className={firstName && lastName ? 'text-slate-700' : 'text-slate-400'}>Personal Information</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className={`w-4 h-4 ${insuranceProvider ? 'text-emerald-500' : 'text-slate-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className={insuranceProvider ? 'text-slate-700' : 'text-slate-400'}>Insurance Details</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className={`w-4 h-4 ${weight && height ? 'text-emerald-500' : 'text-slate-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className={weight && height ? 'text-slate-700' : 'text-slate-400'}>Health Background</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className={`w-4 h-4 ${contactPreference ? 'text-emerald-500' : 'text-slate-300'}`} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className={contactPreference ? 'text-slate-700' : 'text-slate-400'}>Contact Preference</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setShowDataSummary(false);
+                  setStep(5); // Go to category selection
+                }}
+                className="w-full py-3 rounded-full bg-slate-800 text-white font-medium hover:bg-slate-700 transition-colors"
+              >
+                Continue to Consultation
+              </button>
+              <button
+                onClick={() => {
+                  setShowDataSummary(false);
+                  setShowIntro(false);
+                  setStep(1); // Go to edit mode
+                }}
+                className="w-full py-3 rounded-full border-2 border-slate-300 text-slate-700 font-medium hover:bg-slate-100 transition-colors"
+              >
+                Edit My Information
+              </button>
             </div>
           </div>
         </div>
