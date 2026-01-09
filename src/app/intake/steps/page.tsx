@@ -140,7 +140,7 @@ function IntakeStepsContent() {
           ? `${dobYear}-${dobMonth.padStart(2, '0')}-${dobDay.padStart(2, '0')}`
           : null;
 
-        await supabaseClient
+        const { error: patientError } = await supabaseClient
           .from("patients")
           .update({
             first_name: firstName,
@@ -157,6 +157,10 @@ function IntakeStepsContent() {
             current_employer: currentEmployer || null,
           })
           .eq("id", patientId);
+
+        if (patientError) {
+          throw new Error(`Failed to save personal information: ${patientError.message}`);
+        }
       }
 
       // Save insurance information
@@ -174,10 +178,17 @@ function IntakeStepsContent() {
           insurance_type: insuranceType,
         };
 
+        let insuranceError;
         if (existingInsurance?.id) {
-          await supabaseClient.from("patient_insurances").update(insuranceData).eq("id", existingInsurance.id);
+          const { error } = await supabaseClient.from("patient_insurances").update(insuranceData).eq("id", existingInsurance.id);
+          insuranceError = error;
         } else {
-          await supabaseClient.from("patient_insurances").insert(insuranceData);
+          const { error } = await supabaseClient.from("patient_insurances").insert(insuranceData);
+          insuranceError = error;
+        }
+
+        if (insuranceError) {
+          throw new Error(`Failed to save insurance information: ${insuranceError.message}`);
         }
       }
 
@@ -211,10 +222,17 @@ function IntakeStepsContent() {
           birth_type_2: birthType2 || null,
         };
 
+        let healthError;
         if (existingHealth?.id) {
-          await supabaseClient.from("patient_health_background").update(healthData).eq("id", existingHealth.id);
+          const { error } = await supabaseClient.from("patient_health_background").update(healthData).eq("id", existingHealth.id);
+          healthError = error;
         } else {
-          await supabaseClient.from("patient_health_background").insert(healthData);
+          const { error } = await supabaseClient.from("patient_health_background").insert(healthData);
+          healthError = error;
+        }
+
+        if (healthError) {
+          throw new Error(`Failed to save health information: ${healthError.message}. Please contact support.`);
         }
       }
 
@@ -232,21 +250,34 @@ function IntakeStepsContent() {
           preferred_contact_method: contactPreference,
         };
 
+        let prefsError;
         if (existingPrefs?.id) {
-          await supabaseClient.from("patient_intake_preferences").update(prefsData).eq("id", existingPrefs.id);
+          const { error } = await supabaseClient.from("patient_intake_preferences").update(prefsData).eq("id", existingPrefs.id);
+          prefsError = error;
         } else {
-          await supabaseClient.from("patient_intake_preferences").insert(prefsData);
+          const { error } = await supabaseClient.from("patient_intake_preferences").insert(prefsData);
+          prefsError = error;
+        }
+
+        if (prefsError) {
+          throw new Error(`Failed to save contact preferences: ${prefsError.message}`);
         }
       }
 
       // Update submission progress
-      await supabaseClient
+      const { error: progressError } = await supabaseClient
         .from("patient_intake_submissions")
         .update({ current_step: currentStep + 1 })
         .eq("id", submissionId);
 
+      if (progressError) {
+        throw new Error(`Failed to update progress: ${progressError.message}`);
+      }
+
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save data");
+      const errorMessage = err instanceof Error ? err.message : "Failed to save data. Please try again or contact support.";
+      setError(errorMessage);
+      console.error("Intake form save error:", err);
       throw err;
     } finally {
       setLoading(false);
