@@ -173,78 +173,74 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
     const sub = submissions[0] as IntakeSubmission;
     setSubmission(sub);
 
-    // Load all related data in parallel
-    const [prefsRes, areasRes, measRes, photosRes, treatPrefsRes, healthRes, insuranceRes] = await Promise.all([
+    // Load all related data by PATIENT_ID first (most reliable), then fall back to submission_id
+    // This ensures we always find data regardless of which submission it was linked to
+    const [prefsRes, healthRes, insuranceRes, areasRes, measRes, photosRes, treatPrefsRes] = await Promise.all([
+      // Preferences: query by patient_id directly
       supabaseClient
         .from("patient_intake_preferences")
         .select("*")
-        .eq("submission_id", sub.id)
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
+      // Health background: query by patient_id directly
+      supabaseClient
+        .from("patient_health_background")
+        .select("*")
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      // Insurance: query by patient_id directly
+      supabaseClient
+        .from("patient_insurances")
+        .select("*")
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      // Treatment areas: try by submission_id first
       supabaseClient
         .from("patient_treatment_areas")
         .select("*")
         .eq("submission_id", sub.id)
         .order("priority", { ascending: true }),
+      // Measurements: try by submission_id first
       supabaseClient
         .from("patient_measurements")
         .select("*")
         .eq("submission_id", sub.id)
         .maybeSingle(),
+      // Photos: try by submission_id first
       supabaseClient
         .from("patient_intake_photos")
         .select("*")
         .eq("submission_id", sub.id)
         .order("uploaded_at", { ascending: true }),
+      // Treatment preferences: try by submission_id first
       supabaseClient
         .from("patient_treatment_preferences")
         .select("*")
         .eq("submission_id", sub.id)
         .maybeSingle(),
-      supabaseClient
-        .from("patient_health_background")
-        .select("*")
-        .eq("submission_id", sub.id)
-        .maybeSingle(),
-      supabaseClient
-        .from("patient_insurances")
-        .select("*")
-        .eq("patient_id", patientId)
-        .maybeSingle(),
     ]);
 
+    // Set preferences (queried by patient_id)
     if (prefsRes.data) {
       setPreferences(prefsRes.data as IntakePreferences);
-    } else {
-      // Fallback: query by patient_id for legacy data
-      const { data: prefsByPatient } = await supabaseClient
-        .from("patient_intake_preferences")
-        .select("*")
-        .eq("patient_id", patientId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (prefsByPatient) setPreferences(prefsByPatient as IntakePreferences);
     }
     
+    // Set health background (queried by patient_id)
+    if (healthRes.data) {
+      setHealthBackground(healthRes.data as HealthBackground);
+    }
+
+    // Set other data from submission-based queries
     if (areasRes.data) setTreatmentAreas(areasRes.data as TreatmentArea[]);
     if (measRes.data) setMeasurements(measRes.data as Measurements);
     if (photosRes.data) setPhotos(photosRes.data as IntakePhoto[]);
     if (treatPrefsRes.data) setTreatmentPrefs(treatPrefsRes.data as TreatmentPreferences);
-    
-    // Health background: try by submission_id first, then by patient_id as fallback
-    if (healthRes.data) {
-      setHealthBackground(healthRes.data as HealthBackground);
-    } else {
-      // Fallback: query by patient_id for legacy data
-      const { data: healthByPatient } = await supabaseClient
-        .from("patient_health_background")
-        .select("*")
-        .eq("patient_id", patientId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (healthByPatient) setHealthBackground(healthByPatient as HealthBackground);
-    }
     
     // Insurance: try patient_insurances first, then patient_insurance (legacy table) as fallback
     if (insuranceRes.data) {
