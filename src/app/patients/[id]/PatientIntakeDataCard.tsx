@@ -87,7 +87,7 @@ type PatientInsurance = {
   insurance_type: string | null;
 };
 
-type EditingSection = "preferences" | "measurements" | "treatment_prefs" | "health_background" | null;
+type EditingSection = "preferences" | "measurements" | "treatment_prefs" | "health_background" | "insurance" | null;
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
@@ -143,6 +143,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
   const [editPrefs, setEditPrefs] = useState<IntakePreferences | null>(null);
   const [editMeasurements, setEditMeasurements] = useState<Measurements | null>(null);
   const [editTreatmentPrefs, setEditTreatmentPrefs] = useState<TreatmentPreferences | null>(null);
+  const [editInsurance, setEditInsurance] = useState<PatientInsurance | null>(null);
 
   const loadIntakeData = useCallback(async () => {
     setLoading(true);
@@ -371,6 +372,25 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
     setSaving(false);
   };
 
+  const saveInsurance = async (data: Partial<PatientInsurance>) => {
+    setSaving(true);
+    try {
+      if (insurance?.id) {
+        await supabaseClient.from("patient_insurances").update(data).eq("id", insurance.id);
+      } else {
+        await supabaseClient.from("patient_insurances").insert({
+          ...data,
+          patient_id: patientId,
+        });
+      }
+      await loadIntakeData();
+      setEditingSection(null);
+    } catch (err) {
+      console.error("Failed to save insurance:", err);
+    }
+    setSaving(false);
+  };
+
   const EditButton = ({ onClick }: { onClick: () => void }) => (
     <button
       onClick={onClick}
@@ -487,69 +507,6 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
           )}
         </div>
 
-        {/* Measurements Card - Always show */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-              <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <h4 className="font-medium text-slate-900">Measurements & BMI</h4>
-            <EditButton onClick={() => {
-              setEditMeasurements(measurements || { height_cm: null, weight_kg: null, bmi: null, chest_cm: null, waist_cm: null, hips_cm: null });
-              setEditingSection("measurements");
-            }} />
-          </div>
-          
-          {editingSection === "measurements" && editMeasurements ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-slate-500">Height (cm)</label>
-                  <input type="number" value={editMeasurements.height_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, height_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="170" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500">Weight (kg)</label>
-                  <input type="number" value={editMeasurements.weight_kg || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, weight_kg: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="70" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500">Chest (cm)</label>
-                  <input type="number" value={editMeasurements.chest_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, chest_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="90" />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500">Waist (cm)</label>
-                  <input type="number" value={editMeasurements.waist_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, waist_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="75" />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-slate-500">Hips (cm)</label>
-                  <input type="number" value={editMeasurements.hips_cm || ""} onChange={(e) => setEditMeasurements({ ...editMeasurements, hips_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="95" />
-                </div>
-              </div>
-              {editMeasurements.height_cm && editMeasurements.weight_kg && (
-                <div className={`p-3 rounded-lg text-center ${getBMICategory(calculateBMI(editMeasurements.height_cm, editMeasurements.weight_kg) || 0).color}`}>
-                  <p className="text-lg font-bold">BMI: {calculateBMI(editMeasurements.height_cm, editMeasurements.weight_kg)} ({getBMICategory(calculateBMI(editMeasurements.height_cm, editMeasurements.weight_kg) || 0).label})</p>
-                </div>
-              )}
-              <div className="flex gap-2 pt-2">
-                <button onClick={() => saveMeasurements(editMeasurements)} disabled={saving} className="px-4 py-2 bg-black text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
-                <button onClick={() => setEditingSection(null)} className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-lg">Cancel</button>
-              </div>
-            </div>
-          ) : measurements && (measurements.height_cm || measurements.weight_kg) ? (
-            <div className="grid grid-cols-2 gap-3">
-              {measurements.height_cm && <div className="bg-slate-50 rounded-lg p-3 text-center"><p className="text-2xl font-bold text-slate-900">{measurements.height_cm}</p><p className="text-xs text-slate-500">Height (cm)</p></div>}
-              {measurements.weight_kg && <div className="bg-slate-50 rounded-lg p-3 text-center"><p className="text-2xl font-bold text-slate-900">{measurements.weight_kg}</p><p className="text-xs text-slate-500">Weight (kg)</p></div>}
-              {measurements.bmi && <div className={`col-span-2 rounded-lg p-3 text-center ${getBMICategory(measurements.bmi).color}`}><p className="text-2xl font-bold">{measurements.bmi.toFixed(1)}</p><p className="text-xs">BMI ({getBMICategory(measurements.bmi).label})</p></div>}
-              {measurements.chest_cm && <div className="bg-slate-50 rounded-lg p-2 text-center"><p className="text-lg font-semibold text-slate-900">{measurements.chest_cm}</p><p className="text-xs text-slate-500">Chest (cm)</p></div>}
-              {measurements.waist_cm && <div className="bg-slate-50 rounded-lg p-2 text-center"><p className="text-lg font-semibold text-slate-900">{measurements.waist_cm}</p><p className="text-xs text-slate-500">Waist (cm)</p></div>}
-              {measurements.hips_cm && <div className="bg-slate-50 rounded-lg p-2 text-center col-span-2"><p className="text-lg font-semibold text-slate-900">{measurements.hips_cm}</p><p className="text-xs text-slate-500">Hips (cm)</p></div>}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-400 italic">No measurements recorded. Click Edit to add.</p>
-          )}
-        </div>
-
         {/* Treatment Areas Card - Always show */}
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
@@ -654,7 +611,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
           )}
         </div>
 
-        {/* Insurance Card */}
+        {/* Insurance Card - Editable */}
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
@@ -663,15 +620,44 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
               </svg>
             </div>
             <h4 className="font-medium text-slate-900">Insurance Information</h4>
+            <EditButton onClick={() => {
+              setEditInsurance(insurance || { provider_name: "", card_number: "", insurance_type: "" });
+              setEditingSection("insurance");
+            }} />
           </div>
-          {insurance ? (
+          
+          {editingSection === "insurance" && editInsurance ? (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-500">Provider Name</label>
+                <input type="text" value={editInsurance.provider_name || ""} onChange={(e) => setEditInsurance({ ...editInsurance, provider_name: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="Insurance Provider" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">Card Number</label>
+                <input type="text" value={editInsurance.card_number || ""} onChange={(e) => setEditInsurance({ ...editInsurance, card_number: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="Card Number" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">Insurance Type</label>
+                <select value={editInsurance.insurance_type || ""} onChange={(e) => setEditInsurance({ ...editInsurance, insurance_type: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
+                  <option value="">Select Type</option>
+                  <option value="PRIVATE">Private</option>
+                  <option value="SEMI-PRIVATE">Semi-Private</option>
+                  <option value="BASIC">Basic</option>
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => saveInsurance(editInsurance)} disabled={saving} className="px-4 py-2 bg-black text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
+                <button onClick={() => setEditingSection(null)} className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-lg">Cancel</button>
+              </div>
+            </div>
+          ) : insurance ? (
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-slate-500">Provider</span><span className="text-slate-900 font-medium">{insurance.provider_name || "N/A"}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Card Number</span><span className="text-slate-900 font-medium">{insurance.card_number || "N/A"}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Type</span><span className="text-slate-900 font-medium">{insurance.insurance_type || "N/A"}</span></div>
             </div>
           ) : (
-            <p className="text-sm text-slate-400 italic">No insurance information provided.</p>
+            <p className="text-sm text-slate-400 italic">No insurance information provided. Click Edit to add.</p>
           )}
         </div>
 

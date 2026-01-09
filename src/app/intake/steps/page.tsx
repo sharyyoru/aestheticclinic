@@ -100,22 +100,95 @@ function IntakeStepsContent() {
     if (!submissionId || !patientId) {
       router.push("/intake");
     } else {
-      const fetchPatient = async () => {
-        const { data } = await supabaseClient
+      const fetchExistingData = async () => {
+        // Fetch patient data
+        const { data: patientData } = await supabaseClient
           .from("patients")
-          .select("first_name, last_name, email, phone")
+          .select("*")
           .eq("id", patientId)
           .single();
-        if (data) {
-          setPatientName(`${data.first_name} ${data.last_name}`);
-          setPatientEmail(data.email || "");
-          setFirstName(data.first_name || "");
-          setLastName(data.last_name || "");
-          setEmail(data.email || "");
-          setMobile(data.phone || "");
+        
+        if (patientData) {
+          setPatientName(`${patientData.first_name} ${patientData.last_name}`);
+          setPatientEmail(patientData.email || "");
+          setFirstName(patientData.first_name || "");
+          setLastName(patientData.last_name || "");
+          setEmail(patientData.email || "");
+          setMobile(patientData.phone || "");
+          setNationality(patientData.nationality || "");
+          setMaritalStatus(patientData.marital_status || "");
+          setStreetAddress(patientData.street_address || "");
+          setPostalCode(patientData.postal_code || "");
+          setTown(patientData.town || "");
+          setProfession(patientData.profession || "");
+          setCurrentEmployer(patientData.current_employer || "");
+          
+          // Parse DOB if exists
+          if (patientData.dob) {
+            const dobParts = patientData.dob.split("-");
+            if (dobParts.length === 3) {
+              setDobYear(dobParts[0]);
+              setDobMonth(dobParts[1]);
+              setDobDay(dobParts[2]);
+            }
+          }
+        }
+
+        // Fetch existing insurance data
+        const { data: insuranceData } = await supabaseClient
+          .from("patient_insurances")
+          .select("*")
+          .eq("patient_id", patientId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (insuranceData) {
+          setInsuranceProvider(insuranceData.provider_name || "");
+          setInsuranceCardNumber(insuranceData.card_number || "");
+          setInsuranceType(insuranceData.insurance_type || "");
+        }
+
+        // Fetch existing health background data
+        const { data: healthData } = await supabaseClient
+          .from("patient_health_background")
+          .select("*")
+          .eq("patient_id", patientId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (healthData) {
+          setWeight(healthData.weight_kg?.toString() || "");
+          setHeight(healthData.height_cm?.toString() || "");
+          setKnownIllnesses(healthData.known_illnesses || "");
+          setPreviousSurgeries(healthData.previous_surgeries || "");
+          setAllergies(healthData.allergies || "");
+          setCigarettes(healthData.cigarettes || "");
+          setAlcohol(healthData.alcohol_consumption || "");
+          setSports(healthData.sports_activity || "");
+          setMedications(healthData.medications || "");
+          setGeneralPractitioner(healthData.general_practitioner || "");
+          setGynecologist(healthData.gynecologist || "");
+          setChildrenCount(healthData.children_count?.toString() || "");
+          setBirthType1(healthData.birth_type_1 || "");
+          setBirthType2(healthData.birth_type_2 || "");
+        }
+
+        // Fetch existing preferences data
+        const { data: prefsData } = await supabaseClient
+          .from("patient_intake_preferences")
+          .select("*")
+          .eq("patient_id", patientId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (prefsData) {
+          setContactPreference(prefsData.preferred_contact_method || "");
         }
       };
-      fetchPatient();
+      fetchExistingData();
     }
   }, [submissionId, patientId, router]);
 
