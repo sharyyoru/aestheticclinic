@@ -321,11 +321,12 @@ export default function PatientDocumentsTab({
             ? {
                 url,
                 name: item.name,
+                created_at: item.created_at || item.updated_at || undefined,
               }
             : null;
         })
         .filter(
-          (image): image is { url: string; name: string } => image !== null,
+          (image): image is { url: string; name: string; created_at: string | undefined } => image !== null,
         ),
     [items, patientId],
   );

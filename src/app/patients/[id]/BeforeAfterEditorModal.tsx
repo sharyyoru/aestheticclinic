@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 const BUCKET_NAME = "patient-documents";
+const IMAGES_PER_PAGE = 10;
 
 interface BeforeAfterImage {
   url: string;
   name: string;
+  created_at?: string;
 }
 
 interface BeforeAfterEditorModalProps {
@@ -39,6 +41,24 @@ export default function BeforeAfterEditorModal({
   const [isDragging, setIsDragging] = useState<"before" | "after" | null>(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [dragStartPosition, setDragStartPosition] = useState({ x: 0, y: 0 });
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Sort images by created_at (latest first) and paginate
+  const sortedImages = useMemo(() => {
+    return [...images].sort((a, b) => {
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA; // Latest first
+    });
+  }, [images]);
+
+  const totalPages = Math.ceil(sortedImages.length / IMAGES_PER_PAGE);
+  const paginatedImages = useMemo(() => {
+    const startIndex = (currentPage - 1) * IMAGES_PER_PAGE;
+    return sortedImages.slice(startIndex, startIndex + IMAGES_PER_PAGE);
+  }, [sortedImages, currentPage]);
 
   if (!open) {
     return null;
@@ -356,7 +376,7 @@ export default function BeforeAfterEditorModal({
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                    {images.map((image) => (
+                    {paginatedImages.map((image) => (
                       <button
                         key={`${image.url}-${image.name}`}
                         type="button"
@@ -377,6 +397,32 @@ export default function BeforeAfterEditorModal({
                   </div>
                 )}
               </div>
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between mt-2 px-1">
+                  <span className="text-[10px] text-slate-400">
+                    {sortedImages.length} images ({currentPage}/{totalPages})
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-2 py-1 rounded text-[10px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      ← Prev
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-2 py-1 rounded text-[10px] text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
               <p className="mt-1 text-[10px] text-slate-500">
                 Drag images into the Before or After panels, or click a thumbnail to assign it
                 to the active side.
