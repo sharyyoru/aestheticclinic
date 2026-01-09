@@ -212,13 +212,56 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
         .maybeSingle(),
     ]);
 
-    if (prefsRes.data) setPreferences(prefsRes.data as IntakePreferences);
+    if (prefsRes.data) {
+      setPreferences(prefsRes.data as IntakePreferences);
+    } else {
+      // Fallback: query by patient_id for legacy data
+      const { data: prefsByPatient } = await supabaseClient
+        .from("patient_intake_preferences")
+        .select("*")
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (prefsByPatient) setPreferences(prefsByPatient as IntakePreferences);
+    }
+    
     if (areasRes.data) setTreatmentAreas(areasRes.data as TreatmentArea[]);
     if (measRes.data) setMeasurements(measRes.data as Measurements);
     if (photosRes.data) setPhotos(photosRes.data as IntakePhoto[]);
     if (treatPrefsRes.data) setTreatmentPrefs(treatPrefsRes.data as TreatmentPreferences);
-    if (healthRes.data) setHealthBackground(healthRes.data as HealthBackground);
-    if (insuranceRes.data) setInsurance(insuranceRes.data as PatientInsurance);
+    
+    // Health background: try by submission_id first, then by patient_id as fallback
+    if (healthRes.data) {
+      setHealthBackground(healthRes.data as HealthBackground);
+    } else {
+      // Fallback: query by patient_id for legacy data
+      const { data: healthByPatient } = await supabaseClient
+        .from("patient_health_background")
+        .select("*")
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (healthByPatient) setHealthBackground(healthByPatient as HealthBackground);
+    }
+    
+    // Insurance: try patient_insurances first, then patient_insurance (legacy table) as fallback
+    if (insuranceRes.data) {
+      setInsurance(insuranceRes.data as PatientInsurance);
+    } else {
+      // Fallback: try legacy patient_insurance table (singular)
+      try {
+        const { data: legacyIns } = await supabaseClient
+          .from("patient_insurance")
+          .select("*")
+          .eq("patient_id", patientId)
+          .maybeSingle();
+        if (legacyIns) setInsurance(legacyIns as PatientInsurance);
+      } catch {
+        // Legacy table may not exist, ignore error
+      }
+    }
 
     // Get signed URLs for photos
     if (photosRes.data && photosRes.data.length > 0) {
