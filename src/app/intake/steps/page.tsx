@@ -49,10 +49,6 @@ function IntakeStepsContent() {
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState("en");
   
-  // Magic link state
-  const [magicLink, setMagicLink] = useState("");
-  const [linkCopied, setLinkCopied] = useState(false);
-  
   // Consultation category selection
   const [consultationCategory, setConsultationCategory] = useState("");
 
@@ -462,10 +458,7 @@ function IntakeStepsContent() {
     try {
       await saveStepData(step);
       // Navigate to next step based on current step
-      if (step === 4) {
-        // After contact preference, go to magic link step
-        setStep(5);
-      } else if (step < 4) {
+      if (step < 5) {
         setStep((prev) => (prev + 1) as Step);
       }
     } catch {
@@ -474,11 +467,7 @@ function IntakeStepsContent() {
   };
 
   const handleBack = () => {
-    if (step === 5) {
-      setStep(4);
-    } else if (step === 6) {
-      setStep(5);
-    } else if (step > 1) {
+    if (step > 1) {
       setStep((prev) => (prev - 1) as Step);
     }
   };
@@ -690,103 +679,11 @@ function IntakeStepsContent() {
     );
   }
 
-  // Magic Link step (Step 5 - skippable)
+  // Thank You + Consultation Category Selection (Step 5)
   if (step === 5) {
-    const generateMagicLink = () => {
-      const baseUrl = window.location.origin;
-      const link = `${baseUrl}/intake/consultation?pid=${patientId}&sid=${submissionId}`;
-      setMagicLink(link);
-    };
+    // Check if this is a first-time registration or an edit
+    const isFirstRegistration = !termsAccepted;
 
-    if (!magicLink) {
-      generateMagicLink();
-    }
-
-    const copyLink = async () => {
-      try {
-        await navigator.clipboard.writeText(magicLink);
-        setLinkCopied(true);
-        setTimeout(() => setLinkCopied(false), 2000);
-      } catch (err) {
-        console.error("Failed to copy:", err);
-      }
-    };
-
-    return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
-        <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
-          <LanguageSelector />
-        </header>
-
-        <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
-          <div className="w-full max-w-md">
-            <UserIcon />
-
-            <h2 className="text-xl font-medium text-slate-800 mb-2 text-center">Share Your Intake Link</h2>
-            <p className="text-slate-600 text-sm mb-6 text-center">
-              You can share this magic link to continue your consultation later or on another device.
-            </p>
-
-            <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-              <label className="block text-xs text-slate-500 mb-2">Your Magic Link</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={magicLink}
-                  readOnly
-                  className="flex-1 px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-black truncate"
-                />
-                <button
-                  onClick={copyLink}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    linkCopied 
-                      ? "bg-emerald-500 text-white" 
-                      : "bg-slate-800 text-white hover:bg-slate-700"
-                  }`}
-                >
-                  {linkCopied ? "Copied!" : "Copy"}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
-                {error}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-4">
-          <div className="max-w-md mx-auto flex justify-center items-center gap-4">
-            <button
-              onClick={handleBack}
-              className="p-3 rounded-full hover:bg-slate-200 transition-colors"
-            >
-              <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setStep(6)}
-              className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors"
-            >
-              NEXT
-            </button>
-            <button
-              onClick={() => setStep(6)}
-              className="text-sm text-slate-500 hover:text-slate-700 underline"
-            >
-              Skip
-            </button>
-          </div>
-        </footer>
-      </main>
-    );
-  }
-
-  // Consultation Category Selection (Step 6)
-  if (step === 6) {
     const handleSelectCategory = async (category: string) => {
       setConsultationCategory(category);
       setLoading(true);
@@ -824,14 +721,35 @@ function IntakeStepsContent() {
 
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
-        <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
+        <header className="px-4 sm:px-6 py-4 flex items-center justify-between">
+          <Image
+            src="/logos/aesthetics-logo.svg"
+            alt="Aesthetics Clinic"
+            width={60}
+            height={60}
+            className="h-12 w-auto"
+          />
           <LanguageSelector />
         </header>
 
         <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
-          <div className="w-full max-w-md">
-            <UserIcon />
+          <div className="w-full max-w-md text-center">
+            {/* Congratulatory Message */}
+            <div className="mb-8">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-100 flex items-center justify-center">
+                <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-medium text-slate-800 mb-2">
+                {isFirstRegistration ? "Thank You for Registering!" : "Your Changes Have Been Saved!"}
+              </h2>
+              <p className="text-slate-600">
+                Hi <span className="font-semibold text-amber-600">{firstName || patientName}</span>
+              </p>
+            </div>
 
+            {/* Consultation Options */}
             <p className="text-slate-600 text-sm mb-2 italic">Just a few more things</p>
             
             <div className="mb-6">
@@ -870,14 +788,6 @@ function IntakeStepsContent() {
 
         <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-4">
           <div className="max-w-md mx-auto flex justify-center items-center gap-4">
-            <button
-              onClick={handleBack}
-              className="p-3 rounded-full hover:bg-slate-200 transition-colors"
-            >
-              <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
             <button
               onClick={() => consultationCategory && handleSelectCategory(consultationCategory)}
               disabled={loading || !consultationCategory}
