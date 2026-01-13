@@ -683,7 +683,8 @@ function WorkflowEnrollmentsModal({
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           {loading ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-sky-500" />
               <p className="text-sm text-slate-500">Loading enrollments...</p>
             </div>
           ) : error ? (

@@ -209,6 +209,91 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, workflows: 0, actionsRun: 0 });
     }
 
+    // Fetch the deal's service name for condition evaluation
+    let dealServiceName: string | null = null;
+    if (deal.service_id) {
+      const { data: serviceData } = await supabaseAdmin
+        .from("services")
+        .select("name")
+        .eq("id", deal.service_id)
+        .single();
+      dealServiceName = serviceData?.name || null;
+    }
+
+    // Helper function to evaluate condition nodes
+    function evaluateConditions(workflowConfig: { nodes?: any[] }): boolean {
+      if (!workflowConfig?.nodes) return true;
+      
+      const conditionNodes = workflowConfig.nodes.filter((n: any) => n.type === "condition");
+      if (conditionNodes.length === 0) return true;
+
+      for (const conditionNode of conditionNodes) {
+        const data = conditionNode.data || {};
+        
+        // Handle service condition
+        if (data.field === "deal.service" && data.selectedServices && data.selectedServices.length > 0) {
+          const selectedServices = data.selectedServices as string[];
+          const matchMode = data.serviceMatchMode || "includes";
+          
+          if (!dealServiceName) {
+            // No service on deal - if we're including specific services, this doesn't match
+            if (matchMode === "includes") return false;
+            // If excluding, no service means it passes
+            continue;
+          }
+
+          const serviceMatches = selectedServices.some(
+            (s: string) => s.toLowerCase() === dealServiceName!.toLowerCase()
+          );
+
+          if (matchMode === "includes" && !serviceMatches) {
+            return false; // Required to be one of selected services but isn't
+          }
+          if (matchMode === "excludes" && serviceMatches) {
+            return false; // Required to NOT be one of selected services but is
+          }
+        }
+
+        // Handle pipeline condition
+        if (data.field === "deal.pipeline") {
+          const operator = data.operator;
+          const value = data.value?.toLowerCase() || "";
+          const dealPipeline = (safeDeal.pipeline || "").toLowerCase();
+
+          if (operator === "equals" && dealPipeline !== value) return false;
+          if (operator === "not_equals" && dealPipeline === value) return false;
+          if (operator === "contains" && !dealPipeline.includes(value)) return false;
+          if (operator === "is_empty" && dealPipeline !== "") return false;
+          if (operator === "is_not_empty" && dealPipeline === "") return false;
+        }
+
+        // Handle patient email condition
+        if (data.field === "patient.email") {
+          const operator = data.operator;
+          const value = data.value?.toLowerCase() || "";
+          const patientEmail = (safePatient.email || "").toLowerCase();
+
+          if (operator === "equals" && patientEmail !== value) return false;
+          if (operator === "not_equals" && patientEmail === value) return false;
+          if (operator === "contains" && !patientEmail.includes(value)) return false;
+          if (operator === "is_empty" && patientEmail !== "") return false;
+          if (operator === "is_not_empty" && patientEmail === "") return false;
+        }
+      }
+
+      return true; // All conditions passed
+    }
+
+    // Filter workflows by condition nodes
+    const workflowsPassingConditions = matchingWorkflows.filter((workflow) => {
+      const config = workflow.config as { nodes?: any[] };
+      return evaluateConditions(config);
+    });
+
+    if (workflowsPassingConditions.length === 0) {
+      return NextResponse.json({ ok: true, workflows: 0, actionsRun: 0, message: "No workflows matched conditions" });
+    }
+
     const templateContext = {
       patient: {
         id: safePatient.id,
@@ -229,7 +314,7 @@ export async function POST(request: Request) {
 
     let actionsRun = 0;
 
-    for (const workflow of matchingWorkflows) {
+    for (const workflow of workflowsPassingConditions) {
       // Create workflow enrollment record
       const { data: enrollment, error: enrollmentError } = await supabaseAdmin
         .from("workflow_enrollments")
@@ -660,7 +745,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      workflows: matchingWorkflows.length,
+      workflows: workflowsPassingConditions.length,
       actionsRun,
     });
   } catch (error) {
