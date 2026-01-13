@@ -19,6 +19,7 @@ type PatientRecord = {
   street_address: string | null;
   postal_code: string | null;
   town: string | null;
+  country: string | null;
   profession: string | null;
   current_employer: string | null;
   source: string | null;
@@ -66,7 +67,7 @@ export default function PatientDetailsWizard({
       const { data, error } = await supabaseClient
         .from("patients")
         .select(
-          "id, first_name, last_name, email, phone, gender, dob, marital_status, nationality, street_address, postal_code, town, profession, current_employer, source",
+          "id, first_name, last_name, email, phone, gender, dob, marital_status, nationality, street_address, postal_code, town, country, profession, current_employer, source",
         )
         .eq("id", patientId)
         .single();
@@ -209,6 +210,7 @@ export default function PatientDetailsWizard({
     const postalCode =
       (formData.get("postal_code") as string | null)?.trim() || "";
     const town = (formData.get("town") as string | null)?.trim() || "";
+    const country = (formData.get("country") as string | null)?.trim() || "";
     const profession =
       (formData.get("profession") as string | null)?.trim() || "";
     const currentEmployer =
@@ -234,6 +236,7 @@ export default function PatientDetailsWizard({
       street_address: streetAddress,
       postal_code: postalCode,
       town,
+      country: country || null,
       profession,
       current_employer: currentEmployer,
     };
@@ -580,6 +583,7 @@ export default function PatientDetailsWizard({
                 id="street_address"
                 name="street_address"
                 type="text"
+                autoComplete="street-address"
                 defaultValue={patient.street_address ?? ""}
                 className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
@@ -597,6 +601,7 @@ export default function PatientDetailsWizard({
                   id="postal_code"
                   name="postal_code"
                   type="text"
+                  autoComplete="postal-code"
                   defaultValue={patient.postal_code ?? ""}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
@@ -612,7 +617,24 @@ export default function PatientDetailsWizard({
                   id="town"
                   name="town"
                   type="text"
+                  autoComplete="address-level2"
                   defaultValue={patient.town ?? ""}
+                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label
+                  htmlFor="country"
+                  className="block text-xs font-medium text-slate-700"
+                >
+                  Country
+                </label>
+                <input
+                  id="country"
+                  name="country"
+                  type="text"
+                  autoComplete="country-name"
+                  defaultValue={patient.country ?? ""}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
@@ -690,6 +712,7 @@ export default function PatientDetailsWizard({
                 id="card_number"
                 name="card_number"
                 type="text"
+                autoComplete="off"
                 defaultValue={existingInsurance?.card_number ?? ""}
                 className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />

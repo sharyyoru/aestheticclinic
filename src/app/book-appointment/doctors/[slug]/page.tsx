@@ -201,7 +201,7 @@ export default function DoctorBookingPage() {
           doctorName: doctor.name,
           doctorEmail: doctor.email,
           notes,
-          location: "Geneva",
+          location: "Rhône",
         }),
       });
 

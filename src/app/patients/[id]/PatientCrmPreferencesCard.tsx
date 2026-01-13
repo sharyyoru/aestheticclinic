@@ -38,11 +38,10 @@ const LANGUAGE_OPTIONS = [
 ];
 
 const CLINIC_OPTIONS = [
-  "Geneva",
-  "Lausanne",
-  "Zürich",
-  "Dubai",
-  "Other",
+  "Rhône",
+  "Champel",
+  "Gstaad",
+  "Montreux",
 ];
 
 const LIFECYCLE_OPTIONS = [

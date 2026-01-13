@@ -339,7 +339,7 @@ export default function PatientActivityCard({
   const [dealServiceDropdownOpen, setDealServiceDropdownOpen] = useState(false);
   const [dealPipeline, setDealPipeline] = useState("Geneva");
   const [dealContactLabel, setDealContactLabel] = useState("Marketing");
-  const [dealLocation, setDealLocation] = useState("Champel");
+  const [dealLocation, setDealLocation] = useState("Rhône");
   const [dealNotes, setDealNotes] = useState("");
   const [dealSaving, setDealSaving] = useState(false);
   const [dealSaveError, setDealSaveError] = useState<string | null>(null);
@@ -1530,7 +1530,7 @@ export default function PatientActivityCard({
     setDealServiceDropdownOpen(false);
     setDealPipeline("Geneva");
     setDealContactLabel("Marketing");
-    setDealLocation("Champel");
+    setDealLocation("Rhône");
     setDealNotes("");
 
     const sortedStages = [...dealStages].sort(
@@ -1551,7 +1551,7 @@ export default function PatientActivityCard({
     setDealServiceSearch(selectedService?.name || "");
     setDealPipeline(deal.pipeline ?? "Geneva");
     setDealContactLabel(deal.contact_label ?? "Marketing");
-    setDealLocation(deal.location ?? "Champel");
+    setDealLocation(deal.location ?? "Rhône");
     setDealNotes(deal.notes ?? "");
     setDealStageId(deal.stage_id);
     setDealSaveError(null);
@@ -1579,7 +1579,7 @@ export default function PatientActivityCard({
 
     const pipeline = dealPipeline.trim() || "Geneva";
     const contactLabel = dealContactLabel.trim() || "Marketing";
-    const location = dealLocation.trim() || "Champel";
+    const location = dealLocation.trim() || "Rhône";
     const notes = dealNotes.trim();
 
     try {
@@ -1700,7 +1700,7 @@ export default function PatientActivityCard({
       setDealServiceDropdownOpen(false);
       setDealPipeline("Geneva");
       setDealContactLabel("Marketing");
-      setDealLocation("Champel");
+      setDealLocation("Rhône");
       setDealSaving(false);
     } catch {
       setDealSaveError("Unexpected error saving deal.");
@@ -2659,7 +2659,7 @@ export default function PatientActivityCard({
 
                       const pipelineLabel = deal.pipeline || "Geneva";
                       const contactLabel = deal.contact_label || "Marketing";
-                      const locationLabel = deal.location || "Champel";
+                      const locationLabel = deal.location || "Rhône";
 
                       const service = serviceOptions.find(
                         (candidate) => candidate.id === (deal.service_id ?? ""),
@@ -3526,7 +3526,7 @@ export default function PatientActivityCard({
 
                   const pipelineLabel = deal.pipeline || "Geneva";
                   const contactLabel = deal.contact_label || "Marketing";
-                  const locationLabel = deal.location || "Champel";
+                  const locationLabel = deal.location || "Rhône";
 
                   const service = serviceOptions.find(
                     (candidate) => candidate.id === (deal.service_id ?? ""),
@@ -4064,10 +4064,10 @@ export default function PatientActivityCard({
                       onChange={(event) => setDealLocation(event.target.value)}
                       className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     >
-                      <option value="Champel">Champel</option>
                       <option value="Rhône">Rhône</option>
-                      <option value="Montreux">Montreux</option>
+                      <option value="Champel">Champel</option>
                       <option value="Gstaad">Gstaad</option>
+                      <option value="Montreux">Montreux</option>
                     </select>
                   </div>
                   <div className="space-y-1">

@@ -57,7 +57,7 @@ export default function AppointmentModal({
   const [title, setTitle] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("15");
-  const [location, setLocation] = useState("Champel");
+  const [location, setLocation] = useState("Rhône");
   const [appointmentType, setAppointmentType] = useState<AppointmentType>(defaultType);
   const [notes, setNotes] = useState("");
   const [sendPatientEmail, setSendPatientEmail] = useState(true);
@@ -217,7 +217,7 @@ export default function AppointmentModal({
         setTitle("");
         setAppointmentDate("");
         setDurationMinutes("15");
-        setLocation("Champel");
+        setLocation("Rhône");
         setNotes("");
         setSendPatientEmail(true);
         setSendUserEmail(true);
@@ -452,10 +452,10 @@ export default function AppointmentModal({
               onChange={(e) => setLocation(e.target.value)}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
-              <option value="Champel">Champel</option>
               <option value="Rhône">Rhône</option>
-              <option value="Montreux">Montreux</option>
+              <option value="Champel">Champel</option>
               <option value="Gstaad">Gstaad</option>
+              <option value="Montreux">Montreux</option>
               <option value="Video Call">Video Call</option>
               <option value="Phone Call">Phone Call</option>
             </select>

@@ -955,7 +955,7 @@ export default function DealsPage() {
                                     Pipeline: {deal.pipeline || "Geneva"}
                                   </p>
                                   <p className="mt-0.5 text-[10px] text-slate-600">
-                                    Location: {deal.location || "Champel"}
+                                    Location: {deal.location || "Rhône"}
                                   </p>
                                   <p className="mt-0.5 text-[10px] text-slate-600">
                                     Service:{" "}

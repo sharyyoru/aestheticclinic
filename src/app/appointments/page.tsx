@@ -82,7 +82,7 @@ const BOOKING_STATUS_OPTIONS = [
   "Cash",
 ];
 
-const CLINIC_LOCATION_OPTIONS = ["Geneva"];
+const CLINIC_LOCATION_OPTIONS = ["Rhône", "Champel", "Gstaad", "Montreux"];
 
 type CalendarAppointment = {
   id: string;
