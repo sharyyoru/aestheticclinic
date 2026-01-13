@@ -84,6 +84,34 @@ export default function RichTextEditor({
     setOpenDropdown(null);
   };
 
+  const handlePaste = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    
+    const clipboardData = event.clipboardData;
+    
+    // Try to get HTML content first
+    const htmlContent = clipboardData.getData("text/html");
+    
+    if (htmlContent) {
+      // Insert HTML content directly
+      document.execCommand("insertHTML", false, htmlContent);
+    } else {
+      // Fallback to plain text
+      const textContent = clipboardData.getData("text/plain");
+      if (textContent) {
+        // Convert plain text to HTML with line breaks
+        const htmlText = textContent
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\n/g, "<br>");
+        document.execCommand("insertHTML", false, htmlText);
+      }
+    }
+    
+    handleInput();
+  }, [handleInput]);
+
   const toggleDropdown = (dropdown: DropdownType) => {
     setOpenDropdown(openDropdown === dropdown ? null : dropdown);
   };
@@ -356,6 +384,7 @@ export default function RichTextEditor({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
+        onPaste={handlePaste}
         className="min-h-[200px] px-3 py-2 text-xs text-slate-900 focus:outline-none [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4 [&_a]:text-sky-600 [&_a]:underline"
         style={{ whiteSpace: "pre-wrap" }}
         data-placeholder={placeholder}
