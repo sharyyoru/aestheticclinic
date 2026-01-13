@@ -35,12 +35,17 @@ export default function BeforeAfterEditorModal({
   const [exporting, setExporting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // Pan/drag state for x and y axis movement
+  // Pan/drag state for viewport panning (camera focus)
+  // Position represents the offset of the image from center (0,0 = centered)
   const [beforePosition, setBeforePosition] = useState({ x: 0, y: 0 });
   const [afterPosition, setAfterPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<"before" | "after" | null>(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [dragStartPosition, setDragStartPosition] = useState({ x: 0, y: 0 });
+  
+  // Image dimensions for auto-center calculation
+  const [beforeImageSize, setBeforeImageSize] = useState({ width: 0, height: 0 });
+  const [afterImageSize, setAfterImageSize] = useState({ width: 0, height: 0 });
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -68,12 +73,33 @@ export default function BeforeAfterEditorModal({
     if (side === "before") {
       setBeforeImage(image);
       setBeforePosition({ x: 0, y: 0 }); // Reset position when new image is assigned
+      setBeforeImageSize({ width: 0, height: 0 });
     } else {
       setAfterImage(image);
       setAfterPosition({ x: 0, y: 0 }); // Reset position when new image is assigned
+      setAfterImageSize({ width: 0, height: 0 });
     }
     setActiveSide(side);
     setLocalError(null);
+  }
+
+  // Handle image load to get dimensions for auto-center
+  function handleImageLoad(side: "before" | "after", event: React.SyntheticEvent<HTMLImageElement>) {
+    const img = event.currentTarget;
+    if (side === "before") {
+      setBeforeImageSize({ width: img.naturalWidth, height: img.naturalHeight });
+    } else {
+      setAfterImageSize({ width: img.naturalWidth, height: img.naturalHeight });
+    }
+  }
+
+  // Auto-center function - centers the image in the viewport
+  function handleAutoCenter(side: "before" | "after") {
+    if (side === "before") {
+      setBeforePosition({ x: 0, y: 0 });
+    } else {
+      setAfterPosition({ x: 0, y: 0 });
+    }
   }
 
   // Mouse/touch drag handlers for panning
@@ -469,9 +495,17 @@ export default function BeforeAfterEditorModal({
                       <span className="text-slate-500">Zoom: {beforeZoom.toFixed(2)}x</span>
                       <button
                         type="button"
-                        onClick={() => setBeforePosition({ x: 0, y: 0 })}
+                        onClick={() => handleAutoCenter("before")}
+                        className="text-[9px] text-sky-400 hover:text-sky-300 font-medium"
+                        title="Auto center image"
+                      >
+                        Auto Center
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setBeforePosition({ x: 0, y: 0 }); setBeforeZoom(1); }}
                         className="text-[9px] text-slate-400 hover:text-slate-200"
-                        title="Reset position"
+                        title="Reset zoom and position"
                       >
                         Reset
                       </button>
@@ -489,18 +523,21 @@ export default function BeforeAfterEditorModal({
                     style={{ touchAction: 'none' } as React.CSSProperties}
                   >
                     {beforeImage ? (
-                      <div 
-                        className="flex h-full w-full items-center justify-center overflow-hidden select-none"
-                        style={{ 
-                          transform: `translate(${beforePosition.x}px, ${beforePosition.y}px)`,
-                        }}
-                      >
+                      <div className="absolute inset-0 flex items-center justify-center select-none">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={beforeImage.url}
                           alt={beforeImage.name}
-                          className="max-h-full max-w-none object-cover pointer-events-none"
-                          style={{ transform: `scale(${beforeZoom})` }}
+                          onLoad={(e) => handleImageLoad("before", e)}
+                          className="pointer-events-none"
+                          style={{ 
+                            transform: `scale(${beforeZoom}) translate(${beforePosition.x / beforeZoom}px, ${beforePosition.y / beforeZoom}px)`,
+                            transformOrigin: 'center center',
+                            maxWidth: 'none',
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          }}
                           draggable={false}
                         />
                       </div>
@@ -510,7 +547,7 @@ export default function BeforeAfterEditorModal({
                       </div>
                     )}
                   </div>
-                  <p className="mt-1 text-[9px] text-slate-500 text-center">Drag image to reposition</p>
+                  <p className="mt-1 text-[9px] text-slate-500 text-center">Drag to pan the camera focus</p>
                   <input
                     type="range"
                     min={0.8}
@@ -533,9 +570,17 @@ export default function BeforeAfterEditorModal({
                       <span className="text-slate-500">Zoom: {afterZoom.toFixed(2)}x</span>
                       <button
                         type="button"
-                        onClick={() => setAfterPosition({ x: 0, y: 0 })}
+                        onClick={() => handleAutoCenter("after")}
+                        className="text-[9px] text-sky-400 hover:text-sky-300 font-medium"
+                        title="Auto center image"
+                      >
+                        Auto Center
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAfterPosition({ x: 0, y: 0 }); setAfterZoom(1); }}
                         className="text-[9px] text-slate-400 hover:text-slate-200"
-                        title="Reset position"
+                        title="Reset zoom and position"
                       >
                         Reset
                       </button>
@@ -553,18 +598,21 @@ export default function BeforeAfterEditorModal({
                     style={{ touchAction: 'none' } as React.CSSProperties}
                   >
                     {afterImage ? (
-                      <div 
-                        className="flex h-full w-full items-center justify-center overflow-hidden select-none"
-                        style={{ 
-                          transform: `translate(${afterPosition.x}px, ${afterPosition.y}px)`,
-                        }}
-                      >
+                      <div className="absolute inset-0 flex items-center justify-center select-none">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={afterImage.url}
                           alt={afterImage.name}
-                          className="max-h-full max-w-none object-cover pointer-events-none"
-                          style={{ transform: `scale(${afterZoom})` }}
+                          onLoad={(e) => handleImageLoad("after", e)}
+                          className="pointer-events-none"
+                          style={{ 
+                            transform: `scale(${afterZoom}) translate(${afterPosition.x / afterZoom}px, ${afterPosition.y / afterZoom}px)`,
+                            transformOrigin: 'center center',
+                            maxWidth: 'none',
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          }}
                           draggable={false}
                         />
                       </div>
@@ -574,7 +622,7 @@ export default function BeforeAfterEditorModal({
                       </div>
                     )}
                   </div>
-                  <p className="mt-1 text-[9px] text-slate-500 text-center">Drag image to reposition</p>
+                  <p className="mt-1 text-[9px] text-slate-500 text-center">Drag to pan the camera focus</p>
                   <input
                     type="range"
                     min={0.8}

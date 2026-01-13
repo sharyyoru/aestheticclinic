@@ -30,7 +30,7 @@ type NoteMentionSummary = {
   read_at: string | null;
 };
 
-type EmailStatus = "draft" | "queued" | "sent" | "failed";
+type EmailStatus = "draft" | "queued" | "sent" | "read" | "failed";
 
 type EmailDirection = "outbound" | "inbound";
 
@@ -45,6 +45,7 @@ type PatientEmail = {
   status: EmailStatus;
   direction: EmailDirection;
   sent_at: string | null;
+  read_at: string | null;
   created_at: string;
 };
 
@@ -926,7 +927,7 @@ export default function PatientActivityCard({
         const { data, error } = await supabaseClient
           .from("emails")
           .select(
-            "id, to_address, from_address, subject, body, status, direction, sent_at, created_at",
+            "id, to_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
           )
           .eq("patient_id", patientId)
           .order("created_at", { ascending: false });
@@ -2018,7 +2019,7 @@ export default function PatientActivityCard({
           sent_at: resolvedSentAt,
         })
         .select(
-          "id, to_address, from_address, subject, body, status, direction, sent_at, created_at",
+          "id, to_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
         )
         .single();
 
@@ -2244,7 +2245,7 @@ export default function PatientActivityCard({
       const { data: emailsData, error: emailsErrorLatest } = await supabaseClient
         .from("emails")
         .select(
-          "id, to_address, from_address, subject, body, status, direction, sent_at, created_at",
+          "id, to_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
         )
         .eq("patient_id", patientId)
         .order("created_at", { ascending: false });
@@ -3059,7 +3060,12 @@ export default function PatientActivityCard({
                         </p>
                       ) : null}
                       <p className="mt-0.5 text-[10px] text-slate-500">
-                        Status: <span className="font-medium capitalize">{email.status}</span>
+                        Status: <span className={`font-medium capitalize ${email.status === "read" ? "text-emerald-600" : email.status === "failed" ? "text-red-600" : ""}`}>{email.status}</span>
+                        {email.read_at && (
+                          <span className="ml-1 text-[9px] text-emerald-500">
+                            (opened {new Date(email.read_at).toLocaleDateString()})
+                          </span>
+                        )}
                       </p>
                     </button>
                   );
@@ -4159,7 +4165,12 @@ export default function PatientActivityCard({
                     </>
                   ) : null}
                   {" "}• Status {" "}
-                  <span className="font-medium capitalize">{viewEmail.status}</span>
+                  <span className={`font-medium capitalize ${viewEmail.status === "read" ? "text-emerald-600" : viewEmail.status === "failed" ? "text-red-600" : ""}`}>{viewEmail.status}</span>
+                  {viewEmail.read_at && (
+                    <span className="ml-1 text-emerald-500">
+                      (opened {new Date(viewEmail.read_at).toLocaleDateString()} at {new Date(viewEmail.read_at).toLocaleTimeString()})
+                    </span>
+                  )}
                 </p>
               </div>
               <button

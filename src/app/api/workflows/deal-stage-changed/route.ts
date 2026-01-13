@@ -299,11 +299,12 @@ export async function POST(request: Request) {
         if (action.action_type === "create_task") {
           const config = (action.config || {}) as {
             title?: string;
-            assign_to?: string;
+            assign_to?: string | string[];
             due_days?: number;
           };
 
           console.log(`Task config.title: "${config.title}"`);
+          console.log(`Task config.assign_to:`, config.assign_to);
           console.log(`Template context patient:`, templateContext.patient);
           
           const taskName = renderTemplate(config.title || "New Task", templateContext);
@@ -312,42 +313,51 @@ export async function POST(request: Request) {
           const activityDate = new Date();
           activityDate.setDate(activityDate.getDate() + dueDays);
 
-          // ROUND-ROBIN ASSIGNMENT: Always assign to sales team in rotation
+          // USE WORKFLOW-SPECIFIC ASSIGNEES from config.assign_to
           let assignedUserId: string | null = null;
           let assignedUserName: string | null = null;
           
-          // Get sales team users from the users table
-          const { data: allUsers } = await supabaseAdmin
-            .from("users")
-            .select("id, full_name, email");
-          
-          const salesTeamUsers: Array<{ id: string; name: string }> = [];
-          if (allUsers) {
-            for (const user of allUsers) {
-              const fullName = user.full_name || user.email || "";
-              const matchesSalesTeam = SALES_TEAM_NAMES.some(name => 
-                fullName.toLowerCase().includes(name.toLowerCase())
-              );
-              if (matchesSalesTeam) {
-                salesTeamUsers.push({ id: user.id, name: fullName });
-              }
+          // Get the assigned user IDs from workflow config
+          const assignToIds: string[] = [];
+          if (config.assign_to) {
+            if (Array.isArray(config.assign_to)) {
+              assignToIds.push(...config.assign_to);
+            } else if (typeof config.assign_to === "string") {
+              assignToIds.push(config.assign_to);
             }
           }
 
-          if (salesTeamUsers.length > 0) {
-            // Round-robin: Get count of recent tasks to determine next assignee
-            const { count: taskCount } = await supabaseAdmin
-              .from("tasks")
-              .select("*", { count: "exact", head: true })
-              .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+          if (assignToIds.length > 0) {
+            // Fetch the specified users from the database
+            const { data: assignedUsers } = await supabaseAdmin
+              .from("users")
+              .select("id, full_name, email")
+              .in("id", assignToIds);
 
-            const assigneeIndex = (taskCount || 0) % salesTeamUsers.length;
-            const assignee = salesTeamUsers[assigneeIndex];
-            assignedUserId = assignee.id;
-            assignedUserName = assignee.name;
-            console.log(`Round-robin assigned to: ${assignee.name} (index ${assigneeIndex} of ${salesTeamUsers.length})`);
+            if (assignedUsers && assignedUsers.length > 0) {
+              // If multiple assignees configured, use round-robin among ONLY the configured users
+              if (assignedUsers.length === 1) {
+                const user = assignedUsers[0];
+                assignedUserId = user.id;
+                assignedUserName = user.full_name || user.email || null;
+              } else {
+                // Round-robin among the workflow's configured assignees only
+                const { count: taskCount } = await supabaseAdmin
+                  .from("tasks")
+                  .select("*", { count: "exact", head: true })
+                  .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+
+                const assigneeIndex = (taskCount || 0) % assignedUsers.length;
+                const user = assignedUsers[assigneeIndex];
+                assignedUserId = user.id;
+                assignedUserName = user.full_name || user.email || null;
+              }
+              console.log(`Workflow-specific assignment to: ${assignedUserName} (id: ${assignedUserId})`);
+            } else {
+              console.warn(`Configured assignee IDs not found in users table: ${assignToIds.join(", ")}`);
+            }
           } else {
-            console.warn("No sales team users found for round-robin assignment");
+            console.log("No assign_to configured in workflow, task will be unassigned");
           }
 
           const { error: taskError } = await supabaseAdmin

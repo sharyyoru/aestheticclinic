@@ -78,7 +78,20 @@ export async function POST(request: Request) {
     formData.append("from", `${fromName} <${fromAddress}>`);
     formData.append("to", trimmedTo);
     formData.append("subject", trimmedSubject);
-    formData.append("html", trimmedHtml);
+    
+    // Add tracking pixel to the email HTML for read tracking
+    let htmlWithTracking = trimmedHtml;
+    if (emailId) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
+      const trackingPixel = `<img src="${appUrl}/api/emails/track?id=${emailId}" width="1" height="1" style="display:none;visibility:hidden;width:1px;height:1px;opacity:0;" alt="" />`;
+      // Insert tracking pixel before closing </body> tag, or at the end if no </body>
+      if (htmlWithTracking.includes("</body>")) {
+        htmlWithTracking = htmlWithTracking.replace("</body>", `${trackingPixel}</body>`);
+      } else {
+        htmlWithTracking = `${htmlWithTracking}${trackingPixel}`;
+      }
+    }
+    formData.append("html", htmlWithTracking);
     
     // Create a unique reply-to address with embedded email ID for tracking
     // Format: reply+{emailId}+{patientId}@mg.domain.com

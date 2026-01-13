@@ -401,7 +401,8 @@ export default function RootLayout({
                       </div>
                     </div>
                     <div className="flex items-center gap-2 text-slate-500">
-                      <HeaderNotificationsButton />
+                      {/* HeaderNotificationsButton temporarily hidden - to be fixed and re-enabled later */}
+                      {/* <HeaderNotificationsButton /> */}
                       <HeaderMessagesButton />
                       <HeaderUser />
                     </div>
