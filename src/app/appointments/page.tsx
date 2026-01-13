@@ -84,6 +84,44 @@ const BOOKING_STATUS_OPTIONS = [
 
 const CLINIC_LOCATION_OPTIONS = ["Rhône", "Champel", "Gstaad", "Montreux"];
 
+const APPOINTMENT_CATEGORY_OPTIONS = [
+  "No selection",
+  "Mesotherapy",
+  "Dermomask",
+  "1ère consultation",
+  "Administration",
+  "Cavitation",
+  "CO2",
+  "Control",
+  "Emla Cream",
+  "Cryotherapy",
+  "Discussion",
+  "EMSCULPT",
+  "Cutera laser hair removal",
+  "Epilation laser Gentel",
+  "Electrolysis hair removal",
+  "HIFU",
+  "Injection (botox; Acide hyaluronic)",
+  "Important",
+  "IPL",
+  "Meso Anti-age",
+  "Meso Anti-cellulite",
+  "Meso Anti-tache",
+  "Microdermabrasion",
+  "MORPHEUS8",
+  "Radio frequency",
+  "Meeting",
+  "OP Surgery",
+  "Breaks/Change of Location",
+  "PRP",
+  "Tatoo removal",
+  "TCA",
+  "Treatment",
+  "Caviar treatment",
+  "Vacation/Leave",
+  "Visia",
+];
+
 type CalendarAppointment = {
   id: string;
   patient_id: string;
@@ -415,6 +453,7 @@ export default function CalendarPage() {
   );
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [bookingStatus, setBookingStatus] = useState("");
+  const [appointmentCategory, setAppointmentCategory] = useState("");
   const [createDoctorCalendarId, setCreateDoctorCalendarId] = useState("");
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] =
@@ -1141,10 +1180,13 @@ export default function CalendarPage() {
       );
       const doctorName = selectedCalendar?.name?.trim() || "";
       const doctorTag = doctorName ? ` [Doctor: ${doctorName}]` : "";
+      const categoryTag = appointmentCategory && appointmentCategory !== "No selection" 
+        ? ` [Category: ${appointmentCategory}]` 
+        : "";
 
       const reason = bookingStatus
-        ? `${baseReason}${doctorTag} [Status: ${bookingStatus}]`
-        : `${baseReason}${doctorTag}`;
+        ? `${baseReason}${doctorTag}${categoryTag} [Status: ${bookingStatus}]`
+        : `${baseReason}${doctorTag}${categoryTag}`;
 
       const { data, error } = await supabaseClient
         .from("appointments")
@@ -1209,6 +1251,7 @@ export default function CalendarPage() {
       setConsultationDuration(15);
       setSelectedServiceId("");
       setBookingStatus("");
+      setAppointmentCategory("");
       setCreateError(null);
       setCreateDoctorCalendarId("");
     } catch {
@@ -1392,6 +1435,7 @@ export default function CalendarPage() {
               setConsultationDuration(15);
               setSelectedServiceId("");
               setBookingStatus("");
+              setAppointmentCategory("");
               setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
               setDraftDescription("");
               const defaultCalendar =
@@ -1516,7 +1560,7 @@ export default function CalendarPage() {
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
             Doctor calendars
           </p>
-          <div className="space-y-1">
+          <div className="max-h-[280px] space-y-1 overflow-y-auto pr-1">
             {providersLoading ? (
               <p className="text-[10px] text-slate-400">Loading providers...</p>
             ) : providersError ? (
@@ -1524,7 +1568,9 @@ export default function CalendarPage() {
             ) : doctorCalendars.length === 0 ? (
               <p className="text-[10px] text-slate-400">No provider calendars yet.</p>
             ) : (
-              doctorCalendars.map((calendar) => (
+              doctorCalendars
+                .filter((calendar) => !calendar.name.toLowerCase().includes("(deactivated"))
+                .map((calendar) => (
                 <label
                   key={calendar.id}
                   className="flex cursor-pointer items-center gap-2 text-[11px] text-slate-700"
@@ -1932,6 +1978,7 @@ export default function CalendarPage() {
                                 setConsultationDuration(15);
                                 setSelectedServiceId("");
                                 setBookingStatus("");
+                                setAppointmentCategory("");
                                 setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
                                 setDraftDescription("");
                                 const defaultCalendar =
@@ -2417,6 +2464,21 @@ export default function CalendarPage() {
                     {BOOKING_STATUS_OPTIONS.map((status) => (
                       <option key={status} value={status}>
                         {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-slate-600">Category</p>
+                  <select
+                    value={appointmentCategory}
+                    onChange={(event) => setAppointmentCategory(event.target.value)}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  >
+                    <option value="">Select Category</option>
+                    {APPOINTMENT_CATEGORY_OPTIONS.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
                       </option>
                     ))}
                   </select>
