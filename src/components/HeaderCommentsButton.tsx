@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMessagesUnread } from "@/components/MessagesUnreadContext";
+import { useCommentsUnread } from "@/components/CommentsUnreadContext";
 
-export default function HeaderMessagesButton() {
+export default function HeaderCommentsButton() {
   const router = useRouter();
-  const { unreadCount } = useMessagesUnread();
+  const { unreadCount } = useCommentsUnread();
 
   const displayCount = unreadCount && unreadCount > 9 ? "9+" : unreadCount ?? 0;
   const hasUnread = (unreadCount ?? 0) > 0;
@@ -13,10 +13,10 @@ export default function HeaderMessagesButton() {
   return (
     <button
       type="button"
-      onClick={() => router.push("/messages")}
+      onClick={() => router.push("/comments")}
       className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 text-slate-500 shadow-sm hover:bg-slate-50"
     >
-      <span className="sr-only">Messages</span>
+      <span className="sr-only">Comments</span>
       <svg
         className="h-4 w-4"
         viewBox="0 0 24 24"

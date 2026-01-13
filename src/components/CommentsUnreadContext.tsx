@@ -9,17 +9,17 @@ import {
 } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 
-type MessagesUnreadContextValue = {
+type CommentsUnreadContextValue = {
   unreadCount: number | null;
   refreshUnread: () => Promise<void>;
   setUnreadCountOptimistic: (updater: (prev: number) => number) => void;
 };
 
-const MessagesUnreadContext = createContext<MessagesUnreadContextValue | undefined>(
+const CommentsUnreadContext = createContext<CommentsUnreadContextValue | undefined>(
   undefined,
 );
 
-export function MessagesUnreadProvider({ children }: { children: ReactNode }) {
+export function CommentsUnreadProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
   const refreshUnread = async () => {
@@ -86,23 +86,23 @@ export function MessagesUnreadProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const value: MessagesUnreadContextValue = {
+  const value: CommentsUnreadContextValue = {
     unreadCount,
     refreshUnread,
     setUnreadCountOptimistic,
   };
 
   return (
-    <MessagesUnreadContext.Provider value={value}>
+    <CommentsUnreadContext.Provider value={value}>
       {children}
-    </MessagesUnreadContext.Provider>
+    </CommentsUnreadContext.Provider>
   );
 }
 
-export function useMessagesUnread(): MessagesUnreadContextValue {
-  const ctx = useContext(MessagesUnreadContext);
+export function useCommentsUnread(): CommentsUnreadContextValue {
+  const ctx = useContext(CommentsUnreadContext);
   if (!ctx) {
-    throw new Error("useMessagesUnread must be used within MessagesUnreadProvider");
+    throw new Error("useCommentsUnread must be used within CommentsUnreadProvider");
   }
   return ctx;
 }

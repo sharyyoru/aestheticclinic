@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { useMessagesUnread } from "@/components/MessagesUnreadContext";
+import { useCommentsUnread } from "@/components/CommentsUnreadContext";
 import TaskEditModal from "@/components/TaskEditModal";
 
 // Helper function to strip HTML tags from text
@@ -75,14 +75,14 @@ type TaskMentionRow = {
 
 type MentionRow = NoteMentionRow | TaskMentionRow;
 
-export default function MessagesPage() {
+export default function CommentsPage() {
   const router = useRouter();
   const [mentions, setMentions] = useState<MentionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [markingRead, setMarkingRead] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const { setUnreadCountOptimistic, refreshUnread } = useMessagesUnread();
+  const { setUnreadCountOptimistic, refreshUnread } = useCommentsUnread();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedTaskMention, setSelectedTaskMention] = useState<TaskMentionRow | null>(null);
@@ -105,7 +105,7 @@ export default function MessagesPage() {
 
         if (!user) {
           if (!isMounted) return;
-          setError("You must be logged in to view messages.");
+          setError("You must be logged in to view comments.");
           setMentions([]);
           setLoading(false);
           return;
@@ -138,7 +138,7 @@ export default function MessagesPage() {
         if (!isMounted) return;
 
         if (noteError && taskError) {
-          setError("Failed to load messages.");
+          setError("Failed to load comments.");
           setMentions([]);
           setLoading(false);
           return;
@@ -172,7 +172,7 @@ export default function MessagesPage() {
         setLoading(false);
       } catch {
         if (!isMounted) return;
-        setError("Failed to load messages.");
+        setError("Failed to load comments.");
         setMentions([]);
         setLoading(false);
       }
@@ -218,7 +218,7 @@ export default function MessagesPage() {
         ),
       );
       setUnreadCountOptimistic((prev) => prev - unreadNotes.length - unreadTasks.length);
-      setToastMessage("All messages marked as read.");
+      setToastMessage("All comments marked as read.");
       setMarkingRead(false);
     } catch {
       setMarkingRead(false);
@@ -294,7 +294,7 @@ export default function MessagesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">Messages</h1>
+          <h1 className="text-lg font-semibold text-slate-900">Comments</h1>
           <p className="text-xs text-slate-500">
             Notes where teammates mentioned you. Click through to open the patient.
           </p>
@@ -373,11 +373,11 @@ export default function MessagesPage() {
 
       <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
         {loading ? (
-          <p className="text-xs text-slate-500">Loading messages...</p>
+          <p className="text-xs text-slate-500">Loading comments...</p>
         ) : error ? (
           <p className="text-xs text-red-600">{error}</p>
         ) : mentions.length === 0 ? (
-          <p className="text-xs text-slate-500">No messages yet.</p>
+          <p className="text-xs text-slate-500">No comments yet.</p>
         ) : (
           <div className="space-y-4 text-xs">
             {(() => {
@@ -550,7 +550,7 @@ export default function MessagesPage() {
                     </div>
                   )}
                   {allMentions.length === 0 && (
-                    <p className="text-xs text-slate-500">No messages in this category.</p>
+                    <p className="text-xs text-slate-500">No comments in this category.</p>
                   )}
                   {totalPages > 1 && (
                     <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-200">

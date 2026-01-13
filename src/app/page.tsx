@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { useMessagesUnread } from "@/components/MessagesUnreadContext";
+import { useCommentsUnread } from "@/components/CommentsUnreadContext";
 
 type PlatformUser = {
   id: string;
@@ -34,7 +34,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [userFirstName, setUserFirstName] = useState<string | null>(null);
 
-  const { unreadCount } = useMessagesUnread();
+  const { unreadCount } = useCommentsUnread();
 
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
@@ -617,7 +617,7 @@ export default function Home() {
               </p>
             </div>
             <Link
-              href="/messages"
+              href="/comments"
               className="inline-flex items-center rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
             >
               View inbox
@@ -645,7 +645,7 @@ export default function Home() {
                 return (
                   <Link
                     key={mention.id as string}
-                    href="/messages"
+                    href="/comments"
                     className="flex items-start justify-between rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100"
                   >
                     <div className="pr-4">
