@@ -1989,22 +1989,11 @@ export default function PatientActivityCard({
         resolvedSentAt = nowIso;
       }
 
-      // Convert the typed message to simple HTML (escaping tags) and append the user's
-      // HTML signature if enabled. This keeps the signature as real HTML while
-      // treating the message body as plain text with line breaks.
-      const escapedBody = body
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-
-      const bodyHtml = escapedBody
-        .split(/\n/g)
-        .map((line) => (line.length === 0 ? "<br />" : line))
-        .join("<br />");
-
-      let finalBody = bodyHtml;
+      // The body is now HTML from the rich text editor, so we use it directly.
+      // Append the user's HTML signature if enabled.
+      let finalBody = body;
       if (useSignature && emailSignatureHtml.trim()) {
-        finalBody = `${bodyHtml}<br /><br />${emailSignatureHtml.trim()}`;
+        finalBody = `${body}<br /><br />${emailSignatureHtml.trim()}`;
       }
 
       const { data: inserted, error: insertError } = await supabaseClient
