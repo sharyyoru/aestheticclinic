@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { stripEmailSignature } from "@/utils/emailCleaner";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
+import RichTextEditor from "@/components/RichTextEditor";
 
 type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals";
 
@@ -4392,13 +4393,11 @@ export default function PatientActivityCard({
                 <label htmlFor="email_body" className="block text-[11px] font-medium text-slate-700">
                   Message
                 </label>
-                <textarea
-                  id="email_body"
+                <RichTextEditor
                   value={emailBody}
-                  onChange={(event) => setEmailBody(event.target.value)}
-                  rows={10}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  onChange={setEmailBody}
                   placeholder="Write your email..."
+                  className="shadow-sm"
                 />
               </div>
               <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 text-[11px] text-slate-700">

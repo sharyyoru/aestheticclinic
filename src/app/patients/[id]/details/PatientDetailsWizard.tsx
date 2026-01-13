@@ -19,7 +19,6 @@ type PatientRecord = {
   street_address: string | null;
   postal_code: string | null;
   town: string | null;
-  country: string | null;
   profession: string | null;
   current_employer: string | null;
   source: string | null;
@@ -67,7 +66,7 @@ export default function PatientDetailsWizard({
       const { data, error } = await supabaseClient
         .from("patients")
         .select(
-          "id, first_name, last_name, email, phone, gender, dob, marital_status, nationality, street_address, postal_code, town, country, profession, current_employer, source",
+          "id, first_name, last_name, email, phone, gender, dob, marital_status, nationality, street_address, postal_code, town, profession, current_employer, source",
         )
         .eq("id", patientId)
         .single();
@@ -210,7 +209,6 @@ export default function PatientDetailsWizard({
     const postalCode =
       (formData.get("postal_code") as string | null)?.trim() || "";
     const town = (formData.get("town") as string | null)?.trim() || "";
-    const country = (formData.get("country") as string | null)?.trim() || "";
     const profession =
       (formData.get("profession") as string | null)?.trim() || "";
     const currentEmployer =
@@ -228,6 +226,8 @@ export default function PatientDetailsWizard({
       return;
     }
 
+    const country = (formData.get("country") as string | null)?.trim() || "";
+
     setSaving(true);
     setError(null);
 
@@ -236,7 +236,6 @@ export default function PatientDetailsWizard({
       street_address: streetAddress,
       postal_code: postalCode,
       town,
-      country: country || null,
       profession,
       current_employer: currentEmployer,
     };
