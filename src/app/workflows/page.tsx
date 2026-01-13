@@ -571,10 +571,18 @@ function WorkflowEnrollmentsModal({
   const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     loadEnrollments();
   }, [workflowId]);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   async function loadEnrollments() {
     try {
@@ -661,6 +669,24 @@ function WorkflowEnrollmentsModal({
     }
   }
 
+  // Filter enrollments by search query
+  const filteredEnrollments = useMemo(() => {
+    if (!searchQuery.trim()) return enrollments;
+    const query = searchQuery.toLowerCase();
+    return enrollments.filter((enrollment) => {
+      const name = getPatientName(enrollment).toLowerCase();
+      const email = (enrollment.patient?.email || "").toLowerCase();
+      return name.includes(query) || email.includes(query);
+    });
+  }, [enrollments, searchQuery]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredEnrollments.length / ITEMS_PER_PAGE);
+  const paginatedEnrollments = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredEnrollments.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredEnrollments, currentPage]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-5xl max-h-[90vh] rounded-2xl bg-white shadow-xl flex flex-col">
@@ -670,14 +696,39 @@ function WorkflowEnrollmentsModal({
             <h2 className="text-lg font-semibold text-slate-900">Enrolled Patients</h2>
             <p className="text-sm text-slate-500">{workflowName}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Search Input */}
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by name or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-64 rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -699,6 +750,14 @@ function WorkflowEnrollmentsModal({
                 Patients will appear here when the workflow is triggered
               </p>
             </div>
+          ) : filteredEnrollments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="mb-3 text-4xl">🔍</div>
+              <h3 className="font-medium text-slate-900">No results found</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                No patients match &quot;{searchQuery}&quot;
+              </p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -711,20 +770,24 @@ function WorkflowEnrollmentsModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {enrollments.map((enrollment) => (
+                  {paginatedEnrollments.map((enrollment) => (
                     <tr key={enrollment.id} className="group">
                       <td className="py-3">
-                        <div className="flex items-center gap-3">
+                        <Link
+                          href={`/patients/${enrollment.patient_id}`}
+                          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-xs font-medium text-sky-700">
                             {getPatientName(enrollment).charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-medium text-slate-900">{getPatientName(enrollment)}</p>
+                            <p className="font-medium text-sky-600 hover:text-sky-700 hover:underline">{getPatientName(enrollment)}</p>
                             {enrollment.patient?.email && (
                               <p className="text-xs text-slate-500">{enrollment.patient.email}</p>
                             )}
                           </div>
-                        </div>
+                        </Link>
                       </td>
                       <td className="py-3 text-slate-600">
                         {new Date(enrollment.enrolled_at).toLocaleDateString()}{" "}
@@ -774,8 +837,40 @@ function WorkflowEnrollmentsModal({
         {/* Footer */}
         <div className="border-t border-slate-200 px-6 py-4 flex justify-between items-center">
           <p className="text-sm text-slate-500">
-            {enrollments.length} patient{enrollments.length !== 1 ? "s" : ""} enrolled
+            {searchQuery ? (
+              <>Showing {filteredEnrollments.length} of {enrollments.length} patient{enrollments.length !== 1 ? "s" : ""}</>
+            ) : (
+              <>{enrollments.length} patient{enrollments.length !== 1 ? "s" : ""} enrolled</>
+            )}
           </p>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <span className="text-sm text-slate-600">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <button
             onClick={onClose}
             className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
