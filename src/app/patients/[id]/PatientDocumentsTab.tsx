@@ -103,6 +103,14 @@ export default function PatientDocumentsTab({
   const [newFileName, setNewFileName] = useState("");
   const [renaming, setRenaming] = useState(false);
 
+  // Upload modal state
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<{ name: string; size: number }[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<"uploading" | "success" | "error">("uploading");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
+
   // New state for Documents features
   const [sortBy, setSortBy] = useState<"name" | "date">("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -349,11 +357,32 @@ export default function PatientDocumentsTab({
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
+    const fileArray = Array.from(files);
+    
+    // Initialize upload modal
+    setUploadingFiles(fileArray.map(f => ({ name: f.name, size: f.size })));
+    setUploadProgress(0);
+    setUploadStatus("uploading");
+    setUploadError(null);
+    setCurrentUploadIndex(0);
+    setUploadModalOpen(true);
     setUploading(true);
     setError(null);
 
     try {
-      for (const file of Array.from(files)) {
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        setCurrentUploadIndex(i);
+        
+        // Simulate progress for current file
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => {
+            const baseProgress = (i / fileArray.length) * 100;
+            const fileProgress = ((prev - baseProgress) < 85) ? prev + Math.random() * 15 : prev;
+            return Math.min(fileProgress, baseProgress + 85);
+          });
+        }, 200);
+
         const storagePath = [
           patientId,
           currentPrefix ? `${currentPrefix}${file.name}` : file.name,
@@ -361,7 +390,7 @@ export default function PatientDocumentsTab({
           .filter(Boolean)
           .join("/");
 
-        const { error: uploadError } = await supabaseClient.storage
+        const { error: uploadErr } = await supabaseClient.storage
           .from(BUCKET_NAME)
           .upload(storagePath, file, {
             cacheControl: "3600",
@@ -369,11 +398,22 @@ export default function PatientDocumentsTab({
             contentType: file.type || undefined,
           });
 
-        if (uploadError) {
-          throw uploadError;
+        clearInterval(progressInterval);
+
+        if (uploadErr) {
+          throw uploadErr;
         }
+
+        // Set progress for completed file
+        setUploadProgress(((i + 1) / fileArray.length) * 100);
       }
+      
+      // Success state
+      setUploadProgress(100);
+      setUploadStatus("success");
     } catch (err: any) {
+      setUploadStatus("error");
+      setUploadError(err?.message ?? "Failed to upload file(s).");
       setError(err?.message ?? "Failed to upload file(s).");
     } finally {
       setUploading(false);
@@ -381,6 +421,15 @@ export default function PatientDocumentsTab({
       setSelectedFile(null);
       setRefreshKey((prev) => prev + 1);
     }
+  }
+
+  function handleCloseUploadModal() {
+    setUploadModalOpen(false);
+    setUploadingFiles([]);
+    setUploadProgress(0);
+    setUploadStatus("uploading");
+    setUploadError(null);
+    setCurrentUploadIndex(0);
   }
 
   async function handleCreateFolder(event: React.FormEvent) {
@@ -1171,6 +1220,138 @@ export default function PatientDocumentsTab({
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {/* File Upload Progress Modal */}
+      {uploadModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-sky-500 to-sky-600 px-6 py-4">
+              <h3 className="text-lg font-semibold text-white">
+                {uploadStatus === "uploading" && "Uploading Files..."}
+                {uploadStatus === "success" && "Upload Complete!"}
+                {uploadStatus === "error" && "Upload Failed"}
+              </h3>
+              <p className="text-sm text-sky-100 mt-0.5">
+                {uploadStatus === "uploading" && `${currentUploadIndex + 1} of ${uploadingFiles.length} file${uploadingFiles.length > 1 ? 's' : ''}`}
+                {uploadStatus === "success" && `${uploadingFiles.length} file${uploadingFiles.length > 1 ? 's' : ''} uploaded successfully`}
+                {uploadStatus === "error" && "An error occurred during upload"}
+              </p>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-5">
+              {/* File List */}
+              <div className="mb-4 max-h-32 overflow-auto">
+                {uploadingFiles.map((file, index) => (
+                  <div 
+                    key={`${file.name}-${index}`} 
+                    className={`flex items-center gap-3 py-2 ${index !== uploadingFiles.length - 1 ? 'border-b border-slate-100' : ''}`}
+                  >
+                    <div className="flex-shrink-0">
+                      {uploadStatus === "success" || (uploadStatus === "uploading" && index < currentUploadIndex) ? (
+                        <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                          <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      ) : uploadStatus === "uploading" && index === currentUploadIndex ? (
+                        <div className="h-8 w-8 rounded-full bg-sky-100 flex items-center justify-center">
+                          <svg className="h-4 w-4 text-sky-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                        </div>
+                      ) : uploadStatus === "error" && index === currentUploadIndex ? (
+                        <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
+                          <svg className="h-4 w-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center">
+                          <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
+                      <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Progress Bar */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-slate-600">Progress</span>
+                  <span className="text-xs font-semibold text-slate-800">{Math.round(uploadProgress)}%</span>
+                </div>
+                <div className="h-3 w-full rounded-full bg-slate-200 overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-300 ease-out ${
+                      uploadStatus === "success" 
+                        ? "bg-gradient-to-r from-emerald-500 to-emerald-400" 
+                        : uploadStatus === "error"
+                        ? "bg-gradient-to-r from-red-500 to-red-400"
+                        : "bg-gradient-to-r from-sky-500 to-sky-400"
+                    }`}
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Status Message */}
+              {uploadStatus === "success" && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 mb-4">
+                  <svg className="h-5 w-5 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-sm text-emerald-700">All files have been uploaded successfully!</p>
+                </div>
+              )}
+
+              {uploadStatus === "error" && uploadError && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200 mb-4">
+                  <svg className="h-5 w-5 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-sm text-red-700">{uploadError}</p>
+                </div>
+              )}
+
+              {uploadStatus === "uploading" && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-sky-50 border border-sky-200 mb-4">
+                  <svg className="h-5 w-5 text-sky-600 flex-shrink-0 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <p className="text-sm text-sky-700">Please wait while your files are being uploaded...</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={handleCloseUploadModal}
+                disabled={uploadStatus === "uploading"}
+                className={`w-full py-2.5 rounded-xl font-medium text-sm transition-colors ${
+                  uploadStatus === "uploading"
+                    ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                    : uploadStatus === "success"
+                    ? "bg-emerald-500 text-white hover:bg-emerald-600"
+                    : "bg-slate-800 text-white hover:bg-slate-700"
+                }`}
+              >
+                {uploadStatus === "uploading" ? "Uploading..." : "Close"}
+              </button>
             </div>
           </div>
         </div>
