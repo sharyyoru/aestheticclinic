@@ -84,6 +84,15 @@ const BOOKING_STATUS_OPTIONS = [
 
 const CLINIC_LOCATION_OPTIONS = ["Rhône", "Champel", "Gstaad", "Montreux"];
 
+const CONSULTATION_DURATION_OPTIONS = [
+  { value: 15, label: "15 minutes" },
+  { value: 30, label: "30 minutes" },
+  { value: 45, label: "45 minutes" },
+  { value: 60, label: "60 minutes" },
+  { value: 90, label: "90 minutes" },
+  { value: 120, label: "120 minutes" },
+];
+
 const APPOINTMENT_CATEGORY_OPTIONS = [
   "No selection",
   "Mesotherapy",
@@ -452,8 +461,18 @@ export default function CalendarPage() {
     null,
   );
   const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
   const [bookingStatus, setBookingStatus] = useState("");
+  const [statusSearch, setStatusSearch] = useState("");
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [appointmentCategory, setAppointmentCategory] = useState("");
+  const [categorySearch, setCategorySearch] = useState("");
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  const [locationSearch, setLocationSearch] = useState("");
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
+  const [durationSearch, setDurationSearch] = useState("");
+  const [durationDropdownOpen, setDurationDropdownOpen] = useState(false);
   const [createDoctorCalendarId, setCreateDoctorCalendarId] = useState("");
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] =
@@ -905,6 +924,37 @@ export default function CalendarPage() {
     return options;
   }, [draftDate, appointmentsByDay, consultationDuration]);
 
+  // Filtered options for smart search dropdowns
+  const filteredServiceOptions = useMemo(() => {
+    const search = serviceSearch.trim().toLowerCase();
+    if (!search) return serviceOptions;
+    return serviceOptions.filter((opt) => opt.name.toLowerCase().includes(search));
+  }, [serviceOptions, serviceSearch]);
+
+  const filteredStatusOptions = useMemo(() => {
+    const search = statusSearch.trim().toLowerCase();
+    if (!search) return BOOKING_STATUS_OPTIONS;
+    return BOOKING_STATUS_OPTIONS.filter((opt) => opt.toLowerCase().includes(search));
+  }, [statusSearch]);
+
+  const filteredCategoryOptions = useMemo(() => {
+    const search = categorySearch.trim().toLowerCase();
+    if (!search) return APPOINTMENT_CATEGORY_OPTIONS;
+    return APPOINTMENT_CATEGORY_OPTIONS.filter((opt) => opt.toLowerCase().includes(search));
+  }, [categorySearch]);
+
+  const filteredLocationOptions = useMemo(() => {
+    const search = locationSearch.trim().toLowerCase();
+    if (!search) return CLINIC_LOCATION_OPTIONS;
+    return CLINIC_LOCATION_OPTIONS.filter((opt) => opt.toLowerCase().includes(search));
+  }, [locationSearch]);
+
+  const filteredDurationOptions = useMemo(() => {
+    const search = durationSearch.trim().toLowerCase();
+    if (!search) return CONSULTATION_DURATION_OPTIONS;
+    return CONSULTATION_DURATION_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(search));
+  }, [durationSearch]);
+
   function handleSelectDayView() {
     const base = selectedDate ?? new Date();
     const day = new Date(
@@ -1250,8 +1300,13 @@ export default function CalendarPage() {
       setCreatePatientName("");
       setConsultationDuration(15);
       setSelectedServiceId("");
+      setServiceSearch("");
       setBookingStatus("");
+      setStatusSearch("");
       setAppointmentCategory("");
+      setCategorySearch("");
+      setLocationSearch("");
+      setDurationSearch("");
       setCreateError(null);
       setCreateDoctorCalendarId("");
     } catch {
@@ -1434,9 +1489,15 @@ export default function CalendarPage() {
               setCreatePatientName("");
               setConsultationDuration(15);
               setSelectedServiceId("");
+              setServiceSearch("");
               setBookingStatus("");
+              setStatusSearch("");
               setAppointmentCategory("");
+              setCategorySearch("");
               setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
+              setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
+              setConsultationDuration(15);
+              setDurationSearch("15 minutes");
               setDraftDescription("");
               const defaultCalendar =
                 doctorCalendars.find((calendar) => calendar.selected) ||
@@ -1977,9 +2038,14 @@ export default function CalendarPage() {
                                 setCreatePatientName("");
                                 setConsultationDuration(15);
                                 setSelectedServiceId("");
+                                setServiceSearch("");
                                 setBookingStatus("");
+                                setStatusSearch("");
                                 setAppointmentCategory("");
+                                setCategorySearch("");
                                 setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
+                                setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
+                                setDurationSearch("15 minutes");
                                 setDraftDescription("");
                                 const defaultCalendar =
                                   doctorCalendars.find((calendar) => calendar.selected) ||
@@ -2431,89 +2497,231 @@ export default function CalendarPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Service</p>
-                  <select
-                    value={selectedServiceId}
-                    onChange={(event) => setSelectedServiceId(event.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="">
-                      {serviceOptionsLoading
-                        ? "Loading services..."
-                        : serviceOptions.length === 0
-                          ? "No services available"
-                          : "Select a service"}
-                    </option>
-                    {serviceOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
-                  {serviceOptionsError ? (
-                    <p className="text-[10px] text-red-600">{serviceOptionsError}</p>
-                  ) : null}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={serviceSearch}
+                      onChange={(e) => {
+                        setServiceSearch(e.target.value);
+                        setServiceDropdownOpen(true);
+                        if (!e.target.value.trim()) {
+                          setSelectedServiceId("");
+                        }
+                      }}
+                      onFocus={() => setServiceDropdownOpen(true)}
+                      placeholder={serviceOptionsLoading ? "Loading..." : "Search service..."}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    {selectedServiceId && (
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedServiceId(""); setServiceSearch(""); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    )}
+                    {serviceDropdownOpen && filteredServiceOptions.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                        {filteredServiceOptions.map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedServiceId(opt.id);
+                              setServiceSearch(opt.name);
+                              setServiceDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${selectedServiceId === opt.id ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                          >
+                            {opt.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {serviceOptionsError && <p className="text-[10px] text-red-600">{serviceOptionsError}</p>}
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Status</p>
-                  <select
-                    value={bookingStatus}
-                    onChange={(event) => setBookingStatus(event.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="">Select Status</option>
-                    {BOOKING_STATUS_OPTIONS.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={statusSearch}
+                      onChange={(e) => {
+                        setStatusSearch(e.target.value);
+                        setStatusDropdownOpen(true);
+                        if (!e.target.value.trim()) {
+                          setBookingStatus("");
+                        }
+                      }}
+                      onFocus={() => setStatusDropdownOpen(true)}
+                      placeholder="Search status..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    {bookingStatus && (
+                      <button
+                        type="button"
+                        onClick={() => { setBookingStatus(""); setStatusSearch(""); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    )}
+                    {statusDropdownOpen && filteredStatusOptions.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                        {filteredStatusOptions.map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => {
+                              setBookingStatus(opt);
+                              setStatusSearch(opt);
+                              setStatusDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${bookingStatus === opt ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Category</p>
-                  <select
-                    value={appointmentCategory}
-                    onChange={(event) => setAppointmentCategory(event.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="">Select Category</option>
-                    {APPOINTMENT_CATEGORY_OPTIONS.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={categorySearch}
+                      onChange={(e) => {
+                        setCategorySearch(e.target.value);
+                        setCategoryDropdownOpen(true);
+                        if (!e.target.value.trim()) {
+                          setAppointmentCategory("");
+                        }
+                      }}
+                      onFocus={() => setCategoryDropdownOpen(true)}
+                      placeholder="Search category..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    {appointmentCategory && (
+                      <button
+                        type="button"
+                        onClick={() => { setAppointmentCategory(""); setCategorySearch(""); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    )}
+                    {categoryDropdownOpen && filteredCategoryOptions.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                        {filteredCategoryOptions.map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => {
+                              setAppointmentCategory(opt);
+                              setCategorySearch(opt);
+                              setCategoryDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${appointmentCategory === opt ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Location</p>
-                  <select
-                    value={draftLocation}
-                    onChange={(event) => setDraftLocation(event.target.value)}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="">
-                      {CLINIC_LOCATION_OPTIONS.length === 0
-                        ? "No locations available"
-                        : "Select location"}
-                    </option>
-                    {CLINIC_LOCATION_OPTIONS.map((location) => (
-                      <option key={location} value={location}>
-                        {location}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={locationSearch}
+                      onChange={(e) => {
+                        setLocationSearch(e.target.value);
+                        setLocationDropdownOpen(true);
+                        if (!e.target.value.trim()) {
+                          setDraftLocation("");
+                        }
+                      }}
+                      onFocus={() => setLocationDropdownOpen(true)}
+                      placeholder="Search location..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    {draftLocation && (
+                      <button
+                        type="button"
+                        onClick={() => { setDraftLocation(""); setLocationSearch(""); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    )}
+                    {locationDropdownOpen && filteredLocationOptions.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                        {filteredLocationOptions.map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => {
+                              setDraftLocation(opt);
+                              setLocationSearch(opt);
+                              setLocationDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${draftLocation === opt ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Consultation duration</p>
-                  <select
-                    value={consultationDuration}
-                    onChange={(event) =>
-                      setConsultationDuration(Number(event.target.value) || 15)
-                    }
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value={15}>15 minutes</option>
-                    <option value={45}>45 minutes</option>
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={durationSearch}
+                      onChange={(e) => {
+                        setDurationSearch(e.target.value);
+                        setDurationDropdownOpen(true);
+                      }}
+                      onFocus={() => setDurationDropdownOpen(true)}
+                      placeholder="Search duration..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    {consultationDuration > 0 && durationSearch && (
+                      <button
+                        type="button"
+                        onClick={() => { setConsultationDuration(15); setDurationSearch(""); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    )}
+                    {durationDropdownOpen && filteredDurationOptions.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                        {filteredDurationOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              setConsultationDuration(opt.value);
+                              setDurationSearch(opt.label);
+                              setDurationDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${consultationDuration === opt.value ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Description</p>
