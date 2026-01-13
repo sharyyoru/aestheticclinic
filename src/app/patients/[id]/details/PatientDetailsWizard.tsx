@@ -633,7 +633,7 @@ export default function PatientDetailsWizard({
                   name="country"
                   type="text"
                   autoComplete="country-name"
-                  defaultValue={patient.country ?? ""}
+                  defaultValue=""
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
