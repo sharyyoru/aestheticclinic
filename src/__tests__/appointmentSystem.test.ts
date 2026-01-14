@@ -297,9 +297,109 @@ function testAppointmentTypeSelection() {
   return failed === 0;
 }
 
-// Test 5: Verify double-booking conflict detection logic
+// Test 5: Verify weekend booking validation
+function testWeekendBookingValidation() {
+  console.log("Test 5: Weekend Booking Validation");
+
+  function isWeekend(date: Date): boolean {
+    const day = date.getDay();
+    return day === 0 || day === 6; // Sunday = 0, Saturday = 6
+  }
+
+  function getNextWeekday(date: Date): Date {
+    const result = new Date(date);
+    while (isWeekend(result)) {
+      result.setDate(result.getDate() + 1);
+    }
+    return result;
+  }
+
+  const testCases = [
+    {
+      name: "Monday is not weekend",
+      date: new Date("2024-01-15"), // Monday
+      expectedWeekend: false,
+    },
+    {
+      name: "Tuesday is not weekend",
+      date: new Date("2024-01-16"), // Tuesday
+      expectedWeekend: false,
+    },
+    {
+      name: "Wednesday is not weekend",
+      date: new Date("2024-01-17"), // Wednesday
+      expectedWeekend: false,
+    },
+    {
+      name: "Thursday is not weekend",
+      date: new Date("2024-01-18"), // Thursday
+      expectedWeekend: false,
+    },
+    {
+      name: "Friday is not weekend",
+      date: new Date("2024-01-19"), // Friday
+      expectedWeekend: false,
+    },
+    {
+      name: "Saturday is weekend",
+      date: new Date("2024-01-20"), // Saturday
+      expectedWeekend: true,
+    },
+    {
+      name: "Sunday is weekend",
+      date: new Date("2024-01-21"), // Sunday
+      expectedWeekend: true,
+    },
+    {
+      name: "getNextWeekday from Saturday returns Monday",
+      date: new Date("2024-01-20"), // Saturday
+      expectedNextWeekday: new Date("2024-01-22"), // Monday
+      testNextWeekday: true,
+    },
+    {
+      name: "getNextWeekday from Sunday returns Monday",
+      date: new Date("2024-01-21"), // Sunday
+      expectedNextWeekday: new Date("2024-01-22"), // Monday
+      testNextWeekday: true,
+    },
+    {
+      name: "getNextWeekday from Friday returns Friday",
+      date: new Date("2024-01-19"), // Friday
+      expectedNextWeekday: new Date("2024-01-19"), // Friday
+      testNextWeekday: true,
+    },
+  ];
+
+  let passed = 0;
+  let failed = 0;
+
+  for (const tc of testCases) {
+    let testPassed = false;
+
+    if (tc.testNextWeekday && tc.expectedNextWeekday) {
+      const nextWeekday = getNextWeekday(tc.date);
+      testPassed = nextWeekday.toDateString() === tc.expectedNextWeekday.toDateString();
+    } else {
+      const result = isWeekend(tc.date);
+      testPassed = result === tc.expectedWeekend;
+    }
+
+    if (testPassed) {
+      passed++;
+      console.log(`  ✓ ${tc.name}: PASSED`);
+    } else {
+      failed++;
+      console.log(`  ✗ ${tc.name}: FAILED`);
+    }
+  }
+
+  console.log(`  Results: ${passed} passed, ${failed} failed\n`);
+  return failed === 0;
+}
+
+// Test 6: Verify double-booking conflict detection logic
 function testDoubleBookingDetection() {
-  console.log("Test 5: Double-Booking Conflict Detection");
+  console.log("Test 6: Double-Booking Conflict Detection");
 
   type Appointment = { start_time: string; end_time: string };
 
@@ -388,16 +488,18 @@ const apptTest1 = testAppointmentCreationValidation();
 const apptTest2 = testAppointmentModalValidation();
 const apptTest3 = testDateTimeFormatting();
 const apptTest4 = testAppointmentTypeSelection();
-const apptTest5 = testDoubleBookingDetection();
+const apptTest5 = testWeekendBookingValidation();
+const apptTest6 = testDoubleBookingDetection();
 
-const apptAllPassed = apptTest1 && apptTest2 && apptTest3 && apptTest4 && apptTest5;
+const apptAllPassed = apptTest1 && apptTest2 && apptTest3 && apptTest4 && apptTest5 && apptTest6;
 
 console.log("=== Test Summary ===");
 console.log(`Test 1 (Creation Validation): ${apptTest1 ? "PASSED" : "FAILED"}`);
 console.log(`Test 2 (Modal Validation): ${apptTest2 ? "PASSED" : "FAILED"}`);
 console.log(`Test 3 (Date/Time Formatting): ${apptTest3 ? "PASSED" : "FAILED"}`);
 console.log(`Test 4 (Appointment Types): ${apptTest4 ? "PASSED" : "FAILED"}`);
-console.log(`Test 5 (Double-Booking Detection): ${apptTest5 ? "PASSED" : "FAILED"}`);
+console.log(`Test 5 (Weekend Booking Validation): ${apptTest5 ? "PASSED" : "FAILED"}`);
+console.log(`Test 6 (Double-Booking Detection): ${apptTest6 ? "PASSED" : "FAILED"}`);
 console.log(`\nOverall: ${apptAllPassed ? "ALL TESTS PASSED ✓" : "SOME TESTS FAILED ✗"}`);
 
 if (!apptAllPassed) {

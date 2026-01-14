@@ -43,6 +43,19 @@ function formatDateTimeLocal(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function isWeekend(date: Date): boolean {
+  const day = date.getDay();
+  return day === 0 || day === 6; // Sunday = 0, Saturday = 6
+}
+
+function getNextWeekday(date: Date): Date {
+  const result = new Date(date);
+  while (isWeekend(result)) {
+    result.setDate(result.getDate() + 1);
+  }
+  return result;
+}
+
 export default function AppointmentModal({
   open,
   onClose,
@@ -124,11 +137,12 @@ export default function AppointmentModal({
 
   useEffect(() => {
     if (open) {
-      // Set default date to tomorrow at 10:00 AM
+      // Set default date to tomorrow at 10:00 AM, but skip weekends
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(10, 0, 0, 0);
-      setAppointmentDate(formatDateTimeLocal(tomorrow));
+      const nextWeekday = getNextWeekday(tomorrow);
+      setAppointmentDate(formatDateTimeLocal(nextWeekday));
       setAppointmentType(defaultType);
       setDurationMinutes(defaultType === "operation" ? "60" : "15");
       setTitle(`${defaultType === "operation" ? "Operation" : "Appointment"} with ${patientName}`);
@@ -147,6 +161,12 @@ export default function AppointmentModal({
     }
 
     const appointmentDateObj = new Date(appointmentDate);
+
+    // Check if the selected date is a weekend
+    if (isWeekend(appointmentDateObj)) {
+      setError("Weekend bookings are not available. Please select a weekday (Monday-Friday).");
+      return;
+    }
 
     // Check for double booking
     const durationMins = parseInt(durationMinutes, 10) || 15;

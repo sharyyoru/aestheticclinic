@@ -1209,6 +1209,13 @@ export default function CalendarPage() {
       return;
     }
 
+    // Check if the selected date is a weekend
+    const dayOfWeek = startLocal.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      setCreateError("Weekend bookings are not available. Please select a weekday (Monday-Friday).");
+      return;
+    }
+
     const durationMinutes = consultationDuration || DAY_VIEW_SLOT_MINUTES;
     const endLocal = new Date(
       startLocal.getTime() + durationMinutes * 60 * 1000,
@@ -1370,6 +1377,13 @@ export default function CalendarPage() {
     const startLocal = new Date(`${editDate}T${editTime}:00`);
     if (Number.isNaN(startLocal.getTime())) {
       setEditError("Invalid date or time.");
+      return;
+    }
+
+    // Check if the selected date is a weekend
+    const dayOfWeek = startLocal.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      setEditError("Weekend bookings are not available. Please select a weekday (Monday-Friday).");
       return;
     }
 

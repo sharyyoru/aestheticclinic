@@ -99,6 +99,7 @@ export default function TaskEditModal({
   const [taskAssignedUserSearch, setTaskAssignedUserSearch] = useState("");
   const [taskAssignedUserDropdownOpen, setTaskAssignedUserDropdownOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [users, setUsers] = useState<PlatformUser[]>([]);
@@ -343,6 +344,41 @@ export default function TaskEditModal({
     }
   }
 
+  async function handleSetComplete() {
+    if (!task) return;
+
+    try {
+      setCompleting(true);
+      setError(null);
+
+      const { data, error: updateError } = await supabaseClient
+        .from("tasks")
+        .update({
+          status: "completed" as TaskStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", task.id)
+        .select("id, patient_id, name, content, status, priority, type, activity_date, created_at, created_by_name, assigned_user_id, assigned_user_name")
+        .single();
+
+      if (updateError || !data) {
+        setError(updateError?.message ?? "Failed to mark task as complete.");
+        setCompleting(false);
+        return;
+      }
+
+      if (onTaskUpdated) {
+        onTaskUpdated(data as Task);
+      }
+
+      onClose();
+    } catch {
+      setError("Failed to mark task as complete.");
+    } finally {
+      setCompleting(false);
+    }
+  }
+
   if (!open || !task) return null;
 
   const patient = task.patient;
@@ -570,7 +606,7 @@ export default function TaskEditModal({
         </div>
 
         <div className="flex justify-between items-center gap-3 border-t border-slate-200 px-5 py-4">
-          <div>
+          <div className="flex gap-2">
             {showMarkAsRead && !isMessageRead && onMarkAsRead && (
               <button
                 type="button"
@@ -582,12 +618,22 @@ export default function TaskEditModal({
                 Mark as Read
               </button>
             )}
+            {task.status !== "completed" && (
+              <button
+                type="button"
+                onClick={() => void handleSetComplete()}
+                disabled={completing || saving}
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {completing ? "Completing..." : "Set Complete"}
+              </button>
+            )}
           </div>
           <div className="flex gap-3">
             <button
               type="button"
               onClick={onClose}
-              disabled={saving}
+              disabled={saving || completing}
               className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Cancel
@@ -595,7 +641,7 @@ export default function TaskEditModal({
             <button
               type="button"
               onClick={() => void handleUpdateTask()}
-              disabled={saving}
+              disabled={saving || completing}
               className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Updating..." : "Update Task"}
