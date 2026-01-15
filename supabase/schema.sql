@@ -600,3 +600,140 @@ create index if not exists chat_messages_conversation_id_idx
 
 create index if not exists chat_messages_conversation_created_idx
   on chat_messages(conversation_id, created_at);
+
+-- Swiss Insurance Companies (KVG/UVG/IVG/MVG)
+create table if not exists swiss_insurers (
+  id uuid primary key default gen_random_uuid(),
+  gln text unique not null, -- Global Location Number
+  bag_number text, -- BAG registration number
+  name text not null,
+  name_fr text,
+  name_de text,
+  law_type text check (law_type in ('KVG', 'UVG', 'IVG', 'MVG', 'VVG')) not null,
+  address_street text,
+  address_postal_code text,
+  address_city text,
+  address_canton text,
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
+
+create index if not exists swiss_insurers_gln_idx on swiss_insurers(gln);
+create index if not exists swiss_insurers_bag_number_idx on swiss_insurers(bag_number);
+create index if not exists swiss_insurers_law_type_idx on swiss_insurers(law_type);
+
+-- Enhanced patient insurance with Swiss-specific fields
+alter table if exists patient_insurances
+  add column if not exists insurer_id uuid references swiss_insurers(id) on delete set null,
+  add column if not exists gln text,
+  add column if not exists avs_number text, -- AHV/AVS Swiss social security number
+  add column if not exists policy_number text,
+  add column if not exists law_type text check (law_type in ('KVG', 'UVG', 'IVG', 'MVG', 'VVG')),
+  add column if not exists billing_type text check (billing_type in ('TG', 'TP')) default 'TG', -- Tiers Garant or Tiers Payant
+  add column if not exists case_number text,
+  add column if not exists accident_date date,
+  add column if not exists is_primary boolean default true;
+
+-- MediData invoice submissions
+create table if not exists medidata_submissions (
+  id uuid primary key default gen_random_uuid(),
+  consultation_id uuid not null references consultations(id) on delete cascade,
+  patient_id uuid not null references patients(id) on delete cascade,
+  insurer_id uuid references swiss_insurers(id) on delete set null,
+  
+  -- Invoice details
+  invoice_number text not null,
+  invoice_date date not null,
+  invoice_amount numeric(12, 2) not null,
+  billing_type text check (billing_type in ('TG', 'TP')) not null, -- Tiers Garant or Tiers Payant
+  law_type text check (law_type in ('KVG', 'UVG', 'IVG', 'MVG', 'VVG')) not null,
+  
+  -- XML content
+  xml_content text, -- The generated Sumex XML
+  xml_version text default '4.50',
+  
+  -- MediData transmission
+  medidata_message_id text, -- Response from MediData
+  medidata_transmission_date timestamptz,
+  medidata_response_code text,
+  medidata_response_message text,
+  
+  -- Status tracking
+  status text check (status in (
+    'draft',           -- Invoice created, not sent
+    'pending',         -- Sent to MediData, awaiting confirmation
+    'transmitted',     -- Confirmed received by MediData
+    'delivered',       -- Delivered to insurer
+    'accepted',        -- Accepted by insurer
+    'partially_paid',  -- Partial payment received
+    'paid',            -- Fully paid
+    'rejected',        -- Rejected by insurer
+    'disputed',        -- Under dispute
+    'reminder_1',      -- First reminder sent
+    'reminder_2',      -- Second reminder sent
+    'reminder_3',      -- Third reminder sent
+    'collection',      -- Sent to collection
+    'cancelled'        -- Cancelled/voided
+  )) not null default 'draft',
+  
+  -- Insurance response
+  insurance_response_date timestamptz,
+  insurance_response_code text,
+  insurance_response_message text,
+  insurance_paid_amount numeric(12, 2),
+  insurance_paid_date date,
+  
+  -- Patient portion (for Tiers Garant)
+  patient_portion_amount numeric(12, 2),
+  patient_portion_paid boolean default false,
+  patient_portion_paid_date date,
+  
+  -- Metadata
+  created_by uuid references users(id),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists medidata_submissions_consultation_id_idx on medidata_submissions(consultation_id);
+create index if not exists medidata_submissions_patient_id_idx on medidata_submissions(patient_id);
+create index if not exists medidata_submissions_insurer_id_idx on medidata_submissions(insurer_id);
+create index if not exists medidata_submissions_status_idx on medidata_submissions(status);
+create index if not exists medidata_submissions_invoice_number_idx on medidata_submissions(invoice_number);
+
+-- MediData submission status history
+create table if not exists medidata_submission_history (
+  id uuid primary key default gen_random_uuid(),
+  submission_id uuid not null references medidata_submissions(id) on delete cascade,
+  previous_status text,
+  new_status text not null,
+  response_code text,
+  response_message text,
+  changed_by uuid references users(id),
+  created_at timestamptz default now()
+);
+
+create index if not exists medidata_submission_history_submission_id_idx on medidata_submission_history(submission_id);
+
+-- MediData configuration for the clinic
+create table if not exists medidata_config (
+  id uuid primary key default gen_random_uuid(),
+  clinic_gln text not null, -- Clinic's GLN
+  clinic_zsr text not null, -- ZSR number (Zahlstellenregister)
+  clinic_name text not null,
+  clinic_address_street text,
+  clinic_address_postal_code text,
+  clinic_address_city text,
+  clinic_canton text,
+  medidata_client_id text,
+  medidata_username text,
+  medidata_password_encrypted text,
+  medidata_endpoint_url text default 'https://medidata.ch/md/ela',
+  is_test_mode boolean default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Provider GLN mapping (doctors)
+alter table if exists providers
+  add column if not exists gln text,
+  add column if not exists zsr text;

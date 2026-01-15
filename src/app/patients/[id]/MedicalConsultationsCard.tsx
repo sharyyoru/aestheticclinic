@@ -13,6 +13,9 @@ import {
   type TardocMedicine,
   type SwissCanton,
 } from "@/lib/tardoc";
+import InsuranceBillingModal from "@/components/InsuranceBillingModal";
+import InvoiceStatusBadge from "@/components/InvoiceStatusBadge";
+import { type MediDataInvoiceStatus } from "@/lib/medidata";
 
 type TaskPriority = "low" | "medium" | "high";
 
@@ -263,6 +266,9 @@ export default function MedicalConsultationsCard({
 
   const [generatingPdf, setGeneratingPdf] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
+
+  const [insuranceBillingModalOpen, setInsuranceBillingModalOpen] = useState(false);
+  const [insuranceBillingTarget, setInsuranceBillingTarget] = useState<ConsultationRow | null>(null);
 
   const consultationRecordTypeOptions: {
     value: ConsultationRecordType;
@@ -2758,14 +2764,29 @@ export default function MedicalConsultationsCard({
                           </button>
                         ) : null}
                         {isInvoice && !isComplimentaryInvoice ? (
-                          <button
-                            type="button"
-                            onClick={() => handleGenerateInvoicePdf(row.id)}
-                            disabled={generatingPdf === row.id}
-                            className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-800 shadow-sm hover:bg-purple-100 disabled:opacity-50"
-                          >
-                            {generatingPdf === row.id ? "Generating..." : "Generate PDF"}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateInvoicePdf(row.id)}
+                              disabled={generatingPdf === row.id}
+                              className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-800 shadow-sm hover:bg-purple-100 disabled:opacity-50"
+                            >
+                              {generatingPdf === row.id ? "Generating..." : "Generate PDF"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInsuranceBillingTarget(row);
+                                setInsuranceBillingModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 shadow-sm hover:bg-emerald-100"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              Send to Insurance
+                            </button>
+                          </>
                         ) : null}
                         {isCashInvoice && !isComplimentaryInvoice ? (
                           row.invoice_is_paid ? (
@@ -3054,6 +3075,23 @@ export default function MedicalConsultationsCard({
           </div>
         </div>
       ) : null}
+
+      {/* Insurance Billing Modal */}
+      <InsuranceBillingModal
+        isOpen={insuranceBillingModalOpen}
+        onClose={() => {
+          setInsuranceBillingModalOpen(false);
+          setInsuranceBillingTarget(null);
+        }}
+        consultationId={insuranceBillingTarget?.id || ""}
+        patientName={insuranceBillingTarget?.title || "Patient"}
+        invoiceAmount={insuranceBillingTarget?.invoice_total_amount || null}
+        durationMinutes={insuranceBillingTarget?.duration_seconds ? Math.ceil(insuranceBillingTarget.duration_seconds / 60) : 15}
+        onSuccess={() => {
+          setInsuranceBillingModalOpen(false);
+          setInsuranceBillingTarget(null);
+        }}
+      />
     </>
   );
 }
