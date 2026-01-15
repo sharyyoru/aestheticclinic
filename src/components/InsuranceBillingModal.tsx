@@ -297,7 +297,7 @@ export default function InsuranceBillingModal({
                     }}
                     onFocus={() => setInsurerDropdownOpen(true)}
                     placeholder="Search insurer (e.g., CSS, Helsana, Swica)..."
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                   {selectedInsurer && (
                     <button
@@ -338,7 +338,7 @@ export default function InsuranceBillingModal({
                       value={policyNumber}
                       onChange={(e) => setPolicyNumber(e.target.value)}
                       placeholder="e.g., 123456789"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
                   <div>
@@ -350,7 +350,7 @@ export default function InsuranceBillingModal({
                       value={avsNumber}
                       onChange={(e) => setAvsNumber(e.target.value)}
                       placeholder="756.XXXX.XXXX.XX"
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
                 </div>
@@ -432,7 +432,7 @@ export default function InsuranceBillingModal({
                   onChange={(e) => setDiagnosisInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddDiagnosis()}
                   placeholder="e.g., L70.0"
-                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 <button
                   type="button"

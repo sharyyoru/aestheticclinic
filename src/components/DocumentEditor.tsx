@@ -34,6 +34,7 @@ export default function DocumentEditor({
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const editor = useEditor({
+    immediatelyRender: false, // Fix SSR hydration mismatch
     extensions: [
       StarterKit.configure({
         heading: {

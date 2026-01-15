@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+
+// Use service role key for storage access
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // GET - List all templates from storage bucket and database
 export async function GET(request: NextRequest) {
@@ -8,12 +14,12 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const category = searchParams.get("category") || "";
 
-    // First, list files from the templates bucket
-    const { data: storageFiles, error: storageError } = await supabaseClient
+    // First, list files from the templates bucket using admin client
+    const { data: storageFiles, error: storageError } = await supabaseAdmin
       .storage
       .from("templates")
       .list("", {
-        limit: 100,
+        limit: 200,
         sortBy: { column: "name", order: "asc" },
       });
 
@@ -21,8 +27,10 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching templates from storage:", storageError);
     }
 
+    console.log("Storage files found:", storageFiles?.length || 0);
+
     // Get templates from database
-    let query = supabaseClient
+    let query = supabaseAdmin
       .from("document_templates")
       .select("*")
       .eq("is_active", true)
@@ -101,9 +109,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, description, file_path, file_type, category } = body;
 
-    const { data: authData } = await supabaseClient.auth.getUser();
+    const { data: authData } = await supabaseAdmin.auth.getUser();
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await supabaseAdmin
       .from("document_templates")
       .upsert({
         name,
