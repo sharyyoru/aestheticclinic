@@ -84,6 +84,7 @@ interface OnlyOfficeEditorProps {
 }
 
 const ONLYOFFICE_SERVER_URL = process.env.NEXT_PUBLIC_ONLYOFFICE_URL || "http://localhost:8080";
+const ONLYOFFICE_API_KEY = process.env.NEXT_PUBLIC_ONLYOFFICE_API_KEY || "";
 
 export default function OnlyOfficeEditor({
   documentUrl,

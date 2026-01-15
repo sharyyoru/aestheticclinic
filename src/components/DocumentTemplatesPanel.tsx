@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import DocumentEditor from "./DocumentEditor";
-import OnlyOfficeEditor from "./OnlyOfficeEditor";
+import DocSpaceEditor from "./DocSpaceEditor";
 
 type Template = {
   id: string;
@@ -14,12 +14,10 @@ type Template = {
   storage_only?: boolean;
 };
 
-type OnlyOfficeDocument = {
-  url: string;
-  key: string;
+type DocSpaceDocument = {
+  fileId?: string;
   title: string;
-  fileType: string;
-  filePath: string;
+  mode: "editor" | "viewer" | "manager";
 } | null;
 
 type PatientDocument = {
@@ -59,8 +57,8 @@ export default function DocumentTemplatesPanel({
   const [editingDocument, setEditingDocument] = useState<PatientDocument | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
-  const [onlyOfficeDoc, setOnlyOfficeDoc] = useState<OnlyOfficeDocument>(null);
-  const [isLoadingOnlyOffice, setIsLoadingOnlyOffice] = useState(false);
+  const [docSpaceDoc, setDocSpaceDoc] = useState<DocSpaceDocument>(null);
+  const [isLoadingDocSpace, setIsLoadingDocSpace] = useState(false);
 
   // Fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -148,34 +146,21 @@ export default function DocumentTemplatesPanel({
     }
   };
 
-  // Open template in OnlyOffice for 100% accurate editing
-  const handleOpenInOnlyOffice = async (template: Template) => {
-    setIsLoadingOnlyOffice(true);
+  // Open template in DocSpace for 100% accurate editing
+  const handleOpenInDocSpace = async (template: Template) => {
+    setIsLoadingDocSpace(true);
     try {
-      // Get signed URL for the template
-      const res = await fetch(
-        `/api/documents/onlyoffice/url?filePath=${encodeURIComponent(template.file_path)}&bucket=templates`
-      );
-      const data = await res.json();
-      
-      if (data.url) {
-        setOnlyOfficeDoc({
-          url: data.url,
-          key: data.key,
-          title: `${template.name} - ${patientName}`,
-          fileType: data.fileType || "docx",
-          filePath: template.file_path,
-        });
-        setShowTemplateModal(false);
-      } else {
-        console.error("Failed to get document URL:", data.error);
-        alert("Failed to open document. Please try again.");
-      }
+      // Open DocSpace manager to browse and edit documents
+      setDocSpaceDoc({
+        title: `${template.name} - ${patientName}`,
+        mode: "manager", // Opens file browser where user can select/edit files
+      });
+      setShowTemplateModal(false);
     } catch (error) {
-      console.error("Error opening OnlyOffice:", error);
+      console.error("Error opening DocSpace:", error);
       alert("Failed to open document editor.");
     } finally {
-      setIsLoadingOnlyOffice(false);
+      setIsLoadingDocSpace(false);
     }
   };
 
@@ -484,8 +469,8 @@ export default function DocumentTemplatesPanel({
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleOpenInOnlyOffice(template)}
-                          disabled={isLoadingOnlyOffice}
+                          onClick={() => handleOpenInDocSpace(template)}
+                          disabled={isLoadingDocSpace}
                           className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
                           title="Open with full formatting (OnlyOffice)"
                         >
@@ -516,13 +501,13 @@ export default function DocumentTemplatesPanel({
         </div>
       )}
 
-      {/* OnlyOffice Editor Modal */}
-      {onlyOfficeDoc && (
+      {/* DocSpace Editor Modal */}
+      {docSpaceDoc && (
         <div className="fixed inset-0 z-50 flex flex-col bg-white">
           <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => setOnlyOfficeDoc(null)}
+                onClick={() => setDocSpaceDoc(null)}
                 className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -530,25 +515,23 @@ export default function DocumentTemplatesPanel({
                 </svg>
               </button>
               <div>
-                <h2 className="font-semibold text-slate-900">{onlyOfficeDoc.title}</h2>
-                <p className="text-xs text-slate-500">Editing with OnlyOffice - Full formatting preserved</p>
+                <h2 className="font-semibold text-slate-900">{docSpaceDoc.title}</h2>
+                <p className="text-xs text-slate-500">Editing with DocSpace - Full formatting preserved</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-                OnlyOffice Editor
+                DocSpace Editor
               </span>
             </div>
           </div>
           <div className="flex-1">
-            <OnlyOfficeEditor
-              documentUrl={onlyOfficeDoc.url}
-              documentKey={onlyOfficeDoc.key}
-              documentTitle={onlyOfficeDoc.title}
-              fileType={onlyOfficeDoc.fileType}
-              mode="edit"
-              onClose={() => setOnlyOfficeDoc(null)}
-              onError={(error) => console.error("OnlyOffice error:", error)}
+            <DocSpaceEditor
+              docSpaceUrl={process.env.NEXT_PUBLIC_DOCSPACE_URL || "https://docspace-hm9cxt.onlyoffice.com"}
+              mode={docSpaceDoc.mode}
+              fileId={docSpaceDoc.fileId}
+              onClose={() => setDocSpaceDoc(null)}
+              onError={(error: string) => console.error("DocSpace error:", error)}
             />
           </div>
         </div>
