@@ -8,6 +8,7 @@ import { ShellSidebar, ShellHeader, ShellFrame } from "@/components/ShellVisibil
 import HeaderUser from "@/components/HeaderUser";
 import HeaderCommentsButton from "@/components/HeaderCommentsButton";
 import HeaderNotificationsButton from "@/components/HeaderNotificationsButton";
+import GlobalPatientSearch from "@/components/GlobalPatientSearch";
 import { CommentsUnreadProvider } from "@/components/CommentsUnreadContext";
 import { TasksNotificationsProvider } from "@/components/TasksNotificationsContext";
 import GlobalLoader from "@/components/GlobalLoader";
@@ -400,6 +401,7 @@ export default function RootLayout({
                         </Link>
                       </div>
                     </div>
+                    <GlobalPatientSearch />
                     <div className="flex items-center gap-2 text-slate-500">
                       {/* HeaderNotificationsButton temporarily hidden - to be fixed and re-enabled later */}
                       {/* <HeaderNotificationsButton /> */}
