@@ -2007,48 +2007,46 @@ export default function CalendarPage() {
           </div>
         ) : (
           <div className="flex-1 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
-            <div className="flex h-full">
-              {/* Time axis */}
-              <div className="w-16 border-r border-slate-100 bg-slate-50/80">
-                {/* Spacer to align 8:00 AM label with first timeslot row */}
-                <div
-                  className="border-b border-slate-100"
-                  style={{ height: DAY_VIEW_SLOT_HEIGHT }}
-                />
-                {timeSlots.map((totalMinutes) => (
+            <div className="flex flex-col h-full">
+              {/* Sticky header row */}
+              <div className="flex border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium text-slate-500 sticky top-0 z-10">
+                {/* Empty cell for time axis column */}
+                <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0" />
+                {/* Day headers */}
+                {activeRangeDates.map((date) => (
                   <div
-                    key={totalMinutes}
-                    className="flex items-start justify-end pr-2 text-[10px] text-slate-400"
-                    style={{ height: DAY_VIEW_SLOT_HEIGHT }}
+                    key={formatYmd(date)}
+                    className="flex-1 px-2 py-2 text-center border-r border-slate-100 last:border-r-0"
                   >
-                    {formatTimeLabel(totalMinutes)}
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                      {date.toLocaleDateString(undefined, { weekday: "short" })}
+                    </div>
+                    <div className="text-sm font-semibold text-slate-800">
+                      {date.getDate()}
+                    </div>
                   </div>
                 ))}
               </div>
-              {/* Day columns */}
+              {/* Scrollable content area with time axis and day columns */}
               <div className="flex-1 overflow-auto">
-                <div className="min-w-full">
-                  {/* Header row for each day in the range */}
-                  <div className="flex border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium text-slate-500">
-                    {activeRangeDates.map((date) => (
+                <div className="flex">
+                  {/* Time axis - scrolls with content */}
+                  <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0">
+                    {timeSlots.map((totalMinutes) => (
                       <div
-                        key={formatYmd(date)}
-                        className="flex-1 px-2 py-2 text-center border-r border-slate-100 last:border-r-0"
+                        key={totalMinutes}
+                        className="flex items-start justify-end pr-2 text-[10px] text-slate-400"
+                        style={{ height: DAY_VIEW_SLOT_HEIGHT }}
                       >
-                        <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                          {date.toLocaleDateString(undefined, { weekday: "short" })}
-                        </div>
-                        <div className="text-sm font-semibold text-slate-800">
-                          {date.getDate()}
-                        </div>
+                        {formatTimeLabel(totalMinutes)}
                       </div>
                     ))}
                   </div>
-                  {/* Columns with vertical separators and appointments */}
+                  {/* Day columns with appointments */}
                   <div
-                    className="flex relative"
+                    className="flex flex-1 relative"
                     style={{
-                      height:
+                      minHeight:
                         (DAY_VIEW_END_MINUTES - DAY_VIEW_START_MINUTES) *
                         (DAY_VIEW_SLOT_HEIGHT / DAY_VIEW_SLOT_MINUTES),
                     }}
