@@ -190,7 +190,10 @@ function formatMonthYear(date: Date) {
 }
 
 function formatYmd(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function formatTimeRangeLabel(start: Date, end: Date | null): string {
@@ -795,7 +798,8 @@ export default function CalendarPage() {
         if (!selectedDoctorNames.includes(doctorKey)) return;
       }
 
-      const key = appt.start_time ? appt.start_time.slice(0, 10) : null;
+      const startDate = appt.start_time ? new Date(appt.start_time) : null;
+      const key = startDate && !Number.isNaN(startDate.getTime()) ? formatYmd(startDate) : null;
       if (!key) return;
 
       if (search) {
