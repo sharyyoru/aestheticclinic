@@ -902,6 +902,84 @@ export function createTardocInvoiceLine(
 }
 
 /**
+ * Sumex1.net TARMED consultation codes
+ * Based on https://sumex1.net/ standard
+ */
+export const SUMEX_TARMED_CODES = {
+  // Base consultation code - first 5 minutes
+  BASE_CONSULTATION: {
+    code: "AA 00.0010",
+    description: "Consultation de base, les 5 premières minutes",
+    descriptionFr: "Consultation de base, les 5 premières minutes",
+    priceChf: 18.43,
+    durationMinutes: 5,
+  },
+  // Per-minute code - each additional minute after base
+  PER_MINUTE: {
+    code: "AA 00.0020",
+    description: "Consultation, par minute supplémentaire",
+    descriptionFr: "Consultation, par minute supplémentaire",
+    priceChf: 3.687,
+    durationMinutes: 1,
+  },
+};
+
+/**
+ * Calculate TARMED consultation price based on duration using Sumex codes
+ * @param durationMinutes Total consultation duration in minutes
+ * @returns Object with line items and total price
+ */
+export function calculateSumexTarmedPrice(durationMinutes: number): {
+  lines: Array<{
+    code: string;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }>;
+  totalPrice: number;
+} {
+  const lines: Array<{
+    code: string;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }> = [];
+
+  // Base consultation - first 5 minutes (always charged)
+  const baseCode = SUMEX_TARMED_CODES.BASE_CONSULTATION;
+  lines.push({
+    code: baseCode.code,
+    description: baseCode.descriptionFr,
+    quantity: 1,
+    unitPrice: baseCode.priceChf,
+    total: baseCode.priceChf,
+  });
+
+  // Additional minutes after the first 5
+  const additionalMinutes = Math.max(0, durationMinutes - 5);
+  if (additionalMinutes > 0) {
+    const perMinuteCode = SUMEX_TARMED_CODES.PER_MINUTE;
+    const additionalTotal = Math.round(additionalMinutes * perMinuteCode.priceChf * 100) / 100;
+    lines.push({
+      code: perMinuteCode.code,
+      description: perMinuteCode.descriptionFr,
+      quantity: additionalMinutes,
+      unitPrice: perMinuteCode.priceChf,
+      total: additionalTotal,
+    });
+  }
+
+  const totalPrice = lines.reduce((sum, line) => sum + line.total, 0);
+
+  return {
+    lines,
+    totalPrice: Math.round(totalPrice * 100) / 100,
+  };
+}
+
+/**
  * Format a Swiss reference number (BESR/QR reference)
  */
 export function formatSwissReference(reference: string): string {

@@ -8,6 +8,8 @@ import {
   CANTON_TAX_POINT_VALUES,
   COST_NEUTRALITY_FACTOR,
   calculateTardocPrice,
+  calculateSumexTarmedPrice,
+  SUMEX_TARMED_CODES,
   formatChf,
   formatSwissReference,
   type SwissCanton,
@@ -54,16 +56,33 @@ function parseInvoiceContent(content: string | null, canton: SwissCanton = DEFAU
   diagnosis: string;
   treatingDoctor: string;
   taxPointValue: number;
+  durationMinutes: number;
+  isTarmedInvoice: boolean;
 } {
   const taxPointValue = CANTON_TAX_POINT_VALUES[canton];
   
   if (!content) {
-    return { services: [], diagnosis: "", treatingDoctor: "", taxPointValue };
+    return { services: [], diagnosis: "", treatingDoctor: "", taxPointValue, durationMinutes: 0, isTarmedInvoice: false };
   }
 
   const services: TardocServiceLine[] = [];
   let diagnosis = "";
   let treatingDoctor = "";
+  let durationMinutes = 0;
+  let isTarmedInvoice = false;
+
+  // Check if this is a TARMED invoice (contains duration or TARMED indicator)
+  const durationMatch = content.match(/Duration[:\s]*(\d+)\s*min/i) || 
+                        content.match(/Durée[:\s]*(\d+)\s*min/i) ||
+                        content.match(/(\d+)\s*minutes?/i);
+  if (durationMatch) {
+    durationMinutes = parseInt(durationMatch[1]);
+  }
+
+  // Check for TARMED mode indicator
+  if (content.toLowerCase().includes("tarmed") || content.toLowerCase().includes("tardoc")) {
+    isTarmedInvoice = true;
+  }
 
   const serviceMatches = content.matchAll(/<li[^>]*>(.*?)<\/li>/gs);
   for (const match of serviceMatches) {
@@ -91,7 +110,7 @@ function parseInvoiceContent(content: string | null, canton: SwissCanton = DEFAU
         const taxPoints = matchingTariff?.taxPoints || 0;
         
         services.push({
-          code: tardocCode || "AA.01.0010", // Default to consultation code
+          code: tardocCode || "AA 00.0010", // Default to Sumex base consultation code
           tardocCode,
           name,
           quantity,
@@ -113,7 +132,7 @@ function parseInvoiceContent(content: string | null, canton: SwissCanton = DEFAU
     treatingDoctor = doctorMatch[1].trim();
   }
 
-  return { services, diagnosis, treatingDoctor, taxPointValue };
+  return { services, diagnosis, treatingDoctor, taxPointValue, durationMinutes, isTarmedInvoice };
 }
 
 export async function POST(request: NextRequest) {
@@ -294,7 +313,27 @@ export async function POST(request: NextRequest) {
       yPos += 5;
     }
 
-    const { services, diagnosis, treatingDoctor, taxPointValue } = parseInvoiceContent(invoiceData.content, DEFAULT_CANTON);
+    const { services, diagnosis, treatingDoctor, taxPointValue, durationMinutes, isTarmedInvoice } = parseInvoiceContent(invoiceData.content, DEFAULT_CANTON);
+
+    // For TARMED invoices, calculate using Sumex codes based on duration
+    let tarmedServices: TardocServiceLine[] = [];
+    let calculatedTotal = 0;
+    
+    if (isTarmedInvoice && durationMinutes > 0) {
+      const sumexResult = calculateSumexTarmedPrice(durationMinutes);
+      tarmedServices = sumexResult.lines.map(line => ({
+        code: line.code,
+        tardocCode: line.code,
+        name: line.description,
+        quantity: line.quantity,
+        taxPoints: 0,
+        unitPrice: line.unitPrice,
+        total: line.total,
+      }));
+      calculatedTotal = sumexResult.totalPrice;
+    }
+
+    const finalServices = tarmedServices.length > 0 ? tarmedServices : services;
 
     pdf.setFont("helvetica", "bold");
     pdf.text("Diagnostic", 20, yPos + 4);
@@ -303,12 +342,14 @@ export async function POST(request: NextRequest) {
     pdf.text(diagnosis || "Durée du consultation", 20, yPos + 4);
     yPos += 5;
 
-    pdf.setFont("helvetica", "bold");
-    pdf.text("U", 20, yPos + 4);
-    yPos += 5;
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`27.05.2025 - 27.05.2025`, 20, yPos + 4);
-    yPos += 5;
+    if (durationMinutes > 0) {
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Durée", 20, yPos + 4);
+      yPos += 5;
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`${durationMinutes} minutes`, 20, yPos + 4);
+      yPos += 5;
+    }
 
     pdf.setFont("helvetica", "bold");
     pdf.text("Mandant exécutant", 20, yPos + 4);
@@ -324,30 +365,36 @@ export async function POST(request: NextRequest) {
     pdf.setFillColor(200, 200, 200);
     pdf.rect(15, yPos, pageWidth - 30, 6, "F");
     pdf.setFont("helvetica", "bold");
-    pdf.text("Date", 20, yPos + 4);
-    pdf.text("Code", 50, yPos + 4);
+    pdf.text("Date", 17, yPos + 4);
+    pdf.text("Code", 40, yPos + 4);
     pdf.text("Prestation", 70, yPos + 4);
-    pdf.text("Qté", 130, yPos + 4);
-    pdf.text("Prix par pièce", 150, yPos + 4);
+    pdf.text("Qté", 125, yPos + 4);
+    pdf.text("Prix unitaire", 140, yPos + 4);
     pdf.text("Total", pageWidth - 20, yPos + 4, { align: "right" });
     yPos += 6;
 
     pdf.setFont("helvetica", "normal");
-    const prestationDate = "21.11.2025";
+    const serviceDate = new Date(invoiceData.scheduled_at);
+    const prestationDate = serviceDate.toLocaleDateString("fr-CH");
     
-    if (services.length > 0) {
-      services.forEach((service) => {
-        pdf.text(prestationDate, 20, yPos + 4);
-        pdf.text(service.code, 50, yPos + 4);
-        pdf.text(service.name, 70, yPos + 4);
-        pdf.text(service.quantity.toString(), 130, yPos + 4);
-        pdf.text("", 150, yPos + 4);
+    if (finalServices.length > 0) {
+      finalServices.forEach((service) => {
+        pdf.text(prestationDate, 17, yPos + 4);
+        pdf.text(service.code, 40, yPos + 4);
+        // Truncate long service names
+        const maxNameLength = 30;
+        const displayName = service.name.length > maxNameLength 
+          ? service.name.substring(0, maxNameLength) + "..." 
+          : service.name;
+        pdf.text(displayName, 70, yPos + 4);
+        pdf.text(service.quantity.toString(), 125, yPos + 4);
+        pdf.text(service.unitPrice.toFixed(2), 140, yPos + 4);
         pdf.text(service.total.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
         yPos += 5;
       });
     } else {
-      pdf.text(prestationDate, 20, yPos + 4);
-      pdf.text("1001", 50, yPos + 4);
+      pdf.text(prestationDate, 17, yPos + 4);
+      pdf.text("AA 00.0010", 40, yPos + 4);
       pdf.text(invoiceData.title || "Baby Botox", 70, yPos + 4);
       pdf.text("1", 130, yPos + 4);
       pdf.text("", 150, yPos + 4);
