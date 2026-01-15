@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const { messages, patientId } = (await request.json()) as {
       messages?: ChatMessage[];
@@ -72,7 +72,10 @@ export async function POST(request: Request) {
       generationConfig: {
         temperature: 0.6,
       },
-      systemInstruction,
+      systemInstruction: {
+        role: "user",
+        parts: [{ text: systemInstruction }],
+      },
     });
 
     const result = await chat.sendMessage(lastUserMessage?.content || "");

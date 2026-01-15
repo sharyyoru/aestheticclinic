@@ -804,6 +804,29 @@ export default function PatientActivityCard({
     };
   }, []);
 
+  // Handle Escape key to close email modal
+  useEffect(() => {
+    if (!emailModalOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !emailSaving) {
+        setEmailModalOpen(false);
+        setEmailFullscreen(false);
+        setEmailSaveError(null);
+        setEmailScheduleEnabled(false);
+        setEmailScheduledFor("");
+        setEmailAttachments([]);
+        setEmailAttachmentsError(null);
+        setUseSignature(true);
+        setComposeFromQueryHandled(false);
+        router.replace(`/patients/${patientId}`);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [emailModalOpen, emailSaving, patientId, router]);
+
   useEffect(() => {
     if (!emailModalOpen || platformUsersLoaded) return;
 
@@ -4301,7 +4324,23 @@ export default function PatientActivityCard({
       ) : null}
 
       {emailModalOpen && typeof document !== "undefined" ? createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-start justify-center overflow-y-auto bg-slate-900/50 backdrop-blur-sm py-6 sm:py-8">
+        <div 
+          className="fixed inset-0 z-[99999] flex items-start justify-center overflow-y-auto bg-slate-900/50 backdrop-blur-sm py-6 sm:py-8"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !emailSaving) {
+              setEmailModalOpen(false);
+              setEmailFullscreen(false);
+              setEmailSaveError(null);
+              setEmailScheduleEnabled(false);
+              setEmailScheduledFor("");
+              setEmailAttachments([]);
+              setEmailAttachmentsError(null);
+              setUseSignature(true);
+              setComposeFromQueryHandled(false);
+              router.replace(`/patients/${patientId}`);
+            }
+          }}
+        >
           <div className={`w-full ${emailFullscreen ? "max-w-none m-0 h-full rounded-none" : "max-w-2xl mx-4"} max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white p-5 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]`}>
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
