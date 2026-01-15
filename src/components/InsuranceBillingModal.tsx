@@ -12,7 +12,7 @@ import {
   type BillingType,
   type MediDataInvoiceStatus,
 } from "@/lib/medidata";
-import { calculateSumexTarmedPrice, SUMEX_TARMED_CODES } from "@/lib/tardoc";
+import { calculateSumexTardocPrice, SUMEX_TARDOC_CODES } from "@/lib/tardoc";
 
 type InsuranceBillingModalProps = {
   isOpen: boolean;
@@ -50,8 +50,8 @@ export default function InsuranceBillingModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<any | null>(null);
 
-  // Calculate TARMED price based on duration
-  const tarmedCalculation = calculateSumexTarmedPrice(duration);
+  // Calculate TARDOC price based on duration (valid from 01.01.2026)
+  const tardocCalculation = calculateSumexTardocPrice(duration);
 
   // Filter insurers based on search
   const filteredInsurers = COMMON_SWISS_INSURERS.filter(
@@ -394,8 +394,8 @@ export default function InsuranceBillingModal({
               </div>
 
               <div className="space-y-2 rounded-lg bg-slate-50 p-3">
-                <p className="text-xs font-medium text-slate-500">TARMED Codes (Sumex)</p>
-                {tarmedCalculation.lines.map((line, idx) => (
+                <p className="text-xs font-medium text-slate-500">TARDOC Codes (Sumex - valid from 01.01.2026)</p>
+                {tardocCalculation.lines.map((line: { code: string; description: string; quantity: number; unitPrice: number; total: number }, idx: number) => (
                   <div key={idx} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
                       <code className="rounded bg-white px-1.5 py-0.5 text-xs text-slate-600 shadow-sm">
@@ -414,7 +414,7 @@ export default function InsuranceBillingModal({
                 <div className="mt-2 flex justify-between border-t border-slate-200 pt-2">
                   <span className="font-medium text-slate-700">Total</span>
                   <span className="font-semibold text-slate-900">
-                    CHF {tarmedCalculation.totalPrice.toFixed(2)}
+                    CHF {tardocCalculation.totalPrice.toFixed(2)}
                   </span>
                 </div>
               </div>

@@ -12,7 +12,7 @@
  * - MediData ELA (Elektronische Leistungsabrechnung) API
  */
 
-import { calculateSumexTarmedPrice, SUMEX_TARMED_CODES, type SwissCanton, CANTON_TAX_POINT_VALUES } from './tardoc';
+import { calculateSumexTardocPrice, SUMEX_TARDOC_CODES, type SwissCanton, CANTON_TAX_POINT_VALUES } from './tardoc';
 
 // Law types for Swiss healthcare billing
 export type SwissLawType = 'KVG' | 'UVG' | 'IVG' | 'MVG' | 'VVG';
@@ -378,14 +378,15 @@ export function createMediDataUploadInfo(request: MediDataInvoiceRequest): objec
 }
 
 /**
- * Generate invoice from consultation duration (TARMED)
+ * Generate invoice from consultation duration (TARDOC)
+ * Valid from 01.01.2026 - TARDOC replaced TARMED
  */
-export function generateTarmedServicesFromDuration(
+export function generateTardocServicesFromDuration(
   durationMinutes: number,
   serviceDate: string,
   providerGln: string
 ): InvoiceServiceLine[] {
-  const result = calculateSumexTarmedPrice(durationMinutes);
+  const result = calculateSumexTardocPrice(durationMinutes);
   
   return result.lines.map(line => ({
     code: line.code,

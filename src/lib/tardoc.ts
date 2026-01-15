@@ -902,10 +902,11 @@ export function createTardocInvoiceLine(
 }
 
 /**
- * Sumex1.net TARMED consultation codes
+ * Sumex1.net TARDOC consultation codes (valid from 01.01.2026)
  * Based on https://sumex1.net/ standard
+ * Note: TARMED was replaced by TARDOC as of 01.01.2026
  */
-export const SUMEX_TARMED_CODES = {
+export const SUMEX_TARDOC_CODES = {
   // Base consultation code - first 5 minutes
   BASE_CONSULTATION: {
     code: "AA 00.0010",
@@ -925,11 +926,12 @@ export const SUMEX_TARMED_CODES = {
 };
 
 /**
- * Calculate TARMED consultation price based on duration using Sumex codes
+ * Calculate TARDOC consultation price based on duration using Sumex codes
+ * Valid from 01.01.2026 (TARDOC replaced TARMED)
  * @param durationMinutes Total consultation duration in minutes
  * @returns Object with line items and total price
  */
-export function calculateSumexTarmedPrice(durationMinutes: number): {
+export function calculateSumexTardocPrice(durationMinutes: number): {
   lines: Array<{
     code: string;
     description: string;
@@ -948,7 +950,7 @@ export function calculateSumexTarmedPrice(durationMinutes: number): {
   }> = [];
 
   // Base consultation - first 5 minutes (always charged)
-  const baseCode = SUMEX_TARMED_CODES.BASE_CONSULTATION;
+  const baseCode = SUMEX_TARDOC_CODES.BASE_CONSULTATION;
   lines.push({
     code: baseCode.code,
     description: baseCode.descriptionFr,
@@ -960,7 +962,7 @@ export function calculateSumexTarmedPrice(durationMinutes: number): {
   // Additional minutes after the first 5
   const additionalMinutes = Math.max(0, durationMinutes - 5);
   if (additionalMinutes > 0) {
-    const perMinuteCode = SUMEX_TARMED_CODES.PER_MINUTE;
+    const perMinuteCode = SUMEX_TARDOC_CODES.PER_MINUTE;
     const additionalTotal = Math.round(additionalMinutes * perMinuteCode.priceChf * 100) / 100;
     lines.push({
       code: perMinuteCode.code,

@@ -3,12 +3,12 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import {
   generateSumexXml,
   createMediDataUploadInfo,
-  generateTarmedServicesFromDuration,
+  generateTardocServicesFromDuration,
   type MediDataInvoiceRequest,
   type BillingType,
   type SwissLawType,
 } from "@/lib/medidata";
-import { calculateSumexTarmedPrice, type SwissCanton, DEFAULT_CANTON } from "@/lib/tardoc";
+import { calculateSumexTardocPrice, type SwissCanton, DEFAULT_CANTON } from "@/lib/tardoc";
 
 type ConsultationData = {
   id: string;
@@ -164,9 +164,9 @@ export async function POST(request: NextRequest) {
     const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const treatmentDate = consultationData.scheduled_at.split('T')[0];
 
-    // Calculate services based on duration (TARMED)
+    // Calculate services based on duration (TARDOC - valid from 01.01.2026)
     const duration = durationMinutes || extractDurationFromContent(consultationData.content);
-    const services = generateTarmedServicesFromDuration(
+    const services = generateTardocServicesFromDuration(
       duration,
       treatmentDate,
       config.clinic_gln

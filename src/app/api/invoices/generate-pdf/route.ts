@@ -8,8 +8,8 @@ import {
   CANTON_TAX_POINT_VALUES,
   COST_NEUTRALITY_FACTOR,
   calculateTardocPrice,
-  calculateSumexTarmedPrice,
-  SUMEX_TARMED_CODES,
+  calculateSumexTardocPrice,
+  SUMEX_TARDOC_CODES,
   formatChf,
   formatSwissReference,
   type SwissCanton,
@@ -315,13 +315,14 @@ export async function POST(request: NextRequest) {
 
     const { services, diagnosis, treatingDoctor, taxPointValue, durationMinutes, isTarmedInvoice } = parseInvoiceContent(invoiceData.content, DEFAULT_CANTON);
 
-    // For TARMED invoices, calculate using Sumex codes based on duration
-    let tarmedServices: TardocServiceLine[] = [];
+    // For TARDOC invoices, calculate using Sumex codes based on duration
+    // TARDOC valid from 01.01.2026 (replaced TARMED)
+    let tardocServices: TardocServiceLine[] = [];
     let calculatedTotal = 0;
     
     if (isTarmedInvoice && durationMinutes > 0) {
-      const sumexResult = calculateSumexTarmedPrice(durationMinutes);
-      tarmedServices = sumexResult.lines.map(line => ({
+      const sumexResult = calculateSumexTardocPrice(durationMinutes);
+      tardocServices = sumexResult.lines.map((line: { code: string; description: string; quantity: number; unitPrice: number; total: number }) => ({
         code: line.code,
         tardocCode: line.code,
         name: line.description,
@@ -333,7 +334,7 @@ export async function POST(request: NextRequest) {
       calculatedTotal = sumexResult.totalPrice;
     }
 
-    const finalServices = tarmedServices.length > 0 ? tarmedServices : services;
+    const finalServices = tardocServices.length > 0 ? tardocServices : services;
 
     pdf.setFont("helvetica", "bold");
     pdf.text("Diagnostic", 20, yPos + 4);
