@@ -77,12 +77,17 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { 
-      consultationId, 
+      consultationId,
+      patientId: bodyPatientId,
       billingType = 'TG',
       lawType = 'KVG',
       durationMinutes,
       diagnosisCodes = [],
       treatmentReason = 'disease',
+      insurerGln,
+      insurerName,
+      policyNumber,
+      avsNumber,
     } = body;
 
     if (!consultationId) {
@@ -189,22 +194,22 @@ export async function POST(request: NextRequest) {
         lastName: patientData.last_name,
         dob: patientData.dob,
         gender: patientData.gender as 'male' | 'female' | 'other' | null,
-        avsNumber: insurance?.avs_number || null,
+        avsNumber: avsNumber || insurance?.avs_number || null,
         address: {
           street: patientData.street_address,
           postalCode: patientData.postal_code,
           city: patientData.town,
         },
-        insurance: insurance ? {
-          insurerId: insurance.insurer_id,
-          insurerGln: insurance.gln || '7601003000016', // Default to CSS if not set
-          insurerName: insurance.provider_name,
-          policyNumber: insurance.policy_number,
-          cardNumber: insurance.card_number,
-          lawType: (insurance.law_type || lawType) as SwissLawType,
-          billingType: (insurance.billing_type || billingType) as BillingType,
-          caseNumber: insurance.case_number,
-        } : null,
+        insurance: {
+          insurerId: insurance?.insurer_id || null,
+          insurerGln: insurerGln || insurance?.gln || '7601003000016',
+          insurerName: insurerName || insurance?.provider_name || 'Unknown Insurer',
+          policyNumber: policyNumber || insurance?.policy_number || null,
+          cardNumber: insurance?.card_number || null,
+          lawType: lawType as SwissLawType,
+          billingType: billingType as BillingType,
+          caseNumber: insurance?.case_number || null,
+        },
       },
       provider: {
         id: config.clinic_gln,

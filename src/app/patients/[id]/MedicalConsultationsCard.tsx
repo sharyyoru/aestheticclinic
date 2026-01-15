@@ -3084,6 +3084,7 @@ export default function MedicalConsultationsCard({
           setInsuranceBillingTarget(null);
         }}
         consultationId={insuranceBillingTarget?.id || ""}
+        patientId={patientId}
         patientName={insuranceBillingTarget?.title || "Patient"}
         invoiceAmount={insuranceBillingTarget?.invoice_total_amount || null}
         durationMinutes={insuranceBillingTarget?.duration_seconds ? Math.ceil(insuranceBillingTarget.duration_seconds / 60) : 15}
