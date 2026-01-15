@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { TARDOC_MEDICINES, formatChf, type TardocMedicine } from "@/lib/tardoc";
 
 type TaskPriority = "low" | "medium" | "high";
 
@@ -96,88 +97,32 @@ type InvoiceInstallment = {
   dueDate: string;
 };
 
-const TEST_MEDICINES = [
-  {
-    id: "amoxicillin",
-    name: "Amoxicillin",
-    dosages: [
-      { id: "amox_500_3x", label: "500 mg, 3x/day (7 days)", price: 45 },
-      { id: "amox_875_2x", label: "875 mg, 2x/day (7 days)", price: 52 },
-    ],
-  },
-  {
-    id: "ibuprofen",
-    name: "Ibuprofen",
-    dosages: [
-      { id: "ibu_400_3x", label: "400 mg, 3x/day (as needed)", price: 18 },
-      { id: "ibu_600_2x", label: "600 mg, 2x/day (5 days)", price: 22 },
-    ],
-  },
-  {
-    id: "paracetamol",
-    name: "Paracetamol",
-    dosages: [
-      { id: "para_500_4x", label: "500 mg, 4x/day (max 5 days)", price: 15 },
-      { id: "para_1000_3x", label: "1 g, 3x/day (max 3 days)", price: 19 },
-    ],
-  },
-  {
-    id: "omeprazole",
-    name: "Omeprazole",
-    dosages: [
-      { id: "ome_20_1x", label: "20 mg, once daily (14 days)", price: 35 },
-      { id: "ome_40_1x", label: "40 mg, once daily (14 days)", price: 49 },
-    ],
-  },
-  {
-    id: "metformin",
-    name: "Metformin",
-    dosages: [
-      { id: "met_500_2x", label: "500 mg, 2x/day", price: 28 },
-      { id: "met_850_2x", label: "850 mg, 2x/day", price: 34 },
-    ],
-  },
-  {
-    id: "atorvastatin",
-    name: "Atorvastatin",
-    dosages: [
-      { id: "ato_10_1x", label: "10 mg, once daily", price: 30 },
-      { id: "ato_20_1x", label: "20 mg, once daily", price: 38 },
-    ],
-  },
-  {
-    id: "lisinopril",
-    name: "Lisinopril",
-    dosages: [
-      { id: "lis_10_1x", label: "10 mg, once daily", price: 27 },
-      { id: "lis_20_1x", label: "20 mg, once daily", price: 33 },
-    ],
-  },
-  {
-    id: "azithromycin",
-    name: "Azithromycin",
-    dosages: [
-      { id: "azi_500_1x3d", label: "500 mg, once daily (3 days)", price: 42 },
-      { id: "azi_250_1x5d", label: "250 mg, once daily (5 days)", price: 39 },
-    ],
-  },
-  {
-    id: "cetirizine",
-    name: "Cetirizine",
-    dosages: [
-      { id: "cet_10_1x", label: "10 mg, once daily (as needed)", price: 16 },
-      { id: "cet_5_2x", label: "5 mg, twice daily", price: 18 },
-    ],
-  },
-  {
-    id: "salbutamol",
-    name: "Salbutamol inhaler",
-    dosages: [
-      { id: "sal_2puffs_4x", label: "2 puffs, up to 4x/day", price: 55 },
-      { id: "sal_1puff_prn", label: "1 puff as needed", price: 45 },
-    ],
-  },
-];
+// TARDOC-compliant medicines for Swiss healthcare billing
+// Transformed from TARDOC_MEDICINES for UI compatibility
+const CLINIC_MEDICINES = TARDOC_MEDICINES.filter(med => med.isActive).map(med => ({
+  id: med.id,
+  name: med.name,
+  nameFr: med.nameFr,
+  atcCode: med.atcCode,
+  swissmedicNumber: med.swissmedicNumber,
+  pharmacode: med.pharmacode,
+  requiresPrescription: med.requiresPrescription,
+  dosages: [
+    { 
+      id: `${med.id}_standard`, 
+      label: `${med.unitSize} - Standard dose`, 
+      price: med.pricePublic 
+    },
+    { 
+      id: `${med.id}_double`, 
+      label: `${med.unitSize} x2 - Double quantity`, 
+      price: med.pricePublic * 2 
+    },
+  ],
+}));
+
+// Legacy alias for backward compatibility
+const TEST_MEDICINES = CLINIC_MEDICINES;
 
 function formatLocalDateInputValue(date: Date): string {
   const year = date.getFullYear();

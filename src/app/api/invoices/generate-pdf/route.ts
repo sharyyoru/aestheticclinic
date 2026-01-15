@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseClient } from "@/lib/supabaseClient";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
+import { 
+  TARDOC_TARIFF_ITEMS, 
+  DEFAULT_CANTON, 
+  CANTON_TAX_POINT_VALUES,
+  COST_NEUTRALITY_FACTOR,
+  calculateTardocPrice,
+  formatChf,
+  formatSwissReference,
+  type SwissCanton,
+} from "@/lib/tardoc";
 
 type InvoiceData = {
   id: string;
@@ -28,16 +38,30 @@ type PatientData = {
   gender: string | null;
 };
 
-function parseInvoiceContent(content: string | null): {
-  services: Array<{ code: string; name: string; quantity: number; unitPrice: number; total: number }>;
+// TARDOC service line with Swiss billing compliance
+type TardocServiceLine = {
+  code: string;
+  tardocCode: string | null;
+  name: string;
+  quantity: number;
+  taxPoints: number;
+  unitPrice: number;
+  total: number;
+};
+
+function parseInvoiceContent(content: string | null, canton: SwissCanton = DEFAULT_CANTON): {
+  services: TardocServiceLine[];
   diagnosis: string;
   treatingDoctor: string;
+  taxPointValue: number;
 } {
+  const taxPointValue = CANTON_TAX_POINT_VALUES[canton];
+  
   if (!content) {
-    return { services: [], diagnosis: "", treatingDoctor: "" };
+    return { services: [], diagnosis: "", treatingDoctor: "", taxPointValue };
   }
 
-  const services: Array<{ code: string; name: string; quantity: number; unitPrice: number; total: number }> = [];
+  const services: TardocServiceLine[] = [];
   let diagnosis = "";
   let treatingDoctor = "";
 
@@ -53,10 +77,25 @@ function parseInvoiceContent(content: string | null): {
       if (quantityMatch && priceMatch) {
         const quantity = parseInt(quantityMatch[1]);
         const unitPrice = parseFloat(priceMatch[1]);
+        
+        // Try to find matching TARDOC code based on service name
+        const matchingTariff = TARDOC_TARIFF_ITEMS.find(
+          t => t.isActive && (
+            t.description.toLowerCase().includes(name.toLowerCase()) ||
+            t.descriptionFr.toLowerCase().includes(name.toLowerCase()) ||
+            name.toLowerCase().includes(t.description.toLowerCase())
+          )
+        );
+        
+        const tardocCode = matchingTariff?.code || null;
+        const taxPoints = matchingTariff?.taxPoints || 0;
+        
         services.push({
-          code: "1001",
+          code: tardocCode || "AA.01.0010", // Default to consultation code
+          tardocCode,
           name,
           quantity,
+          taxPoints,
           unitPrice,
           total: quantity * unitPrice
         });
@@ -74,7 +113,7 @@ function parseInvoiceContent(content: string | null): {
     treatingDoctor = doctorMatch[1].trim();
   }
 
-  return { services, diagnosis, treatingDoctor };
+  return { services, diagnosis, treatingDoctor, taxPointValue };
 }
 
 export async function POST(request: NextRequest) {
@@ -255,7 +294,7 @@ export async function POST(request: NextRequest) {
       yPos += 5;
     }
 
-    const { services, diagnosis, treatingDoctor } = parseInvoiceContent(invoiceData.content);
+    const { services, diagnosis, treatingDoctor, taxPointValue } = parseInvoiceContent(invoiceData.content, DEFAULT_CANTON);
 
     pdf.setFont("helvetica", "bold");
     pdf.text("Diagnostic", 20, yPos + 4);
