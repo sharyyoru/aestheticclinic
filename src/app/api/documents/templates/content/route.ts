@@ -111,15 +111,47 @@ export async function GET(request: NextRequest) {
     let htmlContent = "";
 
     if (ext === "docx") {
-      // Convert DOCX to HTML using mammoth
+      // Convert DOCX to HTML using mammoth with full image and style support
       const arrayBuffer = await fileData.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       console.log("Buffer size:", buffer.length);
       
-      const result = await mammoth.convertToHtml({ buffer });
+      // Configure mammoth to convert images to base64 data URIs
+      const options = {
+        buffer,
+        convertImage: mammoth.images.imgElement(function(image: { read: (encoding: string) => Promise<Buffer>; contentType: string }) {
+          return image.read("base64").then(function(imageBuffer: Buffer) {
+            return {
+              src: `data:${image.contentType};base64,${imageBuffer}`
+            };
+          });
+        }),
+        styleMap: [
+          // Preserve heading styles
+          "p[style-name='Heading 1'] => h1:fresh",
+          "p[style-name='Heading 2'] => h2:fresh",
+          "p[style-name='Heading 3'] => h3:fresh",
+          "p[style-name='Title'] => h1.title:fresh",
+          // Preserve text alignment
+          "p[style-name='centered'] => p.text-center:fresh",
+          "p[style-name='right'] => p.text-right:fresh",
+          // Preserve underline
+          "u => u",
+          // Preserve strikethrough
+          "strike => s",
+          // Table support
+          "table => table.border-collapse",
+          "tr => tr",
+          "td => td.border.p-2",
+          "th => th.border.p-2.font-bold",
+        ],
+      };
+      
+      const result = await mammoth.convertToHtml(options);
       htmlContent = result.value;
       
       console.log("Mammoth conversion result length:", htmlContent.length);
+      console.log("Images found:", (htmlContent.match(/<img/g) || []).length);
       
       if (result.messages && result.messages.length > 0) {
         console.log("Mammoth conversion messages:", result.messages);

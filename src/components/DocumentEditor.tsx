@@ -9,6 +9,11 @@ import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
 import Color from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
+import Image from "@tiptap/extension-image";
+import { Table } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const TEXT_COLORS = [
@@ -71,11 +76,35 @@ export default function DocumentEditor({
       }),
       TextStyle,
       Color,
+      Image.configure({
+        inline: true,
+        allowBase64: true,
+        HTMLAttributes: {
+          class: "max-w-full h-auto",
+        },
+      }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: {
+          class: "border-collapse border border-slate-300",
+        },
+      }),
+      TableRow,
+      TableHeader.configure({
+        HTMLAttributes: {
+          class: "border border-slate-300 bg-slate-100 p-2 font-bold",
+        },
+      }),
+      TableCell.configure({
+        HTMLAttributes: {
+          class: "border border-slate-300 p-2",
+        },
+      }),
     ],
     content: initialContent,
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none focus:outline-none min-h-[500px] px-8 py-6 text-black",
+        class: "prose prose-sm max-w-none focus:outline-none min-h-[500px] px-8 py-6 text-black [&_img]:max-w-full [&_img]:h-auto [&_table]:border-collapse [&_table]:border [&_table]:border-slate-300 [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100",
         style: "color: #000000;",
       },
     },
