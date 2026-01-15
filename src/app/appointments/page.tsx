@@ -168,18 +168,11 @@ type DoctorCalendar = {
 };
 
 const CALENDAR_COLOR_CLASSES = [
-  "bg-sky-500",
-  "bg-emerald-500",
-  "bg-violet-500",
-  "bg-amber-500",
-  "bg-rose-500",
-  "bg-slate-500",
+  "bg-slate-400",
 ];
 
 function getCalendarColorForIndex(index: number): string {
-  if (CALENDAR_COLOR_CLASSES.length === 0) return "bg-sky-500";
-  const safeIndex = index % CALENDAR_COLOR_CLASSES.length;
-  return CALENDAR_COLOR_CLASSES[safeIndex];
+  return "bg-slate-400";
 }
 
 function formatMonthYear(date: Date) {
@@ -270,6 +263,55 @@ function getNotesFromReason(reason: string | null): string | null {
   if (!match) return null;
   const raw = match[1].trim();
   return raw || null;
+}
+
+type AppointmentOverlapInfo = {
+  id: string;
+  columnIndex: number;
+  totalColumns: number;
+};
+
+function calculateOverlapPositions(
+  appointments: { id: string; start_time: string; end_time: string | null }[]
+): Map<string, AppointmentOverlapInfo> {
+  const result = new Map<string, AppointmentOverlapInfo>();
+  
+  if (appointments.length === 0) return result;
+
+  const parsed = appointments.map((appt) => {
+    const start = new Date(appt.start_time);
+    const end = appt.end_time ? new Date(appt.end_time) : new Date(start.getTime() + 30 * 60 * 1000);
+    return {
+      id: appt.id,
+      startMinutes: start.getHours() * 60 + start.getMinutes(),
+      endMinutes: end.getHours() * 60 + end.getMinutes(),
+    };
+  }).sort((a, b) => a.startMinutes - b.startMinutes || a.endMinutes - b.endMinutes);
+
+  const columns: { endMinutes: number }[] = [];
+
+  for (const appt of parsed) {
+    let placed = false;
+    for (let col = 0; col < columns.length; col++) {
+      if (columns[col].endMinutes <= appt.startMinutes) {
+        columns[col].endMinutes = appt.endMinutes;
+        result.set(appt.id, { id: appt.id, columnIndex: col, totalColumns: 0 });
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      result.set(appt.id, { id: appt.id, columnIndex: columns.length, totalColumns: 0 });
+      columns.push({ endMinutes: appt.endMinutes });
+    }
+  }
+
+  const totalCols = columns.length;
+  for (const info of result.values()) {
+    info.totalColumns = totalCols;
+  }
+
+  return result;
 }
 
 async function sendAppointmentConfirmationEmail(
@@ -1982,7 +2024,7 @@ export default function CalendarPage() {
                               }}
                               className={`w-full rounded-md px-1 py-0.5 text-[10px] text-left ${getAppointmentStatusColorClasses(
                                 appt.status,
-                              )} ${doctorColor}`}
+                              )} bg-slate-200/90`}
                             >
                               <div className="truncate font-medium text-slate-800">
                                 {patientName || serviceLabel}
@@ -2108,7 +2150,9 @@ export default function CalendarPage() {
                             />
                           ))}
 
-                          {dayAppointments.map((appt) => {
+                          {(() => {
+                            const overlapMap = calculateOverlapPositions(dayAppointments);
+                            return dayAppointments.map((appt) => {
                             const start = new Date(appt.start_time);
                             if (Number.isNaN(start.getTime())) return null;
 
@@ -2137,6 +2181,12 @@ export default function CalendarPage() {
                             const height =
                               (durationMinutes / DAY_VIEW_SLOT_MINUTES) *
                               DAY_VIEW_SLOT_HEIGHT;
+
+                            const overlapInfo = overlapMap.get(appt.id);
+                            const colIndex = overlapInfo?.columnIndex ?? 0;
+                            const totalCols = overlapInfo?.totalColumns ?? 1;
+                            const widthPercent = 100 / totalCols;
+                            const leftPercent = colIndex * widthPercent;
 
                             const { serviceLabel } = getServiceAndStatusFromReason(
                               appt.reason,
@@ -2168,12 +2218,14 @@ export default function CalendarPage() {
                                 key={`${ymd}-${appt.id}`}
                                 type="button"
                                 onClick={() => openEditModalForAppointment(appt)}
-                                className={`absolute left-2 right-2 rounded-md px-2 py-1 text-[11px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(
+                                className={`absolute rounded-md px-1 py-1 text-[11px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(
                                   appt.status,
-                                )} ${doctorColor}`}
+                                )} bg-slate-200/90`}
                                 style={{
                                   top,
                                   height,
+                                  left: `calc(${leftPercent}% + 2px)`,
+                                  width: `calc(${widthPercent}% - 4px)`,
                                 }}
                               >
                                 <div className="truncate font-medium text-slate-800">
@@ -2194,7 +2246,8 @@ export default function CalendarPage() {
                                 )}
                               </button>
                             );
-                          })}
+                          });
+                          })()}
                         </div>
                       );
                     })}
