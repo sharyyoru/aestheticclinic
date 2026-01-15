@@ -137,9 +137,18 @@ create table if not exists deals (
   title text,
   value numeric(12,2),
   notes text,
+  owner_id uuid references users(id) on delete set null,
+  owner_name text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Add owner columns to deals if they don't exist (migration)
+alter table if exists deals
+  add column if not exists owner_id uuid references users(id) on delete set null,
+  add column if not exists owner_name text;
+
+create index if not exists deals_owner_id_idx on deals(owner_id);
 
 create index if not exists deals_patient_id_idx on deals(patient_id);
 create index if not exists deals_stage_id_idx on deals(stage_id);

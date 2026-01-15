@@ -149,6 +149,8 @@ type Deal = {
   title: string | null;
   value: number | null;
   notes: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
   created_at: string;
   updated_at: string;
   appointment?: DealAppointment | null;
@@ -343,6 +345,9 @@ export default function PatientActivityCard({
   const [dealContactLabel, setDealContactLabel] = useState("Marketing");
   const [dealLocation, setDealLocation] = useState("Rhône");
   const [dealNotes, setDealNotes] = useState("");
+  const [dealOwnerId, setDealOwnerId] = useState<string>("");
+  const [dealOwnerSearch, setDealOwnerSearch] = useState("");
+  const [dealOwnerDropdownOpen, setDealOwnerDropdownOpen] = useState(false);
   const [dealSaving, setDealSaving] = useState(false);
   const [dealSaveError, setDealSaveError] = useState<string | null>(null);
   const [deletingDealId, setDeletingDealId] = useState<string | null>(null);
@@ -554,7 +559,7 @@ export default function PatientActivityCard({
         const { data: dealsData, error: dealsErrorLatest } = await supabaseClient
           .from("deals")
           .select(
-            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, created_at, updated_at",
+            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, owner_id, owner_name, created_at, updated_at",
           )
           .eq("patient_id", patientId)
           .order("created_at", { ascending: false });
@@ -1557,6 +1562,9 @@ export default function PatientActivityCard({
     setDealContactLabel("Marketing");
     setDealLocation("Rhône");
     setDealNotes("");
+    setDealOwnerId("");
+    setDealOwnerSearch("");
+    setDealOwnerDropdownOpen(false);
 
     const sortedStages = [...dealStages].sort(
       (a, b) => a.sort_order - b.sort_order,
@@ -1578,9 +1586,30 @@ export default function PatientActivityCard({
     setDealContactLabel(deal.contact_label ?? "Marketing");
     setDealLocation(deal.location ?? "Rhône");
     setDealNotes(deal.notes ?? "");
+    setDealOwnerId(deal.owner_id ?? "");
+    const selectedOwner = userOptions.find((u) => u.id === deal.owner_id);
+    setDealOwnerSearch(selectedOwner?.full_name || selectedOwner?.email || deal.owner_name || "");
+    setDealOwnerDropdownOpen(false);
     setDealStageId(deal.stage_id);
     setDealSaveError(null);
     setDealModalOpen(true);
+  }
+
+  function handleDealOwnerSearchChange(value: string) {
+    setDealOwnerSearch(value);
+    setDealOwnerDropdownOpen(value.trim().length > 0);
+  }
+
+  function handleDealOwnerSelect(userId: string, userName: string) {
+    setDealOwnerId(userId);
+    setDealOwnerSearch(userName);
+    setDealOwnerDropdownOpen(false);
+  }
+
+  function handleDealOwnerClear() {
+    setDealOwnerId("");
+    setDealOwnerSearch("");
+    setDealOwnerDropdownOpen(false);
   }
 
   async function handleDealSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1607,6 +1636,14 @@ export default function PatientActivityCard({
     const location = dealLocation.trim() || "Rhône";
     const notes = dealNotes.trim();
 
+    // Get owner name from selected user
+    const ownerId = dealOwnerId || null;
+    let ownerName: string | null = null;
+    if (ownerId) {
+      const selectedOwner = userOptions.find((u) => u.id === ownerId);
+      ownerName = selectedOwner?.full_name || selectedOwner?.email || null;
+    }
+
     try {
       setDealSaving(true);
       setDealSaveError(null);
@@ -1624,11 +1661,13 @@ export default function PatientActivityCard({
             location,
             title,
             notes: notes || null,
+            owner_id: ownerId,
+            owner_name: ownerName,
             updated_at: new Date().toISOString(),
           })
           .eq("id", editingDeal.id)
           .select(
-            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, created_at, updated_at",
+            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, owner_id, owner_name, created_at, updated_at",
           )
           .single();
 
@@ -1682,9 +1721,11 @@ export default function PatientActivityCard({
             location,
             title,
             notes: notes || null,
+            owner_id: ownerId,
+            owner_name: ownerName,
           })
           .select(
-            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, created_at, updated_at",
+            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, owner_id, owner_name, created_at, updated_at",
           )
           .single();
 
@@ -3596,6 +3637,10 @@ export default function PatientActivityCard({
                           <span className="font-medium text-emerald-700">{contactOwnerName || "—"}</span>
                         </p>
                         <p className="text-[11px] text-slate-600">
+                          <span className="font-semibold">Deal Owner:</span> {" "}
+                          <span className="font-medium text-sky-700">{deal.owner_name || "—"}</span>
+                        </p>
+                        <p className="text-[11px] text-slate-600">
                           <span className="font-semibold">Location:</span> {" "}
                           {locationLabel}
                         </p>
@@ -4088,6 +4133,56 @@ export default function PatientActivityCard({
                       <option value="Gstaad">Gstaad</option>
                       <option value="Montreux">Montreux</option>
                     </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-medium text-slate-700">
+                      Deal Owner
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={dealOwnerSearch}
+                        onChange={(event) => handleDealOwnerSearchChange(event.target.value)}
+                        placeholder="Search users..."
+                        className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 pr-7 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                      {dealOwnerId && (
+                        <button
+                          type="button"
+                          onClick={handleDealOwnerClear}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          ×
+                        </button>
+                      )}
+                      {dealOwnerDropdownOpen && (() => {
+                        const query = dealOwnerSearch.trim().toLowerCase();
+                        const filteredUsers = userOptions
+                          .filter((u) => {
+                            const name = (u.full_name || "").toLowerCase();
+                            const email = (u.email || "").toLowerCase();
+                            return name.includes(query) || email.includes(query);
+                          })
+                          .slice(0, 6);
+
+                        if (filteredUsers.length === 0) return null;
+
+                        return (
+                          <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
+                            {filteredUsers.map((user) => (
+                              <button
+                                key={user.id}
+                                type="button"
+                                onClick={() => handleDealOwnerSelect(user.id, user.full_name || user.email || "Unnamed")}
+                                className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                              >
+                                {user.full_name || user.email || "Unnamed user"}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <label className="block text-[11px] font-medium text-slate-700">
