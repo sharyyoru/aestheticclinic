@@ -3,7 +3,16 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { TARDOC_MEDICINES, formatChf, type TardocMedicine } from "@/lib/tardoc";
+import { 
+  TARDOC_MEDICINES, 
+  TARDOC_TARIFF_ITEMS,
+  DEFAULT_CANTON,
+  CANTON_TAX_POINT_VALUES,
+  calculateTardocPrice,
+  formatChf, 
+  type TardocMedicine,
+  type SwissCanton,
+} from "@/lib/tardoc";
 
 type TaskPriority = "low" | "medium" | "high";
 
@@ -193,9 +202,11 @@ export default function MedicalConsultationsCard({
     [],
   );
   const [invoicePaymentMethod, setInvoicePaymentMethod] = useState("");
-  const [invoiceMode, setInvoiceMode] = useState<"group" | "individual">(
+  const [invoiceMode, setInvoiceMode] = useState<"group" | "individual" | "tardoc">(
     "individual", // default to Individual Services
   );
+  const [selectedTardocCode, setSelectedTardocCode] = useState("");
+  const [invoiceCanton, setInvoiceCanton] = useState<SwissCanton>(DEFAULT_CANTON);
   const [invoiceGroupId, setInvoiceGroupId] = useState("");
   const [invoicePaymentTerm, setInvoicePaymentTerm] =
     useState<InvoicePaymentTerm>("full");
@@ -1877,25 +1888,37 @@ export default function MedicalConsultationsCard({
                               type="button"
                               onClick={() => setInvoiceMode("individual")}
                               className={
-                                "flex-1 px-3 py-1.5 text-center text-xs font-medium " +
+                                "flex-1 px-2 py-1.5 text-center text-[10px] font-medium " +
                                 (invoiceMode === "individual"
                                   ? "bg-sky-600 text-white"
                                   : "bg-transparent text-slate-600")
                               }
                             >
-                              Individual Services
+                              Services
                             </button>
                             <button
                               type="button"
                               onClick={() => setInvoiceMode("group")}
                               className={
-                                "flex-1 px-3 py-1.5 text-center text-xs font-medium " +
+                                "flex-1 px-2 py-1.5 text-center text-[10px] font-medium " +
                                 (invoiceMode === "group"
                                   ? "bg-sky-600 text-white"
                                   : "bg-transparent text-slate-600")
                               }
                             >
-                              Group Services
+                              Groups
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setInvoiceMode("tardoc")}
+                              className={
+                                "flex-1 px-2 py-1.5 text-center text-[10px] font-medium " +
+                                (invoiceMode === "tardoc"
+                                  ? "bg-red-600 text-white"
+                                  : "bg-transparent text-slate-600")
+                              }
+                            >
+                              TARDOC
                             </button>
                           </div>
 
@@ -1985,7 +2008,7 @@ export default function MedicalConsultationsCard({
                                 + Add service
                               </button>
                             </div>
-                          ) : (
+                          ) : invoiceMode === "group" ? (
                             <div className="space-y-2 px-3 py-3">
                               <div className="space-y-1">
                                 <span className="block text-[10px] font-medium text-slate-600">
@@ -2082,7 +2105,76 @@ export default function MedicalConsultationsCard({
                                 invoice list on the right.
                               </p>
                             </div>
-                          )}
+                          ) : invoiceMode === "tardoc" ? (
+                            <div className="space-y-2 px-3 py-3">
+                              <div className="space-y-1">
+                                <span className="block text-[10px] font-medium text-slate-600">
+                                  Canton (Tax Point Value)
+                                </span>
+                                <select
+                                  value={invoiceCanton}
+                                  onChange={(e) => setInvoiceCanton(e.target.value as SwissCanton)}
+                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                >
+                                  {Object.entries(CANTON_TAX_POINT_VALUES).map(([code, value]) => (
+                                    <option key={code} value={code}>
+                                      {code} - CHF {value.toFixed(2)}/pt
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="space-y-1">
+                                <span className="block text-[10px] font-medium text-slate-600">
+                                  TARDOC Tariff
+                                </span>
+                                <select
+                                  value={selectedTardocCode}
+                                  onChange={(e) => setSelectedTardocCode(e.target.value)}
+                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                >
+                                  <option value="">Select TARDOC tariff</option>
+                                  {TARDOC_TARIFF_ITEMS.filter(t => t.isActive).map((tariff) => (
+                                    <option key={tariff.code} value={tariff.code}>
+                                      {tariff.code} - {tariff.description} ({formatChf(calculateTardocPrice(tariff.taxPoints, invoiceCanton))})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!selectedTardocCode) return;
+                                  const tariff = TARDOC_TARIFF_ITEMS.find(t => t.code === selectedTardocCode);
+                                  if (!tariff) return;
+                                  const unitPrice = calculateTardocPrice(tariff.taxPoints, invoiceCanton);
+                                  
+                                  setInvoiceServiceLines((prev) => [
+                                    ...prev,
+                                    {
+                                      serviceId: `tardoc-${tariff.code}`,
+                                      quantity: 1,
+                                      unitPrice,
+                                      groupId: null,
+                                      discountPercent: null,
+                                    },
+                                  ]);
+                                  setSelectedTardocCode("");
+                                }}
+                                disabled={!selectedTardocCode}
+                                className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                + Add TARDOC tariff
+                              </button>
+                              <p className="text-[10px] text-slate-500">
+                                Swiss medical tariff (TARDOC) with canton-specific pricing.
+                                <a href="/tardoc" target="_blank" className="ml-1 text-sky-600 hover:underline">
+                                  View all tariffs →
+                                </a>
+                              </p>
+                            </div>
+                          ) : null}
                         </div>
 
                         <div className="grid gap-4 pt-1 text-[11px] sm:grid-cols-2">
