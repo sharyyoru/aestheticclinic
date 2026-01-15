@@ -107,23 +107,32 @@ export default function DocSpaceEditor({
     };
 
     const initDocSpace = () => {
+      console.log("=== DocSpace Init Debug ===");
+      console.log("Current URL:", window.location.href);
+      console.log("DocSpace URL:", DOCSPACE_URL);
+      console.log("Window.DocSpace exists:", !!window.DocSpace);
+      console.log("Window.DocSpace.SDK exists:", !!window.DocSpace?.SDK);
+      
       if (!window.DocSpace?.SDK) {
-        console.error("DocSpace SDK not available");
-        setErrorMsg("DocSpace SDK failed to load");
+        const msg = "DocSpace SDK not available on window object. Check if domain is whitelisted in DocSpace settings.";
+        console.error(msg);
+        setErrorMsg(msg);
         setStatus("error");
-        onError?.("DocSpace SDK failed to load");
+        onError?.(msg);
         return;
       }
 
       try {
         console.log("Initializing DocSpace SDK with config:", config);
         instanceRef.current = window.DocSpace.SDK.init(config);
-        console.log("DocSpace SDK initialized");
+        console.log("✅ DocSpace SDK initialized successfully");
       } catch (err) {
-        console.error("Error initializing DocSpace:", err);
-        setErrorMsg(err instanceof Error ? err.message : "Failed to initialize DocSpace");
+        console.error("❌ Error initializing DocSpace:", err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error("Error details:", errorMessage);
+        setErrorMsg(`Failed to initialize: ${errorMessage}`);
         setStatus("error");
-        onError?.(err instanceof Error ? err.message : "Failed to initialize DocSpace");
+        onError?.(errorMessage);
       }
     };
 
@@ -157,15 +166,29 @@ export default function DocSpaceEditor({
   if (status === "error") {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-slate-50 p-8">
-        <div className="max-w-md rounded-lg border border-red-200 bg-red-50 p-6 text-center">
-          <svg className="mx-auto mb-4 h-12 w-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <h3 className="mb-2 text-lg font-semibold text-red-800">DocSpace Error</h3>
-          <p className="mb-4 text-sm text-red-600">{errorMsg}</p>
-          <p className="text-xs text-slate-500">
-            Make sure your domain is added in DocSpace → Developer Tools → JavaScript SDK
-          </p>
+        <div className="max-w-2xl rounded-lg border border-red-200 bg-red-50 p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <svg className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-red-800 mb-2">DocSpace SDK Failed to Load</h3>
+              <p className="text-sm text-red-700 mb-3">{errorMsg}</p>
+              <div className="bg-white/50 rounded p-3 text-xs space-y-2">
+                <p className="font-semibold text-red-800">To fix this:</p>
+                <ol className="list-decimal list-inside space-y-1 text-red-700">
+                  <li>Go to your DocSpace: <code className="bg-red-100 px-1 rounded">https://docspace-hm9cxt.onlyoffice.com</code></li>
+                  <li>Navigate to: Settings → Developer Tools → JavaScript SDK</li>
+                  <li>Add this domain: <code className="bg-red-100 px-1 rounded font-semibold">http://localhost:3002</code></li>
+                  <li>Also ensure: <code className="bg-red-100 px-1 rounded">https://aestheticclinic.vercel.app</code> is added</li>
+                  <li>Save and refresh this page</li>
+                </ol>
+                <p className="text-red-600 mt-2">
+                  <strong>Note:</strong> Check browser console (F12) for detailed error logs.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
         {onClose && (
           <button
