@@ -61,26 +61,108 @@ type ServiceOption = {
 };
 
 const BOOKING_STATUS_OPTIONS = [
-  "Video Conference",
-  "Telephone",
-  "Urgent",
-  "In Person",
-  "Physical Consultation",
-  "Paid",
-  "Invoice Sent",
+  "Aucune sélection",
+  "Vidéo conférence / appel",
+  "Bon/Solde/Voucher",
+  "CONTROLE INFOS PATIENT",
+  "PAIEMENT PARTIEL",
+  "FACTURATION TARMED",
+  "PAYE",
+  "FACTURE ENVOYEE",
   "CB",
-  "Waiting Room",
-  "At The Doctors",
-  "To Do",
-  "Done",
+  "Salle d'attente",
+  "Chez le médecin/dans la salle de consult.",
+  "Patient parti, hors du cabinet",
+  "à faire",
+  "fait",
   "Attention",
-  "Canceled",
-  "Didn't Come",
-  "Late",
-  "To Pay",
-  "Missing",
-  "Cash",
+  "Annulé",
+  "Téléphone",
+  "N'est pas venu",
+  "en retard",
+  "à payer",
+  "Urgent",
+  "Déplacé",
+  "MANQUE",
+  "NUIT",
+  "ESPECES",
 ];
+
+const CATEGORY_COLORS: Record<string, string> = {
+  "No selection": "bg-slate-100",
+  "Mesotherapy": "bg-violet-200",
+  "Dermomask": "bg-amber-200",
+  "1ère consultation": "bg-yellow-300",
+  "Administration": "bg-slate-300",
+  "Cavitation": "bg-lime-300",
+  "CO2": "bg-yellow-600",
+  "Control": "bg-lime-400",
+  "Emla Cream": "bg-slate-200",
+  "Cryotherapy": "bg-purple-400",
+  "Discussion": "bg-slate-300",
+  "EMSCULPT": "bg-teal-400",
+  "Cutera laser hair removal": "bg-green-500",
+  "Epilation laser Gentel": "bg-lime-300",
+  "Electrolysis hair removal": "bg-purple-500",
+  "HIFU": "bg-rose-400",
+  "Injection (botox; Acide hyaluronic)": "bg-yellow-400",
+  "Important": "bg-slate-800 text-white",
+  "IPL": "bg-sky-300",
+  "Meso Anti-age": "bg-orange-500",
+  "Meso Anti-cellulite": "bg-orange-400",
+  "Meso Anti-tache": "bg-orange-300",
+  "Microdermabrasion": "bg-indigo-400",
+  "MORPHEUS8": "bg-indigo-500",
+  "Radio frequency": "bg-purple-300",
+  "Meeting": "bg-orange-600",
+  "OP Surgery": "bg-red-500 text-white",
+  "Breaks/Change of Location": "bg-amber-400",
+  "PRP": "bg-orange-400",
+  "Tatoo removal": "bg-slate-400",
+  "TCA": "bg-sky-200",
+  "Treatment": "bg-slate-300",
+  "Caviar treatment": "bg-slate-300",
+  "Vacation/Leave": "bg-green-400",
+  "Visia": "bg-slate-200",
+};
+
+const STATUS_ICONS: Record<string, string> = {
+  "Aucune sélection": "",
+  "Vidéo conférence / appel": "📹",
+  "Bon/Solde/Voucher": "🅱️",
+  "CONTROLE INFOS PATIENT": "📋",
+  "PAIEMENT PARTIEL": "💳",
+  "FACTURATION TARMED": "🇹",
+  "PAYE": "✓",
+  "FACTURE ENVOYEE": "📧",
+  "CB": "💳",
+  "Salle d'attente": "🪑",
+  "Chez le médecin/dans la salle de consult.": "🩺",
+  "Patient parti, hors du cabinet": "🚶",
+  "à faire": "☐",
+  "fait": "☑",
+  "Attention": "⚠️",
+  "Annulé": "✗",
+  "Téléphone": "📞",
+  "N'est pas venu": "∅",
+  "en retard": "⏱️",
+  "à payer": "💰",
+  "Urgent": "🔥",
+  "Déplacé": "↔️",
+  "MANQUE": "📖",
+  "NUIT": "🌙",
+  "ESPECES": "💵",
+};
+
+function getCategoryColor(category: string | null): string {
+  if (!category) return "bg-slate-100";
+  return CATEGORY_COLORS[category] ?? "bg-slate-100";
+}
+
+function getStatusIcon(status: string | null): string {
+  if (!status) return "";
+  return STATUS_ICONS[status] ?? "";
+}
 
 const CLINIC_LOCATION_OPTIONS = ["Rhône", "Champel", "Gstaad", "Montreux"];
 
@@ -544,6 +626,11 @@ export default function CalendarPage() {
   const [editTime, setEditTime] = useState("");
   const [editConsultationDuration, setEditConsultationDuration] = useState(15);
   const [editBookingStatus, setEditBookingStatus] = useState("");
+  const [editBookingStatusSearch, setEditBookingStatusSearch] = useState("");
+  const [editBookingStatusDropdownOpen, setEditBookingStatusDropdownOpen] = useState(false);
+  const [editCategory, setEditCategory] = useState("");
+  const [editCategorySearch, setEditCategorySearch] = useState("");
+  const [editCategoryDropdownOpen, setEditCategoryDropdownOpen] = useState(false);
   const [editLocation, setEditLocation] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -1426,6 +1513,11 @@ export default function CalendarPage() {
 
     const { statusLabel } = getServiceAndStatusFromReason(appt.reason);
     setEditBookingStatus(statusLabel ?? "");
+    setEditBookingStatusSearch(statusLabel ?? "");
+
+    const categoryFromReason = getCategoryFromReason(appt.reason);
+    setEditCategory(categoryFromReason ?? "");
+    setEditCategorySearch(categoryFromReason ?? "");
 
     setEditModalOpen(true);
   }
@@ -1465,6 +1557,18 @@ export default function CalendarPage() {
     try {
       setSavingEdit(true);
 
+      // Build updated reason string with category and status
+      const existingReason = editingAppointment.reason ?? "";
+      const { serviceLabel } = getServiceAndStatusFromReason(existingReason);
+      const doctorName = getDoctorNameFromReason(existingReason);
+      const notes = getNotesFromReason(existingReason);
+      
+      let updatedReason = serviceLabel || "Appointment";
+      if (doctorName) updatedReason += ` [Doctor: ${doctorName}]`;
+      if (editCategory && editCategory !== "No selection") updatedReason += ` [Category: ${editCategory}]`;
+      if (notes) updatedReason += ` [Notes: ${notes}]`;
+      if (editBookingStatus && editBookingStatus !== "Aucune sélection") updatedReason += ` [Status: ${editBookingStatus}]`;
+
       const { data, error } = await supabaseClient
         .from("appointments")
         .update({
@@ -1472,6 +1576,7 @@ export default function CalendarPage() {
           start_time: startIso,
           end_time: endIso,
           location: editLocation || null,
+          reason: updatedReason,
         })
         .eq("id", editingAppointment.id)
         .select(
@@ -2024,7 +2129,7 @@ export default function CalendarPage() {
                               }}
                               className={`w-full rounded-md px-1 py-0.5 text-[10px] text-left ${getAppointmentStatusColorClasses(
                                 appt.status,
-                              )} bg-slate-200/90`}
+                              )} ${getCategoryColor(category)}`}
                             >
                               <div className="truncate font-medium text-slate-800">
                                 {patientName || serviceLabel}
@@ -2220,7 +2325,7 @@ export default function CalendarPage() {
                                 onClick={() => openEditModalForAppointment(appt)}
                                 className={`absolute rounded-md px-1 py-1 text-[11px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(
                                   appt.status,
-                                )} bg-slate-200/90`}
+                                )} ${getCategoryColor(category)}`}
                                 style={{
                                   top,
                                   height,
@@ -2339,17 +2444,99 @@ export default function CalendarPage() {
                         {getDoctorNameFromReason(editingAppointment.reason) || editingAppointment.provider?.name || "—"}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-500">Category</p>
-                      <p className="text-[11px] text-slate-800">
-                        {getCategoryFromReason(editingAppointment.reason) || "—"}
-                      </p>
+                    <div className="relative col-span-2">
+                      <p className="text-[10px] text-slate-500 mb-1">Category</p>
+                      <input
+                        type="text"
+                        value={editCategorySearch}
+                        onChange={(e) => {
+                          setEditCategorySearch(e.target.value);
+                          setEditCategoryDropdownOpen(true);
+                        }}
+                        onFocus={() => setEditCategoryDropdownOpen(true)}
+                        placeholder="Search category..."
+                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                      />
+                      {editCategory && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditCategory("");
+                            setEditCategorySearch("");
+                          }}
+                          className="absolute right-2 top-6 text-slate-400 hover:text-slate-600 text-xs"
+                        >
+                          ×
+                        </button>
+                      )}
+                      {editCategoryDropdownOpen && (
+                        <div className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                          {APPOINTMENT_CATEGORY_OPTIONS.filter((opt) =>
+                            opt.toLowerCase().includes(editCategorySearch.toLowerCase())
+                          ).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                setEditCategory(opt);
+                                setEditCategorySearch(opt);
+                                setEditCategoryDropdownOpen(false);
+                              }}
+                              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] text-slate-700 hover:bg-slate-50"
+                            >
+                              <span className={`h-3 w-3 rounded-sm ${getCategoryColor(opt)}`} />
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-500">Status/Channel</p>
-                      <p className="text-[11px] text-slate-800">
-                        {getServiceAndStatusFromReason(editingAppointment.reason).statusLabel || "—"}
-                      </p>
+                    <div className="relative col-span-2">
+                      <p className="text-[10px] text-slate-500 mb-1">Status/Channel</p>
+                      <input
+                        type="text"
+                        value={editBookingStatusSearch}
+                        onChange={(e) => {
+                          setEditBookingStatusSearch(e.target.value);
+                          setEditBookingStatusDropdownOpen(true);
+                        }}
+                        onFocus={() => setEditBookingStatusDropdownOpen(true)}
+                        placeholder="Search status..."
+                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                      />
+                      {editBookingStatus && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditBookingStatus("");
+                            setEditBookingStatusSearch("");
+                          }}
+                          className="absolute right-2 top-6 text-slate-400 hover:text-slate-600 text-xs"
+                        >
+                          ×
+                        </button>
+                      )}
+                      {editBookingStatusDropdownOpen && (
+                        <div className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                          {BOOKING_STATUS_OPTIONS.filter((opt) =>
+                            opt.toLowerCase().includes(editBookingStatusSearch.toLowerCase())
+                          ).map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                setEditBookingStatus(opt);
+                                setEditBookingStatusSearch(opt);
+                                setEditBookingStatusDropdownOpen(false);
+                              }}
+                              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] text-slate-700 hover:bg-slate-50"
+                            >
+                              <span className="w-4 text-center">{getStatusIcon(opt)}</span>
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {getNotesFromReason(editingAppointment.reason) && (
