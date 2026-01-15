@@ -150,7 +150,7 @@ type CalendarAppointment = {
 type CalendarView = "month" | "day" | "range";
 
 const DAY_VIEW_START_MINUTES = 8 * 60;
-const DAY_VIEW_END_MINUTES = 19 * 60;
+const DAY_VIEW_END_MINUTES = 22 * 60;
 const DAY_VIEW_SLOT_MINUTES = 15;
 const DAY_VIEW_SLOT_HEIGHT = 48;
 
@@ -1058,7 +1058,7 @@ export default function CalendarPage() {
 
   function formatTimeLabel(totalMinutes: number): string {
     if (totalMinutes === DAY_VIEW_END_MINUTES - DAY_VIEW_SLOT_MINUTES) {
-      return "7:00 PM";
+      return "10:00 PM";
     }
 
     const minutes = totalMinutes % 60;
