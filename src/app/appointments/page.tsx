@@ -617,6 +617,14 @@ export default function CalendarPage() {
   const [durationSearch, setDurationSearch] = useState("");
   const [durationDropdownOpen, setDurationDropdownOpen] = useState(false);
   const [createDoctorCalendarId, setCreateDoctorCalendarId] = useState("");
+
+  const closeAllCreateDropdowns = (except?: string) => {
+    if (except !== "service") setServiceDropdownOpen(false);
+    if (except !== "status") setStatusDropdownOpen(false);
+    if (except !== "category") setCategoryDropdownOpen(false);
+    if (except !== "location") setLocationDropdownOpen(false);
+    if (except !== "duration") setDurationDropdownOpen(false);
+  };
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] =
     useState<CalendarAppointment | null>(null);
@@ -2118,6 +2126,8 @@ export default function CalendarPage() {
 
                           const category = getCategoryFromReason(appt.reason);
                           const notes = getNotesFromReason(appt.reason);
+                          const { statusLabel } = getServiceAndStatusFromReason(appt.reason);
+                          const statusIcon = getStatusIcon(statusLabel);
 
                           return (
                             <button
@@ -2131,8 +2141,9 @@ export default function CalendarPage() {
                                 appt.status,
                               )} ${getCategoryColor(category)}`}
                             >
-                              <div className="truncate font-medium text-slate-800">
-                                {patientName || serviceLabel}
+                              <div className="flex items-center gap-1 truncate font-medium text-slate-800">
+                                {statusIcon && <span className="flex-shrink-0">{statusIcon}</span>}
+                                <span className="truncate">{patientName || serviceLabel}</span>
                               </div>
                               <div className="truncate text-[10px] text-slate-500">
                                 {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
@@ -2317,6 +2328,8 @@ export default function CalendarPage() {
 
                             const category = getCategoryFromReason(appt.reason);
                             const notes = getNotesFromReason(appt.reason);
+                            const { statusLabel: dayStatusLabel } = getServiceAndStatusFromReason(appt.reason);
+                            const dayStatusIcon = getStatusIcon(dayStatusLabel);
 
                             return (
                               <button
@@ -2333,8 +2346,9 @@ export default function CalendarPage() {
                                   width: `calc(${widthPercent}% - 4px)`,
                                 }}
                               >
-                                <div className="truncate font-medium text-slate-800">
-                                  {patientName || serviceLabel}
+                                <div className="flex items-center gap-1 truncate font-medium text-slate-800">
+                                  {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
+                                  <span className="truncate">{patientName || serviceLabel}</span>
                                 </div>
                                 <div className="truncate text-[10px] text-slate-600">
                                   {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
@@ -2861,7 +2875,7 @@ export default function CalendarPage() {
                           setSelectedServiceId("");
                         }
                       }}
-                      onFocus={() => setServiceDropdownOpen(true)}
+                      onFocus={() => { closeAllCreateDropdowns("service"); setServiceDropdownOpen(true); }}
                       placeholder={serviceOptionsLoading ? "Loading..." : "Search service..."}
                       className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
@@ -2898,20 +2912,25 @@ export default function CalendarPage() {
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Status</p>
                   <div className="relative">
-                    <input
-                      type="text"
-                      value={statusSearch}
-                      onChange={(e) => {
-                        setStatusSearch(e.target.value);
-                        setStatusDropdownOpen(true);
-                        if (!e.target.value.trim()) {
-                          setBookingStatus("");
-                        }
-                      }}
-                      onFocus={() => setStatusDropdownOpen(true)}
-                      placeholder="Search status..."
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    />
+                    <div className="flex items-center">
+                      {bookingStatus && getStatusIcon(bookingStatus) && (
+                        <span className="absolute left-2 z-10 text-sm">{getStatusIcon(bookingStatus)}</span>
+                      )}
+                      <input
+                        type="text"
+                        value={statusSearch}
+                        onChange={(e) => {
+                          setStatusSearch(e.target.value);
+                          setStatusDropdownOpen(true);
+                          if (!e.target.value.trim()) {
+                            setBookingStatus("");
+                          }
+                        }}
+                        onFocus={() => { closeAllCreateDropdowns("status"); setStatusDropdownOpen(true); }}
+                        placeholder="Search status..."
+                        className={`w-full rounded-lg border border-slate-200 bg-slate-50/80 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 ${bookingStatus && getStatusIcon(bookingStatus) ? "pl-7 pr-3" : "px-3"}`}
+                      />
+                    </div>
                     {bookingStatus && (
                       <button
                         type="button"
@@ -2932,8 +2951,9 @@ export default function CalendarPage() {
                               setStatusSearch(opt);
                               setStatusDropdownOpen(false);
                             }}
-                            className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${bookingStatus === opt ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sky-50 ${bookingStatus === opt ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
                           >
+                            <span className="w-4 text-center flex-shrink-0">{getStatusIcon(opt)}</span>
                             {opt}
                           </button>
                         ))}
@@ -2944,20 +2964,25 @@ export default function CalendarPage() {
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Category</p>
                   <div className="relative">
-                    <input
-                      type="text"
-                      value={categorySearch}
-                      onChange={(e) => {
-                        setCategorySearch(e.target.value);
-                        setCategoryDropdownOpen(true);
-                        if (!e.target.value.trim()) {
-                          setAppointmentCategory("");
-                        }
-                      }}
-                      onFocus={() => setCategoryDropdownOpen(true)}
-                      placeholder="Search category..."
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    />
+                    <div className="flex items-center">
+                      {appointmentCategory && (
+                        <span className={`absolute left-2 z-10 h-3 w-3 rounded-sm ${getCategoryColor(appointmentCategory)}`} />
+                      )}
+                      <input
+                        type="text"
+                        value={categorySearch}
+                        onChange={(e) => {
+                          setCategorySearch(e.target.value);
+                          setCategoryDropdownOpen(true);
+                          if (!e.target.value.trim()) {
+                            setAppointmentCategory("");
+                          }
+                        }}
+                        onFocus={() => { closeAllCreateDropdowns("category"); setCategoryDropdownOpen(true); }}
+                        placeholder="Search category..."
+                        className={`w-full rounded-lg border border-slate-200 bg-slate-50/80 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 ${appointmentCategory ? "pl-7 pr-3" : "px-3"}`}
+                      />
+                    </div>
                     {appointmentCategory && (
                       <button
                         type="button"
@@ -2978,8 +3003,9 @@ export default function CalendarPage() {
                               setCategorySearch(opt);
                               setCategoryDropdownOpen(false);
                             }}
-                            className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${appointmentCategory === opt ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sky-50 ${appointmentCategory === opt ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
                           >
+                            <span className={`h-3 w-3 rounded-sm flex-shrink-0 ${getCategoryColor(opt)}`} />
                             {opt}
                           </button>
                         ))}
@@ -3000,7 +3026,7 @@ export default function CalendarPage() {
                           setDraftLocation("");
                         }
                       }}
-                      onFocus={() => setLocationDropdownOpen(true)}
+                      onFocus={() => { closeAllCreateDropdowns("location"); setLocationDropdownOpen(true); }}
                       placeholder="Search location..."
                       className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
@@ -3043,7 +3069,7 @@ export default function CalendarPage() {
                         setDurationSearch(e.target.value);
                         setDurationDropdownOpen(true);
                       }}
-                      onFocus={() => setDurationDropdownOpen(true)}
+                      onFocus={() => { closeAllCreateDropdowns("duration"); setDurationDropdownOpen(true); }}
                       placeholder="Search duration..."
                       className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
