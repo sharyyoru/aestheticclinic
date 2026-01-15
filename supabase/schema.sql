@@ -68,13 +68,17 @@ create table if not exists providers (
 );
 
 -- Appointment status enum
-create type if not exists appointment_status as enum (
-  'scheduled',
-  'confirmed',
-  'completed',
-  'cancelled',
-  'no_show'
-);
+DO $$ BEGIN
+  CREATE TYPE appointment_status AS ENUM (
+    'scheduled',
+    'confirmed',
+    'completed',
+    'cancelled',
+    'no_show'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Appointments
 create table if not exists appointments (
@@ -95,14 +99,18 @@ create index if not exists appointments_provider_id_idx on appointments(provider
 create index if not exists appointments_start_time_idx on appointments(start_time);
 
 -- Deal stage type enum
-create type if not exists deal_stage_type as enum (
-  'lead',
-  'consultation',
-  'surgery',
-  'post_op',
-  'follow_up',
-  'other'
-);
+DO $$ BEGIN
+  CREATE TYPE deal_stage_type AS ENUM (
+    'lead',
+    'consultation',
+    'surgery',
+    'post_op',
+    'follow_up',
+    'other'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Deal pipeline stages
 create table if not exists deal_stages (
@@ -166,11 +174,15 @@ create table if not exists crisalix_reconstructions (
 create index if not exists crisalix_reconstructions_patient_type_idx on crisalix_reconstructions(patient_id, reconstruction_type);
 
 -- Workflow trigger type enum
-create type if not exists workflow_trigger_type as enum (
-  'deal_stage_changed',
-  'appointment_created',
-  'appointment_updated'
-);
+DO $$ BEGIN
+  CREATE TYPE workflow_trigger_type AS ENUM (
+    'deal_stage_changed',
+    'appointment_created',
+    'appointment_updated'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Workflows
 create table if not exists workflows (
@@ -186,11 +198,15 @@ alter table if exists workflows
   add column if not exists config jsonb not null default '{}'::jsonb;
 
 -- Workflow action type enum
-create type if not exists workflow_action_type as enum (
-  'draft_email_patient',
-  'draft_email_insurance',
-  'generate_postop_doc'
-);
+DO $$ BEGIN
+  CREATE TYPE workflow_action_type AS ENUM (
+    'draft_email_patient',
+    'draft_email_insurance',
+    'generate_postop_doc'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Workflow actions
 create table if not exists workflow_actions (
@@ -204,11 +220,15 @@ create table if not exists workflow_actions (
 create index if not exists workflow_actions_workflow_id_idx on workflow_actions(workflow_id);
 
 -- Email template type enum
-create type if not exists email_template_type as enum (
-  'patient',
-  'insurance',
-  'post_op'
-);
+DO $$ BEGIN
+  CREATE TYPE email_template_type AS ENUM (
+    'patient',
+    'insurance',
+    'post_op'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Email templates
 create table if not exists email_templates (
@@ -221,17 +241,25 @@ create table if not exists email_templates (
 );
 
 -- Email status and direction enums
-create type if not exists email_status as enum (
-  'draft',
-  'queued',
-  'sent',
-  'failed'
-);
+DO $$ BEGIN
+  CREATE TYPE email_status AS ENUM (
+    'draft',
+    'queued',
+    'sent',
+    'failed'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
-create type if not exists email_direction as enum (
-  'outbound',
-  'inbound'
-);
+DO $$ BEGIN
+  CREATE TYPE email_direction AS ENUM (
+    'outbound',
+    'inbound'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Emails (patient + insurance)
 create table if not exists emails (
@@ -264,17 +292,25 @@ create table if not exists email_attachments (
 create index if not exists email_attachments_email_id_idx on email_attachments(email_id);
 
 -- WhatsApp message status and direction enums
-create type if not exists whatsapp_status as enum (
-  'queued',
-  'sent',
-  'delivered',
-  'failed'
-);
+DO $$ BEGIN
+  CREATE TYPE whatsapp_status AS ENUM (
+    'queued',
+    'sent',
+    'delivered',
+    'failed'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
-create type if not exists whatsapp_direction as enum (
-  'outbound',
-  'inbound'
-);
+DO $$ BEGIN
+  CREATE TYPE whatsapp_direction AS ENUM (
+    'outbound',
+    'inbound'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- WhatsApp messages linked to a patient
 create table if not exists whatsapp_messages (
@@ -293,11 +329,15 @@ create table if not exists whatsapp_messages (
 create index if not exists whatsapp_messages_patient_id_idx on whatsapp_messages(patient_id);
 
 -- Document type enum
-create type if not exists document_type as enum (
-  'post_op',
-  'report',
-  'other'
-);
+DO $$ BEGIN
+  CREATE TYPE document_type AS ENUM (
+    'post_op',
+    'report',
+    'other'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Documents (e.g. AI-generated post-op instructions)
 create table if not exists documents (
@@ -340,24 +380,36 @@ create index if not exists patient_note_mentions_recipient_idx
   on patient_note_mentions(mentioned_user_id, read_at);
 
 -- Task status / priority / type enums
-create type if not exists task_status as enum (
-  'not_started',
-  'in_progress',
-  'completed'
-);
+DO $$ BEGIN
+  CREATE TYPE task_status AS ENUM (
+    'not_started',
+    'in_progress',
+    'completed'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
-create type if not exists task_priority as enum (
-  'low',
-  'medium',
-  'high'
-);
+DO $$ BEGIN
+  CREATE TYPE task_priority AS ENUM (
+    'low',
+    'medium',
+    'high'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
-create type if not exists task_type as enum (
-  'todo',
-  'call',
-  'email',
-  'other'
-);
+DO $$ BEGIN
+  CREATE TYPE task_type AS ENUM (
+    'todo',
+    'call',
+    'email',
+    'other'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Tasks linked to a patient with optional assignee
 create table if not exists tasks (
@@ -394,17 +446,21 @@ create index if not exists patient_edit_locks_user_id_idx
   on patient_edit_locks(user_id);
 
 -- Consultation record type enum (aligns with medical tabs: notes onward)
-create type if not exists consultation_record_type as enum (
-  'notes',
-  'prescription',
-  'invoice',
-  'file',
-  'photo',
-  '3d',
-  'patient_information',
-  'documents',
-  'form_photos'
-);
+DO $$ BEGIN
+  CREATE TYPE consultation_record_type AS ENUM (
+    'notes',
+    'prescription',
+    'invoice',
+    'file',
+    'photo',
+    '3d',
+    'patient_information',
+    'documents',
+    'form_photos'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Consultations linked to a patient
 create table if not exists consultations (
@@ -585,7 +641,11 @@ create index if not exists chat_conversations_user_archived_idx
   on chat_conversations(user_id, is_archived, updated_at desc);
 
 -- Chat messages belonging to conversations
-create type if not exists chat_message_role as enum ('user', 'assistant', 'system');
+DO $$ BEGIN
+  CREATE TYPE chat_message_role AS ENUM ('user', 'assistant', 'system');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 create table if not exists chat_messages (
   id uuid primary key default gen_random_uuid(),
