@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import DocSpaceEditor from "./DocSpaceEditor";
+import OnlyOfficeEditor from "./OnlyOfficeEditor";
 
 type Template = {
   id: string;
@@ -32,6 +32,13 @@ type PatientDocument = {
   };
 };
 
+type OnlyOfficeDoc = {
+  url: string;
+  key: string;
+  title: string;
+  fileType: string;
+} | null;
+
 type DocumentTemplatesPanelProps = {
   patientId: string;
   patientName: string;
@@ -47,7 +54,8 @@ export default function DocumentTemplatesPanel({
   const [isLoading, setIsLoading] = useState(true);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
-  const [showDocSpace, setShowDocSpace] = useState(false);
+  const [onlyOfficeDoc, setOnlyOfficeDoc] = useState<OnlyOfficeDoc>(null);
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
 
   // Fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -87,10 +95,34 @@ export default function DocumentTemplatesPanel({
     }
   }, [showTemplateModal, fetchTemplates]);
 
-  // Open DocSpace editor
-  const handleOpenDocSpace = () => {
-    setShowDocSpace(true);
-    setShowTemplateModal(false);
+  // Open template in OnlyOffice editor
+  const handleOpenTemplate = async (template: Template) => {
+    setIsLoadingTemplate(true);
+    try {
+      // Get signed URL from Supabase for OnlyOffice to access
+      const res = await fetch(
+        `/api/documents/onlyoffice/url?filePath=${encodeURIComponent(template.file_path)}&bucket=templates`
+      );
+      const data = await res.json();
+      
+      if (data.url) {
+        setOnlyOfficeDoc({
+          url: data.url,
+          key: data.key,
+          title: `${template.name} - ${patientName}`,
+          fileType: data.fileType || "docx",
+        });
+        setShowTemplateModal(false);
+      } else {
+        console.error("Failed to get document URL:", data.error);
+        alert("Failed to open template. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error opening template:", error);
+      alert("Failed to open template.");
+    } finally {
+      setIsLoadingTemplate(false);
+    }
   };
 
   // Delete document
@@ -107,14 +139,14 @@ export default function DocumentTemplatesPanel({
     }
   };
 
-  // DocSpace full screen editor
-  if (showDocSpace) {
+  // OnlyOffice full screen editor
+  if (onlyOfficeDoc) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-white">
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setShowDocSpace(false)}
+              onClick={() => setOnlyOfficeDoc(null)}
               className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -122,18 +154,23 @@ export default function DocumentTemplatesPanel({
               </svg>
             </button>
             <div>
-              <h2 className="font-semibold text-slate-900">DocSpace - {patientName}</h2>
+              <h2 className="font-semibold text-slate-900">{onlyOfficeDoc.title}</h2>
               <p className="text-xs text-slate-500">Full document editing with 100% formatting preserved</p>
             </div>
           </div>
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-            DocSpace Editor
+          <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700">
+            OnlyOffice Editor
           </span>
         </div>
         <div className="flex-1">
-          <DocSpaceEditor
-            onClose={() => setShowDocSpace(false)}
-            onError={(error) => console.error("DocSpace error:", error)}
+          <OnlyOfficeEditor
+            documentUrl={onlyOfficeDoc.url}
+            documentKey={onlyOfficeDoc.key}
+            documentTitle={onlyOfficeDoc.title}
+            fileType={onlyOfficeDoc.fileType}
+            mode="edit"
+            onClose={() => setOnlyOfficeDoc(null)}
+            onError={(error: string) => console.error("OnlyOffice error:", error)}
           />
         </div>
       </div>
@@ -188,12 +225,12 @@ export default function DocumentTemplatesPanel({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p className="text-slate-500 mb-2">No documents yet</p>
-          <p className="text-sm text-slate-400 mb-4">Open DocSpace to create and edit documents with full formatting</p>
+          <p className="text-sm text-slate-400 mb-4">Select a template to create and edit documents with full formatting</p>
           <button
-            onClick={handleOpenDocSpace}
-            className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600"
+            onClick={() => setShowTemplateModal(true)}
+            className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600"
           >
-            Open DocSpace Editor
+            Select a Template
           </button>
         </div>
       ) : (
@@ -276,54 +313,62 @@ export default function DocumentTemplatesPanel({
               </button>
             </div>
             <div className="p-4 space-y-4">
-              {/* DocSpace button - primary action */}
-              <button
-                onClick={handleOpenDocSpace}
-                className="w-full flex items-center gap-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4 text-left hover:border-emerald-400 hover:bg-emerald-100 transition-colors"
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500 text-white">
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-emerald-900">Open DocSpace Editor</h3>
-                  <p className="text-sm text-emerald-700">
-                    Create & edit documents with 100% formatting preserved
-                  </p>
-                </div>
-                <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
+              {/* Info box */}
+              <div className="rounded-lg bg-sky-50 border border-sky-200 p-3">
+                <p className="text-sm text-sky-800">
+                  <strong>Note:</strong> Templates are stored in Supabase and opened with OnlyOffice for 100% accurate editing.
+                  {!process.env.NEXT_PUBLIC_ONLYOFFICE_URL && (
+                    <span className="block mt-1 text-xs text-sky-600">
+                      Requires OnlyOffice Document Server running locally (Docker).
+                    </span>
+                  )}
+                </p>
+              </div>
 
               {/* Templates list */}
-              {templates.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-slate-700 mb-2">Available Templates</h3>
-                  <div className="max-h-48 overflow-y-auto space-y-2">
+              <div>
+                <h3 className="text-sm font-medium text-slate-700 mb-2">
+                  Select a Template from Supabase
+                </h3>
+                {templates.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <svg className="mx-auto h-10 w-10 text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-sm text-slate-500">No templates found</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Upload DOCX templates to the "templates" bucket in Supabase
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto space-y-2">
                     {templates.map((template) => (
-                      <div
+                      <button
                         key={template.id}
-                        className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3"
+                        onClick={() => handleOpenTemplate(template)}
+                        disabled={isLoadingTemplate}
+                        className="w-full flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left hover:border-sky-300 hover:bg-sky-50 transition-colors disabled:opacity-50"
                       >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-600">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 text-sky-600">
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
                         <div className="flex-1 min-w-0">
                           <h4 className="font-medium text-slate-900 text-sm truncate">{template.name}</h4>
-                          <p className="text-xs text-slate-500">{template.file_type.toUpperCase()}</p>
+                          <p className="text-xs text-slate-500">
+                            {template.file_type.toUpperCase()}
+                            {template.category && ` • ${template.category}`}
+                          </p>
                         </div>
-                      </div>
+                        <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
                     ))}
                   </div>
-                  <p className="mt-2 text-xs text-slate-500 text-center">
-                    Upload templates to DocSpace to use them with full formatting
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
