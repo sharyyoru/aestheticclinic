@@ -804,3 +804,62 @@ create table if not exists medidata_config (
 alter table if exists providers
   add column if not exists gln text,
   add column if not exists zsr text;
+
+-- ============================================
+-- DOCUMENT TEMPLATES SYSTEM
+-- ============================================
+
+-- Document templates metadata (files stored in Supabase storage 'templates' bucket)
+create table if not exists document_templates (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  file_path text not null, -- Path in templates bucket
+  file_type text not null default 'docx', -- docx, pdf, etc.
+  category text, -- e.g., 'post_op', 'consent', 'report'
+  is_active boolean not null default true,
+  created_by uuid references users(id),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists document_templates_name_idx on document_templates(name);
+create index if not exists document_templates_category_idx on document_templates(category);
+
+-- Patient documents (created from templates or blank)
+create table if not exists patient_documents (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references patients(id) on delete cascade,
+  template_id uuid references document_templates(id) on delete set null,
+  title text not null,
+  content text, -- HTML/rich text content
+  status text check (status in ('draft', 'final', 'signed', 'archived')) not null default 'draft',
+  file_path text, -- Path to saved PDF/docx in storage
+  version integer not null default 1,
+  created_by uuid references users(id),
+  created_by_name text,
+  last_edited_by uuid references users(id),
+  last_edited_at timestamptz,
+  signed_at timestamptz,
+  signed_by_patient boolean default false,
+  signed_by_doctor boolean default false,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists patient_documents_patient_id_idx on patient_documents(patient_id);
+create index if not exists patient_documents_template_id_idx on patient_documents(template_id);
+create index if not exists patient_documents_status_idx on patient_documents(status);
+
+-- Document version history for audit trail
+create table if not exists patient_document_versions (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references patient_documents(id) on delete cascade,
+  version integer not null,
+  content text,
+  changed_by uuid references users(id),
+  changed_by_name text,
+  created_at timestamptz default now()
+);
+
+create index if not exists patient_document_versions_document_id_idx on patient_document_versions(document_id);

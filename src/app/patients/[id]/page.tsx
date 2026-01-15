@@ -733,7 +733,7 @@ export default async function PatientPage({
           ) : null}
 
           {medicalTab === "documents" ? (
-            <PatientDocumentsTab patientId={patient.id} />
+            <PatientDocumentsTab patientId={patient.id} patientName={`${patient.first_name} ${patient.last_name}`} />
           ) : null}
 
           {medicalTab === "form_photos" ? (
