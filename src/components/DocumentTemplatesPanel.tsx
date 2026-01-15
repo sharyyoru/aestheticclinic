@@ -96,14 +96,19 @@ export default function DocumentTemplatesPanel({
       // First, fetch the template content (convert DOCX to HTML)
       let templateContent = "";
       if (template.file_path) {
-        const contentRes = await fetch(
-          `/api/documents/templates/${encodeURIComponent(template.file_path)}/content`
-        );
-        if (contentRes.ok) {
+        try {
+          const contentRes = await fetch(
+            `/api/documents/templates/content?filePath=${encodeURIComponent(template.file_path)}`
+          );
           const contentData = await contentRes.json();
-          templateContent = contentData.content || "";
-        } else {
-          console.error("Failed to fetch template content");
+          if (contentRes.ok && contentData.content) {
+            templateContent = contentData.content;
+            console.log("Template content loaded successfully, length:", templateContent.length);
+          } else {
+            console.error("Failed to fetch template content:", contentData.error || "Unknown error");
+          }
+        } catch (fetchError) {
+          console.error("Error fetching template content:", fetchError);
         }
       }
 
