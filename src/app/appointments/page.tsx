@@ -253,6 +253,22 @@ function getDoctorNameFromReason(reason: string | null): string | null {
   return raw || null;
 }
 
+function getCategoryFromReason(reason: string | null): string | null {
+  if (!reason) return null;
+  const match = reason.match(/\[Category:\s*(.+?)\s*]/);
+  if (!match) return null;
+  const raw = match[1].trim();
+  return raw || null;
+}
+
+function getNotesFromReason(reason: string | null): string | null {
+  if (!reason) return null;
+  const match = reason.match(/\[Notes:\s*(.+?)\s*]/);
+  if (!match) return null;
+  const raw = match[1].trim();
+  return raw || null;
+}
+
 async function sendAppointmentConfirmationEmail(
   appointment: CalendarAppointment,
 ): Promise<void> {
@@ -1241,9 +1257,13 @@ export default function CalendarPage() {
         ? ` [Category: ${appointmentCategory}]` 
         : "";
 
+      const notesTag = draftDescription.trim() 
+        ? ` [Notes: ${draftDescription.trim()}]` 
+        : "";
+
       const reason = bookingStatus
-        ? `${baseReason}${doctorTag}${categoryTag} [Status: ${bookingStatus}]`
-        : `${baseReason}${doctorTag}${categoryTag}`;
+        ? `${baseReason}${doctorTag}${categoryTag}${notesTag} [Status: ${bookingStatus}]`
+        : `${baseReason}${doctorTag}${categoryTag}${notesTag}`;
 
       const { data, error } = await supabaseClient
         .from("appointments")
@@ -1945,6 +1965,9 @@ export default function CalendarPage() {
                           );
                           const doctorColor = doctorCalendar?.color ?? "";
 
+                          const category = getCategoryFromReason(appt.reason);
+                          const notes = getNotesFromReason(appt.reason);
+
                           return (
                             <button
                               key={appt.id}
@@ -1963,6 +1986,16 @@ export default function CalendarPage() {
                               <div className="truncate text-[10px] text-slate-500">
                                 {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
                               </div>
+                              {category && (
+                                <div className="truncate text-[9px] text-slate-400">
+                                  {category}
+                                </div>
+                              )}
+                              {notes && (
+                                <div className="truncate text-[9px] text-slate-400 italic">
+                                  {notes}
+                                </div>
+                              )}
                             </button>
                           );
                         })}
@@ -2125,12 +2158,15 @@ export default function CalendarPage() {
                               .trim()
                               .replace(/\s+/g, " ");
 
+                            const category = getCategoryFromReason(appt.reason);
+                            const notes = getNotesFromReason(appt.reason);
+
                             return (
                               <button
                                 key={`${ymd}-${appt.id}`}
                                 type="button"
                                 onClick={() => openEditModalForAppointment(appt)}
-                                className={`absolute left-2 right-2 rounded-md px-2 py-1 text-[11px] text-left shadow-sm ${getAppointmentStatusColorClasses(
+                                className={`absolute left-2 right-2 rounded-md px-2 py-1 text-[11px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(
                                   appt.status,
                                 )} ${doctorColor}`}
                                 style={{
@@ -2144,6 +2180,16 @@ export default function CalendarPage() {
                                 <div className="truncate text-[10px] text-slate-600">
                                   {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
                                 </div>
+                                {category && height > 60 && (
+                                  <div className="truncate text-[9px] text-slate-500">
+                                    {category}
+                                  </div>
+                                )}
+                                {notes && height > 80 && (
+                                  <div className="truncate text-[9px] text-slate-500 italic">
+                                    {notes}
+                                  </div>
+                                )}
                               </button>
                             );
                           })}
@@ -2194,20 +2240,73 @@ export default function CalendarPage() {
                   </svg>
                 </button>
               </div>
-              <div className="mt-3 space-y-3">
-                <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-slate-600">Patient</p>
-                  <p className="text-[11px] text-slate-800">
-                    {(() => {
-                      const p = editingAppointment.patient;
-                      const name = p
-                        ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() ||
-                          "Unknown patient"
-                        : "Unknown patient";
-                      return name;
-                    })()}
-                  </p>
+              <div className="mt-3 space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                {/* Patient Information */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+                  <p className="text-[11px] font-semibold text-slate-700">Patient Information</p>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-slate-800 font-medium">
+                      {(() => {
+                        const p = editingAppointment.patient;
+                        const name = p
+                          ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() ||
+                            "Unknown patient"
+                          : "Unknown patient";
+                        return name;
+                      })()}
+                    </p>
+                    {editingAppointment.patient?.email && (
+                      <p className="text-[10px] text-slate-500">
+                        {editingAppointment.patient.email}
+                      </p>
+                    )}
+                    {editingAppointment.patient?.phone && (
+                      <p className="text-[10px] text-slate-500">
+                        {editingAppointment.patient.phone}
+                      </p>
+                    )}
+                  </div>
                 </div>
+
+                {/* Appointment Details */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+                  <p className="text-[11px] font-semibold text-slate-700">Appointment Details</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] text-slate-500">Service</p>
+                      <p className="text-[11px] text-slate-800">
+                        {getServiceAndStatusFromReason(editingAppointment.reason).serviceLabel || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500">Doctor</p>
+                      <p className="text-[11px] text-slate-800">
+                        {getDoctorNameFromReason(editingAppointment.reason) || editingAppointment.provider?.name || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500">Category</p>
+                      <p className="text-[11px] text-slate-800">
+                        {getCategoryFromReason(editingAppointment.reason) || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-500">Status/Channel</p>
+                      <p className="text-[11px] text-slate-800">
+                        {getServiceAndStatusFromReason(editingAppointment.reason).statusLabel || "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {getNotesFromReason(editingAppointment.reason) && (
+                    <div className="mt-2 pt-2 border-t border-slate-200">
+                      <p className="text-[10px] text-slate-500">Notes</p>
+                      <p className="text-[11px] text-slate-800 whitespace-pre-wrap">
+                        {getNotesFromReason(editingAppointment.reason)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Workflow status</p>
                   <div className="inline-flex flex-wrap gap-1">
@@ -2259,7 +2358,11 @@ export default function CalendarPage() {
                     className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   >
                     <option value={15}>15 minutes</option>
+                    <option value={30}>30 minutes</option>
                     <option value={45}>45 minutes</option>
+                    <option value={60}>60 minutes</option>
+                    <option value={90}>90 minutes</option>
+                    <option value={120}>120 minutes</option>
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -2280,12 +2383,6 @@ export default function CalendarPage() {
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-slate-600">Channel</p>
-                  <p className="text-[11px] text-slate-800">
-                    {editBookingStatus || "—"}
-                  </p>
                 </div>
               </div>
               {editError ? (
