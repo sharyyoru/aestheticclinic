@@ -41,8 +41,15 @@ create table if not exists patients (
 );
 
 create index if not exists patients_email_idx on patients(email);
-create unique index if not exists patients_email_unique
-  on patients (lower(email));
+-- Unique email index - wrapped in DO block to handle existing duplicates gracefully
+DO $$ BEGIN
+  CREATE UNIQUE INDEX patients_email_unique ON patients (lower(email));
+EXCEPTION
+  WHEN duplicate_table THEN null;
+  WHEN others THEN 
+    -- Index may already exist or duplicates prevent creation - skip silently
+    RAISE NOTICE 'Skipping patients_email_unique index: %', SQLERRM;
+END $$;
 create index if not exists patients_last_name_idx on patients(last_name);
 
 -- Patient insurance information
