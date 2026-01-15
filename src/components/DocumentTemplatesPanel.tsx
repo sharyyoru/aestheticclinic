@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import DocumentEditor from "./DocumentEditor";
+import OnlyOfficeEditor from "./OnlyOfficeEditor";
 
 type Template = {
   id: string;
@@ -12,6 +13,14 @@ type Template = {
   category?: string;
   storage_only?: boolean;
 };
+
+type OnlyOfficeDocument = {
+  url: string;
+  key: string;
+  title: string;
+  fileType: string;
+  filePath: string;
+} | null;
 
 type PatientDocument = {
   id: string;
@@ -50,6 +59,8 @@ export default function DocumentTemplatesPanel({
   const [editingDocument, setEditingDocument] = useState<PatientDocument | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
+  const [onlyOfficeDoc, setOnlyOfficeDoc] = useState<OnlyOfficeDocument>(null);
+  const [isLoadingOnlyOffice, setIsLoadingOnlyOffice] = useState(false);
 
   // Fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -134,6 +145,37 @@ export default function DocumentTemplatesPanel({
       console.error("Error creating document:", error);
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  // Open template in OnlyOffice for 100% accurate editing
+  const handleOpenInOnlyOffice = async (template: Template) => {
+    setIsLoadingOnlyOffice(true);
+    try {
+      // Get signed URL for the template
+      const res = await fetch(
+        `/api/documents/onlyoffice/url?filePath=${encodeURIComponent(template.file_path)}&bucket=templates`
+      );
+      const data = await res.json();
+      
+      if (data.url) {
+        setOnlyOfficeDoc({
+          url: data.url,
+          key: data.key,
+          title: `${template.name} - ${patientName}`,
+          fileType: data.fileType || "docx",
+          filePath: template.file_path,
+        });
+        setShowTemplateModal(false);
+      } else {
+        console.error("Failed to get document URL:", data.error);
+        alert("Failed to open document. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error opening OnlyOffice:", error);
+      alert("Failed to open document editor.");
+    } finally {
+      setIsLoadingOnlyOffice(false);
     }
   };
 
@@ -424,11 +466,9 @@ export default function DocumentTemplatesPanel({
                   </p>
                 ) : (
                   templates.map((template) => (
-                    <button
+                    <div
                       key={template.id}
-                      onClick={() => handleCreateFromTemplate(template)}
-                      disabled={isCreating}
-                      className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-sky-300 hover:bg-sky-50 transition-colors disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3"
                     >
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 text-sky-600">
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -436,20 +476,80 @@ export default function DocumentTemplatesPanel({
                         </svg>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-slate-900 truncate">{template.name}</h3>
+                        <h3 className="font-medium text-slate-900 truncate text-sm">{template.name}</h3>
                         <p className="text-xs text-slate-500">
                           {template.file_type.toUpperCase()}
                           {template.category && ` • ${template.category}`}
                         </p>
                       </div>
-                      <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenInOnlyOffice(template)}
+                          disabled={isLoadingOnlyOffice}
+                          className="flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                          title="Open with full formatting (OnlyOffice)"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          Full Editor
+                        </button>
+                        <button
+                          onClick={() => handleCreateFromTemplate(template)}
+                          disabled={isCreating}
+                          className="flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                          title="Quick edit (basic formatting)"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Quick Edit
+                        </button>
+                      </div>
+                    </div>
                   ))
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* OnlyOffice Editor Modal */}
+      {onlyOfficeDoc && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setOnlyOfficeDoc(null)}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <div>
+                <h2 className="font-semibold text-slate-900">{onlyOfficeDoc.title}</h2>
+                <p className="text-xs text-slate-500">Editing with OnlyOffice - Full formatting preserved</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+                OnlyOffice Editor
+              </span>
+            </div>
+          </div>
+          <div className="flex-1">
+            <OnlyOfficeEditor
+              documentUrl={onlyOfficeDoc.url}
+              documentKey={onlyOfficeDoc.key}
+              documentTitle={onlyOfficeDoc.title}
+              fileType={onlyOfficeDoc.fileType}
+              mode="edit"
+              onClose={() => setOnlyOfficeDoc(null)}
+              onError={(error) => console.error("OnlyOffice error:", error)}
+            />
           </div>
         </div>
       )}
