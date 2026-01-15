@@ -7,7 +7,22 @@ import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
+import Color from "@tiptap/extension-color";
+import { TextStyle } from "@tiptap/extension-text-style";
 import { useState, useEffect, useCallback, useRef } from "react";
+
+const TEXT_COLORS = [
+  { name: "Black", value: "#000000" },
+  { name: "Dark Gray", value: "#374151" },
+  { name: "Gray", value: "#6B7280" },
+  { name: "Red", value: "#DC2626" },
+  { name: "Orange", value: "#EA580C" },
+  { name: "Yellow", value: "#CA8A04" },
+  { name: "Green", value: "#16A34A" },
+  { name: "Blue", value: "#2563EB" },
+  { name: "Purple", value: "#9333EA" },
+  { name: "Pink", value: "#DB2777" },
+];
 
 type DocumentEditorProps = {
   documentId: string;
@@ -54,11 +69,14 @@ export default function DocumentEditor({
       Link.configure({
         openOnClick: false,
       }),
+      TextStyle,
+      Color,
     ],
     content: initialContent,
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none focus:outline-none min-h-[500px] px-8 py-6",
+        class: "prose prose-sm max-w-none focus:outline-none min-h-[500px] px-8 py-6 text-black",
+        style: "color: #000000;",
       },
     },
     onUpdate: () => {
@@ -318,6 +336,39 @@ export default function DocumentEditor({
             <path d="M15.5 4l-8 8h3l8-8h-3zm-7.8 10.3l-3.4 3.4L6 20l1.8-1.8 3.4-3.4-3.5-0.5z" />
           </svg>
         </ToolbarButton>
+
+        {/* Color Picker */}
+        <div className="relative group">
+          <button
+            type="button"
+            title="Text Color"
+            className="rounded p-1.5 text-sm text-slate-600 hover:bg-slate-200"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+            </svg>
+          </button>
+          <div className="absolute left-0 top-full z-30 mt-1 hidden rounded-lg border border-slate-200 bg-white p-2 shadow-lg group-hover:grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: "4px" }}>
+            {TEXT_COLORS.map((color) => (
+              <button
+                key={color.value}
+                type="button"
+                title={color.name}
+                onClick={() => editor.chain().focus().setColor(color.value).run()}
+                className="h-6 w-6 rounded border border-slate-200 hover:scale-110 transition-transform"
+                style={{ backgroundColor: color.value }}
+              />
+            ))}
+            <button
+              type="button"
+              title="Remove color"
+              onClick={() => editor.chain().focus().unsetColor().run()}
+              className="h-6 w-6 rounded border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-xs text-slate-400"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
         
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBlockquote().run()}

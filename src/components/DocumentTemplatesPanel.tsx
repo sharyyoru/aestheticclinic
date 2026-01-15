@@ -93,6 +93,21 @@ export default function DocumentTemplatesPanel({
   const handleCreateFromTemplate = async (template: Template) => {
     setIsCreating(true);
     try {
+      // First, fetch the template content (convert DOCX to HTML)
+      let templateContent = "";
+      if (template.file_path) {
+        const contentRes = await fetch(
+          `/api/documents/templates/${encodeURIComponent(template.file_path)}/content`
+        );
+        if (contentRes.ok) {
+          const contentData = await contentRes.json();
+          templateContent = contentData.content || "";
+        } else {
+          console.error("Failed to fetch template content");
+        }
+      }
+
+      // Create the document with the template content
       const res = await fetch("/api/documents/patient", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,7 +115,7 @@ export default function DocumentTemplatesPanel({
           patientId,
           templateId: template.storage_only ? null : template.id,
           title: `${template.name} - ${patientName}`,
-          content: "",
+          content: templateContent || "<p></p>",
         }),
       });
 
