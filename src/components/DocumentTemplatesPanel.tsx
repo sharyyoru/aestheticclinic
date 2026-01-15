@@ -202,7 +202,8 @@ export default function DocumentTemplatesPanel({
           {documents.map((doc) => (
             <div
               key={doc.id}
-              className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-sky-200 hover:shadow-md transition-all"
+              onClick={() => handleOpenDocSpace()}
+              className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-sky-200 hover:shadow-md transition-all cursor-pointer"
             >
               <div className="flex items-center gap-4">
                 <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
@@ -247,7 +248,16 @@ export default function DocumentTemplatesPanel({
               </div>
               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
-                  onClick={() => handleDeleteDocument(doc.id)}
+                  onClick={(e) => { e.stopPropagation(); handleOpenDocSpace(); }}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-sky-50 hover:text-sky-600"
+                  title="Edit in DocSpace"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }}
                   className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
                   title="Delete"
                 >
