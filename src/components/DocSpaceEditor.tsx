@@ -136,21 +136,72 @@ export default function DocSpaceEditor({
       }
     };
 
+    // Check if script already exists
+    const existingScript = document.querySelector(`script[src="${DOCSPACE_URL}/static/scripts/sdk/2.1.0/api.js"]`);
+    if (existingScript) {
+      console.log("DocSpace SDK script already exists, checking if loaded...");
+      if (window.DocSpace?.SDK) {
+        console.log("SDK already loaded, initializing...");
+        initDocSpace();
+      } else {
+        console.log("Script exists but SDK not ready, waiting...");
+        let attempts = 0;
+        const checkInterval = setInterval(() => {
+          attempts++;
+          console.log(`Checking for SDK... attempt ${attempts}`);
+          if (window.DocSpace?.SDK) {
+            console.log("SDK now available!");
+            clearInterval(checkInterval);
+            initDocSpace();
+          } else if (attempts >= 20) {
+            clearInterval(checkInterval);
+            const msg = "SDK script loaded but window.DocSpace not created. Domain may not be whitelisted.";
+            console.error(msg);
+            setErrorMsg(msg);
+            setStatus("error");
+            onError?.(msg);
+          }
+        }, 250);
+      }
+      return;
+    }
+
     // Load SDK script version 2.1.0
     const script = document.createElement("script");
     script.setAttribute("src", `${DOCSPACE_URL}/static/scripts/sdk/2.1.0/api.js`);
+    script.setAttribute("crossorigin", "anonymous");
+    
     script.onload = () => {
-      console.log("DocSpace SDK 2.1.0 script loaded");
-      // Small delay to ensure SDK is fully initialized
-      setTimeout(initDocSpace, 500);
+      console.log("DocSpace SDK 2.1.0 script loaded successfully");
+      // Wait for SDK to initialize on window object
+      let attempts = 0;
+      const checkInterval = setInterval(() => {
+        attempts++;
+        console.log(`Waiting for window.DocSpace... attempt ${attempts}`);
+        if (window.DocSpace?.SDK) {
+          console.log("window.DocSpace.SDK is now available!");
+          clearInterval(checkInterval);
+          initDocSpace();
+        } else if (attempts >= 20) {
+          clearInterval(checkInterval);
+          const msg = "SDK script loaded but window.DocSpace not created. Your domain (http://localhost:3002) must be whitelisted in DocSpace → Settings → Developer Tools → JavaScript SDK";
+          console.error(msg);
+          setErrorMsg(msg);
+          setStatus("error");
+          onError?.(msg);
+        }
+      }, 250);
     };
-    script.onerror = () => {
-      console.error("Failed to load DocSpace SDK script");
-      setErrorMsg("Failed to load DocSpace SDK script");
+    
+    script.onerror = (e) => {
+      console.error("Failed to load DocSpace SDK script:", e);
+      setErrorMsg("Failed to load DocSpace SDK script from server");
       setStatus("error");
       onError?.("Failed to load DocSpace SDK script");
     };
+    
     document.body.appendChild(script);
+    console.log("DocSpace SDK script tag added to document");
 
     return () => {
       if (instanceRef.current?.destroyFrame) {
@@ -175,17 +226,27 @@ export default function DocSpaceEditor({
               <h3 className="text-lg font-semibold text-red-800 mb-2">DocSpace SDK Failed to Load</h3>
               <p className="text-sm text-red-700 mb-3">{errorMsg}</p>
               <div className="bg-white/50 rounded p-3 text-xs space-y-2">
-                <p className="font-semibold text-red-800">To fix this:</p>
+                <p className="font-semibold text-red-800">Domain Whitelist Issue:</p>
+                <p className="text-red-700 mb-2">The DocSpace SDK script loads but <code className="bg-red-100 px-1">window.DocSpace</code> is not being created. This happens when your domain is not whitelisted.</p>
                 <ol className="list-decimal list-inside space-y-1 text-red-700">
-                  <li>Go to your DocSpace: <code className="bg-red-100 px-1 rounded">https://docspace-hm9cxt.onlyoffice.com</code></li>
-                  <li>Navigate to: Settings → Developer Tools → JavaScript SDK</li>
-                  <li>Add this domain: <code className="bg-red-100 px-1 rounded font-semibold">http://localhost:3002</code></li>
-                  <li>Also ensure: <code className="bg-red-100 px-1 rounded">https://aestheticclinic.vercel.app</code> is added</li>
-                  <li>Save and refresh this page</li>
+                  <li>Open DocSpace: <a href="https://docspace-hm9cxt.onlyoffice.com" target="_blank" className="underline font-semibold">https://docspace-hm9cxt.onlyoffice.com</a></li>
+                  <li>Go to: <strong>Settings → Developer Tools → JavaScript SDK</strong></li>
+                  <li>In the "Add the allowed domains" field, add: <code className="bg-red-100 px-1 rounded font-semibold">http://localhost:3002</code></li>
+                  <li>Click the <strong>+</strong> button to add it</li>
+                  <li>Verify <code className="bg-red-100 px-1 rounded">https://aestheticclinic.vercel.app</code> is also listed</li>
+                  <li><strong>Important:</strong> Make sure there are NO extra characters (no trailing slashes, no paths)</li>
+                  <li>Click Save</li>
+                  <li>Come back here and refresh the page (Ctrl+R or Cmd+R)</li>
                 </ol>
-                <p className="text-red-600 mt-2">
-                  <strong>Note:</strong> Check browser console (F12) for detailed error logs.
-                </p>
+                <div className="bg-yellow-50 border border-yellow-200 rounded p-2 mt-2">
+                  <p className="text-yellow-800 font-semibold">⚠️ Common Issues:</p>
+                  <ul className="list-disc list-inside text-yellow-700 text-xs mt-1">
+                    <li>Domain must be <strong>exact</strong>: <code>http://localhost:3002</code> (not 3000, not with /)</li>
+                    <li>No trailing slash at the end</li>
+                    <li>Include the protocol (http:// or https://)</li>
+                    <li>After adding, wait 10-15 seconds before refreshing</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
