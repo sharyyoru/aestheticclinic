@@ -28,6 +28,10 @@ type InvoiceData = {
   invoice_is_complimentary: boolean;
   invoice_is_paid: boolean;
   payment_link_token: string | null;
+  // Payrexx payment fields
+  payrexx_payment_link: string | null;
+  payrexx_gateway_id: number | null;
+  payrexx_payment_status: string | null;
 };
 
 type PatientData = {
@@ -220,7 +224,17 @@ export async function POST(request: NextRequest) {
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const paymentUrl = `${baseUrl}/invoice/pay/${paymentLinkToken}`;
+    
+    // Use Payrexx payment link for Online Payment, otherwise use internal payment link
+    let paymentUrl: string;
+    let isPayrexxPayment = false;
+    
+    if (invoiceData.payment_method === "Online Payment" && invoiceData.payrexx_payment_link) {
+      paymentUrl = invoiceData.payrexx_payment_link;
+      isPayrexxPayment = true;
+    } else {
+      paymentUrl = `${baseUrl}/invoice/pay/${paymentLinkToken}`;
+    }
 
     const qrCodeDataUrl = await QRCode.toDataURL(paymentUrl, {
       width: 200,

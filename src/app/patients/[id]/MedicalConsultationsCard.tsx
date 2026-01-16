@@ -1469,6 +1469,22 @@ export default function MedicalConsultationsCard({
                     setConsultations((prev) => [inserted, ...prev]);
 
                     if (inserted.record_type === "invoice") {
+                      // Create Payrexx payment gateway for Online Payment invoices
+                      if (inserted.payment_method === "Online Payment") {
+                        try {
+                          const payrexxResponse = await fetch("/api/payments/create-payrexx-gateway", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ consultationId: inserted.id }),
+                          });
+                          
+                          if (!payrexxResponse.ok) {
+                            console.error("Failed to create Payrexx payment gateway");
+                          }
+                        } catch (payrexxError) {
+                          console.error("Error creating Payrexx gateway:", payrexxError);
+                        }
+                      }
                       router.refresh();
                     }
 

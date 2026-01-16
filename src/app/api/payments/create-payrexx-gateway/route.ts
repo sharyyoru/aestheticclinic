@@ -1,0 +1,148 @@
+import { NextRequest, NextResponse } from "next/server";
+import { supabaseClient } from "@/lib/supabaseClient";
+import { createPayrexxGateway, generatePaymentQRCode } from "@/lib/payrexx";
+
+export async function POST(request: NextRequest) {
+  try {
+    const { consultationId } = await request.json();
+
+    if (!consultationId) {
+      return NextResponse.json(
+        { error: "Consultation ID is required" },
+        { status: 400 }
+      );
+    }
+
+    // Verify user is authenticated
+    const { data: authData } = await supabaseClient.auth.getUser();
+    if (!authData?.user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    // Get the invoice/consultation
+    const { data: consultation, error: consultationError } = await supabaseClient
+      .from("consultations")
+      .select("*")
+      .eq("id", consultationId)
+      .eq("record_type", "invoice")
+      .single();
+
+    if (consultationError || !consultation) {
+      return NextResponse.json(
+        { error: "Invoice not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check if payment link already exists
+    if (consultation.payrexx_payment_link) {
+      return NextResponse.json({
+        success: true,
+        paymentLink: consultation.payrexx_payment_link,
+        gatewayId: consultation.payrexx_gateway_id,
+        gatewayHash: consultation.payrexx_gateway_hash,
+        alreadyExists: true,
+      });
+    }
+
+    // Check if payment method is Online Payment
+    if (consultation.payment_method !== "Online Payment") {
+      return NextResponse.json(
+        { error: "Invoice payment method is not Online Payment" },
+        { status: 400 }
+      );
+    }
+
+    // Get patient information
+    const { data: patient, error: patientError } = await supabaseClient
+      .from("patients")
+      .select("first_name, last_name, email, phone, street_address, postal_code, town")
+      .eq("id", consultation.patient_id)
+      .single();
+
+    if (patientError || !patient) {
+      return NextResponse.json(
+        { error: "Patient not found" },
+        { status: 404 }
+      );
+    }
+
+    // Calculate amount in cents (Payrexx requires amount * 100)
+    const amount = Math.round((consultation.invoice_total_amount || 0) * 100);
+
+    if (amount <= 0) {
+      return NextResponse.json(
+        { error: "Invoice amount must be greater than 0" },
+        { status: 400 }
+      );
+    }
+
+    // Create Payrexx Gateway
+    const gatewayResponse = await createPayrexxGateway({
+      amount,
+      currency: "CHF",
+      referenceId: consultation.consultation_id,
+      purpose: `Invoice ${consultation.consultation_id} - ${consultation.title || "Medical Services"}`,
+      forename: patient.first_name,
+      surname: patient.last_name,
+      email: patient.email || undefined,
+      phone: patient.phone || undefined,
+      street: patient.street_address || undefined,
+      postcode: patient.postal_code || undefined,
+      place: patient.town || undefined,
+      country: "CH",
+    });
+
+    if (gatewayResponse.status !== "success" || !gatewayResponse.data?.[0]) {
+      console.error("Payrexx Gateway creation failed:", gatewayResponse);
+      return NextResponse.json(
+        { error: "Failed to create payment gateway" },
+        { status: 500 }
+      );
+    }
+
+    const gateway = gatewayResponse.data[0];
+    const paymentLink = gateway.link;
+    const gatewayId = gateway.id;
+    const gatewayHash = gateway.hash;
+
+    // Generate QR code for the payment link
+    const qrCodeDataUrl = await generatePaymentQRCode(paymentLink);
+
+    // Update the consultation with Payrexx payment info
+    const { error: updateError } = await supabaseClient
+      .from("consultations")
+      .update({
+        payrexx_gateway_id: gatewayId,
+        payrexx_gateway_hash: gatewayHash,
+        payrexx_payment_link: paymentLink,
+        payrexx_payment_status: "waiting",
+      })
+      .eq("id", consultationId);
+
+    if (updateError) {
+      console.error("Failed to update consultation with Payrexx data:", updateError);
+      return NextResponse.json(
+        { error: "Failed to save payment gateway information" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      paymentLink,
+      gatewayId,
+      gatewayHash,
+      qrCodeDataUrl,
+    });
+  } catch (error) {
+    console.error("Error creating Payrexx gateway:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
