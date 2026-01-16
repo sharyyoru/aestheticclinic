@@ -110,11 +110,7 @@ export default function DocSpaceEditor({
           onError?.(String(error));
         },
         onContentReady: () => {
-          console.log("DocSpace content ready");
-          if (authCheckTimeoutRef.current) {
-            clearTimeout(authCheckTimeoutRef.current);
-          }
-          setStatus("ready");
+          console.log("DocSpace content ready - waiting for authentication check");
         },
         onSelectCallback: (event: { data: unknown }) => {
           console.log("File selected:", event);
@@ -144,55 +140,74 @@ export default function DocSpaceEditor({
         instanceRef.current = window.DocSpace.SDK.initManager(config);
         console.log("✅ DocSpace SDK initialized successfully");
         
-        authCheckTimeoutRef.current = setTimeout(async () => {
-          if (status === "loading" && !loginAttemptedRef.current) {
-            console.log("DocSpace taking too long to load - attempting automatic login");
-            loginAttemptedRef.current = true;
-            
-            try {
-              const userInfo = await instanceRef.current?.getUserInfo?.();
-              if (userInfo && userInfo.id) {
-                console.log("User already authenticated:", userInfo);
-                setStatus("ready");
-                return;
-              }
-              
-              console.log("User not authenticated - attempting programmatic login");
-              const loginResponse = await fetch("/api/docspace/login", {
-                method: "POST",
-              });
-              
-              if (!loginResponse.ok) {
-                throw new Error("Failed to get login credentials");
-              }
-              
-              const loginData = await loginResponse.json();
-              
-              if (loginData.success && instanceRef.current?.login) {
-                console.log("Logging in to DocSpace via SDK...");
-                const result = await instanceRef.current.login(
-                  loginData.email,
-                  loginData.passwordHash,
-                  undefined,
-                  true
-                );
-                
-                if (result.success) {
-                  console.log("Login successful!");
-                  setStatus("ready");
-                } else {
-                  throw new Error("Login failed");
-                }
-              } else {
-                throw new Error("Login method not available");
-              }
-            } catch (error) {
-              console.error("Authentication failed:", error);
-              setStatus("auth_required");
-              setErrorMsg("Authentication failed. Please configure DocSpace credentials.");
+        const attemptLogin = async () => {
+          if (loginAttemptedRef.current) return;
+          loginAttemptedRef.current = true;
+          
+          console.log("🔐 Starting authentication check...");
+          
+          try {
+            console.log("Checking if user is already authenticated...");
+            const userInfo = await instanceRef.current?.getUserInfo?.();
+            if (userInfo && userInfo.id) {
+              console.log("✅ User already authenticated:", userInfo);
+              setStatus("ready");
+              return;
             }
+          } catch (e) {
+            console.log("User not authenticated, proceeding with login...");
           }
-        }, 5000);
+          
+          try {
+            console.log("📡 Fetching login credentials from API...");
+            const loginResponse = await fetch("/api/docspace/login", {
+              method: "POST",
+            });
+            
+            if (!loginResponse.ok) {
+              const errorData = await loginResponse.json();
+              console.error("❌ Failed to get credentials:", errorData);
+              throw new Error(errorData.error || "Failed to get login credentials");
+            }
+            
+            const loginData = await loginResponse.json();
+            console.log("✅ Credentials received, attempting SDK login...");
+            
+            if (!loginData.success) {
+              throw new Error(loginData.error || "Invalid credentials response");
+            }
+            
+            if (!instanceRef.current?.login) {
+              console.error("❌ SDK login method not available");
+              console.log("Available methods:", Object.keys(instanceRef.current || {}));
+              throw new Error("SDK login method not available");
+            }
+            
+            console.log("🔑 Calling SDK.login() with email:", loginData.email);
+            const result = await instanceRef.current.login(
+              loginData.email,
+              loginData.passwordHash,
+              undefined,
+              true
+            );
+            
+            console.log("Login result:", result);
+            
+            if (result && result.success) {
+              console.log("✅ Login successful!");
+              setStatus("ready");
+            } else {
+              throw new Error("Login returned unsuccessful result");
+            }
+          } catch (error) {
+            console.error("❌ Authentication failed:", error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            setStatus("auth_required");
+            setErrorMsg("Authentication failed: " + errorMessage);
+          }
+        };
+        
+        authCheckTimeoutRef.current = setTimeout(attemptLogin, 3000);
       } catch (err) {
         console.error("❌ Error initializing DocSpace:", err);
         const errorMessage = err instanceof Error ? err.message : String(err);
