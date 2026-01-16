@@ -32,6 +32,10 @@ export default function GoogleDocsViewer({
         // Open existing Google Doc
         setGoogleDocUrl(`https://docs.google.com/document/d/${data.document.google_doc_id}/edit`);
       } else {
+        // Extract template path from content if it exists
+        const contentMatch = data.document?.content?.match(/Template: ([^<]+)/);
+        const templatePath = contentMatch ? contentMatch[1].trim() : null;
+
         // Create new Google Doc from template
         const createRes = await fetch(`/api/documents/google/create`, {
           method: "POST",
@@ -39,7 +43,7 @@ export default function GoogleDocsViewer({
           body: JSON.stringify({
             documentId,
             title: data.document?.title || "Untitled Document",
-            templatePath: data.document?.template_path || null,
+            templatePath: templatePath,
             patientId: data.document?.patient_id,
           }),
         });

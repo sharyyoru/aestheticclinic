@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       .from("patient_documents")
       .insert({
         patient_id: patientId,
-        template_path: templatePath || null, // Store Supabase template path
+        template_id: null, // Templates are in Supabase storage, not database
         title,
         content: initialContent,
         status: "draft",

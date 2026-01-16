@@ -132,15 +132,14 @@ export default function DocumentTemplatesPanel({
   // Create new document from template
   const handleCreateFromTemplate = async (template: Template) => {
     try {
-      // Create document with template reference (file_path in Supabase)
+      // Create document with template reference stored in content
       const res = await fetch(`/api/documents/patient`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
           title: template.name,
-          templatePath: template.file_path, // Supabase storage path
-          content: `<p>Template: ${template.name}</p><p>Document created from template.</p>`,
+          content: `<p>Template: ${template.file_path}</p><p>Document created from template.</p>`,
         }),
       });
       const data = await res.json();
