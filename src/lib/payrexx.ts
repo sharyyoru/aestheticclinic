@@ -204,7 +204,7 @@ export type CreateGatewayParams = {
 export async function createPayrexxGateway(
   params: CreateGatewayParams
 ): Promise<PayrexxGatewayResponse> {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
   
   const gatewayParams: Record<string, string | number | boolean | undefined> = {
     amount: params.amount,

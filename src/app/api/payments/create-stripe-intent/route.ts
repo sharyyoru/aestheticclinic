@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
     const successUrl = `${baseUrl}/invoice/pay/${consultation.payment_link_token}?payment=success`;
     const cancelUrl = `${baseUrl}/invoice/pay/${consultation.payment_link_token}?payment=cancelled`;
 

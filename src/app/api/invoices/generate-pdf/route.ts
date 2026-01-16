@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
     
     // Use Payrexx payment link for Online Payment, otherwise use internal payment link
     let paymentUrl: string;
