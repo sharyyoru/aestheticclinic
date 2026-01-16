@@ -301,9 +301,9 @@ export default function DocumentTemplatesPanel({
       {/* Template Modal */}
       {showTemplateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-slate-200 p-4">
-              <h2 className="text-lg font-semibold text-slate-900">Create New Document</h2>
+              <h2 className="text-lg font-semibold text-slate-900">Select a Template</h2>
               <button
                 onClick={() => setShowTemplateModal(false)}
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
@@ -313,8 +313,51 @@ export default function DocumentTemplatesPanel({
                 </svg>
               </button>
             </div>
-            <div className="p-4 space-y-4">
-
+            <div className="p-4">
+              <input
+                type="text"
+                placeholder="Search templates..."
+                value={templateSearch}
+                onChange={(e) => setTemplateSearch(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 px-4 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {templates.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <p>No templates found</p>
+                </div>
+              ) : (
+                templates.map((template) => (
+                  <button
+                    key={template.id}
+                    onClick={() => handleCreateFromTemplate(template)}
+                    className="w-full text-left rounded-lg border border-slate-200 bg-white p-4 hover:border-sky-300 hover:bg-sky-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium text-slate-900">{template.name}</h3>
+                        {template.description && (
+                          <p className="text-sm text-slate-500 mt-1">{template.description}</p>
+                        )}
+                        {template.category && (
+                          <span className="inline-block mt-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            {template.category}
+                          </span>
+                        )}
+                      </div>
+                      <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
