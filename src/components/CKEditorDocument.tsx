@@ -27,7 +27,6 @@ export default function CKEditorDocument({
 	const editorMenuBarRef = useRef<HTMLDivElement>(null);
 	const editorToolbarRef = useRef<HTMLDivElement>(null);
 	const editorRef = useRef<HTMLDivElement>(null);
-	const editorCkeditorAiRef = useRef<HTMLDivElement>(null);
 	const editorInstanceRef = useRef<any>(null);
 	const [isLayoutReady, setIsLayoutReady] = useState(false);
 	const cloud = useCKEditorCloud({ version: '47.4.0', premium: true, ckbox: { version: '2.9.2' } });
@@ -110,7 +109,7 @@ export default function CKEditorDocument({
 			BalloonToolbar,
 			BlockToolbar
 		} = cloud.CKEditor;
-		const { AIChat, AIEditorIntegration, AIQuickActions, AIReviewMode, PasteFromOfficeEnhanced, FormatPainter, LineHeight, SlashCommand } =
+		const { PasteFromOfficeEnhanced, FormatPainter, LineHeight, SlashCommand } =
 			cloud.CKEditorPremiumFeatures;
 
 		return {
@@ -120,9 +119,6 @@ export default function CKEditorDocument({
 					items: [
 						'undo',
 						'redo',
-						'|',
-						'toggleAi',
-						'aiQuickActions',
 						'|',
 						'formatPainter',
 						'findAndReplace',
@@ -169,10 +165,6 @@ export default function CKEditorDocument({
 					shouldNotGroupWhenFull: false
 				},
 				plugins: [
-					AIChat,
-					AIEditorIntegration,
-					AIQuickActions,
-					AIReviewMode,
 					Alignment,
 					Autoformat,
 					AutoImage,
@@ -243,30 +235,8 @@ export default function CKEditorDocument({
 					TodoList,
 					Underline
 				],
-				ai: {
-					container: {
-						type: 'sidebar',
-						element: editorCkeditorAiRef.current,
-						showResizeButton: false
-					},
-					chat: {
-						context: {
-							document: {
-								enabled: true
-							},
-							urls: {
-								enabled: true
-							},
-							files: {
-								enabled: true
-							}
-						}
-					}
-				},
-				balloonToolbar: ['aiQuickActions', '|', 'bold', 'italic', '|', 'link', 'insertImage', '|', 'bulletedList', 'numberedList'],
+				balloonToolbar: ['bold', 'italic', '|', 'link', 'insertImage', '|', 'bulletedList', 'numberedList'],
 				blockToolbar: [
-					'toggleAi',
-					'|',
 					'fontSize',
 					'fontColor',
 					'fontBackgroundColor',
@@ -496,7 +466,6 @@ export default function CKEditorDocument({
 									</div>
 								</div>
 							</div>
-							<div className="editor-container__sidebar editor-container__sidebar_ckeditor-ai" ref={editorCkeditorAiRef}></div>
 						</div>
 					</div>
 				</div>
