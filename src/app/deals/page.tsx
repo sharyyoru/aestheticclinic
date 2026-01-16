@@ -934,7 +934,7 @@ export default function DealsPage() {
             <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 text-xs shadow-sm">
               {/* Top scrollbar - synced with main board */}
               <div
-                className="kanban-scroll-top w-full max-w-full overflow-x-auto"
+                className="kanban-scroll-top w-full max-w-full"
                 onScroll={(e) => {
                   if (boardScrollRef.current) {
                     boardScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
@@ -948,7 +948,7 @@ export default function DealsPage() {
                 </div>
               </div>
               <div
-                className="kanban-scroll w-full max-w-full overflow-x-auto pb-2"
+                className="kanban-scroll w-full max-w-full pb-2"
                 ref={boardScrollRef}
                 onDragOver={handleBoardDragOver}
                 onScroll={(e) => {
