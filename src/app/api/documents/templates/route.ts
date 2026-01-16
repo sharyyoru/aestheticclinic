@@ -6,6 +6,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
 
+    console.log('Templates API called');
+    console.log('Service account email:', process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL);
+    console.log('Private key exists:', !!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY);
+
     // Initialize Google Drive API
     const auth = new google.auth.GoogleAuth({
       credentials: {
@@ -20,11 +24,15 @@ export async function GET(request: NextRequest) {
     // List files from the Templates folder
     const TEMPLATES_FOLDER_ID = '1XIzFLA07OEmk-T4z1zijj0FUEcNyIb4S';
 
+    console.log('Fetching templates from folder:', TEMPLATES_FOLDER_ID);
+
     const response = await drive.files.list({
       q: `'${TEMPLATES_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false`,
       fields: 'files(id, name, mimeType, modifiedTime, description)',
       orderBy: 'name',
     });
+
+    console.log('Templates found:', response.data.files?.length || 0);
 
     let templates = response.data.files || [];
 
