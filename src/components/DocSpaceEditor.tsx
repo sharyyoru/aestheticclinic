@@ -16,6 +16,12 @@ declare global {
   }
 }
 
+interface HashSettings {
+  size: number;
+  iterations: number;
+  salt: string;
+}
+
 interface DocSpaceConfig {
   frameId: string;
   src: string;
@@ -44,6 +50,10 @@ interface DocSpaceConfig {
 interface DocSpaceInstance {
   destroyFrame?: () => void;
   config?: DocSpaceConfig;
+  getUserInfo?: () => Promise<{ id: string; email: string; displayName: string } | null>;
+  getHashSettings?: () => Promise<HashSettings>;
+  createHash?: (password: string, hashSettings: HashSettings) => Promise<{ hash: string }>;
+  login?: (email: string, passwordHash: string, password?: string, session?: boolean) => Promise<{ success: boolean; user?: unknown }>;
 }
 
 export interface DocSpaceEditorProps {
@@ -62,6 +72,7 @@ export default function DocSpaceEditor({
   const instanceRef = useRef<DocSpaceInstance | null>(null);
   const initAttemptedRef = useRef(false);
   const authCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loginAttemptedRef = useRef(false);
 
   useEffect(() => {
     if (initAttemptedRef.current) return;
@@ -133,11 +144,26 @@ export default function DocSpaceEditor({
         instanceRef.current = window.DocSpace.SDK.initManager(config);
         console.log("✅ DocSpace SDK initialized successfully");
         
-        authCheckTimeoutRef.current = setTimeout(() => {
-          if (status === "loading") {
-            console.log("DocSpace taking too long to load - likely needs authentication");
-            setStatus("auth_required");
-            setErrorMsg("Please log in to DocSpace to continue");
+        authCheckTimeoutRef.current = setTimeout(async () => {
+          if (status === "loading" && !loginAttemptedRef.current) {
+            console.log("DocSpace taking too long to load - checking authentication status");
+            loginAttemptedRef.current = true;
+            
+            try {
+              const userInfo = await instanceRef.current?.getUserInfo?.();
+              if (userInfo && userInfo.id) {
+                console.log("User already authenticated:", userInfo);
+                setStatus("ready");
+              } else {
+                console.log("User not authenticated - showing login prompt");
+                setStatus("auth_required");
+                setErrorMsg("Please log in to DocSpace to continue");
+              }
+            } catch (error) {
+              console.log("Authentication check failed - showing login prompt");
+              setStatus("auth_required");
+              setErrorMsg("Please log in to DocSpace to continue");
+            }
           }
         }, 5000);
       } catch (err) {
@@ -233,28 +259,55 @@ export default function DocSpaceEditor({
   if (status === "auth_required") {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-slate-50 p-8">
-        <div className="max-w-2xl rounded-lg border border-blue-200 bg-blue-50 p-6">
+        <div className="max-w-3xl rounded-lg border border-amber-200 bg-amber-50 p-6">
           <div className="flex items-start gap-3 mb-4">
-            <svg className="h-6 w-6 text-blue-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <svg className="h-6 w-6 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-blue-800 mb-2">DocSpace Authentication Required</h3>
-              <p className="text-sm text-blue-700 mb-3">You need to log in to DocSpace to access your documents.</p>
-              <div className="bg-white/50 rounded p-3 text-xs space-y-2 mb-4">
-                <p className="text-blue-700">Click the button below to log in to DocSpace. After logging in, come back to this page and the documents will load automatically.</p>
+              <h3 className="text-lg font-semibold text-amber-800 mb-2">DocSpace Cookie Configuration Required</h3>
+              <p className="text-sm text-amber-700 mb-3">The DocSpace SDK is loading but cannot maintain authentication due to browser cookie restrictions in cross-origin iframes.</p>
+              
+              <div className="bg-white/70 rounded p-4 text-xs space-y-3 mb-4">
+                <div>
+                  <p className="font-semibold text-amber-900 mb-1">🔧 Server Configuration Needed:</p>
+                  <p className="text-amber-800">The DocSpace server needs to be configured with <code className="bg-amber-100 px-1 rounded">SameSite: none</code> cookies to work in embedded iframes.</p>
+                </div>
+                
+                <div className="border-t border-amber-200 pt-2">
+                  <p className="font-semibold text-amber-900 mb-1">📝 Temporary Workaround:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-amber-800 ml-2">
+                    <li>Click the button below to open DocSpace in a new tab</li>
+                    <li>Log in to DocSpace in that tab</li>
+                    <li>Keep the DocSpace tab open</li>
+                    <li>Return here and click "Reload" - the session should work</li>
+                  </ol>
+                </div>
+                
+                <div className="border-t border-amber-200 pt-2">
+                  <p className="font-semibold text-amber-900 mb-1">🔒 Why This Happens:</p>
+                  <p className="text-amber-800">Browsers block third-party cookies by default for security. DocSpace needs server-side configuration to allow cross-origin authentication.</p>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  window.open(DOCSPACE_URL, "_blank");
-                  setTimeout(() => {
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    window.open(DOCSPACE_URL, "_blank");
+                  }}
+                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                >
+                  Open DocSpace to Log In
+                </button>
+                <button
+                  onClick={() => {
                     window.location.reload();
-                  }, 2000);
-                }}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                Log in to DocSpace
-              </button>
+                  }}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  Reload After Login
+                </button>
+              </div>
             </div>
           </div>
         </div>
