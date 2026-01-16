@@ -32,14 +32,15 @@ export default function GoogleDocsViewer({
         // Open existing Google Doc
         setGoogleDocUrl(`https://docs.google.com/document/d/${data.document.google_doc_id}/edit`);
       } else {
-        // Create new Google Doc
+        // Create new Google Doc from template
         const createRes = await fetch(`/api/documents/google/create`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             documentId,
             title: data.document?.title || "Untitled Document",
-            content: data.document?.content || "",
+            templateId: data.document?.template_id || null,
+            patientId: data.document?.patient_id,
           }),
         });
 
@@ -47,7 +48,7 @@ export default function GoogleDocsViewer({
         if (createData.googleDocId) {
           setGoogleDocUrl(`https://docs.google.com/document/d/${createData.googleDocId}/edit`);
         } else {
-          setError("Failed to create Google Doc");
+          setError(createData.error || "Failed to create Google Doc");
         }
       }
     } catch (err) {

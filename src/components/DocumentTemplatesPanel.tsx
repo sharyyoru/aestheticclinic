@@ -132,14 +132,15 @@ export default function DocumentTemplatesPanel({
   // Create new document from template
   const handleCreateFromTemplate = async (template: Template) => {
     try {
-      // Create document with template reference
+      // Create document with template reference (template.id is the Google Drive file ID)
       const res = await fetch(`/api/documents/patient`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
           title: template.name,
-          content: `<p>Template: ${template.name}</p><p>This document will be created in Google Docs.</p>`,
+          templateId: template.id, // Google Drive template file ID
+          content: `<p>Template: ${template.name}</p><p>This document will be created in Google Docs from template.</p>`,
         }),
       });
       const data = await res.json();

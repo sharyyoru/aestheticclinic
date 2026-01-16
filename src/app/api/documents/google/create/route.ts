@@ -10,7 +10,7 @@ const supabaseAdmin = createClient(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { documentId, title, content } = body;
+    const { documentId, title, templateId, patientId } = body;
 
     if (!documentId) {
       return NextResponse.json(
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Google Docs API
+    // Initialize Google Drive API
     const auth = new google.auth.GoogleAuth({
       credentials: {
         client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -31,23 +31,56 @@ export async function POST(request: NextRequest) {
       ],
     });
 
-    const docs = google.docs({ version: 'v1', auth });
     const drive = google.drive({ version: 'v3', auth });
 
-    // Create a new Google Doc
-    const doc = await docs.documents.create({
-      requestBody: {
-        title: title || 'Untitled Document',
-      },
+    let googleDocId: string;
+    let patientFolderId: string;
+
+    // Create or get patient folder
+    const patientFolderName = `Patient_${patientId}`;
+    const folderQuery = await drive.files.list({
+      q: `name='${patientFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id, name)',
     });
 
-    const googleDocId = doc.data.documentId;
-
-    if (!googleDocId) {
-      throw new Error("Failed to create Google Doc");
+    if (folderQuery.data.files && folderQuery.data.files.length > 0) {
+      patientFolderId = folderQuery.data.files[0].id!;
+    } else {
+      // Create patient folder
+      const folder = await drive.files.create({
+        requestBody: {
+          name: patientFolderName,
+          mimeType: 'application/vnd.google-apps.folder',
+        },
+        fields: 'id',
+      });
+      patientFolderId = folder.data.id!;
     }
 
-    // Make the document publicly editable (or share with specific users)
+    if (templateId) {
+      // Copy template to patient folder
+      const copiedFile = await drive.files.copy({
+        fileId: templateId,
+        requestBody: {
+          name: title || 'Untitled Document',
+          parents: [patientFolderId],
+        },
+      });
+      googleDocId = copiedFile.data.id!;
+    } else {
+      // Create blank document in patient folder
+      const file = await drive.files.create({
+        requestBody: {
+          name: title || 'Untitled Document',
+          mimeType: 'application/vnd.google-apps.document',
+          parents: [patientFolderId],
+        },
+        fields: 'id',
+      });
+      googleDocId = file.data.id!;
+    }
+
+    // Make the document editable
     await drive.permissions.create({
       fileId: googleDocId,
       requestBody: {
@@ -61,12 +94,14 @@ export async function POST(request: NextRequest) {
       .from("patient_documents")
       .update({
         google_doc_id: googleDocId,
+        google_drive_folder_id: patientFolderId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", documentId);
 
     return NextResponse.json({
       googleDocId,
+      folderId: patientFolderId,
       url: `https://docs.google.com/document/d/${googleDocId}/edit`,
     });
   } catch (error) {
