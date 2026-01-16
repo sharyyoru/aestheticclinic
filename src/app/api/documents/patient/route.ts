@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { patientId, title, content, templatePath } = body;
+    const { patientId, title, content } = body;
 
     if (!patientId || !title) {
       return NextResponse.json(
@@ -71,14 +71,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Set initial content
-    let initialContent = content || "<p>Start typing your document...</p>";
-    
-    // If template path is provided, note it for reference
-    // The actual template loading will happen in the editor
-    if (templatePath && !content) {
-      initialContent = `<p>Template: ${templatePath}</p><p>Start editing...</p>`;
-    }
+    // Use provided content or default
+    const initialContent = content || "<p>Start typing your document...</p>";
 
     const { data, error } = await supabaseAdmin
       .from("patient_documents")

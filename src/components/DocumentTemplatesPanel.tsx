@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import CKEditorDocument from "./CKEditorDocument";
+import GoogleDocsViewer from "./GoogleDocsViewer";
 
 type Template = {
   id: string;
@@ -132,13 +132,14 @@ export default function DocumentTemplatesPanel({
   // Create new document from template
   const handleCreateFromTemplate = async (template: Template) => {
     try {
+      // Create document with template reference
       const res = await fetch(`/api/documents/patient`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
           title: template.name,
-          templatePath: template.file_path,
+          content: `<p>Template: ${template.name}</p><p>This document will be created in Google Docs.</p>`,
         }),
       });
       const data = await res.json();
@@ -159,13 +160,12 @@ export default function DocumentTemplatesPanel({
   if (showEditor && currentDocument) {
     return (
       <div className="fixed inset-0 z-50 bg-white">
-        <CKEditorDocument
+        <GoogleDocsViewer
           documentId={currentDocument.id}
-          initialContent={currentDocument.content}
-          onSave={handleSaveDocument}
           onClose={() => {
             setShowEditor(false);
             setCurrentDocument(null);
+            fetchDocuments(); // Refresh list when closing
           }}
         />
       </div>
