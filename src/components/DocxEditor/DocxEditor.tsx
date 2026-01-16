@@ -4,7 +4,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { createEditor, Descendant, Editor, Transforms, Element as SlateElement } from 'slate';
 import { Slate, Editable, withReact, RenderElementProps, RenderLeafProps } from 'slate-react';
 import { withHistory } from 'slate-history';
-import { CustomElement, CustomText } from '@/lib/docx/types';
 import Toolbar from './Toolbar';
 
 interface DocxEditorProps {
