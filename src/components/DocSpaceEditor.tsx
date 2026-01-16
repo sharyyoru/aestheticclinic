@@ -8,43 +8,42 @@ declare global {
   interface Window {
     DocSpace?: {
       SDK: {
-        init: (config: DocSpaceConfig) => DocSpaceInstance;
+        initManager: (config: DocSpaceConfig) => DocSpaceInstance;
         initFrame: (config: DocSpaceConfig) => DocSpaceInstance;
+        frames: Record<string, DocSpaceInstance>;
       };
     };
   }
 }
 
 interface DocSpaceConfig {
-  src: string;
-  mode: string;
-  width: string;
-  height: string;
   frameId: string;
-  showHeader: boolean;
-  showTitle: boolean;
-  showMenu: boolean;
-  showFilter: boolean;
-  disableActionButton: boolean;
-  init: boolean;
-  viewTableColumns: string;
-  filter: {
-    count: number;
-    page: number;
-    sortorder: string;
-    sortby: string;
-    search: string;
-    withSubfolders: boolean;
+  src: string;
+  width?: string;
+  height?: string;
+  showHeader?: boolean;
+  showTitle?: boolean;
+  showMenu?: boolean;
+  showFilter?: boolean;
+  viewTableColumns?: string;
+  filter?: {
+    count?: string;
+    sortBy?: string;
+    sortOrder?: string;
+    search?: string;
+    withSubfolders?: boolean;
   };
   events?: {
     onAppReady?: () => void;
     onAppError?: (error: string) => void;
     onSelectCallback?: (event: { data: unknown }) => void;
+    onContentReady?: () => void;
   };
 }
 
 interface DocSpaceInstance {
   destroyFrame?: () => void;
+  config?: DocSpaceConfig;
 }
 
 export interface DocSpaceEditorProps {
@@ -68,23 +67,19 @@ export default function DocSpaceEditor({
     initAttemptedRef.current = true;
 
     const config: DocSpaceConfig = {
+      frameId: "ds-frame",
       src: DOCSPACE_URL,
-      mode: "manager",
       width: "100%",
       height: "100%",
-      frameId: "ds-frame",
       showHeader: true,
       showTitle: true,
       showMenu: true,
       showFilter: true,
-      disableActionButton: false,
-      init: true,
-      viewTableColumns: "Index,Name,Size,Type,Tags",
+      viewTableColumns: "Name,Size,Type,Modified,Author",
       filter: {
-        count: 100,
-        page: 1,
-        sortorder: "descending",
-        sortby: "DateAndTime",
+        count: "100",
+        sortBy: "DateAndTime",
+        sortOrder: "descending",
         search: "",
         withSubfolders: false,
       },
@@ -98,6 +93,9 @@ export default function DocSpaceEditor({
           setErrorMsg(String(error));
           setStatus("error");
           onError?.(String(error));
+        },
+        onContentReady: () => {
+          console.log("DocSpace content ready");
         },
         onSelectCallback: (event: { data: unknown }) => {
           console.log("File selected:", event);
@@ -124,7 +122,7 @@ export default function DocSpaceEditor({
 
       try {
         console.log("Initializing DocSpace SDK with config:", config);
-        instanceRef.current = window.DocSpace.SDK.init(config);
+        instanceRef.current = window.DocSpace.SDK.initManager(config);
         console.log("✅ DocSpace SDK initialized successfully");
       } catch (err) {
         console.error("❌ Error initializing DocSpace:", err);
@@ -137,7 +135,7 @@ export default function DocSpaceEditor({
     };
 
     // Check if script already exists
-    const existingScript = document.querySelector(`script[src="${DOCSPACE_URL}/static/scripts/sdk/2.1.0/api.js"]`);
+    const existingScript = document.querySelector(`script[src="${DOCSPACE_URL}/static/scripts/sdk/2.0.0/api.js"]`);
     if (existingScript) {
       console.log("DocSpace SDK script already exists, checking if loaded...");
       if (window.DocSpace?.SDK) {
@@ -166,13 +164,12 @@ export default function DocSpaceEditor({
       return;
     }
 
-    // Load SDK script version 2.1.0
+    // Load SDK script version 2.0.0
     const script = document.createElement("script");
-    script.setAttribute("src", `${DOCSPACE_URL}/static/scripts/sdk/2.1.0/api.js`);
-    script.setAttribute("crossorigin", "anonymous");
+    script.setAttribute("src", `${DOCSPACE_URL}/static/scripts/sdk/2.0.0/api.js");
     
     script.onload = () => {
-      console.log("DocSpace SDK 2.1.0 script loaded successfully");
+      console.log("DocSpace SDK 2.0.0 script loaded successfully");
       // Wait for SDK to initialize on window object
       let attempts = 0;
       const checkInterval = setInterval(() => {
