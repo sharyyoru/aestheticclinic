@@ -162,47 +162,8 @@ export default function AppointmentModal({
 
     const appointmentDateObj = new Date(appointmentDate);
 
-    // Check if the selected date is a weekend
-    if (isWeekend(appointmentDateObj)) {
-      setError("Weekend bookings are not available. Please select a weekday (Monday-Friday).");
-      return;
-    }
-
-    // Check for double booking
-    const durationMins = parseInt(durationMinutes, 10) || 15;
-    const endTime = new Date(appointmentDateObj.getTime() + durationMins * 60 * 1000);
-    
-    // Fetch existing appointments for the same day
-    const dayStart = new Date(appointmentDateObj);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(appointmentDateObj);
-    dayEnd.setHours(23, 59, 59, 999);
-
-    // Check for schedule overlap with selected doctor
-    if (assignedUserId) {
-      try {
-        const doctorName = users.find(u => u.id === assignedUserId)?.full_name || "";
-        const response = await fetch(`/api/appointments/check-availability?start=${dayStart.toISOString()}&end=${dayEnd.toISOString()}&doctor=${encodeURIComponent(doctorName)}`);
-        if (response.ok) {
-          const { appointments } = await response.json();
-          // Check for overlapping appointments
-          const hasConflict = appointments?.some((apt: { start_time: string; end_time: string }) => {
-            const aptStart = new Date(apt.start_time);
-            const aptEnd = new Date(apt.end_time);
-            // Check if new appointment overlaps with existing
-            return (appointmentDateObj < aptEnd && endTime > aptStart);
-          });
-          
-          if (hasConflict) {
-            setError("This time slot conflicts with an existing appointment for this doctor. Please choose a different time.");
-            return;
-          }
-        }
-      } catch (err) {
-        console.error("Failed to check availability:", err);
-        // Continue with booking even if check fails
-      }
-    }
+    // Internal users can book on weekends and past dates - no restrictions
+    // External users (via magic link) have restrictions handled in the public API
 
     try {
       setSaving(true);

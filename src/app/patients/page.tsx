@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
+import PatientMergeModal from "@/components/PatientMergeModal";
 
 type PatientRow = {
   id: string;
@@ -35,6 +36,7 @@ export default function PatientsPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showMergeModal, setShowMergeModal] = useState(false);
 
   const [priorityMode, setPriorityMode] = useState<"crm" | "medical">("crm");
 
@@ -342,6 +344,14 @@ export default function PatientsPage() {
               className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             />
           </div>
+          {selectedIds.length >= 2 && (
+            <button
+              onClick={() => setShowMergeModal(true)}
+              className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-sky-700"
+            >
+              Merge {selectedIds.length} Patients
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -463,6 +473,20 @@ export default function PatientsPage() {
           </div>
         )}
       </div>
+
+      {/* Patient Merge Modal */}
+      {showMergeModal && (
+        <PatientMergeModal
+          patientIds={selectedIds}
+          onClose={() => setShowMergeModal(false)}
+          onSuccess={() => {
+            setSelectedIds([]);
+            setShowMergeModal(false);
+            // Reload patients
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }
