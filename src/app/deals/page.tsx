@@ -941,7 +941,7 @@ export default function DealsPage() {
                   }
                 }}
               >
-                <div className="flex gap-3 px-3 md:gap-4" style={{ height: '12px' }}>
+                <div className="flex gap-3 px-3 md:gap-4" style={{ height: '18px' }}>
                   {dealStages.map((stage) => (
                     <div key={stage.id} className="min-w-[260px] max-w-xs flex-shrink-0" />
                   ))}
