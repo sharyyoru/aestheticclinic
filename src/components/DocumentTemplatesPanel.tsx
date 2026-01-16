@@ -137,17 +137,20 @@ export default function DocumentTemplatesPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
-          templateId: template.id,
           title: template.name,
+          templatePath: template.file_path,
         }),
       });
       const data = await res.json();
       if (data.document) {
         setShowTemplateModal(false);
         handleOpenDocument(data.document);
+      } else if (data.error) {
+        alert(`Error: ${data.error}`);
       }
     } catch (error) {
       console.error("Error creating document:", error);
+      alert("Failed to create document. Please try again.");
     }
   };
 

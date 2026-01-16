@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { patientId, templateId, title, content } = body;
+    const { patientId, title, content, templatePath } = body;
 
     if (!patientId || !title) {
       return NextResponse.json(
@@ -71,27 +71,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If template is provided, fetch template content
+    // Set initial content
     let initialContent = content || "<p>Start typing your document...</p>";
-    if (templateId && !content) {
-      // Get template file from storage and convert to HTML
-      const { data: template } = await supabaseAdmin
-        .from("document_templates")
-        .select("file_path")
-        .eq("id", templateId)
-        .single();
-
-      if (template?.file_path) {
-        // For now, set a placeholder - the editor will load the template
-        initialContent = `<p>Loading template: ${template.file_path}...</p>`;
-      }
+    
+    // If template path is provided, note it for reference
+    // The actual template loading will happen in the editor
+    if (templatePath && !content) {
+      initialContent = `<p>Template: ${templatePath}</p><p>Start editing...</p>`;
     }
 
     const { data, error } = await supabaseAdmin
       .from("patient_documents")
       .insert({
         patient_id: patientId,
-        template_id: templateId || null,
+        template_id: null,
         title,
         content: initialContent,
         status: "draft",
