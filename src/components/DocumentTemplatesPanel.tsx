@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import CKEditorDocument from "./CKEditorDocument";
 
 type Template = {
   id: string;
@@ -47,6 +48,8 @@ export default function DocumentTemplatesPanel({
   const [isLoading, setIsLoading] = useState(true);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
+  const [showEditor, setShowEditor] = useState(false);
+  const [currentDocument, setCurrentDocument] = useState<PatientDocument | null>(null);
 
   // Fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -101,6 +104,70 @@ export default function DocumentTemplatesPanel({
     }
   };
 
+  // Open document in editor
+  const handleOpenDocument = (doc: PatientDocument) => {
+    setCurrentDocument(doc);
+    setShowEditor(true);
+  };
+
+  // Save document
+  const handleSaveDocument = async (content: string) => {
+    if (!currentDocument) return;
+
+    try {
+      await fetch(`/api/documents/patient`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentId: currentDocument.id,
+          content,
+        }),
+      });
+      fetchDocuments();
+    } catch (error) {
+      console.error("Error saving document:", error);
+    }
+  };
+
+  // Create new document from template
+  const handleCreateFromTemplate = async (template: Template) => {
+    try {
+      const res = await fetch(`/api/documents/patient`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId,
+          templateId: template.id,
+          title: template.name,
+        }),
+      });
+      const data = await res.json();
+      if (data.document) {
+        setShowTemplateModal(false);
+        handleOpenDocument(data.document);
+      }
+    } catch (error) {
+      console.error("Error creating document:", error);
+    }
+  };
+
+
+  // Show editor fullscreen
+  if (showEditor && currentDocument) {
+    return (
+      <div className="fixed inset-0 z-50 bg-white">
+        <CKEditorDocument
+          documentId={currentDocument.id}
+          initialContent={currentDocument.content}
+          onSave={handleSaveDocument}
+          onClose={() => {
+            setShowEditor(false);
+            setCurrentDocument(null);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -208,7 +275,7 @@ export default function DocumentTemplatesPanel({
               </div>
               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
-                  onClick={(e) => { e.stopPropagation(); }}
+                  onClick={(e) => { e.stopPropagation(); handleOpenDocument(doc); }}
                   className="rounded-lg p-2 text-slate-400 hover:bg-sky-50 hover:text-sky-600"
                   title="Edit document"
                 >
