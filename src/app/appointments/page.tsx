@@ -560,6 +560,7 @@ export default function CalendarPage() {
   const [providersLoading, setProvidersLoading] = useState(false);
   const [providersError, setProvidersError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isSystemUser, setIsSystemUser] = useState(false);
   const [doctorCalendars, setDoctorCalendars] = useState<DoctorCalendar[]>([]);
   const [isCreatingCalendar, setIsCreatingCalendar] = useState(false);
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
@@ -707,12 +708,21 @@ export default function CalendarPage() {
         if (!isMounted) return;
         if (!error && data?.user) {
           setCurrentUserId(data.user.id);
+          // Check if user is a system user (has access to users table)
+          const { data: userData } = await supabaseClient
+            .from("users")
+            .select("id")
+            .eq("id", data.user.id)
+            .single();
+          setIsSystemUser(!!userData);
         } else {
           setCurrentUserId(null);
+          setIsSystemUser(false);
         }
       } catch {
         if (!isMounted) return;
         setCurrentUserId(null);
+        setIsSystemUser(false);
       }
     }
 
@@ -1366,11 +1376,13 @@ export default function CalendarPage() {
       return;
     }
 
-    // Check if the selected date is a weekend
-    const dayOfWeek = startLocal.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      setCreateError("Weekend bookings are not available. Please select a weekday (Monday-Friday).");
-      return;
+    // Check if the selected date is a weekend (skip for system users)
+    if (!isSystemUser) {
+      const dayOfWeek = startLocal.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        setCreateError("Weekend bookings are not available. Please select a weekday (Monday-Friday).");
+        return;
+      }
     }
 
     const durationMinutes = consultationDuration || DAY_VIEW_SLOT_MINUTES;
@@ -2839,6 +2851,7 @@ export default function CalendarPage() {
                         setDraftDate(event.target.value);
                         setDraftTime("");
                       }}
+                      min={isSystemUser ? undefined : new Date().toISOString().split('T')[0]}
                       className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                     <select
