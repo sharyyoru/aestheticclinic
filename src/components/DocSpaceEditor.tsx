@@ -128,14 +128,14 @@ export default function DocSpaceEditor({
         console.error("❌ Error initializing DocSpace:", err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         console.error("Error details:", errorMessage);
-        setErrorMsg(`Failed to initialize: ${errorMessage}`);
+        setErrorMsg("Failed to initialize: " + errorMessage);
         setStatus("error");
         onError?.(errorMessage);
       }
     };
 
     // Check if script already exists
-    const existingScript = document.querySelector(`script[src="${DOCSPACE_URL}/static/scripts/sdk/2.0.0/api.js"]`);
+    const existingScript = document.querySelector("script[src='" + DOCSPACE_URL + "/static/scripts/sdk/2.0.0/api.js']");
     if (existingScript) {
       console.log("DocSpace SDK script already exists, checking if loaded...");
       if (window.DocSpace?.SDK) {
@@ -146,7 +146,7 @@ export default function DocSpaceEditor({
         let attempts = 0;
         const checkInterval = setInterval(() => {
           attempts++;
-          console.log(`Checking for SDK... attempt ${attempts}`);
+          console.log("Checking for SDK... attempt " + attempts);
           if (window.DocSpace?.SDK) {
             console.log("SDK now available!");
             clearInterval(checkInterval);
@@ -166,7 +166,7 @@ export default function DocSpaceEditor({
 
     // Load SDK script version 2.0.0
     const script = document.createElement("script");
-    script.setAttribute("src", `${DOCSPACE_URL}/static/scripts/sdk/2.0.0/api.js");
+    script.setAttribute("src", DOCSPACE_URL + "/static/scripts/sdk/2.0.0/api.js");
     
     script.onload = () => {
       console.log("DocSpace SDK 2.0.0 script loaded successfully");
@@ -174,7 +174,7 @@ export default function DocSpaceEditor({
       let attempts = 0;
       const checkInterval = setInterval(() => {
         attempts++;
-        console.log(`Waiting for window.DocSpace... attempt ${attempts}`);
+        console.log("Waiting for window.DocSpace... attempt " + attempts);
         if (window.DocSpace?.SDK) {
           console.log("window.DocSpace.SDK is now available!");
           clearInterval(checkInterval);
