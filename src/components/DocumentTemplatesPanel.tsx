@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import GoogleDocsViewer from "./GoogleDocsViewer";
+import { supabaseClient } from "@/lib/supabaseClient";
+import dynamic from 'next/dynamic';
+
+// Dynamic import for docx-preview (client-side only)
+const DocxPreviewEditor = dynamic(
+  () => import('./DocxEditor/DocxPreviewEditor'),
+  { ssr: false, loading: () => <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div></div> }
+);
 
 type Template = {
   id: string;
@@ -25,6 +32,8 @@ type PatientDocument = {
   last_edited_at?: string;
   created_at: string;
   updated_at: string;
+  docspace_file_id?: string;
+  file_path?: string; // Actual filename in storage
   template?: {
     id: string;
     name: string;
@@ -36,20 +45,27 @@ type PatientDocument = {
 type DocumentTemplatesPanelProps = {
   patientId: string;
   patientName: string;
+  onClose?: () => void;
+  onDocumentCreated?: () => void; // Callback to refresh file storage
 };
 
 export default function DocumentTemplatesPanel({
   patientId,
   patientName,
+  onClose,
+  onDocumentCreated,
 }: DocumentTemplatesPanelProps) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [documents, setDocuments] = useState<PatientDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(true);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'storage'>('storage');
   const [templateSearch, setTemplateSearch] = useState("");
   const [showEditor, setShowEditor] = useState(false);
   const [currentDocument, setCurrentDocument] = useState<PatientDocument | null>(null);
+  const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
+  const [isLoadingEditor, setIsLoadingEditor] = useState(false);
 
   // Fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -75,7 +91,7 @@ export default function DocumentTemplatesPanel({
     } catch (error) {
       console.error("Error fetching documents:", error);
     } finally {
-      setIsLoading(false);
+      setIsLoadingDocs(false);
     }
   }, [patientId, searchQuery]);
 
@@ -84,9 +100,14 @@ export default function DocumentTemplatesPanel({
   }, [fetchDocuments]);
 
   useEffect(() => {
-    if (showTemplateModal) {
+    // If used as modal (onClose exists), fetch templates immediately
+    if (onClose) {
+      fetchTemplates();
+    } else if (showTemplateModal) {
+      // If used inline, fetch when modal opens
       fetchTemplates();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showTemplateModal, fetchTemplates]);
 
 
@@ -104,77 +125,238 @@ export default function DocumentTemplatesPanel({
     }
   };
 
-  // Open document in editor
-  const handleOpenDocument = (doc: PatientDocument) => {
+  // Open document in editor - download blob via API for 100% fidelity
+  const handleOpenDocument = async (doc: PatientDocument) => {
     setCurrentDocument(doc);
-    setShowEditor(true);
+    setIsLoadingEditor(true);
+    
+    try {
+      // Use file_path if available, otherwise fall back to id.docx
+      const fileName = doc.file_path || `${doc.id}.docx`;
+      const downloadPath = `${patientId}/${fileName}`;
+      console.log('Opening document from path:', downloadPath);
+      
+      // Download document blob via API endpoint
+      const downloadResponse = await fetch(`/api/documents/download?bucket=patient-documents&path=${encodeURIComponent(downloadPath)}`);
+      
+      if (!downloadResponse.ok) {
+        const errorData = await downloadResponse.json().catch(() => ({}));
+        console.error('Download error:', errorData);
+        alert(`Failed to load document: ${errorData.error || 'File not found'}`);
+        return;
+      }
+      
+      const fileData = await downloadResponse.blob();
+      setDocumentBlob(fileData);
+      setShowEditor(true);
+    } catch (error) {
+      console.error('Error loading document:', error);
+      alert('Failed to load document. Please try again.');
+    } finally {
+      setIsLoadingEditor(false);
+    }
   };
 
-  // Save document
-  const handleSaveDocument = async (content: string) => {
+  // Save document blob to Supabase via API
+  const handleSaveDocument = async (blob: Blob) => {
     if (!currentDocument) return;
-
+    
     try {
-      await fetch(`/api/documents/patient`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          documentId: currentDocument.id,
-          content,
-        }),
+      // Use file_path if available, otherwise fall back to id.docx
+      const fileName = currentDocument.file_path || `${currentDocument.id}.docx`;
+      const uploadPath = `${patientId}/${fileName}`;
+      console.log('Saving document to path:', uploadPath);
+      
+      // Upload modified blob via API endpoint
+      const formData = new FormData();
+      formData.append('file', blob);
+      formData.append('bucket', 'patient-documents');
+      formData.append('path', uploadPath);
+      
+      const uploadResponse = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
       });
+      
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Upload failed');
+      }
+      
+      alert('Document saved successfully!');
       fetchDocuments();
+      onDocumentCreated?.(); // Trigger file storage refresh
     } catch (error) {
-      console.error("Error saving document:", error);
+      console.error('Error saving document:', error);
+      alert('Failed to save document. Please try again.');
     }
   };
 
   // Create new document from template
   const handleCreateFromTemplate = async (template: Template) => {
     try {
-      // Create document with template reference stored in content
-      const res = await fetch(`/api/documents/patient`, {
+      setIsLoadingEditor(true);
+      setShowTemplateModal(false);
+      
+      // Create document from template
+      const res = await fetch(`/api/documents/patient/create-from-template`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
+          patientName, // Pass patient name for proper file naming
+          templateId: template.id,
+          templatePath: template.file_path,
           title: template.name,
-          content: `<p>Template: ${template.file_path}</p><p>Document created from template.</p>`,
         }),
       });
+      
       const data = await res.json();
-      if (data.document) {
-        setShowTemplateModal(false);
-        handleOpenDocument(data.document);
+      console.log('Create from template response:', data);
+      
+      if (data.success && data.document) {
+        // Download the newly created document blob using API endpoint
+        const downloadPath = data.storagePath || `${patientId}/${data.fileName}`;
+        console.log('Downloading from path:', downloadPath);
+        
+        const downloadResponse = await fetch(`/api/documents/download?bucket=patient-documents&path=${encodeURIComponent(downloadPath)}`);
+        
+        if (downloadResponse.ok) {
+          const fileData = await downloadResponse.blob();
+          setCurrentDocument({
+            ...data.document,
+            file_path: data.fileName, // Store filename for later saves
+          });
+          setDocumentBlob(fileData);
+          setShowEditor(true);
+          fetchDocuments();
+        } else {
+          const errorData = await downloadResponse.json().catch(() => ({}));
+          alert(`Document created but failed to open: ${errorData.error || 'Download failed'}`);
+        }
       } else if (data.error) {
         alert(`Error: ${data.error}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating document:", error);
       alert("Failed to create document. Please try again.");
+    } finally {
+      setIsLoadingEditor(false);
     }
   };
 
-
-  // Show editor fullscreen
-  if (showEditor && currentDocument) {
+  // Show editor fullscreen with 100% fidelity preview
+  if (showEditor && currentDocument && documentBlob) {
+    // Parse patient name into first/last
+    const nameParts = patientName.split(' ');
+    const patientData = {
+      firstName: nameParts[0] || '',
+      lastName: nameParts.slice(1).join(' ') || '',
+      salutation: 'Mr/Ms',
+      birthdate: '',
+    };
+    
     return (
-      <div className="fixed inset-0 z-50 bg-white">
-        <GoogleDocsViewer
-          documentId={currentDocument.id}
-          onClose={() => {
-            setShowEditor(false);
-            setCurrentDocument(null);
-            fetchDocuments(); // Refresh list when closing
-          }}
-        />
+      <DocxPreviewEditor
+        documentBlob={documentBlob}
+        documentTitle={currentDocument.title}
+        patientId={patientId}
+        documentId={currentDocument.id}
+        patientData={patientData}
+        onSave={handleSaveDocument}
+        onClose={() => {
+          setShowEditor(false);
+          setCurrentDocument(null);
+          setDocumentBlob(null);
+          fetchDocuments();
+        }}
+      />
+    );
+  }
+
+  // Show loading state
+  if (isLoadingEditor) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="rounded-lg bg-white p-8 text-center shadow-xl">
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-sky-200 border-t-sky-500" />
+          <p className="text-lg font-medium text-slate-900">Loading document...</p>
+          <p className="text-sm text-slate-500 mt-2">This may take a moment</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If used as modal, show fullscreen overlay
+  if (onClose) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="flex items-center justify-between border-b border-slate-200 p-4">
+            <h2 className="text-lg font-semibold text-slate-900">Select a Template</h2>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="p-4">
+            <input
+              type="text"
+              placeholder="Search templates..."
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 px-4 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {templates.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                <p>No templates found</p>
+              </div>
+            ) : (
+              templates.map((template) => (
+                <button
+                  key={template.id}
+                  onClick={() => handleCreateFromTemplate(template)}
+                  className="w-full text-left rounded-lg border border-slate-200 bg-white p-4 hover:border-sky-300 hover:bg-sky-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-slate-900">{template.name}</h3>
+                      {template.description && (
+                        <p className="text-sm text-slate-500 mt-1">{template.description}</p>
+                      )}
+                      {template.category && (
+                        <span className="inline-block mt-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                          {template.category}
+                        </span>
+                      )}
+                    </div>
+                    <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      {/* Header with search and create button */}
+      {/* Search and New Document button */}
       <div className="flex items-center justify-between gap-4">
         <div className="relative flex-1">
           <svg
@@ -210,7 +392,7 @@ export default function DocumentTemplatesPanel({
       </div>
 
       {/* Documents list */}
-      {isLoading ? (
+      {isLoadingDocs ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div>
         </div>
@@ -301,70 +483,6 @@ export default function DocumentTemplatesPanel({
         </div>
       )}
 
-      {/* Template Modal */}
-      {showTemplateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-200 p-4">
-              <h2 className="text-lg font-semibold text-slate-900">Select a Template</h2>
-              <button
-                onClick={() => setShowTemplateModal(false)}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-4">
-              <input
-                type="text"
-                placeholder="Search templates..."
-                value={templateSearch}
-                onChange={(e) => setTemplateSearch(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 px-4 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {templates.length === 0 ? (
-                <div className="text-center py-8 text-slate-500">
-                  <p>No templates found</p>
-                </div>
-              ) : (
-                templates.map((template) => (
-                  <button
-                    key={template.id}
-                    onClick={() => handleCreateFromTemplate(template)}
-                    className="w-full text-left rounded-lg border border-slate-200 bg-white p-4 hover:border-sky-300 hover:bg-sky-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-medium text-slate-900">{template.name}</h3>
-                        {template.description && (
-                          <p className="text-sm text-slate-500 mt-1">{template.description}</p>
-                        )}
-                        {template.category && (
-                          <span className="inline-block mt-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                            {template.category}
-                          </span>
-                        )}
-                      </div>
-                      <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

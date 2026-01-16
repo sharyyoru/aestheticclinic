@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import BeforeAfterEditorModal from "./BeforeAfterEditorModal";
 import PdfAnnotationEditor from "@/components/PdfAnnotationEditor";
 import DocumentTemplatesPanel from "@/components/DocumentTemplatesPanel";
+import dynamic from 'next/dynamic';
+
+// Dynamic import for docx-preview (client-side only)
+const DocxPreview = dynamic(() => import('@/components/DocxPreview'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div></div>
+});
 
 interface PatientDocumentsTabProps {
   patientId: string;
@@ -106,10 +113,8 @@ export default function PatientDocumentsTab({
   const [newFileName, setNewFileName] = useState("");
   const [renaming, setRenaming] = useState(false);
 
-  // Tab state for switching between Files and Templates
-  const [activeView, setActiveView] = useState<"files" | "templates">("templates");
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
-  // Upload modal state
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<{ name: string; size: number }[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -589,45 +594,7 @@ export default function PatientDocumentsTab({
   return (
     <>
       <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-        {/* Tab switcher */}
-        <div className="mb-4 flex items-center gap-1 rounded-lg bg-slate-100 p-1">
-          <button
-            onClick={() => setActiveView("templates")}
-            className={`flex-1 rounded-md px-4 py-2 text-xs font-medium transition-colors ${
-              activeView === "templates"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <span className="flex items-center justify-center gap-2">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Document Templates
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveView("files")}
-            className={`flex-1 rounded-md px-4 py-2 text-xs font-medium transition-colors ${
-              activeView === "files"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <span className="flex items-center justify-center gap-2">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              File Storage
-            </span>
-          </button>
-        </div>
-
-        {/* Templates View */}
-        {activeView === "templates" ? (
-          <DocumentTemplatesPanel patientId={patientId} patientName={patientName} />
-        ) : (
-        <>
+        {/* File Storage Only - No Tabs */}
         {/* Files View Header */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -668,6 +635,13 @@ export default function PatientDocumentsTab({
               className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-white px-3 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
             >
               Before / After
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTemplateModal(true)}
+              className="inline-flex h-8 items-center rounded-full border border-emerald-500 bg-emerald-500 px-3 text-[11px] font-semibold text-white hover:bg-emerald-600"
+            >
+              Create from Template
             </button>
           </div>
         </div>
@@ -1072,9 +1046,17 @@ export default function PatientDocumentsTab({
             </div>
           </div>
         </div>
-        </>
-        )}
       </div>
+      
+      {/* Template Selection Modal */}
+      {showTemplateModal && (
+        <DocumentTemplatesPanel 
+          patientId={patientId} 
+          patientName={patientName}
+          onClose={() => setShowTemplateModal(false)}
+          onDocumentCreated={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
       {showBeforeAfterEditor ? (
         <BeforeAfterEditorModal
           open={showBeforeAfterEditor}
@@ -1246,6 +1228,11 @@ export default function PatientDocumentsTab({
                     controls
                     className="max-h-[70vh] max-w-full rounded-xl border border-slate-200 bg-black shadow-lg"
                   />
+                ) : previewModal.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+                     previewModal.name.toLowerCase().endsWith('.docx') ? (
+                  <div className="w-full max-w-4xl">
+                    <DocxPreview url={previewModal.url} fileName={previewModal.name} />
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
                     <div className="inline-flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-lg font-bold text-slate-600">
