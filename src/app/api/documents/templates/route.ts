@@ -29,9 +29,9 @@ export async function GET(request: NextRequest) {
 
     let templates = files || [];
 
-    // Filter out folders and non-docx files
+    // Filter out folders (folders have id property) and keep only docx files
     templates = templates.filter(file => 
-      !file.id && file.name.toLowerCase().endsWith('.docx')
+      file.name && file.name.toLowerCase().endsWith('.docx')
     );
 
     // Filter by search term if provided

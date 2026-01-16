@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { createClient } from "@supabase/supabase-js";
+import { Readable } from "stream";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,7 +34,6 @@ export async function POST(request: NextRequest) {
 
     const drive = google.drive({ version: 'v3', auth });
 
-    let googleDocId: string;
     let docxBuffer: Buffer;
 
     // Download template or existing document from Supabase
@@ -64,23 +64,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload DOCX to Google Drive and convert to Google Docs format
-    const fileMetadata = {
-      name: title || 'Untitled Document',
-      mimeType: 'application/vnd.google-apps.document',
-    };
+    let googleDocId: string;
 
-    const media = {
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      body: docxBuffer.length > 0 ? require('stream').Readable.from(docxBuffer) : undefined,
-    };
-
-    const file = await drive.files.create({
-      requestBody: fileMetadata,
-      media: docxBuffer.length > 0 ? media : undefined,
-      fields: 'id',
-    });
-
-    googleDocId = file.data.id!;
+    if (docxBuffer.length > 0) {
+      // Upload and convert DOCX to Google Docs
+      const file = await drive.files.create({
+        requestBody: {
+          name: title || 'Untitled Document',
+          mimeType: 'application/vnd.google-apps.document',
+        },
+        media: {
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          body: Readable.from(docxBuffer),
+        },
+        fields: 'id',
+      });
+      googleDocId = file.data.id!;
+    } else {
+      // Create blank Google Doc
+      const file = await drive.files.create({
+        requestBody: {
+          name: title || 'Untitled Document',
+          mimeType: 'application/vnd.google-apps.document',
+        },
+        fields: 'id',
+      });
+      googleDocId = file.data.id!;
+    }
 
     // Make the document editable by anyone with the link
     await drive.permissions.create({
