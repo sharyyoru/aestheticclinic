@@ -1,59 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { FileText, Folder, Download, Eye, Trash2, Upload, RefreshCw } from "lucide-react";
 
-const DOCSPACE_URL = "https://docspace-hm9cxt.onlyoffice.com";
+const DOCSPACE_URL = process.env.NEXT_PUBLIC_DOCSPACE_URL || "https://docspace-hm9cxt.onlyoffice.com";
 
-declare global {
-  interface Window {
-    DocSpace?: {
-      SDK: {
-        initManager: (config: DocSpaceConfig) => DocSpaceInstance;
-        initFrame: (config: DocSpaceConfig) => DocSpaceInstance;
-        frames: Record<string, DocSpaceInstance>;
-      };
-    };
-  }
+interface DocSpaceFile {
+  id: string;
+  title: string;
+  fileType: string;
+  contentLength: number;
+  created: string;
+  updated: string;
+  createdBy: { displayName: string };
+  webUrl: string;
 }
 
-interface HashSettings {
-  size: number;
-  iterations: number;
-  salt: string;
-}
-
-interface DocSpaceConfig {
-  frameId: string;
-  src: string;
-  width?: string;
-  height?: string;
-  showHeader?: boolean;
-  showTitle?: boolean;
-  showMenu?: boolean;
-  showFilter?: boolean;
-  viewTableColumns?: string;
-  filter?: {
-    count?: string;
-    sortBy?: string;
-    sortOrder?: string;
-    search?: string;
-    withSubfolders?: boolean;
-  };
-  events?: {
-    onAppReady?: () => void;
-    onAppError?: (error: string) => void;
-    onSelectCallback?: (event: { data: unknown }) => void;
-    onContentReady?: () => void;
-  };
-}
-
-interface DocSpaceInstance {
-  destroyFrame?: () => void;
-  config?: DocSpaceConfig;
-  getUserInfo?: () => Promise<{ id: string; email: string; displayName: string } | null>;
-  getHashSettings?: () => Promise<HashSettings>;
-  createHash?: (password: string, hashSettings: HashSettings) => Promise<{ hash: string }>;
-  login?: (email: string, passwordHash: string, password?: string, session?: boolean) => Promise<{ success: boolean; user?: unknown }>;
+interface DocSpaceFolder {
+  id: string;
+  title: string;
+  filesCount: number;
+  foldersCount: number;
+  created: string;
+  parentId: string;
 }
 
 export interface DocSpaceEditorProps {
@@ -67,285 +36,115 @@ export default function DocSpaceEditor({
   onError,
   onFileSelect,
 }: DocSpaceEditorProps) {
-  const [status, setStatus] = useState<"loading" | "ready" | "error" | "auth_required">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
-  const instanceRef = useRef<DocSpaceInstance | null>(null);
-  const initAttemptedRef = useRef(false);
-  const authCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const loginAttemptedRef = useRef(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [files, setFiles] = useState<DocSpaceFile[]>([]);
+  const [folders, setFolders] = useState<DocSpaceFolder[]>([]);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const authenticate = async () => {
+    try {
+      const response = await fetch("/api/docspace/auth", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Failed to authenticate");
+      }
+      const data = await response.json();
+      if (data.token) {
+        setToken(data.token);
+        return data.token;
+      }
+      throw new Error("No token received");
+    } catch (error) {
+      console.error("Authentication error:", error);
+      throw error;
+    }
+  };
+
+  const fetchFiles = async (folderId: string | null = null, authToken?: string) => {
+    try {
+      const tokenToUse = authToken || token;
+      if (!tokenToUse) throw new Error("No authentication token");
+
+      const endpoint = folderId
+        ? `${DOCSPACE_URL}/api/2.0/files/${folderId}`
+        : `${DOCSPACE_URL}/api/2.0/files/@my`;
+
+      const response = await fetch(endpoint, {
+        headers: {
+          "Authorization": `Bearer ${tokenToUse}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to fetch files");
+
+      const data = await response.json();
+      const filesList = data.response?.files || [];
+      const foldersList = data.response?.folders || [];
+
+      setFiles(filesList);
+      setFolders(foldersList);
+      setStatus("ready");
+    } catch (error) {
+      console.error("Error fetching files:", error);
+      setErrorMsg(error instanceof Error ? error.message : "Failed to load files");
+      setStatus("error");
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchFiles(currentFolderId);
+    setIsRefreshing(false);
+  };
+
+  const handleFolderClick = (folderId: string) => {
+    setCurrentFolderId(folderId);
+    fetchFiles(folderId);
+  };
+
+  const handleBackClick = () => {
+    setCurrentFolderId(null);
+    fetchFiles(null);
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i];
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   useEffect(() => {
-    if (initAttemptedRef.current) return;
-    initAttemptedRef.current = true;
-
-    const config: DocSpaceConfig = {
-      frameId: "ds-frame",
-      src: DOCSPACE_URL,
-      width: "100%",
-      height: "100%",
-      showHeader: true,
-      showTitle: true,
-      showMenu: true,
-      showFilter: true,
-      viewTableColumns: "Name,Size,Type,Modified,Author",
-      filter: {
-        count: "100",
-        sortBy: "DateAndTime",
-        sortOrder: "descending",
-        search: "",
-        withSubfolders: false,
-      },
-      events: {
-        onAppReady: () => {
-          console.log("DocSpace app ready");
-          if (authCheckTimeoutRef.current) {
-            clearTimeout(authCheckTimeoutRef.current);
-          }
-          setStatus("ready");
-        },
-        onAppError: (error: string) => {
-          console.error("DocSpace app error:", error);
-          setErrorMsg(String(error));
-          setStatus("error");
-          onError?.(String(error));
-        },
-        onContentReady: () => {
-          console.log("DocSpace content ready - waiting for authentication check");
-        },
-        onSelectCallback: (event: { data: unknown }) => {
-          console.log("File selected:", event);
-          onFileSelect?.(event.data);
-        },
-      },
-    };
-
-    const initDocSpace = () => {
-      console.log("=== DocSpace Init Debug ===");
-      console.log("Current URL:", window.location.href);
-      console.log("DocSpace URL:", DOCSPACE_URL);
-      console.log("Window.DocSpace exists:", !!window.DocSpace);
-      console.log("Window.DocSpace.SDK exists:", !!window.DocSpace?.SDK);
-      
-      if (!window.DocSpace?.SDK) {
-        const msg = "DocSpace SDK not available on window object. Check if domain is whitelisted in DocSpace settings.";
-        console.error(msg);
-        setErrorMsg(msg);
-        setStatus("error");
-        onError?.(msg);
-        return;
-      }
-
+    const init = async () => {
       try {
-        console.log("Initializing DocSpace SDK with config:", config);
-        instanceRef.current = window.DocSpace.SDK.initManager(config);
-        console.log("✅ DocSpace SDK initialized successfully");
-        
-        const attemptLogin = async () => {
-          if (loginAttemptedRef.current) return;
-          loginAttemptedRef.current = true;
-          
-          console.log("🔐 Starting authentication check...");
-          
-          try {
-            console.log("Checking if user is already authenticated...");
-            const userInfo = await instanceRef.current?.getUserInfo?.();
-            if (userInfo && userInfo.id) {
-              console.log("✅ User already authenticated:", userInfo);
-              setStatus("ready");
-              return;
-            }
-          } catch (e) {
-            console.log("User not authenticated, proceeding with login...");
-          }
-          
-          try {
-            console.log("📡 Fetching login credentials from API...");
-            const loginResponse = await fetch("/api/docspace/login", {
-              method: "POST",
-            });
-            
-            if (!loginResponse.ok) {
-              const errorData = await loginResponse.json();
-              console.error("❌ Failed to get credentials:", errorData);
-              throw new Error(errorData.error || "Failed to get login credentials");
-            }
-            
-            const loginData = await loginResponse.json();
-            console.log("✅ Credentials received, attempting SDK login...");
-            
-            if (!loginData.success) {
-              throw new Error(loginData.error || "Invalid credentials response");
-            }
-            
-            if (!instanceRef.current?.login) {
-              console.error("❌ SDK login method not available");
-              console.log("Available methods:", Object.keys(instanceRef.current || {}));
-              throw new Error("SDK login method not available");
-            }
-            
-            console.log("🔑 Calling SDK.login() with email:", loginData.email);
-            const result = await instanceRef.current.login(
-              loginData.email,
-              loginData.passwordHash,
-              undefined,
-              true
-            );
-            
-            console.log("Login result:", result);
-            
-            if (result && result.success) {
-              console.log("✅ Login successful!");
-              setStatus("ready");
-            } else {
-              throw new Error("Login returned unsuccessful result");
-            }
-          } catch (error) {
-            console.error("❌ Authentication failed:", error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            setStatus("auth_required");
-            setErrorMsg("Authentication failed: " + errorMessage);
-          }
-        };
-        
-        authCheckTimeoutRef.current = setTimeout(attemptLogin, 3000);
-      } catch (err) {
-        console.error("❌ Error initializing DocSpace:", err);
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error("Error details:", errorMessage);
-        setErrorMsg("Failed to initialize: " + errorMessage);
+        console.log("🔐 Authenticating with DocSpace...");
+        const authToken = await authenticate();
+        console.log("✅ Authentication successful");
+        console.log("📁 Fetching files...");
+        await fetchFiles(null, authToken);
+      } catch (error) {
+        console.error("❌ Initialization failed:", error);
+        setErrorMsg("Failed to initialize DocSpace. Please check credentials.");
         setStatus("error");
-        onError?.(errorMessage);
+        onError?.("Failed to initialize DocSpace");
       }
     };
-
-    // Check if script already exists
-    const existingScript = document.querySelector("script[src='" + DOCSPACE_URL + "/static/scripts/sdk/2.0.0/api.js']");
-    if (existingScript) {
-      console.log("DocSpace SDK script already exists, checking if loaded...");
-      if (window.DocSpace?.SDK) {
-        console.log("SDK already loaded, initializing...");
-        initDocSpace();
-      } else {
-        console.log("Script exists but SDK not ready, waiting...");
-        let attempts = 0;
-        const checkInterval = setInterval(() => {
-          attempts++;
-          console.log("Checking for SDK... attempt " + attempts);
-          if (window.DocSpace?.SDK) {
-            console.log("SDK now available!");
-            clearInterval(checkInterval);
-            initDocSpace();
-          } else if (attempts >= 20) {
-            clearInterval(checkInterval);
-            const msg = "SDK script loaded but window.DocSpace not created. Domain may not be whitelisted.";
-            console.error(msg);
-            setErrorMsg(msg);
-            setStatus("error");
-            onError?.(msg);
-          }
-        }, 250);
-      }
-      return;
-    }
-
-    // Load SDK script version 2.0.0
-    const script = document.createElement("script");
-    script.setAttribute("src", DOCSPACE_URL + "/static/scripts/sdk/2.0.0/api.js");
-    
-    script.onload = () => {
-      console.log("DocSpace SDK 2.0.0 script loaded successfully");
-      // Wait for SDK to initialize on window object
-      let attempts = 0;
-      const checkInterval = setInterval(() => {
-        attempts++;
-        console.log("Waiting for window.DocSpace... attempt " + attempts);
-        if (window.DocSpace?.SDK) {
-          console.log("window.DocSpace.SDK is now available!");
-          clearInterval(checkInterval);
-          initDocSpace();
-        } else if (attempts >= 20) {
-          clearInterval(checkInterval);
-          const msg = "SDK script loaded but window.DocSpace not created. Your domain (http://localhost:3002) must be whitelisted in DocSpace → Settings → Developer Tools → JavaScript SDK";
-          console.error(msg);
-          setErrorMsg(msg);
-          setStatus("error");
-          onError?.(msg);
-        }
-      }, 250);
-    };
-    
-    script.onerror = (e) => {
-      console.error("Failed to load DocSpace SDK script:", e);
-      setErrorMsg("Failed to load DocSpace SDK script from server");
-      setStatus("error");
-      onError?.("Failed to load DocSpace SDK script");
-    };
-    
-    document.body.appendChild(script);
-    console.log("DocSpace SDK script tag added to document");
-
-    return () => {
-      if (authCheckTimeoutRef.current) {
-        clearTimeout(authCheckTimeoutRef.current);
-      }
-      if (instanceRef.current?.destroyFrame) {
-        try {
-          instanceRef.current.destroyFrame();
-        } catch (e) {
-          console.error("Error destroying DocSpace frame:", e);
-        }
-      }
-    };
-  }, [onError, onFileSelect]);
-
-  if (status === "auth_required") {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 bg-slate-50 p-8">
-        <div className="max-w-2xl rounded-lg border border-red-200 bg-red-50 p-6">
-          <div className="flex items-start gap-3 mb-4">
-            <svg className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-red-800 mb-2">DocSpace Authentication Failed</h3>
-              <p className="text-sm text-red-700 mb-3">{errorMsg}</p>
-              
-              <div className="bg-white/70 rounded p-4 text-xs space-y-3 mb-4">
-                <div>
-                  <p className="font-semibold text-red-900 mb-1">⚙️ Configuration Required:</p>
-                  <p className="text-red-800">Add your DocSpace credentials to the environment variables:</p>
-                  <pre className="bg-red-100 p-2 rounded mt-2 text-red-900">
-DOCSPACE_EMAIL=your-email@example.com{"\n"}DOCSPACE_PASSWORD=your-password
-                  </pre>
-                </div>
-                
-                <div className="border-t border-red-200 pt-2">
-                  <p className="font-semibold text-red-900 mb-1">📍 Where to Add:</p>
-                  <ul className="list-disc list-inside space-y-1 text-red-800 ml-2">
-                    <li>Local: Add to <code className="bg-red-100 px-1 rounded">.env.local</code> file</li>
-                    <li>Vercel: Add in Project Settings → Environment Variables</li>
-                  </ul>
-                </div>
-                
-                <div className="border-t border-red-200 pt-2">
-                  <p className="font-semibold text-red-900 mb-1">🔄 After Adding:</p>
-                  <p className="text-red-800">Restart your development server or redeploy to Vercel</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-300"
-          >
-            Close
-          </button>
-        )}
-      </div>
-    );
-  }
+    init();
+  }, []);
 
   if (status === "error") {
     return (
@@ -396,17 +195,110 @@ DOCSPACE_EMAIL=your-email@example.com{"\n"}DOCSPACE_PASSWORD=your-password
     );
   }
 
+  if (status === "loading") {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+          <p className="text-sm text-slate-600">Loading documents...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full w-full relative">
-      {status === "loading" && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-50 z-10">
-          <div className="text-center">
-            <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-500" />
-            <p className="text-sm text-slate-600">Loading DocSpace...</p>
+    <div className="flex h-full flex-col bg-white">
+        <div className="border-b border-slate-200 bg-white px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-blue-600" />
+            <h2 className="text-lg font-semibold text-slate-900">Documents</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="rounded-lg bg-slate-100 p-2 text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+            >
+              <RefreshCw className={"h-4 w-4 " + (isRefreshing ? "animate-spin" : "")} />
+            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+              >
+                Close
+              </button>
+            )}
           </div>
         </div>
-      )}
-      <div id="ds-frame" className="h-full w-full" style={{ minHeight: "calc(100vh - 60px)" }} />
+
+        <div className="flex-1 overflow-auto p-4">
+          {currentFolderId && (
+            <button
+              onClick={handleBackClick}
+              className="mb-4 flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            >
+              ← Back to parent folder
+            </button>
+          )}
+
+          {folders.length === 0 && files.length === 0 && (
+            <div className="flex h-full items-center justify-center text-slate-500">
+              <p>No documents found</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {folders.map((folder) => (
+              <button
+                key={folder.id}
+                onClick={() => handleFolderClick(folder.id)}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-left hover:bg-slate-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Folder className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 truncate">{folder.title}</p>
+                    <p className="text-xs text-slate-500">
+                      {folder.filesCount} files, {folder.foldersCount} folders
+                    </p>
+                  </div>
+                </div>
+              </button>
+            ))}
+
+            {files.map((file) => (
+              <div
+                key={file.id}
+                className="rounded-lg border border-slate-200 bg-white p-3 hover:bg-slate-50 transition-colors"
+              >
+                <div className="flex items-start gap-3">
+                  <FileText className="h-5 w-5 text-slate-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 truncate">{file.title}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {formatFileSize(file.contentLength)} • Modified {formatDate(file.updated)}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Created by {file.createdBy.displayName}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <a
+                      href={file.webUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
+                      title="View"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
     </div>
   );
 }
