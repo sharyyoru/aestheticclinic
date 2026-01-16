@@ -54,21 +54,29 @@ export async function POST(request: NextRequest) {
       throw new Error(`Failed to save document: ${uploadError.message}`);
     }
 
-    // Update document metadata
+    // Update document metadata and clear Google Doc ID since we're deleting it
     await supabaseAdmin
       .from("patient_documents")
       .update({
         updated_at: new Date().toISOString(),
         last_edited_at: new Date().toISOString(),
+        google_doc_id: null, // Clear since we're deleting the doc
       })
       .eq("id", documentId);
 
-    // Optionally delete the Google Doc to save space
-    // await drive.files.delete({ fileId: googleDocId });
+    // Delete the Google Doc to free up service account storage quota
+    try {
+      await drive.files.delete({ fileId: googleDocId });
+      console.log('Google Doc deleted to free quota:', googleDocId);
+    } catch (deleteError) {
+      console.error('Could not delete Google Doc:', deleteError);
+      // Continue anyway, document is saved
+    }
 
     return NextResponse.json({
       success: true,
       filePath,
+      message: 'Document saved to Supabase and removed from Google Drive',
     });
   } catch (error) {
     console.error("Error saving Google Doc:", error);

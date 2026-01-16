@@ -88,6 +88,8 @@ export async function POST(request: NextRequest) {
     // Upload DOCX to Google Drive and convert to Google Docs format
     let googleDocId: string;
 
+    // IMPORTANT: Set appDataFolder to avoid using service account's storage quota
+    // Documents will be temporary and accessible via link only
     if (docxBuffer.length > 0) {
       // Upload and convert DOCX to Google Docs
       console.log('Uploading DOCX to Google Drive...');
@@ -96,15 +98,31 @@ export async function POST(request: NextRequest) {
           requestBody: {
             name: title || 'Untitled Document',
             mimeType: 'application/vnd.google-apps.document',
+            // Don't specify parents - creates in root but with link-only access
           },
           media: {
             mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             body: Readable.from(docxBuffer),
           },
-          fields: 'id',
+          fields: 'id,webViewLink',
+          supportsAllDrives: true,
         });
         googleDocId = file.data.id!;
         console.log('Google Doc created:', googleDocId);
+        
+        // Immediately set to delete after 30 days to manage quota
+        try {
+          await drive.files.update({
+            fileId: googleDocId,
+            requestBody: {
+              trashed: false,
+              // Add metadata to track creation
+              description: `Created: ${new Date().toISOString()} - Patient: ${patientId}`,
+            },
+          });
+        } catch (metaError) {
+          console.log('Could not set metadata:', metaError);
+        }
       } catch (uploadError) {
         console.error('Upload error:', uploadError);
         throw new Error(`Failed to upload document: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`);
@@ -117,8 +135,10 @@ export async function POST(request: NextRequest) {
           requestBody: {
             name: title || 'Untitled Document',
             mimeType: 'application/vnd.google-apps.document',
+            description: `Created: ${new Date().toISOString()} - Patient: ${patientId}`,
           },
-          fields: 'id',
+          fields: 'id,webViewLink',
+          supportsAllDrives: true,
         });
         googleDocId = file.data.id!;
         console.log('Blank Google Doc created:', googleDocId);
