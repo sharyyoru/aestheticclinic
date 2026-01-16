@@ -36,21 +36,26 @@ export async function POST(request: NextRequest) {
     let googleDocId: string;
     let patientFolderId: string;
 
-    // Create or get patient folder
+    // Parent folder ID where all patient folders will be created
+    // This folder should be in YOUR Drive and shared with the service account
+    const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID || '1XIzFLA07OEmk-T4z1zijj0FUEcNyIb4S';
+
+    // Create or get patient folder inside the parent folder
     const patientFolderName = `Patient_${patientId}`;
     const folderQuery = await drive.files.list({
-      q: `name='${patientFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      q: `name='${patientFolderName}' and '${PARENT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: 'files(id, name)',
     });
 
     if (folderQuery.data.files && folderQuery.data.files.length > 0) {
       patientFolderId = folderQuery.data.files[0].id!;
     } else {
-      // Create patient folder
+      // Create patient folder inside parent folder
       const folder = await drive.files.create({
         requestBody: {
           name: patientFolderName,
           mimeType: 'application/vnd.google-apps.folder',
+          parents: [PARENT_FOLDER_ID],
         },
         fields: 'id',
       });
