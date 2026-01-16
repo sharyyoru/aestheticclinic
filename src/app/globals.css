@@ -90,32 +90,67 @@ textarea::placeholder {
   }
 }
 
-/* Kanban board horizontal scrollbar */
+/* Kanban board horizontal scrollbar - enhanced for Safari/Chrome visibility */
 .kanban-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.85) rgba(248, 250, 252, 0.7);
+  scrollbar-color: rgba(100, 116, 139, 1) rgba(241, 245, 249, 1);
+  /* Force scrollbar to always show on WebKit browsers */
+  overflow-x: scroll;
+  -webkit-overflow-scrolling: touch;
 }
 
 .kanban-scroll::-webkit-scrollbar {
-  height: 6px;
+  height: 10px;
+  -webkit-appearance: none;
 }
 
 .kanban-scroll::-webkit-scrollbar-track {
-  background: rgba(248, 250, 252, 0.7);
-  border-radius: 9999px;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.25);
+  background: rgba(241, 245, 249, 1);
+  border-radius: 5px;
+  border: 1px solid rgba(203, 213, 225, 0.5);
 }
 
 .kanban-scroll::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    90deg,
-    rgba(148, 163, 184, 0.95),
-    rgba(226, 232, 240, 0.95)
-  );
-  border-radius: 9999px;
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.08),
-    0 6px 14px rgba(15, 23, 42, 0.18);
+  background: rgba(100, 116, 139, 0.9);
+  border-radius: 5px;
+  border: 1px solid rgba(71, 85, 105, 0.3);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
+}
+
+.kanban-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 1);
+  border-color: rgba(51, 65, 85, 0.5);
+}
+
+/* Top scrollbar for better UX */
+.kanban-scroll-top {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 1) rgba(241, 245, 249, 1);
+  overflow-x: scroll;
+  -webkit-overflow-scrolling: touch;
+}
+
+.kanban-scroll-top::-webkit-scrollbar {
+  height: 10px;
+  -webkit-appearance: none;
+}
+
+.kanban-scroll-top::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 1);
+  border-radius: 5px;
+  border: 1px solid rgba(203, 213, 225, 0.5);
+}
+
+.kanban-scroll-top::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.9);
+  border-radius: 5px;
+  border: 1px solid rgba(71, 85, 105, 0.3);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.15);
+}
+
+.kanban-scroll-top::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 1);
+  border-color: rgba(51, 65, 85, 0.5);
 }
 
 /* Calendar day view vertical scrollbar */
