@@ -57,10 +57,11 @@ export default function DocSpaceEditor({
   onError,
   onFileSelect,
 }: DocSpaceEditorProps) {
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error" | "auth_required">("loading");
   const [errorMsg, setErrorMsg] = useState("");
   const instanceRef = useRef<DocSpaceInstance | null>(null);
   const initAttemptedRef = useRef(false);
+  const authCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (initAttemptedRef.current) return;
@@ -86,6 +87,9 @@ export default function DocSpaceEditor({
       events: {
         onAppReady: () => {
           console.log("DocSpace app ready");
+          if (authCheckTimeoutRef.current) {
+            clearTimeout(authCheckTimeoutRef.current);
+          }
           setStatus("ready");
         },
         onAppError: (error: string) => {
@@ -96,6 +100,10 @@ export default function DocSpaceEditor({
         },
         onContentReady: () => {
           console.log("DocSpace content ready");
+          if (authCheckTimeoutRef.current) {
+            clearTimeout(authCheckTimeoutRef.current);
+          }
+          setStatus("ready");
         },
         onSelectCallback: (event: { data: unknown }) => {
           console.log("File selected:", event);
@@ -124,6 +132,14 @@ export default function DocSpaceEditor({
         console.log("Initializing DocSpace SDK with config:", config);
         instanceRef.current = window.DocSpace.SDK.initManager(config);
         console.log("✅ DocSpace SDK initialized successfully");
+        
+        authCheckTimeoutRef.current = setTimeout(() => {
+          if (status === "loading") {
+            console.log("DocSpace taking too long to load - likely needs authentication");
+            setStatus("auth_required");
+            setErrorMsg("Please log in to DocSpace to continue");
+          }
+        }, 5000);
       } catch (err) {
         console.error("❌ Error initializing DocSpace:", err);
         const errorMessage = err instanceof Error ? err.message : String(err);
@@ -201,6 +217,9 @@ export default function DocSpaceEditor({
     console.log("DocSpace SDK script tag added to document");
 
     return () => {
+      if (authCheckTimeoutRef.current) {
+        clearTimeout(authCheckTimeoutRef.current);
+      }
       if (instanceRef.current?.destroyFrame) {
         try {
           instanceRef.current.destroyFrame();
@@ -210,6 +229,46 @@ export default function DocSpaceEditor({
       }
     };
   }, [onError, onFileSelect]);
+
+  if (status === "auth_required") {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-slate-50 p-8">
+        <div className="max-w-2xl rounded-lg border border-blue-200 bg-blue-50 p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <svg className="h-6 w-6 text-blue-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-blue-800 mb-2">DocSpace Authentication Required</h3>
+              <p className="text-sm text-blue-700 mb-3">You need to log in to DocSpace to access your documents.</p>
+              <div className="bg-white/50 rounded p-3 text-xs space-y-2 mb-4">
+                <p className="text-blue-700">Click the button below to log in to DocSpace. After logging in, come back to this page and the documents will load automatically.</p>
+              </div>
+              <button
+                onClick={() => {
+                  window.open(DOCSPACE_URL, "_blank");
+                  setTimeout(() => {
+                    window.location.reload();
+                  }, 2000);
+                }}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                Log in to DocSpace
+              </button>
+            </div>
+          </div>
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-300"
+          >
+            Close
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (status === "error") {
     return (
