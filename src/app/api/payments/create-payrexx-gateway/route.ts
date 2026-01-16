@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createPayrexxGateway, generatePaymentQRCode } from "@/lib/payrexx";
 
 export async function POST(request: NextRequest) {
@@ -13,17 +13,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify user is authenticated
-    const { data: authData } = await supabaseClient.auth.getUser();
-    if (!authData?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     // Get the invoice/consultation
-    const { data: consultation, error: consultationError } = await supabaseClient
+    const { data: consultation, error: consultationError } = await supabaseAdmin
       .from("consultations")
       .select("*")
       .eq("id", consultationId)
@@ -57,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get patient information
-    const { data: patient, error: patientError } = await supabaseClient
+    const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
       .select("first_name, last_name, email, phone, street_address, postal_code, town")
       .eq("id", consultation.patient_id)
@@ -113,7 +104,7 @@ export async function POST(request: NextRequest) {
     const qrCodeDataUrl = await generatePaymentQRCode(paymentLink);
 
     // Update the consultation with Payrexx payment info
-    const { error: updateError } = await supabaseClient
+    const { error: updateError } = await supabaseAdmin
       .from("consultations")
       .update({
         payrexx_gateway_id: gatewayId,

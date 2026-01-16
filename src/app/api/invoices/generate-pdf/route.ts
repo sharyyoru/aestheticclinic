@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
 import { 
@@ -150,15 +150,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: authData } = await supabaseClient.auth.getUser();
-    if (!authData?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const { data: consultation, error: consultationError } = await supabaseClient
+    const { data: consultation, error: consultationError } = await supabaseAdmin
       .from("consultations")
       .select("*")
       .eq("id", consultationId)
@@ -174,7 +166,7 @@ export async function POST(request: NextRequest) {
 
     const invoiceData = consultation as unknown as InvoiceData;
 
-    const { data: patient, error: patientError } = await supabaseClient
+    const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
       .select("first_name, last_name, dob, street_address, postal_code, town, gender")
       .eq("id", invoiceData.patient_id)
@@ -191,7 +183,7 @@ export async function POST(request: NextRequest) {
 
     let paymentLinkToken = invoiceData.payment_link_token;
     if (!paymentLinkToken) {
-      const { data: tokenData, error: tokenError } = await supabaseClient.rpc(
+      const { data: tokenData, error: tokenError } = await supabaseAdmin.rpc(
         "generate_payment_link_token"
       );
 
@@ -207,7 +199,7 @@ export async function POST(request: NextRequest) {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 90);
 
-      const { error: updateError } = await supabaseClient
+      const { error: updateError } = await supabaseAdmin
         .from("consultations")
         .update({
           payment_link_token: paymentLinkToken,
@@ -499,7 +491,7 @@ export async function POST(request: NextRequest) {
     const fileName = `invoice-${invoiceData.consultation_id}-${Date.now()}.pdf`;
     const filePath = `${invoiceData.patient_id}/${fileName}`;
 
-    const { error: uploadError } = await supabaseClient.storage
+    const { error: uploadError } = await supabaseAdmin.storage
       .from("invoice-pdfs")
       .upload(filePath, pdfBuffer, {
         contentType: "application/pdf",
@@ -514,7 +506,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { error: updateError } = await supabaseClient
+    const { error: updateError } = await supabaseAdmin
       .from("consultations")
       .update({ invoice_pdf_path: filePath })
       .eq("id", consultationId);
@@ -526,7 +518,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: publicUrlData } = supabaseClient.storage
+    const { data: publicUrlData } = supabaseAdmin.storage
       .from("invoice-pdfs")
       .getPublicUrl(filePath);
 
