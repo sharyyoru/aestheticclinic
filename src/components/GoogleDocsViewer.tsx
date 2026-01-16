@@ -39,7 +39,7 @@ export default function GoogleDocsViewer({
           body: JSON.stringify({
             documentId,
             title: data.document?.title || "Untitled Document",
-            templateId: data.document?.template_id || null,
+            templatePath: data.document?.template_path || null,
             patientId: data.document?.patient_id,
           }),
         });
@@ -56,6 +56,41 @@ export default function GoogleDocsViewer({
       setError("Failed to load document");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      // Get Google Doc ID from URL
+      const match = googleDocUrl.match(/\/document\/d\/([^\/]+)/);
+      if (!match) return;
+
+      const googleDocId = match[1];
+
+      // Fetch patient ID
+      const res = await fetch(`/api/documents/patient/${documentId}`);
+      const data = await res.json();
+
+      // Save Google Doc back to Supabase
+      const saveRes = await fetch(`/api/documents/google/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentId,
+          googleDocId,
+          patientId: data.document?.patient_id,
+        }),
+      });
+
+      const saveData = await saveRes.json();
+      if (saveData.success) {
+        alert("Document saved successfully!");
+      } else {
+        alert(`Failed to save: ${saveData.error}`);
+      }
+    } catch (err) {
+      console.error("Error saving document:", err);
+      alert("Failed to save document");
     }
   };
 
@@ -92,6 +127,12 @@ export default function GoogleDocsViewer({
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
         <h2 className="text-lg font-semibold text-slate-900">Google Docs Editor</h2>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleSave}
+            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+          >
+            Save to System
+          </button>
           <a
             href={googleDocUrl}
             target="_blank"

@@ -10,11 +10,11 @@ const supabaseAdmin = createClient(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { documentId, title, templateId, patientId } = body;
+    const { documentId, title, templatePath, patientId } = body;
 
-    if (!documentId) {
+    if (!documentId || !patientId) {
       return NextResponse.json(
-        { error: "Document ID is required" },
+        { error: "Document ID and Patient ID are required" },
         { status: 400 }
       );
     }
@@ -34,58 +34,55 @@ export async function POST(request: NextRequest) {
     const drive = google.drive({ version: 'v3', auth });
 
     let googleDocId: string;
-    let patientFolderId: string;
+    let docxBuffer: Buffer;
 
-    // Parent folder ID where all patient folders will be created
-    // This folder should be in YOUR Drive and shared with the service account
-    const PARENT_FOLDER_ID = process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID || '1XIzFLA07OEmk-T4z1zijj0FUEcNyIb4S';
+    // Download template or existing document from Supabase
+    if (templatePath) {
+      // Download template from 'templates' bucket
+      const { data: templateData, error: templateError } = await supabaseAdmin.storage
+        .from('templates')
+        .download(templatePath);
 
-    // Create or get patient folder inside the parent folder
-    const patientFolderName = `Patient_${patientId}`;
-    const folderQuery = await drive.files.list({
-      q: `name='${patientFolderName}' and '${PARENT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-      fields: 'files(id, name)',
+      if (templateError || !templateData) {
+        throw new Error(`Failed to download template: ${templateError?.message}`);
+      }
+
+      docxBuffer = Buffer.from(await templateData.arrayBuffer());
+    } else {
+      // Check if document already exists in patient-docs
+      const docPath = `${patientId}/${documentId}.docx`;
+      const { data: existingDoc, error: existingError } = await supabaseAdmin.storage
+        .from('patient-docs')
+        .download(docPath);
+
+      if (existingDoc) {
+        docxBuffer = Buffer.from(await existingDoc.arrayBuffer());
+      } else {
+        // Create blank document
+        docxBuffer = Buffer.from(''); // Will create empty Google Doc
+      }
+    }
+
+    // Upload DOCX to Google Drive and convert to Google Docs format
+    const fileMetadata = {
+      name: title || 'Untitled Document',
+      mimeType: 'application/vnd.google-apps.document',
+    };
+
+    const media = {
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      body: docxBuffer.length > 0 ? require('stream').Readable.from(docxBuffer) : undefined,
+    };
+
+    const file = await drive.files.create({
+      requestBody: fileMetadata,
+      media: docxBuffer.length > 0 ? media : undefined,
+      fields: 'id',
     });
 
-    if (folderQuery.data.files && folderQuery.data.files.length > 0) {
-      patientFolderId = folderQuery.data.files[0].id!;
-    } else {
-      // Create patient folder inside parent folder
-      const folder = await drive.files.create({
-        requestBody: {
-          name: patientFolderName,
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: [PARENT_FOLDER_ID],
-        },
-        fields: 'id',
-      });
-      patientFolderId = folder.data.id!;
-    }
+    googleDocId = file.data.id!;
 
-    if (templateId) {
-      // Copy template to patient folder
-      const copiedFile = await drive.files.copy({
-        fileId: templateId,
-        requestBody: {
-          name: title || 'Untitled Document',
-          parents: [patientFolderId],
-        },
-      });
-      googleDocId = copiedFile.data.id!;
-    } else {
-      // Create blank document in patient folder
-      const file = await drive.files.create({
-        requestBody: {
-          name: title || 'Untitled Document',
-          mimeType: 'application/vnd.google-apps.document',
-          parents: [patientFolderId],
-        },
-        fields: 'id',
-      });
-      googleDocId = file.data.id!;
-    }
-
-    // Make the document editable
+    // Make the document editable by anyone with the link
     await drive.permissions.create({
       fileId: googleDocId,
       requestBody: {
@@ -99,14 +96,12 @@ export async function POST(request: NextRequest) {
       .from("patient_documents")
       .update({
         google_doc_id: googleDocId,
-        google_drive_folder_id: patientFolderId,
         updated_at: new Date().toISOString(),
       })
       .eq("id", documentId);
 
     return NextResponse.json({
       googleDocId,
-      folderId: patientFolderId,
       url: `https://docs.google.com/document/d/${googleDocId}/edit`,
     });
   } catch (error) {

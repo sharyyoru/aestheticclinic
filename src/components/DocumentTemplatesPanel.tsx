@@ -132,15 +132,15 @@ export default function DocumentTemplatesPanel({
   // Create new document from template
   const handleCreateFromTemplate = async (template: Template) => {
     try {
-      // Create document with template reference (template.id is the Google Drive file ID)
+      // Create document with template reference (file_path in Supabase)
       const res = await fetch(`/api/documents/patient`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           patientId,
           title: template.name,
-          templateId: template.id, // Google Drive template file ID
-          content: `<p>Template: ${template.name}</p><p>This document will be created in Google Docs from template.</p>`,
+          templatePath: template.file_path, // Supabase storage path
+          content: `<p>Template: ${template.name}</p><p>Document created from template.</p>`,
         }),
       });
       const data = await res.json();

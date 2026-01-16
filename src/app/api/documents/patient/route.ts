@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { patientId, title, content, templateId } = body;
+    const { patientId, title, content, templatePath } = body;
 
     if (!patientId || !title) {
       return NextResponse.json(
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       .from("patient_documents")
       .insert({
         patient_id: patientId,
-        template_id: templateId || null, // Store Google Drive template ID
+        template_path: templatePath || null, // Store Supabase template path
         title,
         content: initialContent,
         status: "draft",

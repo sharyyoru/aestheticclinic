@@ -1,62 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
-import { google } from "googleapis";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
 
-    console.log('Templates API called');
-    console.log('Service account email:', process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL);
-    console.log('Private key exists:', !!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY);
+    // List files from Supabase 'templates' bucket
+    const { data: files, error } = await supabaseAdmin.storage
+      .from('templates')
+      .list('', {
+        limit: 100,
+        sortBy: { column: 'name', order: 'asc' },
+      });
 
-    // Initialize Google Drive API
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-    });
+    if (error) {
+      console.error("Error fetching templates from Supabase:", error);
+      return NextResponse.json(
+        { error: "Failed to fetch templates" },
+        { status: 500 }
+      );
+    }
 
-    const drive = google.drive({ version: 'v3', auth });
+    let templates = files || [];
 
-    // List files from the Templates folder
-    const TEMPLATES_FOLDER_ID = '1XIzFLA07OEmk-T4z1zijj0FUEcNyIb4S';
-
-    console.log('Fetching templates from folder:', TEMPLATES_FOLDER_ID);
-
-    const response = await drive.files.list({
-      q: `'${TEMPLATES_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false`,
-      fields: 'files(id, name, mimeType, modifiedTime, description)',
-      orderBy: 'name',
-    });
-
-    console.log('Templates found:', response.data.files?.length || 0);
-
-    let templates = response.data.files || [];
+    // Filter out folders and non-docx files
+    templates = templates.filter(file => 
+      !file.id && file.name.toLowerCase().endsWith('.docx')
+    );
 
     // Filter by search term if provided
     if (search) {
       templates = templates.filter(file => 
-        file.name?.toLowerCase().includes(search.toLowerCase())
+        file.name.toLowerCase().includes(search.toLowerCase())
       );
     }
 
     // Format templates for frontend
     const formattedTemplates = templates.map(file => ({
-      id: file.id,
-      name: file.name,
-      description: file.description || '',
-      file_path: file.id, // Use Google Drive file ID as path
-      file_type: 'application/vnd.google-apps.document',
+      id: file.name, // Use filename as ID
+      name: file.name.replace('.docx', ''), // Remove extension for display
+      description: '',
+      file_path: file.name,
+      file_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       category: 'Medical Template',
       storage_only: false,
     }));
 
     return NextResponse.json({ templates: formattedTemplates });
   } catch (error) {
-    console.error("Error fetching templates from Google Drive:", error);
+    console.error("Error fetching templates:", error);
     return NextResponse.json(
       { error: "Failed to fetch templates", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
