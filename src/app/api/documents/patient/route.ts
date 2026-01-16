@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // GET - List patient documents
 export async function GET(request: NextRequest) {
@@ -16,7 +21,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let query = supabaseClient
+    let query = supabaseAdmin
       .from("patient_documents")
       .select(`
         *,
@@ -66,38 +71,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: authData } = await supabaseClient.auth.getUser();
-    const { data: userData } = await supabaseClient
-      .from("users")
-      .select("full_name")
-      .eq("id", authData?.user?.id)
-      .single();
-
     // If template is provided, fetch template content
-    let initialContent = content || "";
+    let initialContent = content || "<p>Start typing your document...</p>";
     if (templateId && !content) {
       // Get template file from storage and convert to HTML
-      const { data: template } = await supabaseClient
+      const { data: template } = await supabaseAdmin
         .from("document_templates")
         .select("file_path")
         .eq("id", templateId)
         .single();
 
       if (template?.file_path) {
-        // Get signed URL for the template
-        const { data: signedUrl } = await supabaseClient
-          .storage
-          .from("templates")
-          .createSignedUrl(template.file_path, 60);
-
-        if (signedUrl?.signedUrl) {
-          // For now, set a placeholder - the editor will load the template
-          initialContent = `<p>Loading template: ${template.file_path}...</p>`;
-        }
+        // For now, set a placeholder - the editor will load the template
+        initialContent = `<p>Loading template: ${template.file_path}...</p>`;
       }
     }
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await supabaseAdmin
       .from("patient_documents")
       .insert({
         patient_id: patientId,
@@ -106,9 +96,9 @@ export async function POST(request: NextRequest) {
         content: initialContent,
         status: "draft",
         version: 1,
-        created_by: authData?.user?.id,
-        created_by_name: userData?.full_name || "Unknown",
-        last_edited_by: authData?.user?.id,
+        created_by: null,
+        created_by_name: "System",
+        last_edited_by: null,
         last_edited_at: new Date().toISOString(),
       })
       .select()
@@ -145,22 +135,15 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const { data: authData } = await supabaseClient.auth.getUser();
-    const { data: userData } = await supabaseClient
-      .from("users")
-      .select("full_name")
-      .eq("id", authData?.user?.id)
-      .single();
-
     // Get current document for version tracking
-    const { data: currentDoc } = await supabaseClient
+    const { data: currentDoc } = await supabaseAdmin
       .from("patient_documents")
       .select("version, content")
       .eq("id", documentId)
       .single();
 
     const updateData: Record<string, any> = {
-      last_edited_by: authData?.user?.id,
+      last_edited_by: null,
       last_edited_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -180,17 +163,17 @@ export async function PUT(request: NextRequest) {
         updateData.version = (currentDoc.version || 1) + 1;
         
         // Save version history
-        await supabaseClient.from("patient_document_versions").insert({
+        await supabaseAdmin.from("patient_document_versions").insert({
           document_id: documentId,
           version: currentDoc.version || 1,
           content: currentDoc.content,
-          changed_by: authData?.user?.id,
-          changed_by_name: userData?.full_name || "Unknown",
+          changed_by: null,
+          changed_by_name: "System",
         });
       }
     }
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await supabaseAdmin
       .from("patient_documents")
       .update(updateData)
       .eq("id", documentId)
@@ -228,7 +211,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const { error } = await supabaseClient
+    const { error } = await supabaseAdmin
       .from("patient_documents")
       .delete()
       .eq("id", documentId);
