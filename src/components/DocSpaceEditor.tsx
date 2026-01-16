@@ -146,7 +146,7 @@ export default function DocSpaceEditor({
         
         authCheckTimeoutRef.current = setTimeout(async () => {
           if (status === "loading" && !loginAttemptedRef.current) {
-            console.log("DocSpace taking too long to load - checking authentication status");
+            console.log("DocSpace taking too long to load - attempting automatic login");
             loginAttemptedRef.current = true;
             
             try {
@@ -154,15 +154,42 @@ export default function DocSpaceEditor({
               if (userInfo && userInfo.id) {
                 console.log("User already authenticated:", userInfo);
                 setStatus("ready");
+                return;
+              }
+              
+              console.log("User not authenticated - attempting programmatic login");
+              const loginResponse = await fetch("/api/docspace/login", {
+                method: "POST",
+              });
+              
+              if (!loginResponse.ok) {
+                throw new Error("Failed to get login credentials");
+              }
+              
+              const loginData = await loginResponse.json();
+              
+              if (loginData.success && instanceRef.current?.login) {
+                console.log("Logging in to DocSpace via SDK...");
+                const result = await instanceRef.current.login(
+                  loginData.email,
+                  loginData.passwordHash,
+                  undefined,
+                  true
+                );
+                
+                if (result.success) {
+                  console.log("Login successful!");
+                  setStatus("ready");
+                } else {
+                  throw new Error("Login failed");
+                }
               } else {
-                console.log("User not authenticated - showing login prompt");
-                setStatus("auth_required");
-                setErrorMsg("Please log in to DocSpace to continue");
+                throw new Error("Login method not available");
               }
             } catch (error) {
-              console.log("Authentication check failed - showing login prompt");
+              console.error("Authentication failed:", error);
               setStatus("auth_required");
-              setErrorMsg("Please log in to DocSpace to continue");
+              setErrorMsg("Authentication failed. Please configure DocSpace credentials.");
             }
           }
         }, 5000);
@@ -259,54 +286,36 @@ export default function DocSpaceEditor({
   if (status === "auth_required") {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 bg-slate-50 p-8">
-        <div className="max-w-3xl rounded-lg border border-amber-200 bg-amber-50 p-6">
+        <div className="max-w-2xl rounded-lg border border-red-200 bg-red-50 p-6">
           <div className="flex items-start gap-3 mb-4">
-            <svg className="h-6 w-6 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-amber-800 mb-2">DocSpace Cookie Configuration Required</h3>
-              <p className="text-sm text-amber-700 mb-3">The DocSpace SDK is loading but cannot maintain authentication due to browser cookie restrictions in cross-origin iframes.</p>
+              <h3 className="text-lg font-semibold text-red-800 mb-2">DocSpace Authentication Failed</h3>
+              <p className="text-sm text-red-700 mb-3">{errorMsg}</p>
               
               <div className="bg-white/70 rounded p-4 text-xs space-y-3 mb-4">
                 <div>
-                  <p className="font-semibold text-amber-900 mb-1">🔧 Server Configuration Needed:</p>
-                  <p className="text-amber-800">The DocSpace server needs to be configured with <code className="bg-amber-100 px-1 rounded">SameSite: none</code> cookies to work in embedded iframes.</p>
+                  <p className="font-semibold text-red-900 mb-1">⚙️ Configuration Required:</p>
+                  <p className="text-red-800">Add your DocSpace credentials to the environment variables:</p>
+                  <pre className="bg-red-100 p-2 rounded mt-2 text-red-900">
+DOCSPACE_EMAIL=your-email@example.com{"\n"}DOCSPACE_PASSWORD=your-password
+                  </pre>
                 </div>
                 
-                <div className="border-t border-amber-200 pt-2">
-                  <p className="font-semibold text-amber-900 mb-1">📝 Temporary Workaround:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-amber-800 ml-2">
-                    <li>Click the button below to open DocSpace in a new tab</li>
-                    <li>Log in to DocSpace in that tab</li>
-                    <li>Keep the DocSpace tab open</li>
-                    <li>Return here and click "Reload" - the session should work</li>
-                  </ol>
+                <div className="border-t border-red-200 pt-2">
+                  <p className="font-semibold text-red-900 mb-1">📍 Where to Add:</p>
+                  <ul className="list-disc list-inside space-y-1 text-red-800 ml-2">
+                    <li>Local: Add to <code className="bg-red-100 px-1 rounded">.env.local</code> file</li>
+                    <li>Vercel: Add in Project Settings → Environment Variables</li>
+                  </ul>
                 </div>
                 
-                <div className="border-t border-amber-200 pt-2">
-                  <p className="font-semibold text-amber-900 mb-1">🔒 Why This Happens:</p>
-                  <p className="text-amber-800">Browsers block third-party cookies by default for security. DocSpace needs server-side configuration to allow cross-origin authentication.</p>
+                <div className="border-t border-red-200 pt-2">
+                  <p className="font-semibold text-red-900 mb-1">🔄 After Adding:</p>
+                  <p className="text-red-800">Restart your development server or redeploy to Vercel</p>
                 </div>
-              </div>
-              
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    window.open(DOCSPACE_URL, "_blank");
-                  }}
-                  className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
-                >
-                  Open DocSpace to Log In
-                </button>
-                <button
-                  onClick={() => {
-                    window.location.reload();
-                  }}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  Reload After Login
-                </button>
               </div>
             </div>
           </div>
