@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ckeditor/ckeditor5-react": "^11.0.1",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.83.0",
     "@tiptap/extension-color": "^3.15.3",
@@ -27,6 +28,7 @@
     "@tiptap/starter-kit": "^3.15.3",
     "@types/fabric": "^5.3.10",
     "@types/qrcode": "^1.5.6",
+    "ckeditor5": "^47.4.0",
     "dotenv": "^17.2.3",
     "fabric": "^6.9.0",
     "jspdf": "^3.0.4",

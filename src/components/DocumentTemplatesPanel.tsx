@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import DocSpaceEditor from "./DocSpaceEditor";
 
 type Template = {
   id: string;
@@ -48,7 +47,6 @@ export default function DocumentTemplatesPanel({
   const [isLoading, setIsLoading] = useState(true);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
-  const [showDocSpace, setShowDocSpace] = useState(false);
 
   // Fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -88,11 +86,6 @@ export default function DocumentTemplatesPanel({
     }
   }, [showTemplateModal, fetchTemplates]);
 
-  // Open DocSpace editor
-  const handleOpenDocSpace = () => {
-    setShowDocSpace(true);
-    setShowTemplateModal(false);
-  };
 
   // Delete document
   const handleDeleteDocument = async (documentId: string) => {
@@ -108,38 +101,6 @@ export default function DocumentTemplatesPanel({
     }
   };
 
-  // DocSpace full screen editor
-  if (showDocSpace) {
-    return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-white">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowDocSpace(false)}
-              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="font-semibold text-slate-900">DocSpace - {patientName}</h2>
-              <p className="text-xs text-slate-500">Upload and edit documents with 100% formatting preserved</p>
-            </div>
-          </div>
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-            DocSpace Editor
-          </span>
-        </div>
-        <div className="flex-1">
-          <DocSpaceEditor
-            onClose={() => setShowDocSpace(false)}
-            onError={(error: string) => console.error("DocSpace error:", error)}
-          />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">
@@ -202,8 +163,7 @@ export default function DocumentTemplatesPanel({
           {documents.map((doc) => (
             <div
               key={doc.id}
-              onClick={() => handleOpenDocSpace()}
-              className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-sky-200 hover:shadow-md transition-all cursor-pointer"
+              className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-sky-200 hover:shadow-md transition-all"
             >
               <div className="flex items-center gap-4">
                 <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
@@ -248,9 +208,9 @@ export default function DocumentTemplatesPanel({
               </div>
               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleOpenDocSpace(); }}
+                  onClick={(e) => { e.stopPropagation(); }}
                   className="rounded-lg p-2 text-slate-400 hover:bg-sky-50 hover:text-sky-600"
-                  title="Edit in DocSpace"
+                  title="Edit document"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -287,34 +247,7 @@ export default function DocumentTemplatesPanel({
               </button>
             </div>
             <div className="p-4 space-y-4">
-              {/* DocSpace button - primary action */}
-              <button
-                onClick={handleOpenDocSpace}
-                className="w-full flex items-center gap-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4 text-left hover:border-emerald-400 hover:bg-emerald-100 transition-colors"
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-500 text-white">
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-emerald-900">Open DocSpace</h3>
-                  <p className="text-sm text-emerald-700">
-                    Upload & edit documents with 100% formatting preserved
-                  </p>
-                </div>
-                <svg className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
 
-              {/* Info */}
-              <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                <p className="text-xs text-slate-600">
-                  <strong>How it works:</strong> Upload your DOCX templates to DocSpace. 
-                  All documents are stored in the cloud with full formatting preserved.
-                </p>
-              </div>
             </div>
           </div>
         </div>
