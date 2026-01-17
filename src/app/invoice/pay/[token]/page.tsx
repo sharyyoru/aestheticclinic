@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { supabaseClient } from "@/lib/supabaseClient";
 
 type InvoiceData = {
   id: string;
@@ -46,42 +45,18 @@ export default function InvoicePaymentPage() {
 
     async function loadInvoice() {
       try {
-        const { data, error: invoiceError } = await supabaseClient
-          .from("consultations")
-          .select("*")
-          .eq("payment_link_token", token)
-          .eq("record_type", "invoice")
-          .single();
+        // Use public API endpoint to bypass authentication
+        const response = await fetch(`/api/invoices/get-by-token?token=${encodeURIComponent(token)}`);
+        const data = await response.json();
 
-        if (invoiceError || !data) {
-          setError("Invoice not found or link has expired");
+        if (!response.ok) {
+          setError(data.error || "Invoice not found or link has expired");
           setLoading(false);
           return;
         }
 
-        const invoiceData = data as unknown as InvoiceData;
-
-        if (invoiceData.payment_link_expires_at) {
-          const expiresAt = new Date(invoiceData.payment_link_expires_at);
-          if (expiresAt < new Date()) {
-            setError("This payment link has expired");
-            setLoading(false);
-            return;
-          }
-        }
-
-        setInvoice(invoiceData);
-
-        const { data: patientData, error: patientError } = await supabaseClient
-          .from("patients")
-          .select("first_name, last_name, email, phone")
-          .eq("id", invoiceData.patient_id)
-          .single();
-
-        if (!patientError && patientData) {
-          setPatient(patientData as PatientData);
-        }
-
+        setInvoice(data.invoice);
+        setPatient(data.patient);
         setLoading(false);
       } catch (err) {
         console.error("Error loading invoice:", err);
@@ -128,13 +103,10 @@ export default function InvoicePaymentPage() {
   function downloadPDF() {
     if (!invoice?.invoice_pdf_path) return;
 
-    const { data } = supabaseClient.storage
-      .from("invoice-pdfs")
-      .getPublicUrl(invoice.invoice_pdf_path);
-
-    if (data?.publicUrl) {
-      window.open(data.publicUrl, "_blank");
-    }
+    // Construct public URL directly (no auth needed for public buckets)
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const publicUrl = `${baseUrl}/storage/v1/object/public/invoice-pdfs/${invoice.invoice_pdf_path}`;
+    window.open(publicUrl, "_blank");
   }
 
   if (loading) {
