@@ -39,10 +39,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Check if payment method is Online Payment
-    if (consultation.payment_method !== "Online Payment") {
+    // Check if payment method is Online Payment or Cash (both use Payrex)
+    if (consultation.payment_method !== "Online Payment" && consultation.payment_method !== "Cash") {
       return NextResponse.json(
-        { error: "Invoice payment method is not Online Payment" },
+        { error: "Invoice payment method must be Online Payment or Cash" },
         { status: 400 }
       );
     }

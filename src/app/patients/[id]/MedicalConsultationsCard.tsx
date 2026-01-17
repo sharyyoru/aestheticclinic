@@ -1469,8 +1469,8 @@ export default function MedicalConsultationsCard({
                     setConsultations((prev) => [inserted, ...prev]);
 
                     if (inserted.record_type === "invoice") {
-                      // Create Payrexx payment gateway for Online Payment invoices
-                      if (inserted.payment_method === "Online Payment") {
+                      // Create Payrexx payment gateway for Online Payment and Cash invoices
+                      if (inserted.payment_method === "Online Payment" || inserted.payment_method === "Cash") {
                         try {
                           const payrexxResponse = await fetch("/api/payments/create-payrexx-gateway", {
                             method: "POST",
