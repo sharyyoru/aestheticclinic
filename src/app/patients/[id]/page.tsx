@@ -289,7 +289,7 @@ export default async function PatientPage({
 
   const medicalTabs: { id: MedicalTab; label: string }[] = [
     { id: "cockpit", label: "Cockpit" },
-    { id: "notes", label: "Notes" },
+    { id: "notes", label: "Consultations" },
     { id: "prescription", label: "Prescription" },
     { id: "invoice", label: "Invoice" },
     { id: "3d", label: "3D" },
