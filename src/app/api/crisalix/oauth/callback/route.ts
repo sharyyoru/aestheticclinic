@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
     }),
     {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: maxAgeSeconds,
@@ -130,14 +130,18 @@ export async function GET(request: NextRequest) {
   );
 
   if (tokenJson.player_token) {
+    console.log("[Crisalix OAuth Callback] Setting player token cookie");
     response.cookies.set("crisalix_player_token", tokenJson.player_token, {
       httpOnly: false,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: maxAgeSeconds,
     });
+  } else {
+    console.warn("[Crisalix OAuth Callback] No player_token in response");
   }
 
+  console.log("[Crisalix OAuth Callback] Cookies set, redirecting to:", redirectTarget);
   return response;
 }
