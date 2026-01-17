@@ -250,9 +250,19 @@ export default function Patient3DSetupPage() {
     setError(null);
 
     try {
-      const formData = new FormData(event.currentTarget);
-      formData.set("patient_id", String(patientId));
-      formData.set("reconstruction_type", type);
+      // Build FormData from scratch to ensure gallery images are included
+      const formData = new FormData();
+      
+      // Add patient and reconstruction info
+      formData.append("patient_id", String(patientId));
+      formData.append("reconstruction_type", type);
+      
+      // Get provider from form
+      const form = event.currentTarget;
+      const providerSelect = form.querySelector('select[name="provider"]') as HTMLSelectElement;
+      if (providerSelect) {
+        formData.append("provider", providerSelect.value);
+      }
       
       console.log("[3D Setup] Preparing form submission:", {
         type,
@@ -263,22 +273,78 @@ export default function Patient3DSetupPage() {
         hasBackFile: !!backFile,
       });
       
-      // Override with selected files if available
+      // Add image files from state (works for both upload and gallery selection)
       if (leftFile) {
-        formData.set("left_profile", leftFile);
-        console.log("[3D Setup] Added left_profile:", leftFile.name, leftFile.size);
+        formData.append("left_profile", leftFile, leftFile.name);
+        console.log("[3D Setup] ✓ Added left_profile:", {
+          name: leftFile.name,
+          size: leftFile.size,
+          type: leftFile.type,
+        });
+      } else {
+        console.warn("[3D Setup] ✗ No left_profile file");
       }
+      
       if (frontFile) {
-        formData.set("front_profile", frontFile);
-        console.log("[3D Setup] Added front_profile:", frontFile.name, frontFile.size);
+        formData.append("front_profile", frontFile, frontFile.name);
+        console.log("[3D Setup] ✓ Added front_profile:", {
+          name: frontFile.name,
+          size: frontFile.size,
+          type: frontFile.type,
+        });
+      } else {
+        console.warn("[3D Setup] ✗ No front_profile file");
       }
+      
       if (rightFile) {
-        formData.set("right_profile", rightFile);
-        console.log("[3D Setup] Added right_profile:", rightFile.name, rightFile.size);
+        formData.append("right_profile", rightFile, rightFile.name);
+        console.log("[3D Setup] ✓ Added right_profile:", {
+          name: rightFile.name,
+          size: rightFile.size,
+          type: rightFile.type,
+        });
+      } else {
+        console.warn("[3D Setup] ✗ No right_profile file");
       }
-      if (backFile) {
-        formData.set("back_profile", backFile);
-        console.log("[3D Setup] Added back_profile:", backFile.name, backFile.size);
+      
+      if (type === "body" && backFile) {
+        formData.append("back_profile", backFile, backFile.name);
+        console.log("[3D Setup] ✓ Added back_profile:", {
+          name: backFile.name,
+          size: backFile.size,
+          type: backFile.type,
+        });
+      }
+      
+      // Add measurements based on reconstruction type
+      if (type === "breast") {
+        const nippleInput = form.querySelector('input[name="nipple_to_nipple_cm"]') as HTMLInputElement;
+        if (nippleInput?.value) {
+          formData.append("nipple_to_nipple_cm", nippleInput.value);
+          console.log("[3D Setup] Added measurement: nipple_to_nipple_cm =", nippleInput.value);
+        }
+      } else if (type === "face") {
+        const pupilInput = form.querySelector('input[name="pupillary_distance_cm"]') as HTMLInputElement;
+        if (pupilInput?.value) {
+          formData.append("pupillary_distance_cm", pupilInput.value);
+          console.log("[3D Setup] Added measurement: pupillary_distance_cm =", pupilInput.value);
+        }
+      } else if (type === "body") {
+        const hiplineInput = form.querySelector('input[name="hipline_cm"]') as HTMLInputElement;
+        if (hiplineInput?.value) {
+          formData.append("hipline_cm", hiplineInput.value);
+          console.log("[3D Setup] Added measurement: hipline_cm =", hiplineInput.value);
+        }
+      }
+      
+      // Log final FormData contents
+      console.log("[3D Setup] Final FormData entries:");
+      for (const [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(`  - ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`);
+        } else {
+          console.log(`  - ${key}: ${value}`);
+        }
       }
       
       console.log("[3D Setup] Submitting to /api/crisalix/patients...");
