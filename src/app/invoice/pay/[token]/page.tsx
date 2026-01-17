@@ -1,21 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { useParams } from "next/navigation";
 
 type InvoiceData = {
   id: string;
   consultation_id: string;
-  patient_id: string;
   title: string;
   scheduled_at: string;
   invoice_total_amount: number | null;
   payment_method: string | null;
   doctor_name: string | null;
   invoice_is_paid: boolean;
-  invoice_pdf_path: string | null;
-  payment_link_expires_at: string | null;
+  pdf_url: string | null;
+  payrexx_payment_link: string | null;
 };
 
 type PatientData = {
@@ -27,7 +25,6 @@ type PatientData = {
 
 export default function InvoicePaymentPage() {
   const params = useParams();
-  const router = useRouter();
   const token = params?.token as string;
 
   const [loading, setLoading] = useState(true);
@@ -46,42 +43,17 @@ export default function InvoicePaymentPage() {
 
     async function loadInvoice() {
       try {
-        const { data, error: invoiceError } = await supabaseClient
-          .from("consultations")
-          .select("*")
-          .eq("payment_link_token", token)
-          .eq("record_type", "invoice")
-          .single();
+        const response = await fetch(`/api/invoices/public/${token}`);
+        const data = await response.json();
 
-        if (invoiceError || !data) {
-          setError("Invoice not found or link has expired");
+        if (!response.ok) {
+          setError(data.error || "Invoice not found or link has expired");
           setLoading(false);
           return;
         }
 
-        const invoiceData = data as unknown as InvoiceData;
-
-        if (invoiceData.payment_link_expires_at) {
-          const expiresAt = new Date(invoiceData.payment_link_expires_at);
-          if (expiresAt < new Date()) {
-            setError("This payment link has expired");
-            setLoading(false);
-            return;
-          }
-        }
-
-        setInvoice(invoiceData);
-
-        const { data: patientData, error: patientError } = await supabaseClient
-          .from("patients")
-          .select("first_name, last_name, email, phone")
-          .eq("id", invoiceData.patient_id)
-          .single();
-
-        if (!patientError && patientData) {
-          setPatient(patientData as PatientData);
-        }
-
+        setInvoice(data.invoice);
+        setPatient(data.patient);
         setLoading(false);
       } catch (err) {
         console.error("Error loading invoice:", err);
@@ -126,14 +98,13 @@ export default function InvoicePaymentPage() {
   }
 
   function downloadPDF() {
-    if (!invoice?.invoice_pdf_path) return;
+    if (!invoice?.pdf_url) return;
+    window.open(invoice.pdf_url, "_blank");
+  }
 
-    const { data } = supabaseClient.storage
-      .from("invoice-pdfs")
-      .getPublicUrl(invoice.invoice_pdf_path);
-
-    if (data?.publicUrl) {
-      window.open(data.publicUrl, "_blank");
+  function handlePayrexxPayment() {
+    if (invoice?.payrexx_payment_link) {
+      window.location.href = invoice.payrexx_payment_link;
     }
   }
 
@@ -175,7 +146,7 @@ export default function InvoicePaymentPage() {
           </div>
           <h1 className="mb-2 text-xl font-semibold text-slate-900">Already Paid</h1>
           <p className="mb-6 text-sm text-slate-600">This invoice has already been paid.</p>
-          {invoice.invoice_pdf_path && (
+          {invoice.pdf_url && (
             <button
               onClick={downloadPDF}
               className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
@@ -190,6 +161,9 @@ export default function InvoicePaymentPage() {
       </div>
     );
   }
+
+  // If this is an Online Payment invoice with Payrexx link, redirect to Payrexx
+  const hasPayrexxPayment = invoice.payment_method === "Online Payment" && invoice.payrexx_payment_link;
 
   const totalAmount = invoice.invoice_total_amount || 0;
   const formattedAmount = totalAmount.toFixed(2);
@@ -242,7 +216,7 @@ export default function InvoicePaymentPage() {
             </div>
           </div>
 
-          {invoice.invoice_pdf_path && (
+          {invoice.pdf_url && (
             <button
               onClick={downloadPDF}
               className="mb-6 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -256,7 +230,22 @@ export default function InvoicePaymentPage() {
             </button>
           )}
 
-          {!paymentMethod ? (
+          {hasPayrexxPayment ? (
+            <div>
+              <h3 className="mb-4 text-center text-sm font-semibold text-slate-900">Pay Online</h3>
+              <button
+                onClick={handlePayrexxPayment}
+                className="w-full rounded-lg bg-gradient-to-r from-sky-600 to-sky-700 px-6 py-4 font-semibold text-white shadow-lg hover:from-sky-700 hover:to-sky-800"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                  </svg>
+                  Pay Now with Card
+                </span>
+              </button>
+            </div>
+          ) : !paymentMethod ? (
             <div>
               <h3 className="mb-4 text-center text-sm font-semibold text-slate-900">Choose Payment Method</h3>
               <div className="space-y-3">

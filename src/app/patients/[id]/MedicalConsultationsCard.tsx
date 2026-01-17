@@ -266,6 +266,8 @@ export default function MedicalConsultationsCard({
 
   const [generatingPdf, setGeneratingPdf] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [generatedPaymentLink, setGeneratedPaymentLink] = useState<{ consultationId: string; url: string } | null>(null);
+  const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
 
   const [insuranceBillingModalOpen, setInsuranceBillingModalOpen] = useState(false);
   const [insuranceBillingTarget, setInsuranceBillingTarget] = useState<ConsultationRow | null>(null);
@@ -788,14 +790,9 @@ export default function MedicalConsultationsCard({
         window.open(data.pdfUrl, "_blank", "noopener,noreferrer");
       }
 
-      if (data.paymentUrl && typeof window !== "undefined") {
-        const copyText = `Payment link: ${data.paymentUrl}`;
-        if (navigator.clipboard) {
-          await navigator.clipboard.writeText(data.paymentUrl);
-          alert(`Invoice PDF generated!\n\nPayment link copied to clipboard:\n${data.paymentUrl}`);
-        } else {
-          alert(`Invoice PDF generated!\n\nPayment link:\n${data.paymentUrl}`);
-        }
+      if (data.paymentUrl) {
+        setGeneratedPaymentLink({ consultationId, url: data.paymentUrl });
+        setPaymentLinkCopied(false);
       }
 
       setGeneratingPdf(null);
@@ -2789,6 +2786,45 @@ export default function MedicalConsultationsCard({
                             >
                               {generatingPdf === row.id ? "Generating..." : "Generate PDF"}
                             </button>
+                            {generatedPaymentLink?.consultationId === row.id && (
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (navigator.clipboard) {
+                                      await navigator.clipboard.writeText(generatedPaymentLink.url);
+                                      setPaymentLinkCopied(true);
+                                      setTimeout(() => setPaymentLinkCopied(false), 2000);
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800 shadow-sm hover:bg-sky-100"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                  {paymentLinkCopied ? "Copied!" : "Copy Link"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => window.open(generatedPaymentLink.url, "_blank")}
+                                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 shadow-sm hover:bg-slate-50"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                  Open
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setGeneratedPaymentLink(null)}
+                                  className="inline-flex items-center rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-500 shadow-sm hover:bg-slate-50"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
                             <button
                               type="button"
                               onClick={() => {
