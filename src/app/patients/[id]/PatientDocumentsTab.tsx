@@ -5,6 +5,7 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import BeforeAfterEditorModal from "./BeforeAfterEditorModal";
 import PdfAnnotationEditor from "@/components/PdfAnnotationEditor";
 import DocumentTemplatesPanel from "@/components/DocumentTemplatesPanel";
+import EmailShareModal from "./EmailShareModal";
 import dynamic from 'next/dynamic';
 
 // Dynamic import for docx-preview (client-side only)
@@ -131,6 +132,14 @@ export default function PatientDocumentsTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [enlargedImage, setEnlargedImage] = useState<{ url: string; name: string } | null>(null);
   const [previewModal, setPreviewModal] = useState<{ url: string; name: string; mimeType: string; uploadedAt: string | null } | null>(null);
+  
+  // Email sharing state
+  const [selectedFilesForEmail, setSelectedFilesForEmail] = useState<Set<string>>(new Set());
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -493,6 +502,151 @@ export default function PatientDocumentsTab({
     setSelectedFile(item);
   }
 
+  function toggleFileForEmail(itemPath: string) {
+    setSelectedFilesForEmail(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemPath)) {
+        newSet.delete(itemPath);
+      } else {
+        newSet.add(itemPath);
+      }
+      return newSet;
+    });
+  }
+
+  function selectAllFilesForEmail() {
+    const allFilePaths = filteredItems
+      .filter(item => item.kind === "file")
+      .map(item => item.path);
+    setSelectedFilesForEmail(new Set(allFilePaths));
+  }
+
+  function deselectAllFilesForEmail() {
+    setSelectedFilesForEmail(new Set());
+  }
+
+  async function handleSendEmail(event: React.FormEvent) {
+    event.preventDefault();
+    if (selectedFilesForEmail.size === 0) {
+      setEmailError("Please select at least one file to share.");
+      return;
+    }
+
+    try {
+      setSendingEmail(true);
+      setEmailError(null);
+
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const authUser = authData?.user;
+      if (!authUser) {
+        setEmailError("You must be logged in to send an email.");
+        setSendingEmail(false);
+        return;
+      }
+
+      // Get patient email
+      const { data: patientData, error: patientError } = await supabaseClient
+        .from("patients")
+        .select("email, first_name, last_name")
+        .eq("id", patientId)
+        .single();
+
+      if (patientError || !patientData?.email) {
+        setEmailError("Patient email not found.");
+        setSendingEmail(false);
+        return;
+      }
+
+      const patientEmail = patientData.email;
+      const patientFullName = `${patientData.first_name} ${patientData.last_name}`;
+
+      // Get URLs for selected files
+      const fileUrls: { name: string; url: string }[] = [];
+      for (const itemPath of Array.from(selectedFilesForEmail)) {
+        const fullPath = [patientId, itemPath].filter(Boolean).join("/");
+        const { data } = supabaseClient.storage
+          .from(BUCKET_NAME)
+          .getPublicUrl(fullPath);
+        
+        const item = items.find(i => i.path === itemPath);
+        if (data.publicUrl && item) {
+          fileUrls.push({
+            name: item.name,
+            url: data.publicUrl,
+          });
+        }
+      }
+
+      const fromAddress = authUser.email ?? null;
+      const fromName = authUser.user_metadata?.full_name || 
+                       [authUser.user_metadata?.first_name, authUser.user_metadata?.last_name].filter(Boolean).join(" ") ||
+                       null;
+
+      // Create email with file links in body
+      let emailBodyWithLinks = emailBody || `Hi ${patientFullName},\n\nPlease find your documents below:\n\n`;
+      emailBodyWithLinks += fileUrls.map((file, index) => 
+        `${index + 1}. <a href="${file.url}" target="_blank">${file.name}</a>`
+      ).join("\n");
+      emailBodyWithLinks += `\n\nBest regards,\nAesthetic Clinic`;
+
+      // Convert to HTML
+      const htmlBody = emailBodyWithLinks.replace(/\n/g, "<br>");
+
+      const { data: inserted, error: insertError } = await supabaseClient
+        .from("emails")
+        .insert({
+          patient_id: patientId,
+          to_address: patientEmail,
+          from_address: fromAddress,
+          subject: emailSubject || `Your documents from Aesthetic Clinic`,
+          body: htmlBody,
+          direction: "outbound",
+          status: "sent",
+          sent_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+
+      if (insertError || !inserted) {
+        setEmailError(insertError?.message ?? "Failed to save email.");
+        setSendingEmail(false);
+        return;
+      }
+
+      // Send email via API
+      const response = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: patientEmail,
+          subject: emailSubject || `Your documents from Aesthetic Clinic`,
+          html: htmlBody,
+          fromUserEmail: fromAddress,
+          fromUserName: fromName,
+          emailId: (inserted as any).id,
+          patientId: patientId,
+        }),
+      });
+
+      if (!response.ok) {
+        setEmailError("Email saved internally but failed to send via email provider.");
+      }
+
+      // Success - close modal and reset
+      setEmailModalOpen(false);
+      setSelectedFilesForEmail(new Set());
+      setEmailSubject("");
+      setEmailBody("");
+      setEmailError(null);
+    } catch (err: any) {
+      setEmailError(err?.message ?? "Failed to send email.");
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
   function handleStartRename(item: ListedItem) {
     setRenamingFile(item);
     setNewFileName(item.name);
@@ -646,40 +800,54 @@ export default function PatientDocumentsTab({
           </div>
         </div>
 
-        <div className="mb-3 flex items-center gap-1 text-[11px] text-slate-500">
-          <button
-            type="button"
-            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-              breadcrumbSegments.length === 0
-                ? "bg-sky-50 text-sky-700 border border-sky-200"
-                : "hover:bg-slate-100 border border-transparent"
-            }`}
-            onClick={() => {
-              setCurrentPrefix("");
-              setSelectedFile(null);
-            }}
-          >
-            Root
-          </button>
-          {breadcrumbSegments.map((segment, index) => (
-            <div key={segment.path} className="flex items-center gap-1">
-              <span className="text-slate-400">/</span>
-              <button
-                type="button"
-                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                  index === breadcrumbSegments.length - 1
-                    ? "bg-sky-50 text-sky-700 border border-sky-200"
-                    : "hover:bg-slate-100 border border-transparent"
-                }`}
-                onClick={() => {
-                  setCurrentPrefix(segment.path);
-                  setSelectedFile(null);
-                }}
-              >
-                {segment.label}
-              </button>
-            </div>
-          ))}
+        <div className="mb-3 flex items-center gap-3">
+          <div className="flex items-center gap-1 text-[11px] text-slate-500">
+            <button
+              type="button"
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                breadcrumbSegments.length === 0
+                  ? "bg-sky-50 text-sky-700 border border-sky-200"
+                  : "hover:bg-slate-100 border border-transparent"
+              }`}
+              onClick={() => {
+                setCurrentPrefix("");
+                setSelectedFile(null);
+              }}
+            >
+              Root
+            </button>
+            {breadcrumbSegments.map((segment, index) => (
+              <div key={segment.path} className="flex items-center gap-1">
+                <span className="text-slate-400">/</span>
+                <button
+                  type="button"
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    index === breadcrumbSegments.length - 1
+                      ? "bg-sky-50 text-sky-700 border border-sky-200"
+                      : "hover:bg-slate-100 border border-transparent"
+                  }`}
+                  onClick={() => {
+                    setCurrentPrefix(segment.path);
+                    setSelectedFile(null);
+                  }}
+                >
+                  {segment.label}
+                </button>
+              </div>
+            ))}
+          </div>
+          {selectedFilesForEmail.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setEmailModalOpen(true)}
+              className="inline-flex h-7 items-center gap-1.5 rounded-full border border-emerald-500 bg-emerald-500 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-600 transition-colors"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              Share by Email ({selectedFilesForEmail.size})
+            </button>
+          )}
         </div>
 
         {error ? (
@@ -763,7 +931,28 @@ export default function PatientDocumentsTab({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span>Items ({filteredItems.length}){totalPages > 1 ? ` • Page ${currentPage} of ${totalPages}` : ""}</span>
+              <div className="flex items-center gap-2">
+                <span>Items ({filteredItems.length}){totalPages > 1 ? ` • Page ${currentPage} of ${totalPages}` : ""}</span>
+                {filteredItems.filter(i => i.kind === "file").length > 0 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={selectAllFilesForEmail}
+                      className="text-[10px] text-sky-600 hover:text-sky-700 font-medium underline"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={deselectAllFilesForEmail}
+                      className="text-[10px] text-slate-500 hover:text-slate-700 font-medium underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
               {loading ? <span className="text-slate-400">Loading…</span> : null}
             </div>
             <div className="max-h-[420px] overflow-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2">
@@ -820,17 +1009,31 @@ export default function PatientDocumentsTab({
                     const uploadDate = item.created_at || item.updated_at;
                     const mimeType = getMimeType(item.name, item.metadata);
 
+                    const isSelectedForEmail = selectedFilesForEmail.has(item.path);
+
                     return (
                       <div
                         key={item.path}
-                        className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[11px] cursor-pointer transition-all ${
+                        className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[11px] transition-all ${
                           isSelected
                             ? "border-sky-400 bg-gradient-to-r from-sky-50 to-white shadow-[0_0_0_1px_rgba(56,189,248,0.4)]"
                             : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/60 hover:shadow-sm"
                         }`}
-                        onClick={() => handleSelectFile(item)}
                       >
-                        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm">
+                        {/* Checkbox for email selection */}
+                        <div className="flex-shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelectedForEmail}
+                            onChange={() => toggleFileForEmail(item.path)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-4 w-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 cursor-pointer"
+                          />
+                        </div>
+                        <div 
+                          className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm cursor-pointer"
+                          onClick={() => handleSelectFile(item)}
+                        >
                           {isImageThumb && thumbUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -1391,6 +1594,23 @@ export default function PatientDocumentsTab({
           </div>
         </div>
       ) : null}
+      {/* Email Share Modal */}
+      <EmailShareModal
+        open={emailModalOpen}
+        onClose={() => {
+          setEmailModalOpen(false);
+          setEmailError(null);
+        }}
+        selectedFileCount={selectedFilesForEmail.size}
+        emailSubject={emailSubject}
+        emailBody={emailBody}
+        onSubjectChange={setEmailSubject}
+        onBodyChange={setEmailBody}
+        onSend={handleSendEmail}
+        sending={sendingEmail}
+        error={emailError}
+        patientName={patientName}
+      />
     </>
   );
 }
