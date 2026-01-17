@@ -58,16 +58,30 @@ export default function InvoicePaymentPage() {
         const invoiceData = data.invoice;
         setInvoice(invoiceData);
         setPatient(data.patient);
-        setLoading(false);
+        
+        console.log("Invoice loaded:", {
+          payment_method: invoiceData.payment_method,
+          payrexx_payment_link: invoiceData.payrexx_payment_link,
+          invoice_is_paid: invoiceData.invoice_is_paid,
+        });
 
         // Auto-redirect to Payrexx for Online Payment/Cash invoices
         if (!invoiceData.invoice_is_paid && invoiceData.payrexx_payment_link && 
             (invoiceData.payment_method === "Online Payment" || invoiceData.payment_method === "Cash")) {
+          console.log("Redirecting to Payrexx:", invoiceData.payrexx_payment_link);
           // Small delay to show loading state then redirect
           setTimeout(() => {
             window.location.href = invoiceData.payrexx_payment_link;
           }, 500);
+        } else {
+          console.log("Not redirecting. Conditions not met:", {
+            isPaid: invoiceData.invoice_is_paid,
+            hasPayrexxLink: !!invoiceData.payrexx_payment_link,
+            paymentMethod: invoiceData.payment_method,
+          });
         }
+        
+        setLoading(false);
       } catch (err) {
         console.error("Error loading invoice:", err);
         setError("Failed to load invoice");
