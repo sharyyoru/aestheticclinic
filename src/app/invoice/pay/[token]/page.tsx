@@ -235,10 +235,8 @@ export default function InvoicePaymentPage() {
             <div>
               <h3 className="mb-4 text-center text-lg font-semibold text-slate-900">Payment Options</h3>
               <div className="space-y-3">
-                {/* Show Payrexx button for payments containing 'cash' or 'online' */}
-                {invoice.payrexx_payment_link && invoice.payment_method && 
-                 (invoice.payment_method.toLowerCase().includes("cash") || 
-                  invoice.payment_method.toLowerCase().includes("online")) && (
+                {/* Show Payrexx button if payment link exists */}
+                {invoice.payrexx_payment_link && (
                   <button
                     onClick={handlePayrexxPayment}
                     className="w-full rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-5 text-lg font-bold text-white shadow-lg hover:from-emerald-700 hover:to-emerald-800 transition-all"
@@ -247,25 +245,23 @@ export default function InvoicePaymentPage() {
                       <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                       </svg>
-                      Pay with Payrexx
+                      Pay Online with Card
                     </span>
                   </button>
                 )}
 
-                {/* Show Bank Transfer option for Bank transfer payment method */}
-                {invoice.payment_method === "Bank transfer" && (
-                  <button
-                    onClick={handleBankTransfer}
-                    className="w-full rounded-lg bg-gradient-to-r from-slate-700 to-slate-800 px-6 py-4 font-semibold text-white shadow-lg hover:from-slate-800 hover:to-slate-900"
-                  >
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
-                      </svg>
-                      View Bank Transfer Details
-                    </span>
-                  </button>
-                )}
+                {/* Always show Bank Transfer option as fallback */}
+                <button
+                  onClick={handleBankTransfer}
+                  className="w-full rounded-lg bg-gradient-to-r from-slate-700 to-slate-800 px-6 py-4 font-semibold text-white shadow-lg hover:from-slate-800 hover:to-slate-900"
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+                    </svg>
+                    Pay by Bank Transfer
+                  </span>
+                </button>
               </div>
             </div>
           ) : (
