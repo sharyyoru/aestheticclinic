@@ -51,6 +51,7 @@ type ConsultationRow = {
   invoice_is_paid: boolean | null;
   cash_receipt_path: string | null;
   invoice_pdf_path: string | null;
+  payment_link_token: string | null;
   payrexx_payment_link: string | null;
   payrexx_payment_status: string | null;
   created_by_user_id: string | null;
@@ -372,7 +373,7 @@ export default function MedicalConsultationsCard({
         const { data, error } = await supabaseClient
           .from("consultations")
           .select(
-            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -1518,7 +1519,7 @@ export default function MedicalConsultationsCard({
                       .from("consultations")
                       .insert(insertPayload)
                       .select(
-                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
                       )
                       .single();
 
@@ -2905,6 +2906,29 @@ export default function MedicalConsultationsCard({
                               </svg>
                               Edit
                             </button>
+
+                            {/* Copy Payment Link Button (for Online Payment/Cash) */}
+                            {!row.invoice_is_paid && (row.payment_method === "Online Payment" || row.payment_method === "Cash") && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const baseUrl = window.location.origin;
+                                  const paymentLink = `${baseUrl}/invoice/pay/${row.payment_link_token}`;
+                                  navigator.clipboard.writeText(paymentLink).then(() => {
+                                    alert("Payment link copied to clipboard!");
+                                  }).catch(err => {
+                                    console.error("Failed to copy:", err);
+                                    alert("Failed to copy link");
+                                  });
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-800 shadow-sm hover:bg-blue-100"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                </svg>
+                                Copy Link
+                              </button>
+                            )}
 
                             {/* Payment Status Button (if not paid) */}
                             {!row.invoice_is_paid && (

@@ -55,32 +55,8 @@ export default function InvoicePaymentPage() {
           return;
         }
 
-        const invoiceData = data.invoice;
-        setInvoice(invoiceData);
+        setInvoice(data.invoice);
         setPatient(data.patient);
-        
-        console.log("Invoice loaded:", {
-          payment_method: invoiceData.payment_method,
-          payrexx_payment_link: invoiceData.payrexx_payment_link,
-          invoice_is_paid: invoiceData.invoice_is_paid,
-        });
-
-        // Auto-redirect to Payrexx for Online Payment/Cash invoices
-        if (!invoiceData.invoice_is_paid && invoiceData.payrexx_payment_link && 
-            (invoiceData.payment_method === "Online Payment" || invoiceData.payment_method === "Cash")) {
-          console.log("Redirecting to Payrexx:", invoiceData.payrexx_payment_link);
-          // Small delay to show loading state then redirect
-          setTimeout(() => {
-            window.location.href = invoiceData.payrexx_payment_link;
-          }, 500);
-        } else {
-          console.log("Not redirecting. Conditions not met:", {
-            isPaid: invoiceData.invoice_is_paid,
-            hasPayrexxLink: !!invoiceData.payrexx_payment_link,
-            paymentMethod: invoiceData.payment_method,
-          });
-        }
-        
         setLoading(false);
       } catch (err) {
         console.error("Error loading invoice:", err);
@@ -257,19 +233,19 @@ export default function InvoicePaymentPage() {
 
           {!paymentMethod ? (
             <div>
-              <h3 className="mb-4 text-center text-sm font-semibold text-slate-900">Choose Payment Method</h3>
+              <h3 className="mb-4 text-center text-lg font-semibold text-slate-900">Payment Options</h3>
               <div className="space-y-3">
                 {/* Show Payrexx button for Online Payment and Cash */}
                 {(invoice.payment_method === "Online Payment" || invoice.payment_method === "Cash") && invoice.payrexx_payment_link && (
                   <button
                     onClick={handlePayrexxPayment}
-                    className="w-full rounded-lg bg-gradient-to-r from-sky-600 to-sky-700 px-6 py-4 font-semibold text-white shadow-lg hover:from-sky-700 hover:to-sky-800"
+                    className="w-full rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-5 text-lg font-bold text-white shadow-lg hover:from-emerald-700 hover:to-emerald-800 transition-all"
                   >
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <span className="flex items-center justify-center gap-3">
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                       </svg>
-                      Pay Now with Card
+                      Pay with Payrexx
                     </span>
                   </button>
                 )}
