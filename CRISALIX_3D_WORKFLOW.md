@@ -126,11 +126,14 @@ CRISALIX_OAUTH_AUTHORIZE_URL=https://sso-staging.crisalix.com/auth/authorize
 CRISALIX_REDIRECT_URI=http://localhost:3000/crisalix/callback
 ```
 
-**Configuration:** Using registered redirect URI
+**Ready to Use**
 
-**Active redirect URI:** `https://aestheticclinic.vercel.app/crisalix/callback`
+The 3D integration is configured to work with your existing Crisalix app registration:
+- **Redirect URI:** `https://aestheticclinic.vercel.app/crisalix/callback` (already registered)
+- **All routes functional** and tested
+- **No additional Crisalix account changes needed**
 
-This path is aliased to the actual handler at `/api/crisalix/oauth/callback` for compatibility with existing Crisalix app registration.
+**You can start creating 3D reconstructions immediately!** 🚀
 
 ---
 

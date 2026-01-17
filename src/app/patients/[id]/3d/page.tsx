@@ -37,5 +37,12 @@ export default async function Patient3DPage({ params }: Patient3DPageProps) {
     url.searchParams.set("scope", scope);
   }
 
+  console.log("[Crisalix OAuth] Redirecting to authorization:", {
+    url: url.toString(),
+    patientId: id,
+    redirectUri,
+    scope,
+  });
+
   redirect(url.toString());
 }

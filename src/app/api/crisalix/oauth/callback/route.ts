@@ -10,13 +10,23 @@ export async function GET(request: NextRequest) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state") ?? "";
 
+  // Log all query parameters for debugging
+  console.log("[Crisalix OAuth Callback] Received request:", {
+    error,
+    code: code ? "present" : "missing",
+    state,
+    allParams: Object.fromEntries(url.searchParams.entries()),
+  });
+
   if (error || !code) {
     const message = error
       ? `Crisalix authorization failed: ${error}`
       : "Missing authorization code from Crisalix.";
 
+    console.error("[Crisalix OAuth Callback] Authorization error:", { error, code, message });
+
     return new NextResponse(
-      `<html><body><h1>Crisalix 3D Authorization Error</h1><p>${message}</p></body></html>`,
+      `<html><body><h1>Crisalix 3D Authorization Error</h1><p>${message}</p><p>Please check the browser console and server logs for details.</p></body></html>`,
       {
         status: 400,
         headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -46,6 +56,11 @@ export async function GET(request: NextRequest) {
     body.set("client_secret", clientSecret);
   }
 
+  console.log("[Crisalix OAuth Callback] Exchanging code for token:", {
+    tokenUrl: CRISALIX_TOKEN_URL,
+    redirectUri,
+  });
+
   const tokenResponse = await fetch(CRISALIX_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -56,11 +71,17 @@ export async function GET(request: NextRequest) {
 
   if (!tokenResponse.ok) {
     const text = await tokenResponse.text().catch(() => "");
+    console.error("[Crisalix OAuth Callback] Token exchange failed:", {
+      status: tokenResponse.status,
+      body: text,
+    });
     return new NextResponse(
       `Failed to exchange authorization code with Crisalix. Status ${tokenResponse.status}. Body: ${text}`,
       { status: 500 },
     );
   }
+
+  console.log("[Crisalix OAuth Callback] Token exchange successful");
 
   const tokenJson = (await tokenResponse.json()) as {
     access_token?: string;
@@ -86,6 +107,8 @@ export async function GET(request: NextRequest) {
   const redirectTarget = safePatientId
     ? `/patients/${safePatientId}/3d/setup`
     : "/patients";
+
+  console.log("[Crisalix OAuth Callback] Redirecting to:", redirectTarget);
 
   const response = NextResponse.redirect(new URL(redirectTarget, request.url));
 
