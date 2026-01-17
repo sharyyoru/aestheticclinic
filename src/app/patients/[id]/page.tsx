@@ -724,6 +724,8 @@ export default async function PatientPage({
                 createdAt={(patient as any).created_at ?? null}
                 createdBy={(patient as any).created_by ?? null}
                 patientEmail={(patient as any).email ?? null}
+                patientPhone={(patient as any).phone ?? null}
+                patientName={`${patient.first_name} ${patient.last_name}`}
                 contactOwnerName={(patient as any).contact_owner_name ?? null}
               />
             </>

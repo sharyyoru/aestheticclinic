@@ -7,6 +7,7 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import { stripEmailSignature } from "@/utils/emailCleaner";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 import RichTextEditor from "@/components/RichTextEditor";
+import WhatsAppConversation from "@/components/WhatsAppConversation";
 
 type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals";
 
@@ -184,12 +185,16 @@ export default function PatientActivityCard({
   createdAt,
   createdBy,
   patientEmail,
+  patientPhone,
+  patientName,
   contactOwnerName,
 }: {
   patientId: string;
   createdAt: string | null;
   createdBy: string | null;
   patientEmail: string | null;
+  patientPhone: string | null;
+  patientName?: string;
   contactOwnerName: string | null;
 }) {
   const [activeTab, setActiveTab] = useState<ActivityTab>("activity");
@@ -3129,56 +3134,11 @@ export default function PatientActivityCard({
           </div>
         )}
         {activeTab === "whatsapp" && (
-          <div className="space-y-3">
-            <p className="text-[11px] text-slate-500">
-              WhatsApp activity for this patient. Messages are sent via Twilio WhatsApp
-              using the clinic number.
-            </p>
-            <div className="mt-3 space-y-1">
-              <p className="text-[11px] font-medium text-slate-600">Conversation</p>
-              {whatsappLoading ? (
-                <p className="text-[11px] text-slate-500">Loading messages...</p>
-              ) : whatsappMessages.length === 0 ? (
-                <p className="text-[11px] text-slate-500">No WhatsApp messages yet.</p>
-              ) : (
-                <div className="space-y-1">
-                  {whatsappMessages.map((msg) => {
-                    const ts = msg.sent_at ?? msg.created_at;
-                    const date = ts ? new Date(ts) : null;
-                    const tsLabel =
-                      date && !Number.isNaN(date.getTime())
-                        ? date.toLocaleString()
-                        : null;
-
-                    const isOutbound = msg.direction === "outbound";
-
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex flex-col rounded-lg border px-3 py-1.5 text-[11px] shadow-sm ${
-                          isOutbound
-                            ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
-                            : "border-slate-200 bg-slate-50/80 text-slate-800"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-medium uppercase tracking-wide">
-                            {isOutbound ? "Outbound" : "Inbound"}
-                          </span>
-                          {tsLabel ? (
-                            <span className="text-[10px] text-slate-500">{tsLabel}</span>
-                          ) : null}
-                        </div>
-                        <p className="mt-0.5 whitespace-pre-wrap text-[11px]">
-                          {msg.body}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+          <WhatsAppConversation
+            patientId={patientId}
+            patientPhone={patientPhone}
+            patientName={patientName}
+          />
         )}
         {activeTab === "tasks" && (
           <div className="space-y-3">
