@@ -1535,8 +1535,9 @@ export default function MedicalConsultationsCard({
                     setConsultations((prev) => [inserted, ...prev]);
 
                     if (inserted.record_type === "invoice") {
-                      // Create Payrexx payment gateway for Online Payment and Cash invoices
-                      if (inserted.payment_method === "Online Payment" || inserted.payment_method === "Cash") {
+                      // Create Payrexx payment gateway for invoices with payment methods containing 'cash' or 'online'
+                      const paymentMethod = inserted.payment_method?.toLowerCase() || "";
+                      if (paymentMethod.includes("cash") || paymentMethod.includes("online")) {
                         try {
                           const payrexxResponse = await fetch("/api/payments/create-payrexx-gateway", {
                             method: "POST",
@@ -2907,8 +2908,10 @@ export default function MedicalConsultationsCard({
                               Edit
                             </button>
 
-                            {/* Copy Payment Link Button (for Online Payment/Cash) */}
-                            {!row.invoice_is_paid && (row.payment_method === "Online Payment" || row.payment_method === "Cash") && (
+                            {/* Copy Payment Link Button (for payments with cash/online) */}
+                            {!row.invoice_is_paid && row.payment_method && 
+                             (row.payment_method.toLowerCase().includes("cash") || 
+                              row.payment_method.toLowerCase().includes("online")) && (
                               <button
                                 type="button"
                                 onClick={() => {

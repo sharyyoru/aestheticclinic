@@ -235,8 +235,10 @@ export default function InvoicePaymentPage() {
             <div>
               <h3 className="mb-4 text-center text-lg font-semibold text-slate-900">Payment Options</h3>
               <div className="space-y-3">
-                {/* Show Payrexx button for Online Payment and Cash */}
-                {(invoice.payment_method === "Online Payment" || invoice.payment_method === "Cash") && invoice.payrexx_payment_link && (
+                {/* Show Payrexx button for payments containing 'cash' or 'online' */}
+                {invoice.payrexx_payment_link && invoice.payment_method && 
+                 (invoice.payment_method.toLowerCase().includes("cash") || 
+                  invoice.payment_method.toLowerCase().includes("online")) && (
                   <button
                     onClick={handlePayrexxPayment}
                     className="w-full rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-5 text-lg font-bold text-white shadow-lg hover:from-emerald-700 hover:to-emerald-800 transition-all"

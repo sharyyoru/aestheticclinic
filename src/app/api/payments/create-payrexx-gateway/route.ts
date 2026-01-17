@@ -39,10 +39,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Check if payment method is Online Payment or Cash (both use Payrex)
-    if (consultation.payment_method !== "Online Payment" && consultation.payment_method !== "Cash") {
+    // Check if payment method contains 'cash' or 'online' (handles variations like 'mac cash', 'mac online')
+    const paymentMethod = consultation.payment_method?.toLowerCase() || "";
+    if (!paymentMethod.includes("cash") && !paymentMethod.includes("online")) {
       return NextResponse.json(
-        { error: "Invoice payment method must be Online Payment or Cash" },
+        { error: "Invoice payment method must contain 'cash' or 'online'" },
         { status: 400 }
       );
     }
