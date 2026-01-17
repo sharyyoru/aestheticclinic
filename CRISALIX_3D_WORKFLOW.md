@@ -115,7 +115,7 @@ All Crisalix 3D integration code is **complete and intact**. Nothing was truncat
 # Required for 3D Integration
 CRISALIX_CLIENT_ID=194eefc3119720d1e9760e1813a264bb
 CRISALIX_CLIENT_SECRET=aa3ceee784bf4774ff5b8a330cd9eeee
-CRISALIX_REDIRECT_URI=https://aestheticclinic.vercel.app/api/crisalix/oauth/callback
+CRISALIX_REDIRECT_URI=https://aestheticclinic.vercel.app/crisalix/callback
 CRISALIX_TOKEN_URL=https://sso-staging.crisalix.com/auth/token
 CRISALIX_API_BASE_URL=https://api3d-staging.crisalix.com
 CRISALIX_OAUTH_AUTHORIZE_URL=https://sso-staging.crisalix.com/auth/authorize
@@ -123,10 +123,14 @@ CRISALIX_OAUTH_AUTHORIZE_URL=https://sso-staging.crisalix.com/auth/authorize
 
 **For Local Development:**
 ```env
-CRISALIX_REDIRECT_URI=http://localhost:3000/api/crisalix/oauth/callback
+CRISALIX_REDIRECT_URI=http://localhost:3000/crisalix/callback
 ```
 
-**IMPORTANT:** Make sure this redirect URI is registered in your Crisalix application settings!
+**Configuration:** Using registered redirect URI
+
+**Active redirect URI:** `https://aestheticclinic.vercel.app/crisalix/callback`
+
+This path is aliased to the actual handler at `/api/crisalix/oauth/callback` for compatibility with existing Crisalix app registration.
 
 ---
 
