@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
     let imported = 0;
     let failed = 0;
     const errors: string[] = [];
+    const importedPatientIds: string[] = [];
 
     // Get default deal stage for new leads
     const { data: defaultStage } = await supabaseAdmin
@@ -131,6 +132,9 @@ export async function POST(request: NextRequest) {
         }
 
         imported++;
+        if (patient.id) {
+          importedPatientIds.push(patient.id);
+        }
       } catch (error) {
         console.error(`Error importing lead row ${lead.rowNumber}:`, error);
         failed++;
@@ -138,10 +142,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Track import history
+    const { data: importRecord } = await supabaseAdmin
+      .from("lead_imports")
+      .insert({
+        filename,
+        service,
+        total_leads: leads.length,
+        imported_count: imported,
+        failed_count: failed,
+        imported_patient_ids: importedPatientIds,
+        errors: errors.length > 0 ? errors : null,
+        import_date: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
     return NextResponse.json({
       success: true,
       imported,
       failed,
+      importId: importRecord?.id,
       errors: errors.length > 0 ? errors : undefined,
       message: `Successfully imported ${imported} leads${failed > 0 ? `, ${failed} failed` : ""}`,
     });

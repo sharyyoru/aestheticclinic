@@ -146,11 +146,22 @@ export default function LeadImportPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Lead Import</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Import leads from CSV files and enroll them in automated workflows
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Lead Import</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Import leads from CSV files and enroll them in automated workflows
+          </p>
+        </div>
+        <button
+          onClick={() => router.push("/lead-import/history")}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Import History
+        </button>
       </div>
 
       {error && (
@@ -205,6 +216,7 @@ export default function LeadImportPage() {
                 <p>• Optional: Source, Form, Channel, Stage, Labels</p>
                 <p>• Phone numbers will be auto-formatted for Switzerland</p>
                 <p>• Service will be detected from filename</p>
+                <p>• <strong>Multilingual support:</strong> Columns in any language (EN, FR, DE, ES, RU, UK)</p>
               </div>
             </div>
           </div>

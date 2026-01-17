@@ -1,6 +1,7 @@
 /**
  * CSV Parser for Lead Import
  * Parses CSV files and detects service types from filenames
+ * Supports multilingual column headers with intelligent mapping
  */
 
 export type LeadCSVRow = {
@@ -17,6 +18,76 @@ export type LeadCSVRow = {
   'Secondary phone number': string;
   'WhatsApp number': string;
 };
+
+/**
+ * Column mapping for different languages
+ * Maps various language column names to standard English names
+ */
+const COLUMN_MAPPINGS: { [key: string]: string[] } = {
+  'Created': [
+    'created', 'створено', 'créé', 'erstellt', 'creado', 'criado',
+    'data', 'date', 'datum', 'fecha', 'дата', 'date created'
+  ],
+  'Name': [
+    'name', 'ім\'я', 'nom', 'nombre', 'nome', 'имя',
+    'full name', 'fullname', 'contact name', 'lead name'
+  ],
+  'Email': [
+    'email', 'електронна пошта', 'e-mail', 'correo', 'correio',
+    'електронна адреса', 'эл. почта', 'email address'
+  ],
+  'Phone': [
+    'phone', 'телефон', 'téléphone', 'telefon', 'teléfono',
+    'phone number', 'mobile', 'cell', 'mobile number'
+  ],
+  'Source': [
+    'source', 'джерело', 'источник', 'source', 'origen', 'fonte',
+    'lead source', 'campaign source'
+  ],
+  'Form': [
+    'form', 'форма', 'formulaire', 'formular', 'formulario',
+    'form name', 'landing page'
+  ],
+  'Channel': [
+    'channel', 'канал', 'canal', 'kanal',
+    'marketing channel', 'source channel'
+  ],
+  'Stage': [
+    'stage', 'етап', 'этап', 'étape', 'etapa', 'fase',
+    'lead stage', 'status'
+  ],
+  'Owner': [
+    'owner', 'власник', 'владелец', 'propriétaire', 'propietario',
+    'assigned to', 'responsible'
+  ],
+  'Labels': [
+    'labels', 'ярлики', 'мітки', 'étiquettes', 'etiquetas',
+    'tags', 'categories'
+  ],
+  'Secondary phone number': [
+    'secondary phone', 'другий номер', 'второй телефон',
+    'alternate phone', 'phone 2'
+  ],
+  'WhatsApp number': [
+    'whatsapp', 'номер whatsapp', 'whatsapp number',
+    'wa number', 'whatsapp phone'
+  ],
+};
+
+/**
+ * Map CSV header to standard column name
+ */
+function mapColumnName(header: string): string | null {
+  const normalized = header.trim().toLowerCase();
+  
+  for (const [standardName, variations] of Object.entries(COLUMN_MAPPINGS)) {
+    if (variations.some(v => normalized === v || normalized.includes(v))) {
+      return standardName;
+    }
+  }
+  
+  return null;
+}
 
 export type ParsedLead = {
   rowNumber: number;
@@ -125,14 +196,29 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
     throw new Error('CSV file is empty or has no data rows');
   }
 
-  // Parse header
-  const header = lines[0].split(',').map(h => h.trim());
+  // Parse header and map to standard names
+  const rawHeaders = lines[0].split(',').map(h => h.trim());
+  const mappedHeaders = rawHeaders.map(h => mapColumnName(h) || h);
   
-  // Validate required columns
-  const requiredColumns = ['Created', 'Name', 'Email', 'Phone'];
-  const missingColumns = requiredColumns.filter(col => !header.includes(col));
-  if (missingColumns.length > 0) {
-    throw new Error(`Missing required columns: ${missingColumns.join(', ')}`);
+  // Create a mapping of standard name to original header index
+  const columnMap = new Map<string, number>();
+  mappedHeaders.forEach((mapped, idx) => {
+    if (mapped) {
+      columnMap.set(mapped, idx);
+    }
+  });
+  
+  // Validate required columns (at least one contact method)
+  const hasName = columnMap.has('Name');
+  const hasEmail = columnMap.has('Email');
+  const hasPhone = columnMap.has('Phone');
+  
+  if (!hasName) {
+    throw new Error('Missing required column: Name (or equivalent in your language)');
+  }
+  
+  if (!hasEmail && !hasPhone) {
+    throw new Error('Missing contact information: Need at least Email or Phone column');
   }
 
   const detectedService = detectServiceFromFilename(filename);
@@ -147,8 +233,11 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
       const values = parseCSVLine(line);
       const rowData: { [key: string]: string } = {};
       
-      header.forEach((col, idx) => {
-        rowData[col] = values[idx] || '';
+      // Map values using the column mapping
+      mappedHeaders.forEach((mappedCol, idx) => {
+        if (mappedCol) {
+          rowData[mappedCol] = values[idx] || '';
+        }
       });
 
       const validationIssues: string[] = [];
