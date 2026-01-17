@@ -236,7 +236,15 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
       // Map values using the column mapping
       mappedHeaders.forEach((mappedCol, idx) => {
         if (mappedCol) {
-          rowData[mappedCol] = values[idx] || '';
+          let value = values[idx] || '';
+          
+          // Smart phone number normalization: Excel strips leading zeros
+          // If column is a phone field and value is numeric, add leading 0
+          if ((mappedCol === 'Phone' || mappedCol === 'Secondary phone number' || mappedCol === 'WhatsApp number') && value) {
+            value = normalizePhoneNumber(value);
+          }
+          
+          rowData[mappedCol] = value;
         }
       });
 
@@ -298,6 +306,56 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
   }
 
   return leads;
+}
+
+/**
+ * Normalize phone numbers that have been corrupted by Excel
+ * Excel converts phone numbers to numbers, stripping leading zeros
+ * e.g., "0793953137" becomes "793953137" or "7.93953137E+8"
+ */
+function normalizePhoneNumber(value: string): string {
+  if (!value) return value;
+  
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  
+  // Handle scientific notation (Excel does this for large numbers)
+  // e.g., "7.93953137E+8" or "4.1793953137E+10"
+  if (trimmed.includes('E') || trimmed.includes('e')) {
+    try {
+      const num = parseFloat(trimmed);
+      if (!isNaN(num)) {
+        // Convert to string without scientific notation
+        const normalized = num.toFixed(0);
+        
+        // Check if it looks like a Swiss number without leading 0
+        // Swiss mobile: 9 digits starting with 7 or 8
+        if (normalized.length === 9 && (normalized.startsWith('7') || normalized.startsWith('8'))) {
+          return '0' + normalized;
+        }
+        
+        return normalized;
+      }
+    } catch {
+      return trimmed;
+    }
+  }
+  
+  // Check if value is purely numeric (no +, spaces, etc.)
+  const digitsOnly = trimmed.replace(/\D/g, '');
+  
+  // If the original value was just digits and is 9 digits starting with 7 or 8
+  // it's likely a Swiss mobile number missing the leading 0
+  if (trimmed === digitsOnly && digitsOnly.length === 9 && (digitsOnly.startsWith('7') || digitsOnly.startsWith('8'))) {
+    return '0' + digitsOnly;
+  }
+  
+  // If it's 10 digits starting with 41 (missing the +)
+  if (trimmed === digitsOnly && digitsOnly.length === 11 && digitsOnly.startsWith('41')) {
+    return '+' + digitsOnly;
+  }
+  
+  return trimmed;
 }
 
 /**
