@@ -190,10 +190,27 @@ export default function Patient3DSetupPage() {
     if (!currentImageField) return;
     
     try {
+      console.log("[3D Setup] Selecting image from gallery:", {
+        field: currentImageField,
+        imageName: image.name,
+        imageUrl: image.url,
+      });
+      
       // Fetch the image as a blob
       const response = await fetch(image.url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status}`);
+      }
+      
       const blob = await response.blob();
       const file = new File([blob], image.name, { type: blob.type });
+      
+      console.log("[3D Setup] Image converted to File:", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        field: currentImageField,
+      });
       
       const setPreview =
         currentImageField === "left"
@@ -217,8 +234,11 @@ export default function Patient3DSetupPage() {
       setPreview(image.url);
       setShowImagePicker(false);
       setCurrentImageField(null);
+      
+      console.log("[3D Setup] Image selection complete for field:", currentImageField);
     } catch (err) {
-      console.error("Failed to select image:", err);
+      console.error("[3D Setup] Failed to select image:", err);
+      alert("Failed to load selected image. Please try again.");
     }
   }
 
@@ -234,26 +254,66 @@ export default function Patient3DSetupPage() {
       formData.set("patient_id", String(patientId));
       formData.set("reconstruction_type", type);
       
+      console.log("[3D Setup] Preparing form submission:", {
+        type,
+        patientId,
+        hasLeftFile: !!leftFile,
+        hasFrontFile: !!frontFile,
+        hasRightFile: !!rightFile,
+        hasBackFile: !!backFile,
+      });
+      
       // Override with selected files if available
-      if (leftFile) formData.set("left_profile", leftFile);
-      if (frontFile) formData.set("front_profile", frontFile);
-      if (rightFile) formData.set("right_profile", rightFile);
-      if (backFile) formData.set("back_profile", backFile);
+      if (leftFile) {
+        formData.set("left_profile", leftFile);
+        console.log("[3D Setup] Added left_profile:", leftFile.name, leftFile.size);
+      }
+      if (frontFile) {
+        formData.set("front_profile", frontFile);
+        console.log("[3D Setup] Added front_profile:", frontFile.name, frontFile.size);
+      }
+      if (rightFile) {
+        formData.set("right_profile", rightFile);
+        console.log("[3D Setup] Added right_profile:", rightFile.name, rightFile.size);
+      }
+      if (backFile) {
+        formData.set("back_profile", backFile);
+        console.log("[3D Setup] Added back_profile:", backFile.name, backFile.size);
+      }
+      
+      console.log("[3D Setup] Submitting to /api/crisalix/patients...");
 
       const response = await fetch("/api/crisalix/patients", {
         method: "POST",
         body: formData,
       });
 
+      console.log("[3D Setup] Response status:", response.status);
+
       if (!response.ok) {
         let message = "Failed to create 3D reconstruction.";
+        let needsReauth = false;
+        
         try {
-          const data = (await response.json()) as { error?: string };
+          const data = (await response.json()) as { error?: string; needsReauth?: boolean };
           if (data?.error) message = data.error;
-        } catch {
-          // ignore
+          needsReauth = data?.needsReauth ?? false;
+          
+          console.error("[3D Setup] API error:", { message, needsReauth, status: response.status });
+        } catch (parseError) {
+          console.error("[3D Setup] Failed to parse error response:", parseError);
         }
-        setError(message);
+        
+        if (needsReauth) {
+          message += " Redirecting to re-authenticate...";
+          setError(message);
+          setTimeout(() => {
+            router.push(`/patients/${patientId}/3d`);
+          }, 2000);
+        } else {
+          setError(message);
+        }
+        
         setSubmitting(false);
         return;
       }
@@ -264,7 +324,10 @@ export default function Patient3DSetupPage() {
       };
       const playerId = data.patient?.player_id ?? null;
 
+      console.log("[3D Setup] Success! Player ID:", playerId);
+
       if (playerId) {
+        console.log("[3D Setup] Creating consultation record...");
         try {
           await fetch("/api/consultations/3d", {
             method: "POST",
@@ -275,15 +338,19 @@ export default function Patient3DSetupPage() {
               playerId,
             }),
           });
-        } catch {
+          console.log("[3D Setup] Consultation record created");
+        } catch (err) {
+          console.error("[3D Setup] Failed to create consultation:", err);
         }
       }
 
-      router.push(`/patients/${patientId}?mode=medical&m_tab=3d`);
+      console.log("[3D Setup] Redirecting to patient page with 3D player...");
+      router.push(
+        `/patients/${patientId}?mode=medical&m_tab=3d&show3d=1&cr_player_id=${playerId}&cr_type=${type}`,
+      );
     } catch (err) {
-      setError("Unexpected error while creating 3D reconstruction.");
-      // eslint-disable-next-line no-console
-      console.error(err);
+      console.error("[3D Setup] Unexpected error:", err);
+      setError("An unexpected error occurred. Please try again.");
       setSubmitting(false);
     }
   }
