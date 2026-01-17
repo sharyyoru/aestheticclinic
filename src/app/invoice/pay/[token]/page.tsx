@@ -55,9 +55,19 @@ export default function InvoicePaymentPage() {
           return;
         }
 
-        setInvoice(data.invoice);
+        const invoiceData = data.invoice;
+        setInvoice(invoiceData);
         setPatient(data.patient);
         setLoading(false);
+
+        // Auto-redirect to Payrexx for Online Payment/Cash invoices
+        if (!invoiceData.invoice_is_paid && invoiceData.payrexx_payment_link && 
+            (invoiceData.payment_method === "Online Payment" || invoiceData.payment_method === "Cash")) {
+          // Small delay to show loading state then redirect
+          setTimeout(() => {
+            window.location.href = invoiceData.payrexx_payment_link;
+          }, 500);
+        }
       } catch (err) {
         console.error("Error loading invoice:", err);
         setError("Failed to load invoice");
