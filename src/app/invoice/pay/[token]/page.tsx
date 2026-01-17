@@ -15,6 +15,7 @@ type InvoiceData = {
   invoice_is_paid: boolean;
   invoice_pdf_path: string | null;
   payment_link_expires_at: string | null;
+  payrexx_payment_link: string | null;
 };
 
 type PatientData = {
@@ -33,8 +34,7 @@ export default function InvoicePaymentPage() {
   const [error, setError] = useState<string | null>(null);
   const [invoice, setInvoice] = useState<InvoiceData | null>(null);
   const [patient, setPatient] = useState<PatientData | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "bank" | null>(null);
-  const [processingPayment, setProcessingPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"payrexx" | "bank" | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -68,32 +68,13 @@ export default function InvoicePaymentPage() {
     void loadInvoice();
   }, [token]);
 
-  async function handleStripePayment() {
-    if (!invoice) return;
-
-    setProcessingPayment(true);
-    try {
-      const response = await fetch("/api/payments/create-stripe-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          consultationId: invoice.id,
-          amount: invoice.invoice_total_amount,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create payment");
-      }
-
-      window.location.href = data.checkoutUrl;
-    } catch (err) {
-      console.error("Error processing payment:", err);
-      alert("Failed to process payment. Please try again.");
-      setProcessingPayment(false);
+  function handlePayrexxPayment() {
+    if (!invoice?.payrexx_payment_link) {
+      alert("Payment link not available. Please contact support.");
+      return;
     }
+    // Redirect to Payrexx payment gateway
+    window.location.href = invoice.payrexx_payment_link;
   }
 
   function handleBankTransfer() {
@@ -167,10 +148,32 @@ export default function InvoicePaymentPage() {
   const formattedAmount = totalAmount.toFixed(2);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 py-12">
-      <div className="mx-auto max-w-2xl">
-        <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-slate-900">Invoice Payment</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Header */}
+      <div className="border-b border-slate-200 bg-white shadow-sm">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-sky-600">
+              <span className="text-lg font-bold text-white">A</span>
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold text-slate-900">AESTHETICS</h1>
+              <p className="text-xs text-slate-600">Clinic XT SA</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <a href="tel:0227322223" className="text-sm text-slate-600 hover:text-slate-900">
+              <svg className="inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-2xl p-4 py-8">
+        <div className="mb-6 text-center">
+          <h2 className="mb-2 text-2xl font-bold text-slate-900">Invoice Payment</h2>
           <p className="text-sm text-slate-600">Aesthetics Clinic XT SA</p>
         </div>
 
@@ -232,37 +235,35 @@ export default function InvoicePaymentPage() {
             <div>
               <h3 className="mb-4 text-center text-sm font-semibold text-slate-900">Choose Payment Method</h3>
               <div className="space-y-3">
-                <button
-                  onClick={handleStripePayment}
-                  disabled={processingPayment}
-                  className="w-full rounded-lg bg-gradient-to-r from-sky-600 to-sky-700 px-6 py-4 font-semibold text-white shadow-lg hover:from-sky-700 hover:to-sky-800 disabled:opacity-50"
-                >
-                  {processingPayment ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                      Processing...
-                    </span>
-                  ) : (
+                {/* Show Payrexx button for Online Payment and Cash */}
+                {(invoice.payment_method === "Online Payment" || invoice.payment_method === "Cash") && invoice.payrexx_payment_link && (
+                  <button
+                    onClick={handlePayrexxPayment}
+                    className="w-full rounded-lg bg-gradient-to-r from-sky-600 to-sky-700 px-6 py-4 font-semibold text-white shadow-lg hover:from-sky-700 hover:to-sky-800"
+                  >
                     <span className="flex items-center justify-center gap-2">
                       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                       </svg>
-                      Pay Online with Card (Stripe)
+                      Pay Now with Card
                     </span>
-                  )}
-                </button>
+                  </button>
+                )}
 
-                <button
-                  onClick={handleBankTransfer}
-                  className="w-full rounded-lg border-2 border-slate-300 bg-white px-6 py-4 font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
-                    </svg>
-                    Pay by Bank Transfer
-                  </span>
-                </button>
+                {/* Show Bank Transfer option for Bank transfer payment method */}
+                {invoice.payment_method === "Bank transfer" && (
+                  <button
+                    onClick={handleBankTransfer}
+                    className="w-full rounded-lg bg-gradient-to-r from-slate-700 to-slate-800 px-6 py-4 font-semibold text-white shadow-lg hover:from-slate-800 hover:to-slate-900"
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+                      </svg>
+                      View Bank Transfer Details
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
           ) : (
