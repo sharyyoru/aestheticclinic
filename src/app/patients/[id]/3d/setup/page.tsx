@@ -1,9 +1,17 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { supabaseClient } from "@/lib/supabaseClient";
 
 type ReconstructionType = "breast" | "face" | "body";
+
+interface PatientImage {
+  name: string;
+  path: string;
+  url: string;
+  created_at?: string;
+}
 
 export default function Patient3DSetupPage() {
   const params = useParams<{ id: string }>();
@@ -19,6 +27,18 @@ export default function Patient3DSetupPage() {
   const [frontPreviewUrl, setFrontPreviewUrl] = useState<string | null>(null);
   const [rightPreviewUrl, setRightPreviewUrl] = useState<string | null>(null);
   const [backPreviewUrl, setBackPreviewUrl] = useState<string | null>(null);
+  
+  // File selection state
+  const [leftFile, setLeftFile] = useState<File | null>(null);
+  const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [rightFile, setRightFile] = useState<File | null>(null);
+  const [backFile, setBackFile] = useState<File | null>(null);
+  
+  // Image picker modal state
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [currentImageField, setCurrentImageField] = useState<"left" | "front" | "right" | "back" | null>(null);
+  const [availableImages, setAvailableImages] = useState<PatientImage[]>([]);
+  const [loadingImages, setLoadingImages] = useState(false);
 
   const patientId = params?.id ?? "";
 
@@ -86,6 +106,50 @@ export default function Patient3DSetupPage() {
     setStep("form");
   }
 
+  // Load patient images from documents
+  useEffect(() => {
+    if (showImagePicker && availableImages.length === 0) {
+      loadPatientImages();
+    }
+  }, [showImagePicker]);
+
+  async function loadPatientImages() {
+    setLoadingImages(true);
+    try {
+      const { data, error } = await supabaseClient.storage
+        .from("patient-documents")
+        .list(patientId, {
+          limit: 100,
+          sortBy: { column: "created_at", order: "desc" },
+        });
+
+      if (!error && data) {
+        const imageFiles = data
+          .filter((file) => {
+            const ext = file.name.split(".").pop()?.toLowerCase();
+            return ["jpg", "jpeg", "png", "gif", "webp"].includes(ext || "");
+          })
+          .map((file) => {
+            const fullPath = `${patientId}/${file.name}`;
+            const { data: urlData } = supabaseClient.storage
+              .from("patient-documents")
+              .getPublicUrl(fullPath);
+            return {
+              name: file.name,
+              path: fullPath,
+              url: urlData.publicUrl,
+              created_at: (file as any).created_at,
+            };
+          });
+        setAvailableImages(imageFiles);
+      }
+    } catch (err) {
+      console.error("Failed to load patient images:", err);
+    } finally {
+      setLoadingImages(false);
+    }
+  }
+
   function handleImageChange(
     event: ChangeEvent<HTMLInputElement>,
     kind: "left" | "front" | "right" | "back",
@@ -100,11 +164,62 @@ export default function Patient3DSetupPage() {
           : kind === "right"
             ? setRightPreviewUrl
             : setBackPreviewUrl;
+            
+    const setFile =
+      kind === "left"
+        ? setLeftFile
+        : kind === "front"
+          ? setFrontFile
+          : kind === "right"
+            ? setRightFile
+            : setBackFile;
 
+    setFile(file);
     setPreview((previous) => {
       if (previous) URL.revokeObjectURL(previous);
       return file ? URL.createObjectURL(file) : null;
     });
+  }
+  
+  function openImagePicker(kind: "left" | "front" | "right" | "back") {
+    setCurrentImageField(kind);
+    setShowImagePicker(true);
+  }
+  
+  async function selectExistingImage(image: PatientImage) {
+    if (!currentImageField) return;
+    
+    try {
+      // Fetch the image as a blob
+      const response = await fetch(image.url);
+      const blob = await response.blob();
+      const file = new File([blob], image.name, { type: blob.type });
+      
+      const setPreview =
+        currentImageField === "left"
+          ? setLeftPreviewUrl
+          : currentImageField === "front"
+            ? setFrontPreviewUrl
+            : currentImageField === "right"
+              ? setRightPreviewUrl
+              : setBackPreviewUrl;
+              
+      const setFile =
+        currentImageField === "left"
+          ? setLeftFile
+          : currentImageField === "front"
+            ? setFrontFile
+            : currentImageField === "right"
+              ? setRightFile
+              : setBackFile;
+      
+      setFile(file);
+      setPreview(image.url);
+      setShowImagePicker(false);
+      setCurrentImageField(null);
+    } catch (err) {
+      console.error("Failed to select image:", err);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -118,6 +233,12 @@ export default function Patient3DSetupPage() {
       const formData = new FormData(event.currentTarget);
       formData.set("patient_id", String(patientId));
       formData.set("reconstruction_type", type);
+      
+      // Override with selected files if available
+      if (leftFile) formData.set("left_profile", leftFile);
+      if (frontFile) formData.set("front_profile", frontFile);
+      if (rightFile) formData.set("right_profile", rightFile);
+      if (backFile) formData.set("back_profile", backFile);
 
       const response = await fetch("/api/crisalix/patients", {
         method: "POST",
@@ -402,121 +523,233 @@ export default function Patient3DSetupPage() {
               </h3>
 
               <div className="grid gap-4 md:grid-cols-3">
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <label className="block text-[11px] font-medium text-slate-700">
                     Left Profile <span className="text-red-500">*</span>
                   </label>
-                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-sky-300 bg-sky-50 px-3 py-4 text-center text-[11px] font-medium text-sky-700 hover:bg-sky-100">
-                    <span>Click to upload</span>
-                    <span className="mt-0.5 text-[10px] font-normal text-slate-500">
-                      JPG, PNG or similar
-                    </span>
-                    <input
-                      type="file"
-                      name="left_profile"
-                      accept="image/*"
-                      required
-                      className="sr-only"
-                      onChange={(event) => handleImageChange(event, "left")}
-                    />
-                  </label>
                   {leftPreviewUrl ? (
-                    <div className="mt-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                    <div className="relative overflow-hidden rounded-lg border-2 border-emerald-400 bg-slate-50">
                       <img
                         src={leftPreviewUrl}
                         alt="Left profile preview"
                         className="h-32 w-full object-cover"
                       />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLeftPreviewUrl(null);
+                          setLeftFile(null);
+                        }}
+                        className="absolute top-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="flex gap-2">
+                      <label className="flex-1 cursor-pointer">
+                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-400 bg-gradient-to-br from-sky-50 to-white px-3 py-3 text-center hover:border-sky-500 hover:from-sky-100 hover:to-sky-50 transition-all">
+                          <svg className="h-6 w-6 text-sky-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          <span className="text-[11px] font-semibold text-sky-700">Upload</span>
+                          <span className="text-[9px] text-slate-500 mt-0.5">New file</span>
+                        </div>
+                        <input
+                          type="file"
+                          name="left_profile"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(event) => handleImageChange(event, "left")}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => openImagePicker("left")}
+                        className="flex-1 flex flex-col items-center justify-center rounded-lg border border-dashed border-emerald-400 bg-gradient-to-br from-emerald-50 to-white px-3 py-3 text-center hover:border-emerald-500 hover:from-emerald-100 hover:to-emerald-50 transition-all"
+                      >
+                        <svg className="h-6 w-6 text-emerald-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-[11px] font-semibold text-emerald-700">Select</span>
+                        <span className="text-[9px] text-slate-500 mt-0.5">From docs</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <label className="block text-[11px] font-medium text-slate-700">
                     Front/Portrait <span className="text-red-500">*</span>
                   </label>
-                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-sky-300 bg-sky-50 px-3 py-4 text-center text-[11px] font-medium text-sky-700 hover:bg-sky-100">
-                    <span>Click to upload</span>
-                    <span className="mt-0.5 text-[10px] font-normal text-slate-500">
-                      JPG, PNG or similar
-                    </span>
-                    <input
-                      type="file"
-                      name="front_profile"
-                      accept="image/*"
-                      required
-                      className="sr-only"
-                      onChange={(event) => handleImageChange(event, "front")}
-                    />
-                  </label>
                   {frontPreviewUrl ? (
-                    <div className="mt-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                    <div className="relative overflow-hidden rounded-lg border-2 border-emerald-400 bg-slate-50">
                       <img
                         src={frontPreviewUrl}
                         alt="Front/portrait preview"
                         className="h-32 w-full object-cover"
                       />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFrontPreviewUrl(null);
+                          setFrontFile(null);
+                        }}
+                        className="absolute top-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="flex gap-2">
+                      <label className="flex-1 cursor-pointer">
+                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-400 bg-gradient-to-br from-sky-50 to-white px-3 py-3 text-center hover:border-sky-500 hover:from-sky-100 hover:to-sky-50 transition-all">
+                          <svg className="h-6 w-6 text-sky-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          <span className="text-[11px] font-semibold text-sky-700">Upload</span>
+                          <span className="text-[9px] text-slate-500 mt-0.5">New file</span>
+                        </div>
+                        <input
+                          type="file"
+                          name="front_profile"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(event) => handleImageChange(event, "front")}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => openImagePicker("front")}
+                        className="flex-1 flex flex-col items-center justify-center rounded-lg border border-dashed border-emerald-400 bg-gradient-to-br from-emerald-50 to-white px-3 py-3 text-center hover:border-emerald-500 hover:from-emerald-100 hover:to-emerald-50 transition-all"
+                      >
+                        <svg className="h-6 w-6 text-emerald-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-[11px] font-semibold text-emerald-700">Select</span>
+                        <span className="text-[9px] text-slate-500 mt-0.5">From docs</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <label className="block text-[11px] font-medium text-slate-700">
                     Right Profile <span className="text-red-500">*</span>
                   </label>
-                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-sky-300 bg-sky-50 px-3 py-4 text-center text-[11px] font-medium text-sky-700 hover:bg-sky-100">
-                    <span>Click to upload</span>
-                    <span className="mt-0.5 text-[10px] font-normal text-slate-500">
-                      JPG, PNG or similar
-                    </span>
-                    <input
-                      type="file"
-                      name="right_profile"
-                      accept="image/*"
-                      required
-                      className="sr-only"
-                      onChange={(event) => handleImageChange(event, "right")}
-                    />
-                  </label>
                   {rightPreviewUrl ? (
-                    <div className="mt-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                    <div className="relative overflow-hidden rounded-lg border-2 border-emerald-400 bg-slate-50">
                       <img
                         src={rightPreviewUrl}
                         alt="Right profile preview"
                         className="h-32 w-full object-cover"
                       />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRightPreviewUrl(null);
+                          setRightFile(null);
+                        }}
+                        className="absolute top-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="flex gap-2">
+                      <label className="flex-1 cursor-pointer">
+                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-400 bg-gradient-to-br from-sky-50 to-white px-3 py-3 text-center hover:border-sky-500 hover:from-sky-100 hover:to-sky-50 transition-all">
+                          <svg className="h-6 w-6 text-sky-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                          <span className="text-[11px] font-semibold text-sky-700">Upload</span>
+                          <span className="text-[9px] text-slate-500 mt-0.5">New file</span>
+                        </div>
+                        <input
+                          type="file"
+                          name="right_profile"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(event) => handleImageChange(event, "right")}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => openImagePicker("right")}
+                        className="flex-1 flex flex-col items-center justify-center rounded-lg border border-dashed border-emerald-400 bg-gradient-to-br from-emerald-50 to-white px-3 py-3 text-center hover:border-emerald-500 hover:from-emerald-100 hover:to-emerald-50 transition-all"
+                      >
+                        <svg className="h-6 w-6 text-emerald-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-[11px] font-semibold text-emerald-700">Select</span>
+                        <span className="text-[9px] text-slate-500 mt-0.5">From docs</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {type === "body" ? (
                 <div className="mt-3 grid gap-4 md:grid-cols-3">
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <label className="block text-[11px] font-medium text-slate-700">
                       Back Profile <span className="text-red-500">*</span>
                     </label>
-                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-sky-300 bg-sky-50 px-3 py-4 text-center text-[11px] font-medium text-sky-700 hover:bg-sky-100">
-                      <span>Click to upload</span>
-                      <span className="mt-0.5 text-[10px] font-normal text-slate-500">
-                        JPG, PNG or similar
-                      </span>
-                      <input
-                        type="file"
-                        name="back_profile"
-                        accept="image/*"
-                        required
-                        className="sr-only"
-                        onChange={(event) => handleImageChange(event, "back")}
-                      />
-                    </label>
                     {backPreviewUrl ? (
-                      <div className="mt-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                      <div className="relative overflow-hidden rounded-lg border-2 border-emerald-400 bg-slate-50">
                         <img
                           src={backPreviewUrl}
                           alt="Back profile preview"
                           className="h-32 w-full object-cover"
                         />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBackPreviewUrl(null);
+                            setBackFile(null);
+                          }}
+                          className="absolute top-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+                        >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="flex gap-2">
+                        <label className="flex-1 cursor-pointer">
+                          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-400 bg-gradient-to-br from-sky-50 to-white px-3 py-3 text-center hover:border-sky-500 hover:from-sky-100 hover:to-sky-50 transition-all">
+                            <svg className="h-6 w-6 text-sky-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            <span className="text-[11px] font-semibold text-sky-700">Upload</span>
+                            <span className="text-[9px] text-slate-500 mt-0.5">New file</span>
+                          </div>
+                          <input
+                            type="file"
+                            name="back_profile"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={(event) => handleImageChange(event, "back")}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => openImagePicker("back")}
+                          className="flex-1 flex flex-col items-center justify-center rounded-lg border border-dashed border-emerald-400 bg-gradient-to-br from-emerald-50 to-white px-3 py-3 text-center hover:border-emerald-500 hover:from-emerald-100 hover:to-emerald-50 transition-all"
+                        >
+                          <svg className="h-6 w-6 text-emerald-600 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-[11px] font-semibold text-emerald-700">Select</span>
+                          <span className="text-[9px] text-slate-500 mt-0.5">From docs</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -595,6 +828,104 @@ export default function Patient3DSetupPage() {
           </form>
         )}
       </div>
+      
+      {/* Image Picker Modal */}
+      {showImagePicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-4xl max-h-[80vh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">
+                  Select Image from Documents
+                </h3>
+                <p className="text-sm text-emerald-100 mt-0.5">
+                  Choose an existing image from patient documents
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowImagePicker(false);
+                  setCurrentImageField(null);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingImages ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
+                  <p className="mt-4 text-sm text-slate-600">Loading images...</p>
+                </div>
+              ) : availableImages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <svg className="h-16 w-16 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="mt-4 text-sm font-medium text-slate-700">No images found</p>
+                  <p className="mt-1 text-xs text-slate-500">Upload images to the Documents tab first</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {availableImages.map((image) => (
+                    <button
+                      key={image.path}
+                      type="button"
+                      onClick={() => selectExistingImage(image)}
+                      className="group relative overflow-hidden rounded-lg border-2 border-slate-200 bg-slate-50 hover:border-emerald-500 hover:shadow-lg transition-all"
+                    >
+                      <div className="aspect-square relative">
+                        <img
+                          src={image.url}
+                          alt={image.name}
+                          className="h-full w-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <div className="absolute bottom-0 left-0 right-0 p-2 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                          <p className="text-xs font-medium truncate">{image.name}</p>
+                        </div>
+                      </div>
+                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-emerald-500 text-white shadow-lg">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 px-6 py-4 bg-slate-50">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-600">
+                  {availableImages.length} image{availableImages.length !== 1 ? 's' : ''} available
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowImagePicker(false);
+                    setCurrentImageField(null);
+                  }}
+                  className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
