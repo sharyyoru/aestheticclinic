@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Image from "next/image";
+import { Language, getTranslation } from "@/lib/intakeTranslations";
 
 type ViewState = "search" | "register";
 
@@ -13,6 +14,10 @@ export default function IntakePage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState<Language>("en");
+
+  // Get translations based on selected language
+  const t = getTranslation(language);
 
   // Registration form state
   const [firstName, setFirstName] = useState("");
@@ -38,7 +43,7 @@ export default function IntakePage() {
   async function handleEmailSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) {
-      setError("Please enter your email address");
+      setError(t.pleaseEnterEmail);
       return;
     }
 
@@ -67,8 +72,8 @@ export default function IntakePage() {
 
         if (subError) throw subError;
 
-        // Redirect to steps with submission ID
-        router.push(`/intake/steps?sid=${submission?.id}&pid=${patient.id}`);
+        // Redirect to steps with submission ID and language
+        router.push(`/intake/steps?sid=${submission?.id}&pid=${patient.id}&lang=${language}`);
       } else {
         // Patient doesn't exist - show registration form
         setRegEmail(email.trim());
@@ -85,7 +90,7 @@ export default function IntakePage() {
     e.preventDefault();
     
     if (!firstName.trim() || !lastName.trim() || !regEmail.trim() || !phone.trim()) {
-      setError("All fields are required");
+      setError(t.allFieldsRequired);
       return;
     }
 
@@ -134,8 +139,8 @@ export default function IntakePage() {
         console.error("Failed to trigger patient_created workflow");
       }
 
-      // Redirect to steps
-      router.push(`/intake/steps?sid=${submission?.id}&pid=${newPatient?.id}`);
+      // Redirect to steps with language
+      router.push(`/intake/steps?sid=${submission?.id}&pid=${newPatient?.id}&lang=${language}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to register");
     } finally {
@@ -143,15 +148,38 @@ export default function IntakePage() {
     }
   }
 
+  // Language selector component
+  const LanguageSelector = () => (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => setLanguage("en")}
+        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          language === "en"
+            ? "bg-slate-800 text-white"
+            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+        }`}
+      >
+        EN
+      </button>
+      <button
+        onClick={() => setLanguage("fr")}
+        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          language === "fr"
+            ? "bg-slate-800 text-white"
+            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+        }`}
+      >
+        FR
+      </button>
+    </div>
+  );
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
       {/* Header */}
-      <header className="px-4 sm:px-6 py-4 flex items-center justify-end">
-        <button className="text-slate-400 hover:text-slate-600 p-2">
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+      <header className="px-4 sm:px-6 py-4 flex items-center justify-between">
+        <div></div>
+        <LanguageSelector />
       </header>
 
       {/* Main Content */}
@@ -172,12 +200,11 @@ export default function IntakePage() {
           {/* Hero Section */}
           <div className="text-center mb-8 sm:mb-10">
             <h1 className="text-2xl sm:text-3xl font-light text-slate-900 mb-4">
-              Advanced Aesthetic Treatments<br />
-              <span className="text-black font-medium">Tailored to You</span>
+              {t.heroTitle}<br />
+              <span className="text-black font-medium">{t.heroTitleHighlight}</span>
             </h1>
             <p className="text-slate-600 text-sm">
-              Easily provide your details and preferences in our simple, multi-step form,
-              designed to assess your needs and treatments.
+              {t.heroDescription}
             </p>
           </div>
 
@@ -185,12 +212,12 @@ export default function IntakePage() {
             /* Email Search Form */
             <form onSubmit={handleEmailSearch} className="space-y-4">
               <div>
-                <h2 className="text-lg font-medium text-black mb-3">Search</h2>
+                <h2 className="text-lg font-medium text-black mb-3">{t.search}</h2>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
+                  placeholder={t.enterEmail}
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                   disabled={loading}
                 />
@@ -205,11 +232,11 @@ export default function IntakePage() {
                 disabled={loading}
                 className="w-full py-3 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
-                {loading ? "Searching..." : "Continue"}
+                {loading ? t.searching : t.continue}
               </button>
 
               <p className="text-center text-sm text-slate-500">
-                Don't have an account?{" "}
+                {t.noAccount}{" "}
                 <button
                   type="button"
                   onClick={() => {
@@ -218,20 +245,20 @@ export default function IntakePage() {
                   }}
                   className="text-black font-medium hover:underline"
                 >
-                  Register
+                  {t.register}
                 </button>
               </p>
             </form>
           ) : (
             /* Registration Form */
             <form onSubmit={handleRegister} className="space-y-4">
-              <h2 className="text-lg font-medium text-black mb-3">Register</h2>
+              <h2 className="text-lg font-medium text-black mb-3">{t.register}</h2>
 
               <input
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                placeholder="First Name"
+                placeholder={t.firstName}
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
@@ -240,7 +267,7 @@ export default function IntakePage() {
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                placeholder="Last Name"
+                placeholder={t.lastName}
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
@@ -262,7 +289,7 @@ export default function IntakePage() {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Mobile"
+                  placeholder={t.mobile}
                   className="flex-1 px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                   disabled={loading}
                 />
@@ -272,7 +299,7 @@ export default function IntakePage() {
                 type="email"
                 value={regEmail}
                 onChange={(e) => setRegEmail(e.target.value)}
-                placeholder="Email"
+                placeholder={t.email}
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
@@ -286,17 +313,17 @@ export default function IntakePage() {
                 disabled={loading}
                 className="w-full py-3 rounded-full bg-black text-white font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
-                {loading ? "Registering..." : "Register"}
+                {loading ? t.registering : t.register}
               </button>
 
               <p className="text-center text-sm text-slate-500">
-                Already have an account?{" "}
+                {t.alreadyHaveAccount}{" "}
                 <button
                   type="button"
                   onClick={() => setView("search")}
                   className="text-black font-medium hover:underline"
                 >
-                  Login
+                  {t.login}
                 </button>
               </p>
             </form>

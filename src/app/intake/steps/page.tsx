@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Image from "next/image";
+import { Language, getTranslation } from "@/lib/intakeTranslations";
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -47,7 +48,11 @@ function IntakeStepsContent() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [language, setLanguage] = useState("en");
+  const langParam = searchParams.get("lang");
+  const [language, setLanguage] = useState<Language>((langParam === "fr" ? "fr" : "en") as Language);
+  
+  // Get translations based on selected language
+  const t = getTranslation(language);
   
   // Consultation category selection
   const [consultationCategory, setConsultationCategory] = useState("");
@@ -516,7 +521,7 @@ function IntakeStepsContent() {
         }
       }
 
-      // Save contact preference
+      // Save contact preference and preferred language
       if (currentStep === 4) {
         const { data: existingPrefs } = await supabaseClient
           .from("patient_intake_preferences")
@@ -528,6 +533,7 @@ function IntakeStepsContent() {
           submission_id: submissionId,
           patient_id: patientId,
           preferred_contact_method: contactPreference,
+          preferred_language: language === "fr" ? "French" : "English",
         };
 
         let prefsError;
@@ -710,18 +716,27 @@ function IntakeStepsContent() {
 
   // Language selector component
   const LanguageSelector = () => (
-    <div className="flex items-center gap-1 text-sm text-slate-600">
-      <span>Language:</span>
-      <select
-        value={language}
-        onChange={(e) => setLanguage(e.target.value)}
-        className="bg-transparent border-none text-slate-600 cursor-pointer focus:outline-none"
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => setLanguage("en")}
+        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          language === "en"
+            ? "bg-slate-800 text-white"
+            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+        }`}
       >
-        <option value="en">English</option>
-        <option value="fr">French</option>
-        <option value="de">German</option>
-      </select>
-      <span>▼</span>
+        EN
+      </button>
+      <button
+        onClick={() => setLanguage("fr")}
+        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          language === "fr"
+            ? "bg-slate-800 text-white"
+            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+        }`}
+      >
+        FR
+      </button>
     </div>
   );
 
@@ -907,10 +922,10 @@ function IntakeStepsContent() {
 
         <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6 sm:py-12">
           <div className="w-full max-w-lg">
-            <h1 className="text-2xl sm:text-3xl font-light text-black text-center mb-8 sm:mb-10 italic">How it Works</h1>
+            <h1 className="text-2xl sm:text-3xl font-light text-black text-center mb-8 sm:mb-10 italic">{t.howItWorks}</h1>
 
             <div className="space-y-5 sm:space-y-6 text-left mb-8 sm:mb-10">
-              {STEP_INFO.map((s) => (
+              {t.stepInfo.map((s) => (
                 <div key={s.num} className="flex gap-3 sm:gap-4">
                   <span className="text-xl sm:text-2xl font-light text-slate-800 w-6 sm:w-8 flex-shrink-0">{s.num}</span>
                   <p className="text-slate-600 text-sm pt-0.5">{s.desc}</p>
@@ -923,7 +938,7 @@ function IntakeStepsContent() {
                 onClick={() => setShowIntro(false)}
                 className="px-10 sm:px-12 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors"
               >
-                CONTINUE
+                {t.continue.toUpperCase()}
               </button>
             </div>
           </div>
@@ -946,10 +961,10 @@ function IntakeStepsContent() {
 
             <div className="text-slate-600 text-sm leading-relaxed mb-8">
               <p className="mb-4">
-                I, the undersigned, certify that the information provided is truthful, and I am not subject to any lawsuits, nor any act of default, assuming all responsibility for any inaccuracies. Furthermore, I have been informed that the 1st consultation is paid on the spot. I also authorize my doctor, in the event that I do not pay my bills, to inform the authorities of the nature of my debts and to proceed to their recovery by legal means. For any dispute, the legal executive is in Geneva.
+                {t.termsText}
               </p>
               <p>
-                By clicking "I accept," you accept and agree to the terms and conditions above.
+                {t.termsAcceptText}
               </p>
             </div>
 
@@ -966,7 +981,7 @@ function IntakeStepsContent() {
               }}
               className="w-full py-3 rounded-full border-2 border-slate-300 text-slate-700 font-medium hover:bg-slate-100 transition-colors"
             >
-              ACCEPT
+              {t.accept}
             </button>
           </div>
         </div>
@@ -1037,25 +1052,25 @@ function IntakeStepsContent() {
                 </svg>
               </div>
               <h2 className="text-2xl font-medium text-slate-800 mb-2">
-                {isFirstRegistration ? "Thank You for Registering!" : "Your Changes Have Been Saved!"}
+                {isFirstRegistration ? t.thankYouRegistering : t.changesSaved}
               </h2>
               <p className="text-slate-600">
-                Hi <span className="font-semibold text-amber-600">{firstName || patientName}</span>
+                {t.hi} <span className="font-semibold text-amber-600">{firstName || patientName}</span>
               </p>
             </div>
 
             {/* Consultation Options */}
-            <p className="text-slate-600 text-sm mb-2 italic">Just a few more things</p>
+            <p className="text-slate-600 text-sm mb-2 italic">{t.contactPrefTitle}</p>
             
             <div className="mb-6">
               <label className="block text-[#1a4d7c] text-sm font-medium mb-4">
-                What category are you interested in? <span className="text-red-500">*</span>
+                {t.categoryQuestion} <span className="text-red-500">*</span>
               </label>
               <div className="space-y-3">
                 {[
-                  { value: "liposuction", label: "Liposuction consultation" },
-                  { value: "breast", label: "Breast consultation" },
-                  { value: "face", label: "Face consultation" }
+                  { value: "liposuction", label: t.consultationOptions.liposuction },
+                  { value: "breast", label: t.consultationOptions.breast },
+                  { value: "face", label: t.consultationOptions.face }
                 ].map((option) => (
                   <button
                     key={option.value}
@@ -1088,7 +1103,7 @@ function IntakeStepsContent() {
               disabled={loading || !consultationCategory}
               className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors disabled:opacity-50"
             >
-              {loading ? "Processing..." : "next"}
+              {loading ? t.processing : t.next.toLowerCase()}
             </button>
           </div>
         </footer>
@@ -1100,21 +1115,31 @@ function IntakeStepsContent() {
   if (step === 4) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex flex-col">
+        <header className="px-4 sm:px-6 py-3 flex items-center justify-between">
+          <Image
+            src="/logos/aesthetics-logo.svg"
+            alt="Aesthetics Clinic"
+            width={60}
+            height={60}
+            className="h-10 w-auto"
+          />
+          <LanguageSelector />
+        </header>
         <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
           <div className="w-full max-w-md">
             <UserIcon />
 
-            <p className="text-slate-600 text-sm mb-6 italic">Just a few more things</p>
+            <p className="text-slate-600 text-sm mb-6 italic">{t.contactPrefTitle}</p>
 
             <div className="mb-6">
               <label className="block text-[#1a4d7c] text-sm font-medium mb-3">
-                Where do you prefer to be contacted <span className="text-red-500">*</span>
+                {t.contactPrefQuestion} <span className="text-red-500">*</span>
               </label>
               <div className="space-y-3">
                 {[
-                  { value: "email", label: "Through Email" },
-                  { value: "phone", label: "Through phone call" },
-                  { value: "text", label: "Text message" },
+                  { value: "email", label: t.contactOptions.email },
+                  { value: "phone", label: t.contactOptions.phone },
+                  { value: "text", label: t.contactOptions.text },
                 ].map((option) => (
                   <button
                     key={option.value}
@@ -1122,6 +1147,32 @@ function IntakeStepsContent() {
                     onClick={() => setContactPreference(option.value)}
                     className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${
                       contactPreference === option.value
+                        ? "bg-slate-800 text-white border-slate-800"
+                        : "bg-white border-slate-300 text-slate-700 hover:border-slate-400"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Preferred Language Selection */}
+            <div className="mb-6">
+              <label className="block text-[#1a4d7c] text-sm font-medium mb-3">
+                {t.preferredLanguage} <span className="text-red-500">*</span>
+              </label>
+              <div className="space-y-3">
+                {[
+                  { value: "en", label: t.english },
+                  { value: "fr", label: t.french },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setLanguage(option.value as Language)}
+                    className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${
+                      language === option.value
                         ? "bg-slate-800 text-white border-slate-800"
                         : "bg-white border-slate-300 text-slate-700 hover:border-slate-400"
                     }`}
@@ -1155,7 +1206,7 @@ function IntakeStepsContent() {
               disabled={loading || !contactPreference}
               className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors disabled:opacity-50"
             >
-              {loading ? "Saving..." : "NEXT"}
+              {loading ? t.saving : t.next}
             </button>
           </div>
         </footer>
@@ -1188,36 +1239,36 @@ function IntakeStepsContent() {
           {step === 1 && (
             <div className="space-y-4">
               <UserIcon />
-              <p className="text-slate-600 text-sm mb-4">Please Enter your Personal Information</p>
+              <p className="text-slate-600 text-sm mb-4">{t.personalInfoTitle}</p>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  First Name <span className="text-red-500">*</span>
+                  {t.firstName} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="First Name"
+                  placeholder={t.firstName}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Last Name <span className="text-red-500">*</span>
+                  {t.lastName} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Last Name"
+                  placeholder={t.lastName}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Date of Birth</label>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.dateOfBirth}</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -1234,7 +1285,7 @@ function IntakeStepsContent() {
                     className="flex-1 px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                   >
                     <option value="">MM</option>
-                    {MONTHS.map((month, idx) => (
+                    {t.months.map((month, idx) => (
                       <option key={month} value={String(idx + 1).padStart(2, '0')}>{month}</option>
                     ))}
                   </select>
@@ -1251,122 +1302,122 @@ function IntakeStepsContent() {
               </div>
 
               <div>
-                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Marital Status</label>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.maritalStatus}</label>
                 <select
                   value={maritalStatus}
                   onChange={(e) => setMaritalStatus(e.target.value)}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                 >
-                  <option value="">Marital Status</option>
-                  {MARITAL_STATUSES.map((status) => (
-                    <option key={status} value={status}>{status}</option>
+                  <option value="">{t.maritalStatus}</option>
+                  {t.maritalStatuses.map((status, idx) => (
+                    <option key={status} value={MARITAL_STATUSES[idx]}>{status}</option>
                   ))}
                 </select>
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Nationality <span className="text-red-500">*</span>
+                  {t.nationality} <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={nationality}
                   onChange={(e) => setNationality(e.target.value)}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                 >
-                  <option value="">Nationality</option>
-                  {NATIONALITIES.map((nat) => (
-                    <option key={nat} value={nat}>{nat}</option>
+                  <option value="">{t.nationality}</option>
+                  {t.nationalities.map((nat, idx) => (
+                    <option key={nat} value={NATIONALITIES[idx]}>{nat}</option>
                   ))}
                 </select>
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Street Address <span className="text-red-500">*</span>
+                  {t.streetAddress} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={streetAddress}
                   onChange={(e) => setStreetAddress(e.target.value)}
-                  placeholder="Street Address"
+                  placeholder={t.streetAddress}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Postal Code <span className="text-red-500">*</span>
+                  {t.postalCode} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={postalCode}
                   onChange={(e) => setPostalCode(e.target.value)}
-                  placeholder="Postal Code"
+                  placeholder={t.postalCode}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Town <span className="text-red-500">*</span>
+                  {t.town} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={town}
                   onChange={(e) => setTown(e.target.value)}
-                  placeholder="Town"
+                  placeholder={t.town}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Email <span className="text-red-500">*</span>
+                  {t.email} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
+                  placeholder={t.email}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Mobile <span className="text-red-500">*</span>
+                  {t.mobile} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="tel"
                   value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
-                  placeholder="Mobile"
+                  placeholder={t.mobile}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Profession <span className="text-red-500">*</span>
+                  {t.profession} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={profession}
                   onChange={(e) => setProfession(e.target.value)}
-                  placeholder="Profession"
+                  placeholder={t.profession}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Current Employer <span className="text-red-500">*</span>
+                  {t.currentEmployer} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={currentEmployer}
                   onChange={(e) => setCurrentEmployer(e.target.value)}
-                  placeholder="Current Employer"
+                  placeholder={t.currentEmployer}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
@@ -1377,43 +1428,43 @@ function IntakeStepsContent() {
           {step === 2 && (
             <div className="space-y-4">
               <UserIcon />
-              <p className="text-slate-600 text-sm mb-4">Please Enter your Insurance Information</p>
+              <p className="text-slate-600 text-sm mb-4">{t.insuranceInfoTitle}</p>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Name of Insurance Provider <span className="text-red-500">*</span>
+                  {t.insuranceProvider} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={insuranceProvider}
                   onChange={(e) => setInsuranceProvider(e.target.value)}
-                  placeholder="Name"
+                  placeholder={t.insuranceProvider}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Insurance Card Number <span className="text-red-500">*</span>
+                  {t.insuranceCardNumber} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={insuranceCardNumber}
                   onChange={(e) => setInsuranceCardNumber(e.target.value)}
-                  placeholder="Card Number"
+                  placeholder={t.insuranceCardNumber}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Type of Insurance <span className="text-red-500">*</span>
+                  {t.insuranceType} <span className="text-red-500">*</span>
                 </label>
                 <div className="space-y-3">
                   {[
-                    { value: "private", label: "PRIVATE" },
-                    { value: "semi-private", label: "SEMI-PRIVATE" },
-                    { value: "basic", label: "BASIC" }
+                    { value: "private", label: t.insuranceTypes.private },
+                    { value: "semi-private", label: t.insuranceTypes.semiPrivate },
+                    { value: "basic", label: t.insuranceTypes.basic }
                   ].map((type) => (
                     <button
                       key={type.value}
@@ -1437,188 +1488,188 @@ function IntakeStepsContent() {
           {step === 3 && (
             <div className="space-y-4">
               <UserIcon />
-              <p className="text-slate-600 text-sm mb-4">Please enter your Health Background & Lifestyle Information</p>
+              <p className="text-slate-600 text-sm mb-4">{t.healthInfoTitle}</p>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Indicate Weight in (kilograms) <span className="text-red-500">*</span>
+                  {t.weight} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
-                  placeholder="Weight"
+                  placeholder={t.weight}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Indicate Height in (cm) <span className="text-red-500">*</span>
+                  {t.height} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
                   value={height}
                   onChange={(e) => setHeight(e.target.value)}
-                  placeholder="Height"
+                  placeholder={t.height}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">BMI <span className="text-red-500">*</span></label>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.bmi} <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={calculateBMI()}
                   readOnly
-                  placeholder="Auto-calculated"
+                  placeholder={t.autoCalculated}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-slate-100 text-black placeholder:text-slate-400"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Known Illnesses (separate multiple with commas, write n/a if none) <span className="text-red-500">*</span>
+                  {t.knownIllnesses} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={knownIllnesses}
                   onChange={(e) => setKnownIllnesses(e.target.value)}
-                  placeholder="Known illnesses"
+                  placeholder={t.knownIllnesses}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Previous Surgeries (indicate n/a if none) <span className="text-red-500">*</span>
+                  {t.previousSurgeries} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={previousSurgeries}
                   onChange={(e) => setPreviousSurgeries(e.target.value)}
-                  placeholder="Previous surgeries"
+                  placeholder={t.previousSurgeries}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Allergies (indicate n/a if none) <span className="text-red-500">*</span>
+                  {t.allergies} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={allergies}
                   onChange={(e) => setAllergies(e.target.value)}
-                  placeholder="Allergies"
+                  placeholder={t.allergies}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Cigarettes (indicate n/a if none) <span className="text-red-500">*</span>
+                  {t.cigarettes} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={cigarettes}
                   onChange={(e) => setCigarettes(e.target.value)}
-                  placeholder="Cigarettes per day"
+                  placeholder={t.cigarettesPlaceholder}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Alcohol <span className="text-red-500">*</span>
+                  {t.alcohol} <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={alcohol}
                   onChange={(e) => setAlcohol(e.target.value)}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                 >
-                  <option value="">Select frequency</option>
-                  {ALCOHOL_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
+                  <option value="">{t.selectFrequency}</option>
+                  {t.frequencyOptions.map((opt, idx) => (
+                    <option key={opt} value={ALCOHOL_OPTIONS[idx]}>{opt}</option>
                   ))}
                 </select>
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Sports <span className="text-red-500">*</span>
+                  {t.sports} <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={sports}
                   onChange={(e) => setSports(e.target.value)}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                 >
-                  <option value="">Select frequency</option>
-                  {SPORTS_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
+                  <option value="">{t.selectFrequency}</option>
+                  {t.frequencyOptions.map((opt, idx) => (
+                    <option key={opt} value={SPORTS_OPTIONS[idx]}>{opt}</option>
                   ))}
                 </select>
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  Medications (separate multiple with commas, write n/a if none) <span className="text-red-500">*</span>
+                  {t.medications} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={medications}
                   onChange={(e) => setMedications(e.target.value)}
-                  placeholder="Current medications"
+                  placeholder={t.currentMedications}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
-                  General Practitioner <span className="text-red-500">*</span>
+                  {t.generalPractitioner} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={generalPractitioner}
                   onChange={(e) => setGeneralPractitioner(e.target.value)}
-                  placeholder="Doctor's name"
+                  placeholder={t.doctorName}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Gynecologist</label>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.gynecologist}</label>
                 <input
                   type="text"
                   value={gynecologist}
                   onChange={(e) => setGynecologist(e.target.value)}
-                  placeholder="Doctor's name"
+                  placeholder={t.doctorName}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Do you have Children?</label>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.haveChildren}</label>
                 <input
                   type="number"
                   value={childrenCount}
                   onChange={(e) => setChildrenCount(e.target.value)}
-                  placeholder="Number of children"
+                  placeholder={t.numberOfChildren}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 
               {parseInt(childrenCount) >= 1 && (
                 <div>
-                  <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Birth Type 1</label>
+                  <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.birthType1}</label>
                   <select
                     value={birthType1}
                     onChange={(e) => setBirthType1(e.target.value)}
                     className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                   >
-                    <option value="">Select type</option>
-                    {BIRTH_TYPES.map((type) => (
-                      <option key={type} value={type}>{type}</option>
+                    <option value="">{t.selectType}</option>
+                    {t.birthTypes.map((type, idx) => (
+                      <option key={type} value={BIRTH_TYPES[idx]}>{type}</option>
                     ))}
                   </select>
                 </div>
@@ -1626,15 +1677,15 @@ function IntakeStepsContent() {
 
               {parseInt(childrenCount) >= 2 && (
                 <div>
-                  <label className="block text-[#1a4d7c] text-sm font-medium mb-1">Birth Type 2</label>
+                  <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.birthType2}</label>
                   <select
                     value={birthType2}
                     onChange={(e) => setBirthType2(e.target.value)}
                     className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
                   >
-                    <option value="">Select type</option>
-                    {BIRTH_TYPES.map((type) => (
-                      <option key={type} value={type}>{type}</option>
+                    <option value="">{t.selectType}</option>
+                    {t.birthTypes.map((type, idx) => (
+                      <option key={type} value={BIRTH_TYPES[idx]}>{type}</option>
                     ))}
                   </select>
                 </div>
@@ -1661,7 +1712,7 @@ function IntakeStepsContent() {
             disabled={loading}
             className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors disabled:opacity-50"
           >
-            {loading ? "Saving..." : "NEXT"}
+            {loading ? t.saving : t.next}
           </button>
         </div>
       </footer>
