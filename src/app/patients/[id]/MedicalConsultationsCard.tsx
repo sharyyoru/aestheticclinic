@@ -50,6 +50,10 @@ type ConsultationRow = {
   invoice_is_complimentary: boolean;
   invoice_is_paid: boolean | null;
   cash_receipt_path: string | null;
+  invoice_pdf_path: string | null;
+  payment_link_token: string | null;
+  payrexx_payment_link: string | null;
+  payrexx_payment_status: string | null;
   created_by_user_id: string | null;
   created_by_name: string | null;
   is_archived: boolean;
@@ -269,6 +273,16 @@ export default function MedicalConsultationsCard({
   const [generatedPaymentLink, setGeneratedPaymentLink] = useState<{ consultationId: string; url: string } | null>(null);
   const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
 
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
+  const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
+
+  const [editInvoiceModalOpen, setEditInvoiceModalOpen] = useState(false);
+  const [editInvoiceTarget, setEditInvoiceTarget] = useState<ConsultationRow | null>(null);
+
+  const [paymentStatusModalOpen, setPaymentStatusModalOpen] = useState(false);
+  const [paymentStatusTarget, setPaymentStatusTarget] = useState<ConsultationRow | null>(null);
+  const [markingPaid, setMarkingPaid] = useState(false);
+
   const [insuranceBillingModalOpen, setInsuranceBillingModalOpen] = useState(false);
   const [insuranceBillingTarget, setInsuranceBillingTarget] = useState<ConsultationRow | null>(null);
 
@@ -361,7 +375,7 @@ export default function MedicalConsultationsCard({
         const { data, error } = await supabaseClient
           .from("consultations")
           .select(
-            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, created_by_user_id, created_by_name, is_archived, archived_at",
+            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -795,11 +809,63 @@ export default function MedicalConsultationsCard({
         setPaymentLinkCopied(false);
       }
 
+      // Refresh consultation data to get updated invoice_pdf_path
+      router.refresh();
       setGeneratingPdf(null);
     } catch (error) {
       console.error("Error generating PDF:", error);
       setPdfError(error instanceof Error ? error.message : "Failed to generate PDF");
       setGeneratingPdf(null);
+    }
+  }
+
+  function handleViewPdf(pdfPath: string) {
+    try {
+      const { data } = supabaseClient.storage
+        .from("invoice-pdfs")
+        .getPublicUrl(pdfPath);
+      const url = data?.publicUrl;
+      if (url) {
+        setPdfViewerUrl(url);
+        setPdfViewerOpen(true);
+      }
+    } catch (error) {
+      console.error("Error viewing PDF:", error);
+      alert("Failed to load PDF. Please try again.");
+    }
+  }
+
+  function handleEditInvoice(invoice: ConsultationRow) {
+    setEditInvoiceTarget(invoice);
+    setEditInvoiceModalOpen(true);
+  }
+
+  function handleManagePaymentStatus(invoice: ConsultationRow) {
+    setPaymentStatusTarget(invoice);
+    setPaymentStatusModalOpen(true);
+  }
+
+  async function handleMarkInvoicePaid(consultationId: string) {
+    try {
+      setMarkingPaid(true);
+      const { error } = await supabaseClient
+        .from("consultations")
+        .update({ invoice_is_paid: true })
+        .eq("id", consultationId);
+
+      if (error) throw error;
+
+      setConsultations(prev =>
+        prev.map(c =>
+          c.id === consultationId ? { ...c, invoice_is_paid: true } : c
+        )
+      );
+      setPaymentStatusModalOpen(false);
+      setMarkingPaid(false);
+    } catch (error) {
+      console.error("Error marking invoice paid:", error);
+      alert("Failed to update payment status. Please try again.");
+      setMarkingPaid(false);
     }
   }
 
@@ -1450,7 +1516,7 @@ export default function MedicalConsultationsCard({
                       .from("consultations")
                       .insert(insertPayload)
                       .select(
-                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, created_by_user_id, created_by_name, is_archived, archived_at",
+                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
                       )
                       .single();
 
@@ -1466,8 +1532,9 @@ export default function MedicalConsultationsCard({
                     setConsultations((prev) => [inserted, ...prev]);
 
                     if (inserted.record_type === "invoice") {
-                      // Create Payrexx payment gateway for Online Payment invoices
-                      if (inserted.payment_method === "Online Payment") {
+                      // Create Payrexx payment gateway for invoices with payment methods containing 'cash' or 'online'
+                      const paymentMethod = inserted.payment_method?.toLowerCase() || "";
+                      if (paymentMethod.includes("cash") || paymentMethod.includes("online")) {
                         try {
                           const payrexxResponse = await fetch("/api/payments/create-payrexx-gateway", {
                             method: "POST",
@@ -2778,53 +2845,106 @@ export default function MedicalConsultationsCard({
                         ) : null}
                         {isInvoice && !isComplimentaryInvoice ? (
                           <>
+                            {/* Payment Status Indicator */}
+                            {row.invoice_is_paid ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Paid
+                              </span>
+                            ) : (
+                              <>
+                                {row.payment_method === "Online Payment" || row.payment_method === "Cash" ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                                    {row.payrexx_payment_status === "confirmed" ? "Paid" : 
+                                     row.payrexx_payment_status === "waiting" ? "Waiting" : "Pending"}
+                                  </span>
+                                ) : row.payment_method === "Bank transfer" ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-800">
+                                    Pending
+                                  </span>
+                                ) : null}
+                              </>
+                            )}
+
+                            {/* View PDF Button */}
+                            {row.invoice_pdf_path ? (
+                              <button
+                                type="button"
+                                onClick={() => handleViewPdf(row.invoice_pdf_path!)}
+                                className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-800 shadow-sm hover:bg-indigo-100"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                View PDF
+                              </button>
+                            ) : null}
+
+                            {/* Generate/Regenerate PDF Button */}
                             <button
                               type="button"
                               onClick={() => handleGenerateInvoicePdf(row.id)}
                               disabled={generatingPdf === row.id}
                               className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-800 shadow-sm hover:bg-purple-100 disabled:opacity-50"
                             >
-                              {generatingPdf === row.id ? "Generating..." : "Generate PDF"}
+                              {generatingPdf === row.id ? "Generating..." : row.invoice_pdf_path ? "Regenerate PDF" : "Generate PDF"}
                             </button>
-                            {generatedPaymentLink?.consultationId === row.id && (
-                              <div className="inline-flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    if (navigator.clipboard) {
-                                      await navigator.clipboard.writeText(generatedPaymentLink.url);
-                                      setPaymentLinkCopied(true);
-                                      setTimeout(() => setPaymentLinkCopied(false), 2000);
-                                    }
-                                  }}
-                                  className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800 shadow-sm hover:bg-sky-100"
-                                >
-                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                  </svg>
-                                  {paymentLinkCopied ? "Copied!" : "Copy Link"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => window.open(generatedPaymentLink.url, "_blank")}
-                                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 shadow-sm hover:bg-slate-50"
-                                >
-                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                  Open
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setGeneratedPaymentLink(null)}
-                                  className="inline-flex items-center rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-500 shadow-sm hover:bg-slate-50"
-                                >
-                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
-                                </button>
-                              </div>
+
+                            {/* Edit Invoice Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleEditInvoice(row)}
+                              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Edit
+                            </button>
+
+                            {/* Copy Payment Link Button (for payments with cash/online) */}
+                            {!row.invoice_is_paid && row.payment_method && 
+                             (row.payment_method.toLowerCase().includes("cash") || 
+                              row.payment_method.toLowerCase().includes("online")) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const baseUrl = window.location.origin;
+                                  const paymentLink = `${baseUrl}/invoice/pay/${row.payment_link_token}`;
+                                  navigator.clipboard.writeText(paymentLink).then(() => {
+                                    alert("Payment link copied to clipboard!");
+                                  }).catch(err => {
+                                    console.error("Failed to copy:", err);
+                                    alert("Failed to copy link");
+                                  });
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-800 shadow-sm hover:bg-blue-100"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                </svg>
+                                Copy Link
+                              </button>
                             )}
+
+                            {/* Payment Status Button (if not paid) */}
+                            {!row.invoice_is_paid && (
+                              <button
+                                type="button"
+                                onClick={() => handleManagePaymentStatus(row)}
+                                className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800 shadow-sm hover:bg-sky-100"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                Payment
+                              </button>
+                            )}
+
+                            {/* Insurance Billing Button */}
                             <button
                               type="button"
                               onClick={() => {
@@ -2836,7 +2956,7 @@ export default function MedicalConsultationsCard({
                               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
-                              Send to Insurance
+                              Insurance
                             </button>
                           </>
                         ) : null}
@@ -3124,6 +3244,171 @@ export default function MedicalConsultationsCard({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {/* PDF Viewer Modal */}
+      {pdfViewerOpen && pdfViewerUrl ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="relative h-full w-full max-w-5xl rounded-lg bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-slate-900">Invoice PDF</h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={pdfViewerUrl}
+                  download
+                  className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Download
+                </a>
+                <button
+                  onClick={() => {
+                    setPdfViewerOpen(false);
+                    setPdfViewerUrl(null);
+                  }}
+                  className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="h-[calc(100%-60px)] w-full">
+              <iframe
+                src={pdfViewerUrl}
+                className="h-full w-full"
+                title="Invoice PDF"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Payment Status Management Modal */}
+      {paymentStatusModalOpen && paymentStatusTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h3 className="text-sm font-semibold text-slate-900">Payment Status</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Invoice #{paymentStatusTarget.consultation_id}
+              </p>
+            </div>
+            <div className="space-y-4 px-6 py-4">
+              <div className="rounded-lg bg-slate-50 p-4">
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Payment Method:</span>
+                    <span className="font-medium text-slate-900">{paymentStatusTarget.payment_method}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Amount:</span>
+                    <span className="font-medium text-slate-900">
+                      {paymentStatusTarget.invoice_total_amount?.toFixed(2)} CHF
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Status:</span>
+                    <span className="font-medium text-slate-900">
+                      {paymentStatusTarget.invoice_is_paid ? "Paid" : "Pending"}
+                    </span>
+                  </div>
+                  {paymentStatusTarget.payrexx_payment_status && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Payrexx Status:</span>
+                      <span className="font-medium text-slate-900 capitalize">
+                        {paymentStatusTarget.payrexx_payment_status}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {!paymentStatusTarget.invoice_is_paid && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-xs text-amber-800">
+                    <strong>Note:</strong> {paymentStatusTarget.payment_method === "Bank transfer" ? "Manually mark this invoice as paid once you verify the bank transfer." : "Payment status will update automatically via Payrexx webhook."}
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+              <button
+                onClick={() => setPaymentStatusModalOpen(false)}
+                disabled={markingPaid}
+                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Close
+              </button>
+              {!paymentStatusTarget.invoice_is_paid && (
+                <button
+                  onClick={() => handleMarkInvoicePaid(paymentStatusTarget.id)}
+                  disabled={markingPaid}
+                  className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {markingPaid ? "Updating..." : "Mark as Paid"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Invoice Editing Modal */}
+      {editInvoiceModalOpen && editInvoiceTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h3 className="text-sm font-semibold text-slate-900">Edit Invoice</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Invoice #{editInvoiceTarget.consultation_id}
+              </p>
+            </div>
+            <div className="space-y-4 px-6 py-6">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <p className="text-xs text-blue-800">
+                  <strong>Coming Soon:</strong> Invoice editing functionality will be available in a future update. For now, you can regenerate the PDF with updated information by creating a new consultation record.
+                </p>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-4">
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Title:</span>
+                    <span className="font-medium text-slate-900">{editInvoiceTarget.title}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Amount:</span>
+                    <span className="font-medium text-slate-900">
+                      {editInvoiceTarget.invoice_total_amount?.toFixed(2)} CHF
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Payment Method:</span>
+                    <span className="font-medium text-slate-900">{editInvoiceTarget.payment_method}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Date:</span>
+                    <span className="font-medium text-slate-900">
+                      {new Date(editInvoiceTarget.scheduled_at).toLocaleDateString("en-US")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+              <button
+                onClick={() => {
+                  setEditInvoiceModalOpen(false);
+                  setEditInvoiceTarget(null);
+                }}
+                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

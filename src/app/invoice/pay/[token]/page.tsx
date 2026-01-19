@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 type InvoiceData = {
   id: string;
@@ -12,7 +12,8 @@ type InvoiceData = {
   payment_method: string | null;
   doctor_name: string | null;
   invoice_is_paid: boolean;
-  pdf_url: string | null;
+  invoice_pdf_path: string | null;
+  payment_link_expires_at: string | null;
   payrexx_payment_link: string | null;
 };
 
@@ -31,8 +32,7 @@ export default function InvoicePaymentPage() {
   const [error, setError] = useState<string | null>(null);
   const [invoice, setInvoice] = useState<InvoiceData | null>(null);
   const [patient, setPatient] = useState<PatientData | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "bank" | null>(null);
-  const [processingPayment, setProcessingPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"payrexx" | "bank" | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -43,7 +43,8 @@ export default function InvoicePaymentPage() {
 
     async function loadInvoice() {
       try {
-        const response = await fetch(`/api/invoices/public/${token}`);
+        // Use public API endpoint to bypass authentication
+        const response = await fetch(`/api/invoices/get-by-token?token=${encodeURIComponent(token)}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -65,32 +66,13 @@ export default function InvoicePaymentPage() {
     void loadInvoice();
   }, [token]);
 
-  async function handleStripePayment() {
-    if (!invoice) return;
-
-    setProcessingPayment(true);
-    try {
-      const response = await fetch("/api/payments/create-stripe-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          consultationId: invoice.id,
-          amount: invoice.invoice_total_amount,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create payment");
-      }
-
-      window.location.href = data.checkoutUrl;
-    } catch (err) {
-      console.error("Error processing payment:", err);
-      alert("Failed to process payment. Please try again.");
-      setProcessingPayment(false);
+  function handlePayrexxPayment() {
+    if (!invoice?.payrexx_payment_link) {
+      alert("Payment link not available. Please contact support.");
+      return;
     }
+    // Redirect to Payrexx payment gateway
+    window.location.href = invoice.payrexx_payment_link;
   }
 
   function handleBankTransfer() {
@@ -98,14 +80,11 @@ export default function InvoicePaymentPage() {
   }
 
   function downloadPDF() {
-    if (!invoice?.pdf_url) return;
-    window.open(invoice.pdf_url, "_blank");
-  }
-
-  function handlePayrexxPayment() {
-    if (invoice?.payrexx_payment_link) {
-      window.location.href = invoice.payrexx_payment_link;
-    }
+    if (!invoice?.invoice_pdf_path) return;
+    // Construct public URL directly (no auth needed for public buckets)
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const publicUrl = `${baseUrl}/storage/v1/object/public/invoice-pdfs/${invoice.invoice_pdf_path}`;
+    window.open(publicUrl, "_blank");
   }
 
   if (loading) {
@@ -146,7 +125,7 @@ export default function InvoicePaymentPage() {
           </div>
           <h1 className="mb-2 text-xl font-semibold text-slate-900">Already Paid</h1>
           <p className="mb-6 text-sm text-slate-600">This invoice has already been paid.</p>
-          {invoice.pdf_url && (
+          {invoice.invoice_pdf_path && (
             <button
               onClick={downloadPDF}
               className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
@@ -169,10 +148,32 @@ export default function InvoicePaymentPage() {
   const formattedAmount = totalAmount.toFixed(2);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 py-12">
-      <div className="mx-auto max-w-2xl">
-        <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-slate-900">Invoice Payment</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Header */}
+      <div className="border-b border-slate-200 bg-white shadow-sm">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-sky-500 to-sky-600">
+              <span className="text-lg font-bold text-white">A</span>
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold text-slate-900">AESTHETICS</h1>
+              <p className="text-xs text-slate-600">Clinic XT SA</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <a href="tel:0227322223" className="text-sm text-slate-600 hover:text-slate-900">
+              <svg className="inline h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-2xl p-4 py-8">
+        <div className="mb-6 text-center">
+          <h2 className="mb-2 text-2xl font-bold text-slate-900">Invoice Payment</h2>
           <p className="text-sm text-slate-600">Aesthetics Clinic XT SA</p>
         </div>
 
@@ -216,7 +217,7 @@ export default function InvoicePaymentPage() {
             </div>
           </div>
 
-          {invoice.pdf_url && (
+          {invoice.invoice_pdf_path && (
             <button
               onClick={downloadPDF}
               className="mb-6 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -247,31 +248,27 @@ export default function InvoicePaymentPage() {
             </div>
           ) : !paymentMethod ? (
             <div>
-              <h3 className="mb-4 text-center text-sm font-semibold text-slate-900">Choose Payment Method</h3>
+              <h3 className="mb-4 text-center text-lg font-semibold text-slate-900">Payment Options</h3>
               <div className="space-y-3">
-                <button
-                  onClick={handleStripePayment}
-                  disabled={processingPayment}
-                  className="w-full rounded-lg bg-gradient-to-r from-sky-600 to-sky-700 px-6 py-4 font-semibold text-white shadow-lg hover:from-sky-700 hover:to-sky-800 disabled:opacity-50"
-                >
-                  {processingPayment ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                      Processing...
-                    </span>
-                  ) : (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {/* Show Payrexx button if payment link exists */}
+                {invoice.payrexx_payment_link && (
+                  <button
+                    onClick={handlePayrexxPayment}
+                    className="w-full rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-5 text-lg font-bold text-white shadow-lg hover:from-emerald-700 hover:to-emerald-800 transition-all"
+                  >
+                    <span className="flex items-center justify-center gap-3">
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                       </svg>
-                      Pay Online with Card (Stripe)
+                      Pay Online with Card
                     </span>
-                  )}
-                </button>
+                  </button>
+                )}
 
+                {/* Always show Bank Transfer option as fallback */}
                 <button
                   onClick={handleBankTransfer}
-                  className="w-full rounded-lg border-2 border-slate-300 bg-white px-6 py-4 font-semibold text-slate-700 hover:bg-slate-50"
+                  className="w-full rounded-lg bg-gradient-to-r from-slate-700 to-slate-800 px-6 py-4 font-semibold text-white shadow-lg hover:from-slate-800 hover:to-slate-900"
                 >
                   <span className="flex items-center justify-center gap-2">
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -14,6 +14,7 @@ import PatientModeInitializer from "./PatientModeInitializer";
 import PatientEditingPresence from "./PatientEditingPresence";
 import InvoicePaymentMethodFilter from "./InvoicePaymentMethodFilter";
 import PatientIntakeDataCard from "./PatientIntakeDataCard";
+import PatientRendezvousTab from "./PatientRendezvousTab";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,8 @@ type MedicalTab =
   | "3d"
   | "patient_information"
   | "documents"
+  | "rendezvous"
+  | "crm"
   | "form_photos";
 
 async function getPatientWithDetails(id: string) {
@@ -222,14 +225,8 @@ export default async function PatientPage({
   const genderRaw = (patient as any).gender as string | null | undefined;
   const gender = genderRaw ? genderRaw.toLowerCase() : null;
 
-  const rawMode = (() => {
-    const value = resolvedSearchParams?.mode;
-    if (typeof value === "string") return value;
-    if (Array.isArray(value) && value.length > 0) return value[0];
-    return undefined;
-  })();
-
-  const mode: "crm" | "medical" = rawMode === "medical" ? "medical" : "crm";
+  // Always use medical mode - CRM is now a tab
+  const mode: "medical" = "medical";
 
   const rawPaymentMethodFilter = (() => {
     const value = resolvedSearchParams?.payment_method;
@@ -287,18 +284,22 @@ export default async function PatientPage({
     rawMedicalTab === "3d" ||
     rawMedicalTab === "patient_information" ||
     rawMedicalTab === "documents" ||
+    rawMedicalTab === "rendezvous" ||
+    rawMedicalTab === "crm" ||
     rawMedicalTab === "form_photos"
       ? (rawMedicalTab as MedicalTab)
       : "cockpit";
 
   const medicalTabs: { id: MedicalTab; label: string }[] = [
     { id: "cockpit", label: "Cockpit" },
-    { id: "notes", label: "Notes" },
+    { id: "notes", label: "Consultations" },
     { id: "prescription", label: "Prescription" },
     { id: "invoice", label: "Invoice" },
     { id: "3d", label: "3D" },
     { id: "patient_information", label: "Patient Information" },
     { id: "documents", label: "Documents" },
+    { id: "rendezvous", label: "Rendezvous" },
+    { id: "crm", label: "CRM" },
   ];
 
   let genderClasses = "bg-slate-50 text-slate-700 border-slate-200";
@@ -325,10 +326,7 @@ export default async function PatientPage({
             <h1 className="text-lg font-semibold text-slate-900">
               {patient.first_name} {patient.last_name}
             </h1>
-            <div className="flex items-center gap-3">
-              <PatientModeToggle patientId={patient.id} mode={mode} />
-              <PatientEditingPresence patientId={patient.id} />
-            </div>
+            <PatientEditingPresence patientId={patient.id} />
           </div>
           <div className="mt-1 flex items-center gap-3 text-xs">
             {genderRaw ? (
@@ -350,7 +348,7 @@ export default async function PatientPage({
           </div>
           <div className="flex items-center gap-2">
             <Link
-              href={`/patients/${patient.id}?mode=crm&composeEmail=1`}
+              href={`/patients/${patient.id}?m_tab=crm&composeEmail=1`}
               className="inline-flex items-center gap-1 rounded-full border border-slate-300/80 bg-gradient-to-b from-slate-50/90 via-slate-100/90 to-slate-200/90 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-[0_4px_12px_rgba(15,23,42,0.18)] backdrop-blur hover:from-slate-100 hover:to-slate-300"
             >
               <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
@@ -390,29 +388,11 @@ export default async function PatientPage({
           </div>
         </div>
         <div className="pointer-events-none absolute -top-6 right-0 h-40 w-40 overflow-hidden">
-          <div
-            className={`${mode === "medical" ? "medical-glow" : "crm-glow"} h-full w-full`}
-          />
+          <div className="medical-glow h-full w-full" />
         </div>
       </div>
 
-      {mode === "crm" ? (
-        <>
-          <div className="grid gap-6 md:grid-cols-2 items-stretch">
-            <PatientDetailsTabs patient={patient} insurance={insurance} />
-            <PatientCrmPreferencesCard patient={patient} />
-          </div>
-
-          <PatientActivityCard
-            patientId={patient.id}
-            createdAt={(patient as any).created_at ?? null}
-            createdBy={(patient as any).created_by ?? null}
-            patientEmail={(patient as any).email ?? null}
-            contactOwnerName={(patient as any).contact_owner_name ?? null}
-          />
-        </>
-      ) : (
-        <div className="space-y-6">
+      <div className="space-y-6">
           <div className="border-b border-slate-200">
             <nav className="-mb-px flex flex-wrap gap-4 text-xs font-medium text-slate-500">
               {medicalTabs.map((tab) => {
@@ -420,7 +400,7 @@ export default async function PatientPage({
                 return (
                   <Link
                     key={tab.id}
-                    href={`/patients/${patient.id}?mode=medical&m_tab=${tab.id}`}
+                    href={`/patients/${patient.id}?m_tab=${tab.id}`}
                     className={
                       (isActive
                         ? "border-sky-500 text-sky-600"
@@ -736,6 +716,29 @@ export default async function PatientPage({
             <PatientDocumentsTab patientId={patient.id} patientName={`${patient.first_name} ${patient.last_name}`} />
           ) : null}
 
+          {medicalTab === "rendezvous" ? (
+            <PatientRendezvousTab patientId={patient.id} />
+          ) : null}
+
+          {medicalTab === "crm" ? (
+            <>
+              <div className="grid gap-6 md:grid-cols-2 items-stretch">
+                <PatientDetailsTabs patient={patient} insurance={insurance} />
+                <PatientCrmPreferencesCard patient={patient} />
+              </div>
+
+              <PatientActivityCard
+                patientId={patient.id}
+                createdAt={(patient as any).created_at ?? null}
+                createdBy={(patient as any).created_by ?? null}
+                patientEmail={(patient as any).email ?? null}
+                patientPhone={(patient as any).phone ?? null}
+                patientName={`${patient.first_name} ${patient.last_name}`}
+                contactOwnerName={(patient as any).contact_owner_name ?? null}
+              />
+            </>
+          ) : null}
+
           {medicalTab === "form_photos" ? (
             <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
               <h3 className="text-sm font-semibold text-slate-900">Form Photos</h3>
@@ -744,8 +747,7 @@ export default async function PatientPage({
               </p>
             </div>
           ) : null}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

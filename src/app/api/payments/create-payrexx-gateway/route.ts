@@ -39,10 +39,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Check if payment method is Online Payment
-    if (consultation.payment_method !== "Online Payment") {
+    // Check if payment method contains 'cash' or 'online' (handles variations like 'mac cash', 'mac online')
+    const paymentMethod = consultation.payment_method?.toLowerCase() || "";
+    if (!paymentMethod.includes("cash") && !paymentMethod.includes("online")) {
       return NextResponse.json(
-        { error: "Invoice payment method is not Online Payment" },
+        { error: "Invoice payment method must contain 'cash' or 'online'" },
         { status: 400 }
       );
     }

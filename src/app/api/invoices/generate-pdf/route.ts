@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
+import { generateSwissQrBillDataUrl, generateSwissReference, formatSwissReferenceWithSpaces, type SwissQrBillData } from "@/lib/swissQrBill";
 import { 
   TARDOC_TARIFF_ITEMS, 
   DEFAULT_CANTON, 
@@ -217,25 +218,56 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
     
-    // Use Payrexx payment link for Online Payment, otherwise use internal payment link
-    let paymentUrl: string;
+    // Generate QR code based on payment method
+    let qrCodeDataUrl: string;
     let isPayrexxPayment = false;
+    let isBankTransferQr = false;
     
-    if (invoiceData.payment_method === "Online Payment" && invoiceData.payrexx_payment_link) {
-      paymentUrl = invoiceData.payrexx_payment_link;
+    if ((invoiceData.payment_method === "Online Payment" || invoiceData.payment_method === "Cash") && invoiceData.payrexx_payment_link) {
+      // Use Payrex QR code for Online Payment and Cash
+      const paymentUrl = invoiceData.payrexx_payment_link;
       isPayrexxPayment = true;
+      qrCodeDataUrl = await QRCode.toDataURL(paymentUrl, {
+        width: 200,
+        margin: 1,
+        color: {
+          dark: "#000000",
+          light: "#FFFFFF",
+        },
+      });
+    } else if (invoiceData.payment_method === "Bank transfer") {
+      // Generate Swiss QR-bill for Bank Transfer
+      isBankTransferQr = true;
+      const swissReference = generateSwissReference(invoiceData.consultation_id);
+      const qrBillData: SwissQrBillData = {
+        iban: "CH09 3078 8000 0502 4628 9",
+        creditorName: "Aesthetics Clinic XT SA",
+        creditorAddressLine1: "Chemin Rieu 18",
+        creditorAddressLine2: "1208 Genève",
+        creditorCountry: "CH",
+        amount: invoiceData.invoice_total_amount || undefined,
+        currency: "CHF",
+        debtorName: patientData.first_name && patientData.last_name ? `${patientData.first_name} ${patientData.last_name}` : undefined,
+        debtorAddressLine1: patientData.street_address || undefined,
+        debtorAddressLine2: patientData.postal_code && patientData.town ? `${patientData.postal_code} ${patientData.town}` : undefined,
+        debtorCountry: "CH",
+        referenceType: "QRR",
+        reference: swissReference,
+        unstructuredMessage: `Invoice ${invoiceData.consultation_id} - ${invoiceData.title || "Medical Services"}`,
+      };
+      qrCodeDataUrl = await generateSwissQrBillDataUrl(qrBillData);
     } else {
-      paymentUrl = `${baseUrl}/invoice/pay/${paymentLinkToken}`;
+      // Fallback to internal payment link for other payment methods
+      const paymentUrl = `${baseUrl}/invoice/pay/${paymentLinkToken}`;
+      qrCodeDataUrl = await QRCode.toDataURL(paymentUrl, {
+        width: 200,
+        margin: 1,
+        color: {
+          dark: "#000000",
+          light: "#FFFFFF",
+        },
+      });
     }
-
-    const qrCodeDataUrl = await QRCode.toDataURL(paymentUrl, {
-      width: 200,
-      margin: 1,
-      color: {
-        dark: "#000000",
-        light: "#FFFFFF",
-      },
-    });
 
     const pdf = new jsPDF({
       orientation: "portrait",
@@ -452,8 +484,14 @@ export async function POST(request: NextRequest) {
     pdf.text("Référence", 140, yPos);
     yPos += 4;
     pdf.setFont("helvetica", "normal");
-    pdf.text("00 00000 00000 00000 05870 40016", 20, yPos);
-    pdf.text("00 00000 00000 00000 05870 40016", 140, yPos);
+    
+    // Use Swiss QR Reference for bank transfers, static reference for others
+    const displayReference = isBankTransferQr 
+      ? formatSwissReferenceWithSpaces(generateSwissReference(invoiceData.consultation_id))
+      : "00 00000 00000 00000 05870 40016";
+    
+    pdf.text(displayReference, 20, yPos);
+    pdf.text(displayReference, 140, yPos);
     yPos += 6;
 
     pdf.setFont("helvetica", "bold");
@@ -525,8 +563,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       pdfUrl: publicUrlData.publicUrl,
-      paymentUrl,
+      paymentUrl: isPayrexxPayment ? invoiceData.payrexx_payment_link : `${baseUrl}/invoice/pay/${paymentLinkToken}`,
       paymentLinkToken,
+      qrCodeType: isBankTransferQr ? "swiss-qr-bill" : isPayrexxPayment ? "payrex" : "internal",
     });
   } catch (error) {
     console.error("Error generating invoice PDF:", error);

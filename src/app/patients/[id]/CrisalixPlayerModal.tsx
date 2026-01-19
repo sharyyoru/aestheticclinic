@@ -76,14 +76,26 @@ export default function CrisalixPlayerModal({
     async function init() {
       try {
         setLoading(true);
+        console.log("[Crisalix Player] Starting initialization...");
+        
         await loadPlayerScriptOnce();
-        if (cancelled || !window.CrisalixPlayer) return;
+        if (cancelled || !window.CrisalixPlayer) {
+          console.error("[Crisalix Player] Player script not loaded");
+          return;
+        }
 
         const token = getCookie("crisalix_player_token");
-        if (!token) return;
+        console.log("[Crisalix Player] Token present:", !!token);
+        
+        if (!token) {
+          console.error("[Crisalix Player] No player token found in cookies");
+          setLoading(false);
+          return;
+        }
 
         const PlayerCtor = window.CrisalixPlayer;
         const player = new PlayerCtor(token);
+        console.log("[Crisalix Player] Player instance created");
 
         const container = containerRef.current;
         if (!container) return;
@@ -100,14 +112,18 @@ export default function CrisalixPlayerModal({
           reconstruction_type,
           player_id: playerId,
           locale: "en",
-          iframe: { width: "100%", height: "100%" },
+          autoplay: true,
         };
 
+        console.log("[Crisalix Player] Rendering with options:", options);
         player.render("surgeon", options);
+        console.log("[Crisalix Player] Render called successfully");
+        
         if (!cancelled) {
           setLoading(false);
         }
-      } catch {
+      } catch (error) {
+        console.error("[Crisalix Player] Error during initialization:", error);
         if (!cancelled) {
           setLoading(false);
         }

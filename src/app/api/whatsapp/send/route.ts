@@ -34,17 +34,19 @@ function normalizeWhatsAppAddress(value: string): string {
 
 export async function POST(request: Request) {
   try {
-    const { patientId, to, body, templateSid, templateVariables } =
+    const { patientId, to, toNumber, body, message, templateSid, templateVariables } =
       (await request.json()) as {
         patientId?: string | null;
         to?: string;
+        toNumber?: string;
         body?: string;
+        message?: string;
         templateSid?: string | null;
         templateVariables?: Record<string, string> | null;
       };
 
-    const toRaw = (to ?? "").trim();
-    const messageBody = (body ?? "").trim();
+    const toRaw = (toNumber || to || "").trim();
+    const messageBody = (message || body || "").trim();
     const template = (templateSid ?? "").trim() || null;
     const templateVars =
       templateVariables && typeof templateVariables === "object"
@@ -139,7 +141,7 @@ export async function POST(request: Request) {
         body: displayBody,
         status: "sent",
         direction: "outbound",
-        provider_message_sid: sid,
+        message_sid: sid,
         sent_at: sentAtIso,
       })
       .select("id")
