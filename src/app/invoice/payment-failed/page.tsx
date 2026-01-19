@@ -1,9 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function PaymentFailedPage() {
+function PaymentFailedContent() {
   const searchParams = useSearchParams();
   const referenceId = searchParams?.get("referenceId");
   const error = searchParams?.get("error");
@@ -61,5 +62,19 @@ export default function PaymentFailedPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentFailedPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-red-50 to-slate-100">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-red-500"></div>
+        </div>
+      }
+    >
+      <PaymentFailedContent />
+    </Suspense>
   );
 }

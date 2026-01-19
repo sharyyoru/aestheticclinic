@@ -188,6 +188,7 @@ export default function PatientActivityCard({
   patientPhone,
   patientName,
   contactOwnerName,
+  defaultTab,
 }: {
   patientId: string;
   createdAt: string | null;
@@ -196,8 +197,9 @@ export default function PatientActivityCard({
   patientPhone: string | null;
   patientName?: string;
   contactOwnerName: string | null;
+  defaultTab?: ActivityTab;
 }) {
-  const [activeTab, setActiveTab] = useState<ActivityTab>("activity");
+  const [activeTab, setActiveTab] = useState<ActivityTab>(defaultTab ?? "activity");
 
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 

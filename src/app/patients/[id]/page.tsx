@@ -15,6 +15,8 @@ import PatientEditingPresence from "./PatientEditingPresence";
 import InvoicePaymentMethodFilter from "./InvoicePaymentMethodFilter";
 import PatientIntakeDataCard from "./PatientIntakeDataCard";
 import PatientRendezvousTab from "./PatientRendezvousTab";
+import PatientCrmSection from "./PatientCrmSection";
+import CrmTabDropdown from "./CrmTabDropdown";
 
 export const dynamic = "force-dynamic";
 
@@ -394,9 +396,21 @@ export default async function PatientPage({
 
       <div className="space-y-6">
           <div className="border-b border-slate-200">
-            <nav className="-mb-px flex flex-wrap gap-4 text-xs font-medium text-slate-500">
+            <nav className="-mb-px flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
               {medicalTabs.map((tab) => {
                 const isActive = tab.id === medicalTab;
+                
+                // Special rendering for CRM tab with dropdown
+                if (tab.id === "crm") {
+                  return (
+                    <CrmTabDropdown
+                      key={tab.id}
+                      patientId={patient.id}
+                      isActive={isActive}
+                    />
+                  );
+                }
+                
                 return (
                   <Link
                     key={tab.id}
@@ -721,22 +735,17 @@ export default async function PatientPage({
           ) : null}
 
           {medicalTab === "crm" ? (
-            <>
-              <div className="grid gap-6 md:grid-cols-2 items-stretch">
-                <PatientDetailsTabs patient={patient} insurance={insurance} />
-                <PatientCrmPreferencesCard patient={patient} />
-              </div>
-
-              <PatientActivityCard
-                patientId={patient.id}
-                createdAt={(patient as any).created_at ?? null}
-                createdBy={(patient as any).created_by ?? null}
-                patientEmail={(patient as any).email ?? null}
-                patientPhone={(patient as any).phone ?? null}
-                patientName={`${patient.first_name} ${patient.last_name}`}
-                contactOwnerName={(patient as any).contact_owner_name ?? null}
-              />
-            </>
+            <PatientCrmSection
+              patient={patient}
+              insurance={insurance}
+              patientId={patient.id}
+              createdAt={(patient as any).created_at ?? null}
+              createdBy={(patient as any).created_by ?? null}
+              patientEmail={(patient as any).email ?? null}
+              patientPhone={(patient as any).phone ?? null}
+              patientName={`${patient.first_name} ${patient.last_name}`}
+              contactOwnerName={(patient as any).contact_owner_name ?? null}
+            />
           ) : null}
 
           {medicalTab === "form_photos" ? (
