@@ -189,6 +189,9 @@ export default function PatientActivityCard({
   patientName,
   contactOwnerName,
   defaultTab,
+  controlledTab,
+  onTabChange,
+  hideTabNavigation = false,
 }: {
   patientId: string;
   createdAt: string | null;
@@ -198,8 +201,21 @@ export default function PatientActivityCard({
   patientName?: string;
   contactOwnerName: string | null;
   defaultTab?: ActivityTab;
+  controlledTab?: ActivityTab;
+  onTabChange?: (tab: ActivityTab) => void;
+  hideTabNavigation?: boolean;
 }) {
-  const [activeTab, setActiveTab] = useState<ActivityTab>(defaultTab ?? "activity");
+  const [internalTab, setInternalTab] = useState<ActivityTab>(defaultTab ?? "activity");
+  
+  // Use controlled tab if provided, otherwise use internal state
+  const activeTab = controlledTab ?? internalTab;
+  
+  const setActiveTab = (tab: ActivityTab) => {
+    if (onTabChange) {
+      onTabChange(tab);
+    }
+    setInternalTab(tab);
+  };
 
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
@@ -2393,24 +2409,26 @@ export default function PatientActivityCard({
       </div>
 
       <div className="mt-3 flex flex-wrap items-end justify-between gap-2 text-xs">
-        <div className="flex flex-wrap gap-1 border-b border-slate-200/80 pb-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => handleTabChange(tab.key)}
-              className={
-                "relative px-3 py-1.5 text-[11px] font-medium transition-colors rounded-t-lg border border-b-0 " +
-                (activeTab === tab.key
-                  ? "bg-white text-slate-900 border-slate-200 shadow-sm"
-                  : "bg-slate-50/60 text-slate-500 border-transparent hover:bg-white hover:text-slate-900")
-              }
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
+        {!hideTabNavigation && (
+          <div className="flex flex-wrap gap-1 border-b border-slate-200/80 pb-1">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => handleTabChange(tab.key)}
+                className={
+                  "relative px-3 py-1.5 text-[11px] font-medium transition-colors rounded-t-lg border border-b-0 " +
+                  (activeTab === tab.key
+                    ? "bg-white text-slate-900 border-slate-200 shadow-sm"
+                    : "bg-slate-50/60 text-slate-500 border-transparent hover:bg-white hover:text-slate-900")
+                }
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className={`flex items-center gap-2 ${hideTabNavigation ? "flex-1 justify-end" : ""}`}>
           {activeTab === "notes" && (
             <button
               type="button"

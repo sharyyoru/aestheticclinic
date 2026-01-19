@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import PatientDetailsTabs from "./PatientDetailsTabs";
 import PatientCrmPreferencesCard from "./PatientCrmPreferencesCard";
 import PatientActivityCard from "./PatientActivityCard";
@@ -87,7 +87,33 @@ export default function PatientCrmSection({
   contactOwnerName: string | null;
 }) {
   const [showDetailsCards, setShowDetailsCards] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<CrmSubTab>("activity");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  // Read initial tab from URL params
+  const urlSubTab = searchParams?.get("crm_sub") as CrmSubTab | null;
+  const [activeSubTab, setActiveSubTab] = useState<CrmSubTab>(
+    urlSubTab && ["activity", "notes", "emails", "whatsapp", "tasks", "deals"].includes(urlSubTab)
+      ? urlSubTab
+      : "activity"
+  );
+
+  // Sync with URL param changes
+  useEffect(() => {
+    const paramTab = searchParams?.get("crm_sub") as CrmSubTab | null;
+    if (paramTab && ["activity", "notes", "emails", "whatsapp", "tasks", "deals"].includes(paramTab)) {
+      setActiveSubTab(paramTab);
+    }
+  }, [searchParams]);
+
+  // Handle tab change - update both state and URL
+  const handleTabChange = (tab: CrmSubTab) => {
+    setActiveSubTab(tab);
+    const params = new URLSearchParams(searchParams?.toString() || "");
+    params.set("m_tab", "crm");
+    params.set("crm_sub", tab);
+    router.push(`/patients/${patientId}?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <div className="space-y-6">
@@ -100,7 +126,7 @@ export default function PatientCrmSection({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveSubTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                   activeSubTab === tab.id
                     ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-200"
@@ -155,7 +181,9 @@ export default function PatientCrmSection({
         patientPhone={patientPhone}
         patientName={patientName}
         contactOwnerName={contactOwnerName}
-        defaultTab={activeSubTab}
+        controlledTab={activeSubTab}
+        onTabChange={handleTabChange}
+        hideTabNavigation={true}
       />
     </div>
   );

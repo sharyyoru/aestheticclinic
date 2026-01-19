@@ -425,14 +425,16 @@ export default function CommentsPage() {
                   const task = taskMention.task;
 
                   return (
-                    <button
+                    <div
                       key={mention.id}
-                      type="button"
-                      onClick={() => handleOpenTaskMention(taskMention)}
-                      className="w-full text-left block rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
+                      className="rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
                     >
                       <div className="flex items-start justify-between">
-                        <div className="pr-4">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenTaskMention(taskMention)}
+                          className="flex-1 text-left pr-4"
+                        >
                           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                             {createdLabel ? <span>{createdLabel}</span> : null}
                             <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700">
@@ -441,7 +443,7 @@ export default function CommentsPage() {
                             <span>
                               Task:{" "}
                               <span className="font-medium text-purple-700">
-                                {task?.name || "Unknown task"}
+                                {task?.name || "No Task Name"}
                               </span>
                             </span>
                           </div>
@@ -454,26 +456,39 @@ export default function CommentsPage() {
                           <p className="mt-0.5 text-[10px] text-slate-500">
                             Patient:{" "}
                             {patientId ? (
-                              <button
-                                type="button"
+                              <span
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   router.push(`/patients/${patientId}`);
                                 }}
-                                className="font-medium text-purple-700 hover:text-purple-800 hover:underline"
+                                className="font-medium text-purple-700 hover:text-purple-800 hover:underline cursor-pointer"
                               >
                                 {patientName}
-                              </button>
+                              </span>
                             ) : (
                               <span className="font-medium">{patientName}</span>
                             )}
                           </p>
+                        </button>
+                        <div className="flex items-center gap-2">
+                          {!mention.read_at ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenMention(mention);
+                                }}
+                                className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                              >
+                                Mark as read
+                              </button>
+                              <span className="inline-flex h-2 w-2 rounded-full bg-purple-500" />
+                            </>
+                          ) : null}
                         </div>
-                        {!mention.read_at ? (
-                          <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-purple-500" />
-                        ) : null}
                       </div>
-                    </button>
+                    </div>
                   );
                 }
 
@@ -482,19 +497,21 @@ export default function CommentsPage() {
                 const note = noteMention.note;
 
                 return (
-                  <button
+                  <div
                     key={mention.id}
-                    type="button"
-                    onClick={() => {
-                      handleOpenMention(mention);
-                      if (patientId) {
-                        router.push(buildPatientHref(patientId));
-                      }
-                    }}
-                    className="w-full text-left block rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
+                    className="rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
                   >
                     <div className="flex items-start justify-between">
-                      <div className="pr-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleOpenMention(mention);
+                          if (patientId) {
+                            router.push(buildPatientHref(patientId));
+                          }
+                        }}
+                        className="flex-1 text-left pr-4"
+                      >
                         <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                           {createdLabel ? <span>{createdLabel}</span> : null}
                           <span className="inline-flex items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-medium text-sky-700">
@@ -503,16 +520,15 @@ export default function CommentsPage() {
                           <span>
                             Patient:{" "}
                             {patientId ? (
-                              <button
-                                type="button"
+                              <span
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   router.push(buildPatientHref(patientId));
                                 }}
-                                className="font-medium text-sky-700 hover:text-sky-800 hover:underline"
+                                className="font-medium text-sky-700 hover:text-sky-800 hover:underline cursor-pointer"
                               >
                                 {patientName}
-                              </button>
+                              </span>
                             ) : (
                               <span className="font-medium text-sky-700">
                                 {patientName}
@@ -526,12 +542,26 @@ export default function CommentsPage() {
                           ) : null}
                           <span>{stripHtmlTags(note?.body ?? "(Note unavailable)")}</span>
                         </p>
+                      </button>
+                      <div className="flex items-center gap-2">
+                        {!mention.read_at ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenMention(mention);
+                              }}
+                              className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700 hover:bg-sky-100 transition-colors"
+                            >
+                              Mark as read
+                            </button>
+                            <span className="inline-flex h-2 w-2 rounded-full bg-sky-500" />
+                          </>
+                        ) : null}
                       </div>
-                      {!mention.read_at ? (
-                        <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-sky-500" />
-                      ) : null}
                     </div>
-                  </button>
+                  </div>
                 );
               };
 
