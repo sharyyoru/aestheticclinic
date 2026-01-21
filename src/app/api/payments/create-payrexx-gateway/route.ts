@@ -88,7 +88,9 @@ export async function POST(request: NextRequest) {
       country: "CH",
     });
 
-    if (gatewayResponse.status !== "success" || !gatewayResponse.data?.[0]) {
+    console.log("Payrexx Gateway response:", JSON.stringify(gatewayResponse, null, 2));
+
+    if (gatewayResponse.status !== "success") {
       console.error("Payrexx Gateway creation failed:", gatewayResponse);
       return NextResponse.json(
         { error: "Failed to create payment gateway" },
@@ -96,10 +98,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const gateway = gatewayResponse.data[0];
-    const paymentLink = gateway.link;
+    // Handle both array and single object response formats
+    const gatewayData = Array.isArray(gatewayResponse.data) 
+      ? gatewayResponse.data[0] 
+      : gatewayResponse.data;
+
+    if (!gatewayData) {
+      console.error("No gateway data in response:", gatewayResponse);
+      return NextResponse.json(
+        { error: "No gateway data returned from Payrexx" },
+        { status: 500 }
+      );
+    }
+
+    const gateway = gatewayData as { id: number; hash: string; link: string };
     const gatewayId = gateway.id;
     const gatewayHash = gateway.hash;
+    
+    // Build payment link from hash if link is not directly provided
+    const paymentLink = gateway.link || `https://aesthetics-ge.payrexx.com/?payment=${gatewayHash}`;
+    
+    console.log("Payment link:", paymentLink, "Gateway ID:", gatewayId, "Hash:", gatewayHash);
 
     // Generate QR code for the payment link
     const qrCodeDataUrl = await generatePaymentQRCode(paymentLink);

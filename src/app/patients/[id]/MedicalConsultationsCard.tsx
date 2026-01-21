@@ -2912,8 +2912,18 @@ export default function MedicalConsultationsCard({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const baseUrl = window.location.origin;
-                                  const paymentLink = `${baseUrl}/invoice/pay/${row.payment_link_token}`;
+                                  // Use Payrexx payment link if available, otherwise use internal payment page
+                                  let paymentLink = row.payrexx_payment_link;
+                                  if (!paymentLink && row.payment_link_token) {
+                                    const baseUrl = window.location.origin;
+                                    paymentLink = `${baseUrl}/invoice/pay/${row.payment_link_token}`;
+                                  }
+                                  
+                                  if (!paymentLink) {
+                                    alert("Payment link not yet generated. Please generate the invoice PDF first or create a Payrexx payment link.");
+                                    return;
+                                  }
+                                  
                                   navigator.clipboard.writeText(paymentLink).then(() => {
                                     alert("Payment link copied to clipboard!");
                                   }).catch(err => {
