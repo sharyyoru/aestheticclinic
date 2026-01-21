@@ -164,7 +164,26 @@ function IntakeStepsContent() {
 
       // Save health background if any data exists
       if (weight || height || knownIllnesses || previousSurgeries || allergies) {
-        const bmi = weight && height ? (parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2)).toFixed(2) : null;
+        // Helper to normalize height - auto-convert if user enters meters instead of cm
+        const normalizeHeightForAutoSave = (h: string): number | null => {
+          const val = parseFloat(h);
+          if (isNaN(val) || val <= 0) return null;
+          if (val < 3) return Math.round(val * 100);
+          if (val < 50) return Math.round(val * 100);
+          return val;
+        };
+        
+        const normalizedHeight = height ? normalizeHeightForAutoSave(height) : null;
+        let bmi: string | null = null;
+        if (weight && normalizedHeight) {
+          const weightVal = parseFloat(weight);
+          if (!isNaN(weightVal) && weightVal > 0 && normalizedHeight >= 50 && normalizedHeight <= 300) {
+            const bmiVal = weightVal / Math.pow(normalizedHeight / 100, 2);
+            if (bmiVal >= 10 && bmiVal <= 100) {
+              bmi = bmiVal.toFixed(2);
+            }
+          }
+        }
         
         const { data: existingHealth } = await supabaseClient
           .from("patient_health_background")
@@ -176,7 +195,7 @@ function IntakeStepsContent() {
           patient_id: patientId,
           submission_id: submissionId,
           weight_kg: weight ? parseFloat(weight) : null,
-          height_cm: height ? parseFloat(height) : null,
+          height_cm: normalizedHeight,
           bmi: bmi ? parseFloat(bmi) : null,
           known_illnesses: knownIllnesses || null,
           previous_surgeries: previousSurgeries || null,
@@ -404,10 +423,47 @@ function IntakeStepsContent() {
     }
   }, [submissionId, patientId, router]);
 
+  // Helper to normalize height - auto-convert if user enters meters instead of cm
+  const normalizeHeight = (h: string): number | null => {
+    const val = parseFloat(h);
+    if (isNaN(val) || val <= 0) return null;
+    // If value is less than 3, assume it's in meters and convert to cm
+    if (val < 3) {
+      return Math.round(val * 100);
+    }
+    // If value is between 3 and 50, it's likely still meters (e.g., 1.50 entered as 150 with decimal issue)
+    // Valid height range is 50-300 cm
+    if (val < 50) {
+      return Math.round(val * 100);
+    }
+    return val;
+  };
+
+  // Validate height is in reasonable range (50-300 cm)
+  const isValidHeight = (h: string): boolean => {
+    const normalized = normalizeHeight(h);
+    if (normalized === null) return false;
+    return normalized >= 50 && normalized <= 300;
+  };
+
+  // Validate weight is in reasonable range (20-500 kg)
+  const isValidWeight = (w: string): boolean => {
+    const val = parseFloat(w);
+    if (isNaN(val) || val <= 0) return false;
+    return val >= 20 && val <= 500;
+  };
+
   const calculateBMI = () => {
     if (weight && height) {
-      const bmi = parseFloat(weight) / Math.pow(parseFloat(height) / 100, 2);
-      return bmi.toFixed(2);
+      const weightVal = parseFloat(weight);
+      const heightCm = normalizeHeight(height);
+      if (heightCm && !isNaN(weightVal) && weightVal > 0) {
+        const bmi = weightVal / Math.pow(heightCm / 100, 2);
+        // Sanity check - BMI should be between 10 and 100
+        if (bmi >= 10 && bmi <= 100) {
+          return bmi.toFixed(2);
+        }
+      }
     }
     return "";
   };
@@ -479,7 +535,16 @@ function IntakeStepsContent() {
 
       // Save health background
       if (currentStep === 3) {
+        // Validate height and weight before saving
+        if (height && !isValidHeight(height)) {
+          throw new Error(`Invalid height value. Please enter your height in centimeters (e.g., 170 for 1.70m). Valid range: 50-300 cm.`);
+        }
+        if (weight && !isValidWeight(weight)) {
+          throw new Error(`Invalid weight value. Please enter your weight in kilograms. Valid range: 20-500 kg.`);
+        }
+
         const bmi = calculateBMI();
+        const normalizedHeight = height ? normalizeHeight(height) : null;
         
         const { data: existingHealth } = await supabaseClient
           .from("patient_health_background")
@@ -491,7 +556,7 @@ function IntakeStepsContent() {
           patient_id: patientId,
           submission_id: submissionId,
           weight_kg: weight ? parseFloat(weight) : null,
-          height_cm: height ? parseFloat(height) : null,
+          height_cm: normalizedHeight,
           bmi: bmi ? parseFloat(bmi) : null,
           known_illnesses: knownIllnesses || null,
           previous_surgeries: previousSurgeries || null,

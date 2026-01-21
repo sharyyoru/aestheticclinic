@@ -54,6 +54,13 @@ const SERVICE_OPTIONS = [
   "Other",
 ];
 
+const CLINIC_LOCATIONS = [
+  { value: "Rhône", label: "Genève - Rue du Rhône" },
+  { value: "Champel", label: "Genève - Champel" },
+  { value: "Gstaad", label: "Gstaad" },
+  { value: "Montreux", label: "Montreux" },
+];
+
 const TIME_SLOTS = [
   "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
   "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00",
@@ -82,6 +89,7 @@ export default function DoctorBookingPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [selectedService, setSelectedService] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState("");
   const [notes, setNotes] = useState("");
 
   // Autofill from patient data if coming from intake form
@@ -178,7 +186,7 @@ export default function DoctorBookingPage() {
   }
 
   async function handleSubmit() {
-    if (!firstName || !lastName || !email || !selectedDate || !selectedTime || !selectedService) {
+    if (!firstName || !lastName || !email || !selectedDate || !selectedTime || !selectedService || !selectedLocation) {
       setError("Please fill in all required fields");
       return;
     }
@@ -201,7 +209,7 @@ export default function DoctorBookingPage() {
           doctorName: doctor.name,
           doctorEmail: doctor.email,
           notes,
-          location: "Rhône",
+          location: selectedLocation,
         }),
       });
 
@@ -518,7 +526,7 @@ export default function DoctorBookingPage() {
             {/* Step 3: Service Selection */}
             {step === "service" && (
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4">Select Service</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">Select Service & Location</h3>
                 
                 {/* Show locked service message if coming from intake */}
                 {lockedService && (
@@ -529,25 +537,49 @@ export default function DoctorBookingPage() {
                   </div>
                 )}
 
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {SERVICE_OPTIONS.map((service) => (
-                    <button
-                      key={service}
-                      onClick={() => !lockedService && setSelectedService(service)}
-                      disabled={!!lockedService && service !== selectedService}
-                      className={`p-4 rounded-xl text-left transition-all border-2 ${
-                        selectedService === service
-                          ? "border-slate-900 bg-slate-50"
-                          : lockedService
-                          ? "border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed"
-                          : "border-slate-200 hover:border-slate-300"
-                      }`}
-                    >
-                      <span className={`font-medium ${selectedService === service ? "text-slate-900" : "text-slate-900"}`}>
-                        {service}
-                      </span>
-                    </button>
-                  ))}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-3">Service *</label>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {SERVICE_OPTIONS.map((service) => (
+                      <button
+                        key={service}
+                        onClick={() => !lockedService && setSelectedService(service)}
+                        disabled={!!lockedService && service !== selectedService}
+                        className={`p-4 rounded-xl text-left transition-all border-2 ${
+                          selectedService === service
+                            ? "border-slate-900 bg-slate-50"
+                            : lockedService
+                            ? "border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed"
+                            : "border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        <span className={`font-medium ${selectedService === service ? "text-slate-900" : "text-slate-900"}`}>
+                          {service}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-3">Clinic Location *</label>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {CLINIC_LOCATIONS.map((loc) => (
+                      <button
+                        key={loc.value}
+                        onClick={() => setSelectedLocation(loc.value)}
+                        className={`p-4 rounded-xl text-left transition-all border-2 ${
+                          selectedLocation === loc.value
+                            ? "border-slate-900 bg-slate-50"
+                            : "border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        <span className={`font-medium ${selectedLocation === loc.value ? "text-slate-900" : "text-slate-900"}`}>
+                          {loc.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -570,11 +602,13 @@ export default function DoctorBookingPage() {
                   </button>
                   <button
                     onClick={() => {
-                      if (selectedService) {
+                      if (selectedService && selectedLocation) {
                         setStep("confirm");
                         setError(null);
-                      } else {
+                      } else if (!selectedService) {
                         setError("Please select a service");
+                      } else {
+                        setError("Please select a clinic location");
                       }
                     }}
                     className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-medium hover:bg-slate-800 transition-colors"
@@ -623,6 +657,10 @@ export default function DoctorBookingPage() {
                   <div className="flex justify-between">
                     <span className="text-slate-600">Service</span>
                     <span className="font-medium text-slate-900">{selectedService}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Location</span>
+                    <span className="font-medium text-slate-900">{CLINIC_LOCATIONS.find(l => l.value === selectedLocation)?.label || selectedLocation}</span>
                   </div>
                   {notes && (
                     <>
