@@ -2954,6 +2954,37 @@ export default function MedicalConsultationsCard({
                               </button>
                             )}
 
+                            {/* Check Payment Status Button (for Payrexx payments not yet paid) */}
+                            {!row.invoice_is_paid && row.payrexx_payment_link && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const response = await fetch("/api/payments/sync-payment-status", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ consultationCode: row.consultation_id }),
+                                    });
+                                    const data = await response.json();
+                                    if (data.isPaid) {
+                                      alert("Payment confirmed! Refreshing...");
+                                      window.location.reload();
+                                    } else {
+                                      alert(`Payment status: ${data.payrexxStatus || "waiting"}`);
+                                    }
+                                  } catch {
+                                    alert("Failed to check payment status");
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 shadow-sm hover:bg-amber-100"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Check Payment
+                              </button>
+                            )}
+
                             {/* Insurance Billing Button */}
                             <button
                               type="button"
