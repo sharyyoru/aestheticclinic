@@ -589,6 +589,7 @@ function WorkflowEnrollmentsModal({
       setLoading(true);
       setError(null);
 
+      // Load enrollments with patient data
       const { data, error: fetchError } = await supabaseClient
         .from("workflow_enrollments")
         .select(`
@@ -605,21 +606,33 @@ function WorkflowEnrollmentsModal({
 
       if (fetchError) throw fetchError;
 
-      // Load steps for each enrollment
-      const enrollmentsWithSteps: EnrollmentRow[] = [];
-      for (const enrollment of data || []) {
-        const { data: steps } = await supabaseClient
-          .from("workflow_enrollment_steps")
-          .select("id, step_type, step_action, status, executed_at, result, error_message")
-          .eq("enrollment_id", enrollment.id)
-          .order("created_at", { ascending: true });
-
-        enrollmentsWithSteps.push({
-          ...enrollment,
-          patient: enrollment.patient as any,
-          steps: steps || [],
-        });
+      if (!data || data.length === 0) {
+        setEnrollments([]);
+        return;
       }
+
+      // Batch load all steps for all enrollments in ONE query
+      const enrollmentIds = data.map((e) => e.id);
+      const { data: allSteps } = await supabaseClient
+        .from("workflow_enrollment_steps")
+        .select("id, enrollment_id, step_type, step_action, status, executed_at, result, error_message")
+        .in("enrollment_id", enrollmentIds)
+        .order("created_at", { ascending: true });
+
+      // Group steps by enrollment_id
+      const stepsByEnrollment = new Map<string, typeof allSteps>();
+      for (const step of allSteps || []) {
+        const existing = stepsByEnrollment.get(step.enrollment_id) || [];
+        existing.push(step);
+        stepsByEnrollment.set(step.enrollment_id, existing);
+      }
+
+      // Map enrollments with their steps
+      const enrollmentsWithSteps: EnrollmentRow[] = data.map((enrollment) => ({
+        ...enrollment,
+        patient: enrollment.patient as any,
+        steps: stepsByEnrollment.get(enrollment.id) || [],
+      }));
 
       setEnrollments(enrollmentsWithSteps);
     } catch (err) {
