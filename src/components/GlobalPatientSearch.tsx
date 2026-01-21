@@ -43,15 +43,45 @@ export default function GlobalPatientSearch() {
       setLoading(true);
       try {
         const searchTerm = `%${trimmed}%`;
+        
+        // Split search into words for multi-word name searches
+        const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+        
+        // Build OR conditions for individual fields
+        let orConditions = `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`;
+        
+        // For multi-word queries, also search each word individually
+        // This handles "art wilson" matching first_name="Art" AND last_name="Wilson"
+        if (words.length > 1) {
+          for (const word of words) {
+            const wordTerm = `%${word}%`;
+            orConditions += `,first_name.ilike.${wordTerm},last_name.ilike.${wordTerm}`;
+          }
+        }
+        
         const { data, error } = await supabaseClient
           .from("patients")
           .select("id, first_name, last_name, email, phone")
-          .or(`first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`)
-          .limit(8);
+          .or(orConditions)
+          .limit(20);
 
         if (!error && data) {
-          setResults(data as PatientResult[]);
-          setIsOpen(data.length > 0);
+          // For multi-word searches, filter results to ensure ALL words match somewhere
+          let filtered = data as PatientResult[];
+          if (words.length > 1) {
+            filtered = filtered.filter(patient => {
+              const fullName = `${patient.first_name ?? ""} ${patient.last_name ?? ""}`.toLowerCase();
+              const email = (patient.email ?? "").toLowerCase();
+              const phone = (patient.phone ?? "").toLowerCase();
+              const combined = `${fullName} ${email} ${phone}`;
+              
+              // Check if all search words appear somewhere in the patient data
+              return words.every(word => combined.includes(word.toLowerCase()));
+            });
+          }
+          
+          setResults(filtered.slice(0, 8));
+          setIsOpen(filtered.length > 0);
         }
       } catch {
         setResults([]);
