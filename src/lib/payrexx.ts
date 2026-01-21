@@ -6,9 +6,9 @@
 import * as crypto from "crypto";
 
 // Payrexx configuration
-const PAYREXX_INSTANCE = process.env.PAYREXX_INSTANCE || "aestheticsclinic";
+const PAYREXX_INSTANCE = process.env.PAYREXX_INSTANCE || "aesthetics-ge";
 const PAYREXX_API_SECRET = process.env.PAYREXX_API_SECRET || "";
-const PAYREXX_BASE_URL = `https://api.payrexx.com/v1.0/`;
+const PAYREXX_BASE_URL = `https://api.payrexx.com/v1.14/`;
 
 export type PayrexxGatewayResponse = {
   status: string;
@@ -141,73 +141,84 @@ export type CreateGatewayParams = {
 
 /**
  * Create a Payrexx Gateway (payment link)
- * Uses X-API-KEY header authentication (as per official Payrexx PHP SDK)
+ * Uses X-API-KEY header authentication with JSON body
  */
 export async function createPayrexxGateway(
   params: CreateGatewayParams
 ): Promise<PayrexxGatewayResponse> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
   
-  // Build URL-encoded body manually for correct field array format
-  const bodyParts: string[] = [];
-  
-  // Add required params
-  bodyParts.push(`amount=${params.amount}`);
-  bodyParts.push(`currency=${encodeURIComponent(params.currency || "CHF")}`);
+  // Build JSON body with correct structure
+  const requestBody: Record<string, unknown> = {
+    amount: params.amount,
+    currency: params.currency || "CHF",
+    vatRate: null,
+    preAuthorization: false,
+    reservation: false,
+    skipResultPage: false,
+    chargeOnAuthorization: false,
+    subscriptionState: false,
+  };
   
   // Add optional params
   if (params.referenceId) {
-    bodyParts.push(`referenceId=${encodeURIComponent(params.referenceId)}`);
+    requestBody.referenceId = params.referenceId;
   }
   if (params.purpose) {
-    bodyParts.push(`purpose=${encodeURIComponent(params.purpose)}`);
+    requestBody.purpose = params.purpose;
   }
   
   // Add redirect URLs
-  const successUrl = params.successRedirectUrl || `${baseUrl}/invoice/payment-success`;
-  const failedUrl = params.failedRedirectUrl || `${baseUrl}/invoice/payment-failed`;
-  const cancelUrl = params.cancelRedirectUrl || `${baseUrl}/invoice/payment-cancelled`;
+  requestBody.successRedirectUrl = params.successRedirectUrl || `${baseUrl}/invoice/payment-success`;
+  requestBody.failedRedirectUrl = params.failedRedirectUrl || `${baseUrl}/invoice/payment-failed`;
+  requestBody.cancelRedirectUrl = params.cancelRedirectUrl || `${baseUrl}/invoice/payment-cancelled`;
   
-  bodyParts.push(`successRedirectUrl=${encodeURIComponent(successUrl)}`);
-  bodyParts.push(`failedRedirectUrl=${encodeURIComponent(failedUrl)}`);
-  bodyParts.push(`cancelRedirectUrl=${encodeURIComponent(cancelUrl)}`);
+  // Add contact fields using correct nested object format
+  const fields: Record<string, { value: string }> = {};
   
-  // Add contact fields using correct array format: fields[type][0][value]=xxx
   if (params.forename) {
-    bodyParts.push(`fields[forename][0][value]=${encodeURIComponent(params.forename)}`);
+    fields.forename = { value: params.forename };
   }
   if (params.surname) {
-    bodyParts.push(`fields[surname][0][value]=${encodeURIComponent(params.surname)}`);
+    fields.surname = { value: params.surname };
   }
   if (params.email) {
-    bodyParts.push(`fields[email][0][value]=${encodeURIComponent(params.email)}`);
+    fields.email = { value: params.email };
   }
   if (params.phone) {
-    bodyParts.push(`fields[phone][0][value]=${encodeURIComponent(params.phone)}`);
+    fields.phone = { value: params.phone };
   }
   if (params.street) {
-    bodyParts.push(`fields[street][0][value]=${encodeURIComponent(params.street)}`);
+    fields.street = { value: params.street };
   }
   if (params.postcode) {
-    bodyParts.push(`fields[postcode][0][value]=${encodeURIComponent(params.postcode)}`);
+    fields.postcode = { value: params.postcode };
   }
   if (params.place) {
-    bodyParts.push(`fields[place][0][value]=${encodeURIComponent(params.place)}`);
+    fields.place = { value: params.place };
   }
   if (params.country) {
-    bodyParts.push(`fields[country][0][value]=${encodeURIComponent(params.country)}`);
+    fields.country = { value: params.country };
+  }
+  
+  if (Object.keys(fields).length > 0) {
+    requestBody.fields = fields;
   }
   
   const url = new URL("Gateway/", PAYREXX_BASE_URL);
   url.searchParams.set("instance", PAYREXX_INSTANCE);
   
+  console.log("Payrexx request URL:", url.toString());
+  console.log("Payrexx request body:", JSON.stringify(requestBody, null, 2));
+  
   const response = await fetch(url.toString(), {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Content-Type": "application/json",
+      "Accept": "application/json",
       "X-API-KEY": PAYREXX_API_SECRET,
     },
-    body: bodyParts.join("&"),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -229,7 +240,7 @@ export async function getPayrexxGateway(gatewayId: number): Promise<PayrexxGatew
   const response = await fetch(url.toString(), {
     method: "GET",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json",
       "X-API-KEY": PAYREXX_API_SECRET,
     },
   });
@@ -252,7 +263,7 @@ export async function deletePayrexxGateway(gatewayId: number): Promise<void> {
   const response = await fetch(url.toString(), {
     method: "DELETE",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json",
       "X-API-KEY": PAYREXX_API_SECRET,
     },
   });
