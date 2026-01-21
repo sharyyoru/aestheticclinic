@@ -120,65 +120,6 @@ export type PayrexxWebhookPayload = {
   };
 };
 
-/**
- * Build the API signature for Payrexx requests
- */
-function buildSignature(params: Record<string, string | number | boolean | undefined>): string {
-  // Filter out undefined values and build query string
-  const filteredParams = Object.entries(params)
-    .filter(([, value]) => value !== undefined)
-    .reduce((acc, [key, value]) => {
-      acc[key] = String(value);
-      return acc;
-    }, {} as Record<string, string>);
-
-  const queryString = new URLSearchParams(filteredParams).toString();
-  
-  // Calculate HMAC-SHA256 signature
-  const hmac = crypto.createHmac("sha256", PAYREXX_API_SECRET);
-  hmac.update(queryString);
-  return hmac.digest("base64");
-}
-
-/**
- * Make a request to the Payrexx API
- */
-async function payrexxRequest<T>(
-  endpoint: string,
-  method: "GET" | "POST" | "DELETE" = "GET",
-  params: Record<string, string | number | boolean | undefined> = {}
-): Promise<T> {
-  const signature = buildSignature(params);
-  
-  const url = new URL(endpoint, PAYREXX_BASE_URL);
-  url.searchParams.set("instance", PAYREXX_INSTANCE);
-  
-  const body = new URLSearchParams();
-  body.set("ApiSignature", signature);
-  
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined) {
-      body.set(key, String(value));
-    }
-  });
-
-  const response = await fetch(url.toString(), {
-    method,
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: method !== "GET" ? body.toString() : undefined,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Payrexx API error:", errorText);
-    throw new Error(`Payrexx API error: ${response.status} ${errorText}`);
-  }
-
-  return response.json() as Promise<T>;
-}
-
 export type CreateGatewayParams = {
   amount: number; // Amount in cents (e.g., 100.00 CHF = 10000)
   currency?: string;
@@ -200,49 +141,96 @@ export type CreateGatewayParams = {
 
 /**
  * Create a Payrexx Gateway (payment link)
+ * Uses X-API-KEY header authentication (as per official Payrexx PHP SDK)
  */
 export async function createPayrexxGateway(
   params: CreateGatewayParams
 ): Promise<PayrexxGatewayResponse> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
   
-  const gatewayParams: Record<string, string | number | boolean | undefined> = {
-    amount: params.amount,
-    currency: params.currency || "CHF",
-    referenceId: params.referenceId,
-    purpose: params.purpose || `Invoice ${params.referenceId}`,
-    successRedirectUrl: params.successRedirectUrl || `${baseUrl}/invoice/payment-success`,
-    failedRedirectUrl: params.failedRedirectUrl || `${baseUrl}/invoice/payment-failed`,
-    cancelRedirectUrl: params.cancelRedirectUrl || `${baseUrl}/invoice/payment-cancelled`,
-    // Pre-fill contact information if available
-    "fields[forename]": params.forename,
-    "fields[surname]": params.surname,
-    "fields[email]": params.email,
-    "fields[phone]": params.phone,
-    "fields[street]": params.street,
-    "fields[postcode]": params.postcode,
-    "fields[place]": params.place,
-    "fields[country]": params.country || "CH",
-  };
+  // Build URL-encoded body manually for correct field array format
+  const bodyParts: string[] = [];
+  
+  // Add required params
+  bodyParts.push(`amount=${params.amount}`);
+  bodyParts.push(`currency=${encodeURIComponent(params.currency || "CHF")}`);
+  
+  // Add optional params
+  if (params.referenceId) {
+    bodyParts.push(`referenceId=${encodeURIComponent(params.referenceId)}`);
+  }
+  if (params.purpose) {
+    bodyParts.push(`purpose=${encodeURIComponent(params.purpose)}`);
+  }
+  
+  // Add redirect URLs
+  const successUrl = params.successRedirectUrl || `${baseUrl}/invoice/payment-success`;
+  const failedUrl = params.failedRedirectUrl || `${baseUrl}/invoice/payment-failed`;
+  const cancelUrl = params.cancelRedirectUrl || `${baseUrl}/invoice/payment-cancelled`;
+  
+  bodyParts.push(`successRedirectUrl=${encodeURIComponent(successUrl)}`);
+  bodyParts.push(`failedRedirectUrl=${encodeURIComponent(failedUrl)}`);
+  bodyParts.push(`cancelRedirectUrl=${encodeURIComponent(cancelUrl)}`);
+  
+  // Add contact fields using correct array format: fields[type][0][value]=xxx
+  if (params.forename) {
+    bodyParts.push(`fields[forename][0][value]=${encodeURIComponent(params.forename)}`);
+  }
+  if (params.surname) {
+    bodyParts.push(`fields[surname][0][value]=${encodeURIComponent(params.surname)}`);
+  }
+  if (params.email) {
+    bodyParts.push(`fields[email][0][value]=${encodeURIComponent(params.email)}`);
+  }
+  if (params.phone) {
+    bodyParts.push(`fields[phone][0][value]=${encodeURIComponent(params.phone)}`);
+  }
+  if (params.street) {
+    bodyParts.push(`fields[street][0][value]=${encodeURIComponent(params.street)}`);
+  }
+  if (params.postcode) {
+    bodyParts.push(`fields[postcode][0][value]=${encodeURIComponent(params.postcode)}`);
+  }
+  if (params.place) {
+    bodyParts.push(`fields[place][0][value]=${encodeURIComponent(params.place)}`);
+  }
+  if (params.country) {
+    bodyParts.push(`fields[country][0][value]=${encodeURIComponent(params.country)}`);
+  }
+  
+  const url = new URL("Gateway/", PAYREXX_BASE_URL);
+  url.searchParams.set("instance", PAYREXX_INSTANCE);
+  
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-API-KEY": PAYREXX_API_SECRET,
+    },
+    body: bodyParts.join("&"),
+  });
 
-  return payrexxRequest<PayrexxGatewayResponse>("Gateway/", "POST", gatewayParams);
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Payrexx API error:", errorText);
+    throw new Error(`Payrexx API error: ${response.status} ${errorText}`);
+  }
+
+  return response.json() as Promise<PayrexxGatewayResponse>;
 }
 
 /**
  * Retrieve a Payrexx Gateway by ID
  */
 export async function getPayrexxGateway(gatewayId: number): Promise<PayrexxGatewayResponse> {
-  const params = { id: gatewayId };
-  const signature = buildSignature(params);
-  
   const url = new URL(`Gateway/${gatewayId}/`, PAYREXX_BASE_URL);
   url.searchParams.set("instance", PAYREXX_INSTANCE);
-  url.searchParams.set("ApiSignature", signature);
 
   const response = await fetch(url.toString(), {
     method: "GET",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
+      "X-API-KEY": PAYREXX_API_SECRET,
     },
   });
 
@@ -258,8 +246,21 @@ export async function getPayrexxGateway(gatewayId: number): Promise<PayrexxGatew
  * Delete a Payrexx Gateway
  */
 export async function deletePayrexxGateway(gatewayId: number): Promise<void> {
-  const params = { id: gatewayId };
-  await payrexxRequest(`Gateway/${gatewayId}/`, "DELETE", params);
+  const url = new URL(`Gateway/${gatewayId}/`, PAYREXX_BASE_URL);
+  url.searchParams.set("instance", PAYREXX_INSTANCE);
+
+  const response = await fetch(url.toString(), {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-API-KEY": PAYREXX_API_SECRET,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Payrexx API error: ${response.status} ${errorText}`);
+  }
 }
 
 /**
