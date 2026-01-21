@@ -274,6 +274,13 @@ export default function PatientActivityCard({
     null,
   );
 
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("");
+  const [invoiceList, setInvoiceList] = useState<Array<{ name: string; path: string; created_at: string }>>([]);
+  const [invoiceListLoading, setInvoiceListLoading] = useState(false);
+  const [invoiceListError, setInvoiceListError] = useState<string | null>(null);
+  const [invoiceAttaching, setInvoiceAttaching] = useState<string | null>(null);
+
   const [emailCreateFollowUpTask, setEmailCreateFollowUpTask] = useState(false);
   const [emailFollowUpDate, setEmailFollowUpDate] = useState<"3days" | "1week" | "custom">("3days");
   const [emailFollowUpCustomDate, setEmailFollowUpCustomDate] = useState("");
@@ -967,6 +974,88 @@ export default function PatientActivityCard({
       isMounted = false;
     };
   }, [viewEmail]);
+
+  useEffect(() => {
+    if (!invoiceModalOpen) return;
+
+    let isMounted = true;
+
+    async function loadInvoices() {
+      try {
+        setInvoiceListLoading(true);
+        setInvoiceListError(null);
+
+        const { data, error } = await supabaseClient.storage
+          .from("invoice-pdfs")
+          .list(patientId, {
+            limit: 100,
+            sortBy: { column: "created_at", order: "desc" },
+          });
+
+        if (!isMounted) return;
+
+        if (error) {
+          setInvoiceListError("Failed to load invoices.");
+          setInvoiceList([]);
+          setInvoiceListLoading(false);
+          return;
+        }
+
+        const invoices = (data || [])
+          .filter((file) => file.name.endsWith(".pdf"))
+          .map((file) => ({
+            name: file.name,
+            path: `${patientId}/${file.name}`,
+            created_at: file.created_at || "",
+          }));
+
+        setInvoiceList(invoices);
+        setInvoiceListLoading(false);
+      } catch {
+        if (!isMounted) return;
+        setInvoiceListError("Failed to load invoices.");
+        setInvoiceList([]);
+        setInvoiceListLoading(false);
+      }
+    }
+
+    loadInvoices();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [invoiceModalOpen, patientId]);
+
+  async function handleAttachInvoice(invoicePath: string, invoiceName: string) {
+    try {
+      setInvoiceAttaching(invoicePath);
+
+      const { data, error } = await supabaseClient.storage
+        .from("invoice-pdfs")
+        .download(invoicePath);
+
+      if (error || !data) {
+        alert("Failed to download invoice.");
+        setInvoiceAttaching(null);
+        return;
+      }
+
+      const file = new File([data], invoiceName, { type: "application/pdf" });
+
+      setEmailAttachments((prev) => {
+        const exists = prev.some((f) => f.name === invoiceName);
+        if (exists) return prev;
+        return [...prev, file];
+      });
+
+      setInvoiceModalOpen(false);
+      setInvoiceSearchQuery("");
+      setInvoiceAttaching(null);
+    } catch {
+      alert("Failed to attach invoice.");
+      setInvoiceAttaching(null);
+    }
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -4541,43 +4630,52 @@ export default function PatientActivityCard({
                 ) : null}
               </div>
               <div className="space-y-1 text-[11px] text-slate-600">
-                <label className="inline-flex items-center gap-2">
-                  <span className="rounded-full border border-slate-300/80 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 cursor-pointer">
-                    Attach files
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                        const files = event.target.files
-                          ? Array.from(event.target.files)
-                          : [];
-                        if (files.length === 0) return;
+                <div className="flex items-center gap-2">
+                  <label className="inline-flex items-center">
+                    <span className="rounded-full border border-slate-300/80 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 cursor-pointer">
+                      Attach files
+                      <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                          const files = event.target.files
+                            ? Array.from(event.target.files)
+                            : [];
+                          if (files.length === 0) return;
 
-                        setEmailAttachments((prev) => {
-                          const combined = [...prev, ...files];
-                          const seen = new Set<string>();
-                          const deduped: File[] = [];
+                          setEmailAttachments((prev) => {
+                            const combined = [...prev, ...files];
+                            const seen = new Set<string>();
+                            const deduped: File[] = [];
 
-                          for (const file of combined) {
-                            const key = `${file.name}-${file.size}`;
-                            if (seen.has(key)) continue;
-                            seen.add(key);
-                            deduped.push(file);
-                          }
+                            for (const file of combined) {
+                              const key = `${file.name}-${file.size}`;
+                              if (seen.has(key)) continue;
+                              seen.add(key);
+                              deduped.push(file);
+                            }
 
-                          return deduped;
-                        });
-                      }}
-                    />
-                  </span>
+                            return deduped;
+                          });
+                        }}
+                      />
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceModalOpen(true)}
+                    className="rounded-full border border-emerald-300/80 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 shadow-sm hover:bg-emerald-100"
+                  >
+                    Attach Invoice
+                  </button>
                   {emailAttachments.length > 0 ? (
                     <span className="text-[10px] text-slate-500">
                       {emailAttachments.length} file
                       {emailAttachments.length > 1 ? "s" : ""} selected
                     </span>
                   ) : null}
-                </label>
+                </div>
                 {emailAttachments.length > 0 ? (
                   <ul className="mt-1 max-h-20 space-y-0.5 overflow-y-auto text-[10px] text-slate-600">
                     {emailAttachments.map((file) => (
@@ -4780,6 +4878,74 @@ export default function PatientActivityCard({
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      ) : null}
+
+      {/* Invoice Attachment Modal */}
+      {invoiceModalOpen ? createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 p-4">
+              <h3 className="text-sm font-semibold text-slate-800">Attach Invoice</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setInvoiceModalOpen(false);
+                  setInvoiceSearchQuery("");
+                }}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-4">
+              <input
+                type="text"
+                placeholder="Search invoices..."
+                value={invoiceSearchQuery}
+                onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+                className="mb-3 w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-[12px] text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+              {invoiceListLoading ? (
+                <p className="py-4 text-center text-[11px] text-slate-500">Loading invoices...</p>
+              ) : invoiceListError ? (
+                <p className="py-4 text-center text-[11px] text-red-600">{invoiceListError}</p>
+              ) : invoiceList.length === 0 ? (
+                <p className="py-4 text-center text-[11px] text-slate-500">No invoices found for this patient.</p>
+              ) : (
+                <ul className="max-h-64 space-y-1 overflow-y-auto">
+                  {invoiceList
+                    .filter((inv) =>
+                      invoiceSearchQuery
+                        ? inv.name.toLowerCase().includes(invoiceSearchQuery.toLowerCase())
+                        : true
+                    )
+                    .map((inv) => (
+                      <li key={inv.path}>
+                        <button
+                          type="button"
+                          onClick={() => handleAttachInvoice(inv.path, inv.name)}
+                          disabled={invoiceAttaching === inv.path}
+                          className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-[11px] text-slate-700 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          <span className="truncate">{inv.name}</span>
+                          {invoiceAttaching === inv.path ? (
+                            <span className="text-[10px] text-slate-400">Attaching...</span>
+                          ) : (
+                            <svg className="h-4 w-4 flex-shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>,
         document.body
