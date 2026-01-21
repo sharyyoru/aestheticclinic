@@ -391,6 +391,8 @@ export default function PatientActivityCard({
   const [composeFromQueryHandled, setComposeFromQueryHandled] = useState(false);
   const [createTaskFromQueryHandled, setCreateTaskFromQueryHandled] =
     useState(false);
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+  const [taskIdFromQueryHandled, setTaskIdFromQueryHandled] = useState(false);
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
@@ -407,6 +409,31 @@ export default function PatientActivityCard({
       setActiveTab(tabParam as ActivityTab);
     }
   }, [searchParams]);
+
+  // Handle taskId URL parameter - scroll to and highlight specific task
+  useEffect(() => {
+    if (taskIdFromQueryHandled || tasksLoading) return;
+
+    const taskIdParam = searchParams.get("taskId");
+    if (!taskIdParam) return;
+
+    // Check if the task exists in the loaded tasks
+    const taskExists = tasks.some((t) => t.id === taskIdParam);
+    if (!taskExists) return;
+
+    setHighlightedTaskId(taskIdParam);
+    setTaskIdFromQueryHandled(true);
+
+    // Scroll to the task element after a short delay
+    setTimeout(() => {
+      const taskElement = document.getElementById(`task-${taskIdParam}`);
+      if (taskElement) {
+        taskElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      // Clear highlight after 3 seconds
+      setTimeout(() => setHighlightedTaskId(null), 3000);
+    }, 100);
+  }, [searchParams, tasks, tasksLoading, taskIdFromQueryHandled]);
 
   async function handleWhatsAppSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3404,7 +3431,12 @@ export default function PatientActivityCard({
                     return (
                       <div
                         key={task.id}
-                        className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-800 shadow-sm"
+                        id={`task-${task.id}`}
+                        className={`rounded-lg border px-3 py-2 text-[11px] text-slate-800 shadow-sm transition-all duration-300 ${
+                          highlightedTaskId === task.id
+                            ? "border-sky-400 bg-sky-50 ring-2 ring-sky-300"
+                            : "border-slate-200 bg-slate-50/80"
+                        }`}
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="space-y-0.5">
