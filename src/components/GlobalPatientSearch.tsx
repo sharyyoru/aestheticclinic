@@ -46,7 +46,7 @@ export default function GlobalPatientSearch() {
         const { data, error } = await supabaseClient
           .from("patients")
           .select("id, first_name, last_name, email, phone")
-          .or(`first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm}`)
+          .or(`first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`)
           .limit(8);
 
         if (!error && data) {
