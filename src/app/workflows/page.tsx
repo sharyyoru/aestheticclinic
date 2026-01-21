@@ -548,6 +548,15 @@ type EnrollmentRow = {
     last_name: string | null;
     email: string | null;
   } | null;
+  deal: {
+    id: string;
+    title: string | null;
+    service_id: string | null;
+    service: {
+      id: string;
+      name: string;
+    } | null;
+  } | null;
   steps: {
     id: string;
     step_type: string;
@@ -557,6 +566,11 @@ type EnrollmentRow = {
     result: any;
     error_message: string | null;
   }[];
+};
+
+type ServiceOption = {
+  id: string;
+  name: string;
 };
 
 function WorkflowEnrollmentsModal({
@@ -573,11 +587,25 @@ function WorkflowEnrollmentsModal({
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [services, setServices] = useState<ServiceOption[]>([]);
+  const [serviceFilter, setServiceFilter] = useState<string>("all");
+  const [serviceFilterSearch, setServiceFilterSearch] = useState("");
+  const [serviceFilterOpen, setServiceFilterOpen] = useState(false);
   const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     loadEnrollments();
+    loadServices();
   }, [workflowId]);
+
+  async function loadServices() {
+    const { data } = await supabaseClient
+      .from("services")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("name");
+    if (data) setServices(data);
+  }
 
   // Reset to page 1 when search changes
   useEffect(() => {
@@ -589,7 +617,7 @@ function WorkflowEnrollmentsModal({
       setLoading(true);
       setError(null);
 
-      // Load enrollments with patient data
+      // Load enrollments with patient and deal/service data
       const { data, error: fetchError } = await supabaseClient
         .from("workflow_enrollments")
         .select(`
@@ -599,7 +627,8 @@ function WorkflowEnrollmentsModal({
           enrolled_at,
           status,
           trigger_data,
-          patient:patients(id, first_name, last_name, email)
+          patient:patients(id, first_name, last_name, email),
+          deal:deals(id, title, service_id, service:services(id, name))
         `)
         .eq("workflow_id", workflowId)
         .order("enrolled_at", { ascending: false });
@@ -627,12 +656,27 @@ function WorkflowEnrollmentsModal({
         stepsByEnrollment.set(step.enrollment_id, existing);
       }
 
-      // Map enrollments with their steps
-      const enrollmentsWithSteps: EnrollmentRow[] = data.map((enrollment) => ({
-        ...enrollment,
-        patient: enrollment.patient as any,
-        steps: stepsByEnrollment.get(enrollment.id) || [],
-      }));
+      // Map enrollments with their steps and deal data
+      const enrollmentsWithSteps: EnrollmentRow[] = data.map((enrollment) => {
+        // Handle deal - Supabase may return as array for single relation
+        const dealData = Array.isArray(enrollment.deal) ? enrollment.deal[0] : enrollment.deal;
+        let deal = null;
+        if (dealData) {
+          const serviceData = Array.isArray(dealData.service) ? dealData.service[0] : dealData.service;
+          deal = {
+            id: dealData.id,
+            title: dealData.title,
+            service_id: dealData.service_id,
+            service: serviceData || null,
+          };
+        }
+        return {
+          ...enrollment,
+          patient: enrollment.patient as any,
+          deal,
+          steps: stepsByEnrollment.get(enrollment.id) || [],
+        };
+      });
 
       setEnrollments(enrollmentsWithSteps);
     } catch (err) {
@@ -682,16 +726,37 @@ function WorkflowEnrollmentsModal({
     }
   }
 
-  // Filter enrollments by search query
+  // Filter enrollments by search query and service
   const filteredEnrollments = useMemo(() => {
-    if (!searchQuery.trim()) return enrollments;
-    const query = searchQuery.toLowerCase();
     return enrollments.filter((enrollment) => {
-      const name = getPatientName(enrollment).toLowerCase();
-      const email = (enrollment.patient?.email || "").toLowerCase();
-      return name.includes(query) || email.includes(query);
+      // Service filter
+      if (serviceFilter !== "all") {
+        const enrollmentServiceId = enrollment.deal?.service_id || null;
+        if (enrollmentServiceId !== serviceFilter) return false;
+      }
+      // Search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const name = getPatientName(enrollment).toLowerCase();
+        const email = (enrollment.patient?.email || "").toLowerCase();
+        const serviceName = (enrollment.deal?.service?.name || "").toLowerCase();
+        if (!name.includes(query) && !email.includes(query) && !serviceName.includes(query)) return false;
+      }
+      return true;
     });
-  }, [enrollments, searchQuery]);
+  }, [enrollments, searchQuery, serviceFilter]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [serviceFilter]);
+
+  // Filter services for dropdown
+  const filteredServices = useMemo(() => {
+    if (!serviceFilterSearch.trim()) return services;
+    const query = serviceFilterSearch.toLowerCase();
+    return services.filter((s) => s.name.toLowerCase().includes(query));
+  }, [services, serviceFilterSearch]);
 
   // Pagination
   const totalPages = Math.ceil(filteredEnrollments.length / ITEMS_PER_PAGE);
@@ -710,6 +775,57 @@ function WorkflowEnrollmentsModal({
             <p className="text-sm text-slate-500">{workflowName}</p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Service Filter Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setServiceFilterOpen(!serviceFilterOpen)}
+                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                <span className="max-w-32 truncate">
+                  {serviceFilter === "all" ? "All Services" : services.find((s) => s.id === serviceFilter)?.name || "Service"}
+                </span>
+                <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {serviceFilterOpen && (
+                <div className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-slate-200 bg-white shadow-lg">
+                  <div className="p-2 border-b border-slate-100">
+                    <input
+                      type="text"
+                      placeholder="Search services..."
+                      value={serviceFilterSearch}
+                      onChange={(e) => setServiceFilterSearch(e.target.value)}
+                      className="w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm focus:border-sky-500 focus:outline-none"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-auto p-1">
+                    <button
+                      onClick={() => { setServiceFilter("all"); setServiceFilterOpen(false); setServiceFilterSearch(""); }}
+                      className={`w-full rounded-md px-3 py-2 text-left text-sm ${serviceFilter === "all" ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"}`}
+                    >
+                      All Services
+                    </button>
+                    {filteredServices.map((service) => (
+                      <button
+                        key={service.id}
+                        onClick={() => { setServiceFilter(service.id); setServiceFilterOpen(false); setServiceFilterSearch(""); }}
+                        className={`w-full rounded-md px-3 py-2 text-left text-sm ${serviceFilter === service.id ? "bg-sky-50 text-sky-700" : "text-slate-700 hover:bg-slate-50"}`}
+                      >
+                        {service.name}
+                      </button>
+                    ))}
+                    {filteredServices.length === 0 && (
+                      <p className="px-3 py-2 text-sm text-slate-400">No services found</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             {/* Search Input */}
             <div className="relative">
               <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -777,6 +893,7 @@ function WorkflowEnrollmentsModal({
                 <thead>
                   <tr className="border-b border-slate-200 text-left">
                     <th className="pb-3 font-medium text-slate-700">Patient</th>
+                    <th className="pb-3 font-medium text-slate-700">Service</th>
                     <th className="pb-3 font-medium text-slate-700">Enrolled</th>
                     <th className="pb-3 font-medium text-slate-700">Status</th>
                     <th className="pb-3 font-medium text-slate-700">Steps Completed</th>
@@ -801,6 +918,15 @@ function WorkflowEnrollmentsModal({
                             )}
                           </div>
                         </Link>
+                      </td>
+                      <td className="py-3">
+                        {enrollment.deal?.service?.name ? (
+                          <span className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-medium text-violet-700">
+                            {enrollment.deal.service.name}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="py-3 text-slate-600">
                         {new Date(enrollment.enrolled_at).toLocaleDateString()}{" "}
