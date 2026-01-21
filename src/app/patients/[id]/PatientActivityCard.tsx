@@ -4885,7 +4885,7 @@ export default function PatientActivityCard({
 
       {/* Invoice Attachment Modal */}
       {invoiceModalOpen ? createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/40 p-4">
           <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 p-4">
               <h3 className="text-sm font-semibold text-slate-800">Attach Invoice</h3>
