@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -393,7 +394,16 @@ export default function TaskEditModal({
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Edit Task</h2>
             {patient && (
-              <p className="text-sm text-slate-500">Patient: {patientName}</p>
+              <p className="text-sm text-slate-500">
+                Patient:{" "}
+                <Link
+                  href={`/patients/${patient.id}?mode=crm&tab=tasks&taskId=${task?.id || ""}`}
+                  className="text-sky-600 hover:text-sky-700 hover:underline"
+                  onClick={onClose}
+                >
+                  {patientName}
+                </Link>
+              </p>
             )}
           </div>
           <button

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
+import TaskEditModal from "@/components/TaskEditModal";
 
 type TaskStatus = "not_started" | "in_progress" | "completed";
 
@@ -63,6 +64,10 @@ export default function TasksPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const [updatingTaskIds, setUpdatingTaskIds] = useState<string[]>([]);
+
+  // Task edit modal
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<TaskRow | null>(null);
 
   // Admin user selector
   const [allUsers, setAllUsers] = useState<PlatformUser[]>([]);
@@ -621,14 +626,16 @@ export default function TasksPage() {
                       </td>
                       <td className="py-2 pr-3 align-top text-slate-700">
                         <div className="flex flex-wrap items-center gap-2">
-                          {patient ? (
-                            <Link
-                              href={`/patients/${patient.id}?mode=crm&tab=tasks&taskId=${task.id}`}
-                              className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                            >
-                              View
-                            </Link>
-                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTask(task);
+                              setTaskModalOpen(true);
+                            }}
+                            className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                          >
+                            View
+                          </button>
                           {task.status !== "completed" ? (
                             <button
                               type="button"
@@ -649,6 +656,34 @@ export default function TasksPage() {
           </div>
         )}
       </div>
+
+      {/* Task Edit Modal */}
+      <TaskEditModal
+        open={taskModalOpen}
+        onClose={() => {
+          setTaskModalOpen(false);
+          setSelectedTask(null);
+        }}
+        task={selectedTask ? {
+          ...selectedTask,
+          patient: selectedTask.patient ? {
+            id: selectedTask.patient.id,
+            first_name: selectedTask.patient.first_name,
+            last_name: selectedTask.patient.last_name,
+            email: selectedTask.patient.email,
+            phone: selectedTask.patient.phone,
+          } : null,
+        } : null}
+        onTaskUpdated={(updatedTask) => {
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === updatedTask.id
+                ? { ...t, ...updatedTask }
+                : t
+            )
+          );
+        }}
+      />
     </div>
   );
 }
