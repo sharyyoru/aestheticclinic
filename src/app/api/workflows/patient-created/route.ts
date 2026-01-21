@@ -136,6 +136,7 @@ export async function POST(request: Request) {
           assigned_user_id: assignee.id,
           assigned_user_name: assignee.name,
           patient_id: patient_id,
+          created_by_name: "System",
         });
 
       if (!taskError) {
@@ -209,6 +210,7 @@ export async function POST(request: Request) {
               type: "todo",
               patient_id: patient.id,
               assigned_user_id: config.user_id || null,
+              created_by_name: "System",
             });
 
           if (!taskError) {

@@ -175,6 +175,27 @@ export default function RootLayout({
                     </span>
                     <span>Lead Import</span>
                   </Link>
+                  {/* Lead Import Sub-navigation */}
+                  <div className="ml-10 space-y-0.5 pb-2">
+                    <Link
+                      href="/lead-import"
+                      className="block py-1.5 pl-3 text-xs text-slate-500 hover:text-sky-600"
+                    >
+                      CSV Import
+                    </Link>
+                    <Link
+                      href="/lead-import/history"
+                      className="block py-1.5 pl-3 text-xs text-slate-500 hover:text-sky-600"
+                    >
+                      Import History
+                    </Link>
+                    <Link
+                      href="/lead-import/meta-leads"
+                      className="block py-1.5 pl-3 text-xs text-slate-500 hover:text-sky-600"
+                    >
+                      Meta & Zapier Leads
+                    </Link>
+                  </div>
                 </div>
                 <div className="border-b border-slate-100/80">
                   <Link
