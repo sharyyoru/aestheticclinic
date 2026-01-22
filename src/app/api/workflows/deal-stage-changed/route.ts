@@ -385,6 +385,8 @@ export async function POST(request: Request) {
           const config = (action.config || {}) as {
             title?: string;
             assign_to?: string | string[];
+            assign_to_users?: string[];
+            assignment_mode?: string;
             due_days?: number;
           };
 
@@ -403,14 +405,18 @@ export async function POST(request: Request) {
           let assignedUserName: string | null = null;
           
           // Get the assigned user IDs from workflow config
+          // Prefer assign_to_users (new format) over assign_to (legacy format)
           const assignToIds: string[] = [];
-          if (config.assign_to) {
+          if (config.assign_to_users && Array.isArray(config.assign_to_users) && config.assign_to_users.length > 0) {
+            assignToIds.push(...config.assign_to_users);
+          } else if (config.assign_to) {
             if (Array.isArray(config.assign_to)) {
               assignToIds.push(...config.assign_to);
             } else if (typeof config.assign_to === "string") {
               assignToIds.push(config.assign_to);
             }
           }
+          console.log(`Assignment mode: ${config.assignment_mode}, assignToIds:`, assignToIds);
 
           if (assignToIds.length > 0) {
             // Fetch the specified users from the database
