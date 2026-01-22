@@ -16,7 +16,7 @@ export default function LeadImportPage() {
   const [customService, setCustomService] = useState<string>("");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
-  const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ success: number; failed: number; skippedDuplicates?: number; matchedService?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const serviceOptions = [
@@ -116,6 +116,8 @@ export default function LeadImportPage() {
       setImportResult({
         success: result.imported || 0,
         failed: result.failed || 0,
+        skippedDuplicates: result.skippedDuplicates || 0,
+        matchedService: result.matchedService || null,
       });
       setStep("complete");
     } catch (err) {
@@ -431,11 +433,17 @@ export default function LeadImportPage() {
             Your leads have been successfully imported and enrolled in workflows
           </p>
 
-          <div className="mb-6 grid gap-4 md:grid-cols-2">
+          <div className="mb-6 grid gap-4 md:grid-cols-3">
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6 text-center">
               <div className="text-3xl font-bold text-emerald-900">{importResult.success}</div>
               <div className="text-sm text-emerald-800">Successfully Imported</div>
             </div>
+            {(importResult.skippedDuplicates ?? 0) > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center">
+                <div className="text-3xl font-bold text-amber-900">{importResult.skippedDuplicates}</div>
+                <div className="text-sm text-amber-800">Duplicates Skipped</div>
+              </div>
+            )}
             {importResult.failed > 0 && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
                 <div className="text-3xl font-bold text-red-900">{importResult.failed}</div>
@@ -443,6 +451,23 @@ export default function LeadImportPage() {
               </div>
             )}
           </div>
+
+          {importResult.matchedService && (
+            <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-center">
+              <p className="text-sm text-blue-800">
+                <strong>Matched HubSpot Service:</strong> {importResult.matchedService}
+              </p>
+            </div>
+          )}
+
+          {(importResult.skippedDuplicates ?? 0) > 0 && (
+            <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-xs text-amber-800">
+                <strong>Note:</strong> {importResult.skippedDuplicates} leads were identified as duplicates based on email or phone number matching existing patients. 
+                These patients were updated with import notes instead of creating new records.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-center gap-3">
             <button

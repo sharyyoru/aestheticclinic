@@ -30,6 +30,72 @@ type FacebookLeadPayload = {
   created_time?: string;
 };
 
+type HubspotService = {
+  id: string;
+  name: string;
+};
+
+/**
+ * Match a service interest string to the closest HubSpot service
+ * Uses fuzzy matching to find the best match
+ */
+function matchServiceToHubspot(
+  serviceInterest: string,
+  hubspotServices: HubspotService[]
+): HubspotService | null {
+  if (!serviceInterest || hubspotServices.length === 0) return null;
+
+  const normalizedInterest = serviceInterest.toLowerCase().trim();
+
+  // Direct match first
+  const directMatch = hubspotServices.find(
+    (s) => s.name.toLowerCase() === normalizedInterest
+  );
+  if (directMatch) return directMatch;
+
+  // Keyword matching patterns for common services
+  const serviceKeywords: { keywords: string[]; serviceNames: string[] }[] = [
+    { keywords: ["breast", "augment", "implant", "mammoplasty"], serviceNames: ["breast augmentation", "breast"] },
+    { keywords: ["face", "filler", "facial filler"], serviceNames: ["face filler", "facial filler", "filler"] },
+    { keywords: ["wrinkle", "ride", "rides", "anti-age", "antiage"], serviceNames: ["wrinkle", "anti-aging", "rides"] },
+    { keywords: ["blepharo", "eyelid", "paupière"], serviceNames: ["blepharoplasty", "eyelid"] },
+    { keywords: ["lipo", "liposuc"], serviceNames: ["liposuction", "lipo"] },
+    { keywords: ["iv", "therapy", "infusion", "drip"], serviceNames: ["iv therapy", "infusion"] },
+    { keywords: ["rhino", "nose", "nez"], serviceNames: ["rhinoplasty", "nose"] },
+    { keywords: ["facelift", "lifting", "face lift"], serviceNames: ["facelift", "face lift"] },
+    { keywords: ["botox", "toxin"], serviceNames: ["botox", "botulinum"] },
+    { keywords: ["lip", "lèvre"], serviceNames: ["lip filler", "lip"] },
+    { keywords: ["tummy", "tuck", "abdominoplast"], serviceNames: ["tummy tuck", "abdominoplasty"] },
+    { keywords: ["breast", "lift", "mastopexy"], serviceNames: ["breast lift", "mastopexy"] },
+    { keywords: ["hyperbaric", "oxygen", "hbot"], serviceNames: ["hyperbaric", "hbot", "oxygen"] },
+    { keywords: ["consultation", "consult"], serviceNames: ["consultation", "consult"] },
+  ];
+
+  // Try keyword matching
+  for (const { keywords, serviceNames } of serviceKeywords) {
+    const hasKeyword = keywords.some((k) => normalizedInterest.includes(k));
+    if (hasKeyword) {
+      for (const serviceName of serviceNames) {
+        const match = hubspotServices.find((s) =>
+          s.name.toLowerCase().includes(serviceName)
+        );
+        if (match) return match;
+      }
+    }
+  }
+
+  // Partial match - find service that contains any word from the interest
+  const interestWords = normalizedInterest.split(/\s+/).filter((w) => w.length > 3);
+  for (const word of interestWords) {
+    const partialMatch = hubspotServices.find((s) =>
+      s.name.toLowerCase().includes(word)
+    );
+    if (partialMatch) return partialMatch;
+  }
+
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Parse the incoming payload - Zapier can send as JSON or form data
@@ -202,6 +268,30 @@ export async function POST(request: NextRequest) {
 
     const defaultStageId = defaultStage?.id;
 
+    // Load HubSpot services for matching
+    const { data: hubspotCategory } = await supabaseAdmin
+      .from("service_categories")
+      .select("id")
+      .eq("name", "Hubspot")
+      .single();
+
+    let hubspotServices: HubspotService[] = [];
+    if (hubspotCategory) {
+      const { data: services } = await supabaseAdmin
+        .from("services")
+        .select("id, name")
+        .eq("category_id", hubspotCategory.id)
+        .eq("is_active", true);
+      hubspotServices = (services as HubspotService[]) || [];
+    }
+
+    // Match the service interest to a HubSpot service
+    const matchedService = matchServiceToHubspot(serviceInterest, hubspotServices);
+    const serviceId = matchedService?.id || null;
+    const finalServiceInterest = matchedService?.name || serviceInterest;
+
+    console.log(`Service interest "${serviceInterest}" matched to HubSpot service: ${matchedService?.name || "None"}`);
+
     // Check if deal already exists for this patient with similar service
     const { data: existingDeal } = await supabaseAdmin
       .from("deals")
@@ -214,15 +304,16 @@ export async function POST(request: NextRequest) {
     let dealId: string | null = null;
 
     if (!existingDeal) {
-      // Create new deal
+      // Create new deal with matched service
       const { data: newDeal, error: dealError } = await supabaseAdmin
         .from("deals")
         .insert({
           patient_id: patientId,
-          title: `${firstName} ${lastName} - ${serviceInterest}`,
+          title: `${firstName} ${lastName} - ${finalServiceInterest}`,
           pipeline: "Lead to Surgery",
           stage_id: defaultStageId,
-          service_interest: serviceInterest,
+          service_id: serviceId,
+          service_interest: finalServiceInterest,
           source: "Facebook Lead Ads",
           deal_value: null,
           notes: `Facebook Ad: ${adName || "N/A"}\nCampaign: ${campaignName || "N/A"}\nForm: ${formName || "N/A"}`,
