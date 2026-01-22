@@ -73,7 +73,28 @@ type TaskMentionRow = {
   type: "task";
 };
 
-type MentionRow = NoteMentionRow | TaskMentionRow;
+type EmailReplyInfo = {
+  id: string;
+  subject: string;
+  body: string;
+  from_address: string | null;
+  sent_at: string | null;
+  created_at: string;
+};
+
+type EmailReplyNotificationRow = {
+  id: string;
+  created_at: string;
+  read_at: string | null;
+  patient_id: string;
+  original_email_id: string;
+  reply_email_id: string;
+  reply_email: EmailReplyInfo | null;
+  patient: MentionPatient | null;
+  type: "email_reply";
+};
+
+type MentionRow = NoteMentionRow | TaskMentionRow | EmailReplyNotificationRow;
 
 export default function CommentsPage() {
   const router = useRouter();
@@ -86,6 +107,10 @@ export default function CommentsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedTaskMention, setSelectedTaskMention] = useState<TaskMentionRow | null>(null);
+  const [emailReplyModalOpen, setEmailReplyModalOpen] = useState(false);
+  const [selectedEmailReply, setSelectedEmailReply] = useState<EmailReplyNotificationRow | null>(null);
+  const [replyBody, setReplyBody] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
   const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -135,9 +160,18 @@ export default function CommentsPage() {
           .eq("mentioned_user_id", user.id)
           .order("created_at", { ascending: false });
 
+        // Fetch email reply notifications
+        const { data: emailReplyNotifications, error: emailReplyError } = await supabaseClient
+          .from("email_reply_notifications")
+          .select(
+            "id, created_at, read_at, patient_id, original_email_id, reply_email_id, reply_email:emails!reply_email_id(id, subject, body, from_address, sent_at, created_at), patient:patients(id, first_name, last_name)",
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
         if (!isMounted) return;
 
-        if (noteError && taskError) {
+        if (noteError && taskError && emailReplyError) {
           setError("Failed to load comments.");
           setMentions([]);
           setLoading(false);
@@ -164,7 +198,19 @@ export default function CommentsPage() {
           type: "task" as const,
         }));
 
-        const combined = [...noteRows, ...taskRows].sort(
+        const emailReplyRows: EmailReplyNotificationRow[] = (emailReplyNotifications || []).map((m: any) => ({
+          id: m.id,
+          created_at: m.created_at,
+          read_at: m.read_at,
+          patient_id: m.patient_id,
+          original_email_id: m.original_email_id,
+          reply_email_id: m.reply_email_id,
+          reply_email: m.reply_email,
+          patient: m.patient,
+          type: "email_reply" as const,
+        }));
+
+        const combined = [...noteRows, ...taskRows, ...emailReplyRows].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
 
@@ -188,7 +234,8 @@ export default function CommentsPage() {
   async function handleMarkAllRead() {
     const unreadNotes = mentions.filter((m) => !m.read_at && m.type === "note").map((m) => m.id);
     const unreadTasks = mentions.filter((m) => !m.read_at && m.type === "task").map((m) => m.id);
-    if (unreadNotes.length === 0 && unreadTasks.length === 0) return;
+    const unreadEmailReplies = mentions.filter((m) => !m.read_at && m.type === "email_reply").map((m) => m.id);
+    if (unreadNotes.length === 0 && unreadTasks.length === 0 && unreadEmailReplies.length === 0) return;
 
     try {
       setMarkingRead(true);
@@ -210,14 +257,22 @@ export default function CommentsPage() {
           .in("id", unreadTasks);
       }
 
+      // Mark email reply notifications as read
+      if (unreadEmailReplies.length > 0) {
+        await supabaseClient
+          .from("email_reply_notifications")
+          .update({ read_at: nowIso })
+          .in("id", unreadEmailReplies);
+      }
+
       setMentions((prev) =>
         prev.map((m) =>
-          m.read_at || (!unreadNotes.includes(m.id) && !unreadTasks.includes(m.id))
+          m.read_at || (!unreadNotes.includes(m.id) && !unreadTasks.includes(m.id) && !unreadEmailReplies.includes(m.id))
             ? m
             : { ...m, read_at: nowIso },
         ),
       );
-      setUnreadCountOptimistic((prev) => prev - unreadNotes.length - unreadTasks.length);
+      setUnreadCountOptimistic((prev) => prev - unreadNotes.length - unreadTasks.length - unreadEmailReplies.length);
       setToastMessage("All comments marked as read.");
       setMarkingRead(false);
     } catch {
@@ -256,12 +311,102 @@ export default function CommentsPage() {
     setUnreadCountOptimistic((prev) => prev - 1);
 
     try {
-      const tableName = mention.type === "task" ? "task_comment_mentions" : "patient_note_mentions";
+      const tableName = mention.type === "task" 
+        ? "task_comment_mentions" 
+        : mention.type === "email_reply" 
+          ? "email_reply_notifications" 
+          : "patient_note_mentions";
       await supabaseClient
         .from(tableName)
         .update({ read_at: nowIso })
         .eq("id", mention.id);
     } catch {
+    }
+  }
+
+  function handleOpenEmailReply(mention: EmailReplyNotificationRow) {
+    setSelectedEmailReply(mention);
+    setReplyBody("");
+    setEmailReplyModalOpen(true);
+  }
+
+  async function handleSendEmailReply() {
+    if (!selectedEmailReply || !replyBody.trim()) return;
+    
+    setSendingReply(true);
+    try {
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const user = authData?.user;
+      if (!user) {
+        setToastMessage("You must be logged in to send emails.");
+        setSendingReply(false);
+        return;
+      }
+
+      const userEmail = user.email || "";
+      const userName = (user.user_metadata?.full_name as string) || userEmail.split("@")[0];
+      const patientEmail = selectedEmailReply.reply_email?.from_address;
+      const originalSubject = selectedEmailReply.reply_email?.subject || "";
+      const replySubject = originalSubject.startsWith("Re: ") ? originalSubject : `Re: ${originalSubject}`;
+
+      // Create email record
+      const { data: newEmail, error: emailError } = await supabaseClient
+        .from("emails")
+        .insert({
+          patient_id: selectedEmailReply.patient_id,
+          to_address: patientEmail,
+          from_address: userEmail,
+          subject: replySubject,
+          body: replyBody,
+          direction: "outbound",
+          status: "queued",
+        })
+        .select("id")
+        .single();
+
+      if (emailError || !newEmail) {
+        setToastMessage("Failed to create email.");
+        setSendingReply(false);
+        return;
+      }
+
+      // Send the email
+      const sendResponse = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: patientEmail,
+          subject: replySubject,
+          html: replyBody.replace(/\n/g, "<br />"),
+          fromUserEmail: userEmail,
+          fromUserName: userName,
+          emailId: newEmail.id,
+          patientId: selectedEmailReply.patient_id,
+        }),
+      });
+
+      if (!sendResponse.ok) {
+        await supabaseClient.from("emails").update({ status: "failed" }).eq("id", newEmail.id);
+        setToastMessage("Failed to send email.");
+        setSendingReply(false);
+        return;
+      }
+
+      await supabaseClient.from("emails").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", newEmail.id);
+
+      // Mark notification as read
+      if (!selectedEmailReply.read_at) {
+        await handleOpenMention(selectedEmailReply);
+      }
+
+      setToastMessage("Email sent successfully!");
+      setEmailReplyModalOpen(false);
+      setSelectedEmailReply(null);
+      setReplyBody("");
+    } catch {
+      setToastMessage("Failed to send email.");
+    } finally {
+      setSendingReply(false);
     }
   }
 
@@ -492,6 +637,79 @@ export default function CommentsPage() {
                   );
                 }
 
+                // Handle email reply notification
+                if (mention.type === "email_reply") {
+                  const emailReplyMention = mention as EmailReplyNotificationRow;
+                  const replyEmail = emailReplyMention.reply_email;
+
+                  return (
+                    <div
+                      key={mention.id}
+                      className="rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEmailReply(emailReplyMention)}
+                          className="flex-1 text-left pr-4"
+                        >
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                            {createdLabel ? <span>{createdLabel}</span> : null}
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">
+                              Email Reply
+                            </span>
+                            <span>
+                              From:{" "}
+                              <span className="font-medium text-emerald-700">
+                                {replyEmail?.from_address || "Unknown"}
+                              </span>
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-slate-800 font-medium">
+                            {replyEmail?.subject || "(No subject)"}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-slate-700 line-clamp-2">
+                            {stripHtmlTags(replyEmail?.body ?? "(No content)")}
+                          </p>
+                          <p className="mt-0.5 text-[10px] text-slate-500">
+                            Patient:{" "}
+                            {patientId ? (
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/patients/${patientId}`);
+                                }}
+                                className="font-medium text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                              >
+                                {patientName}
+                              </span>
+                            ) : (
+                              <span className="font-medium">{patientName}</span>
+                            )}
+                          </p>
+                        </button>
+                        <div className="flex items-center gap-2">
+                          {!mention.read_at ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenMention(mention);
+                                }}
+                                className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                              >
+                                Mark as read
+                              </button>
+                              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
                 // Handle note mention
                 const noteMention = mention as NoteMentionRow;
                 const note = noteMention.note;
@@ -640,6 +858,127 @@ export default function CommentsPage() {
         isMessageRead={!!selectedTaskMention?.read_at}
         onMarkAsRead={() => void handleMarkTaskMentionAsRead()}
       />
+
+      {/* Email Reply Modal */}
+      {emailReplyModalOpen && selectedEmailReply && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            setEmailReplyModalOpen(false);
+            setSelectedEmailReply(null);
+            setReplyBody("");
+          }}
+        >
+          <div
+            className="w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white p-5 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Email Reply from Patient</h2>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {selectedEmailReply.patient
+                    ? `${selectedEmailReply.patient.first_name} ${selectedEmailReply.patient.last_name}`
+                    : "Unknown patient"} replied to your email
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailReplyModalOpen(false);
+                  setSelectedEmailReply(null);
+                  setReplyBody("");
+                }}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 5l10 10" />
+                  <path d="M15 5L5 15" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Original Reply */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">
+                  Inbox
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  {selectedEmailReply.reply_email?.sent_at
+                    ? new Date(selectedEmailReply.reply_email.sent_at).toLocaleString()
+                    : selectedEmailReply.reply_email?.created_at
+                      ? new Date(selectedEmailReply.reply_email.created_at).toLocaleString()
+                      : ""}
+                </span>
+              </div>
+              <p className="text-[11px] font-medium text-slate-900 mb-1">
+                {selectedEmailReply.reply_email?.subject || "(No subject)"}
+              </p>
+              <p className="text-[10px] text-slate-500 mb-2">
+                From: {selectedEmailReply.reply_email?.from_address || "Unknown"}
+              </p>
+              <div
+                className="text-[11px] text-slate-800 prose prose-xs max-w-none"
+                dangerouslySetInnerHTML={{ __html: selectedEmailReply.reply_email?.body || "(No content)" }}
+              />
+            </div>
+
+            {/* Reply Form */}
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-[10px] font-medium text-slate-500 uppercase tracking-wide">
+                  Your Reply
+                </label>
+                <textarea
+                  value={replyBody}
+                  onChange={(e) => setReplyBody(e.target.value)}
+                  placeholder="Type your reply..."
+                  rows={6}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedEmailReply.read_at) {
+                      handleOpenMention(selectedEmailReply);
+                    }
+                    setEmailReplyModalOpen(false);
+                    setSelectedEmailReply(null);
+                    setReplyBody("");
+                  }}
+                  className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  {selectedEmailReply.read_at ? "Close" : "Mark as Read & Close"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendEmailReply}
+                  disabled={sendingReply || !replyBody.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-600 px-4 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {sendingReply ? (
+                    <>
+                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 2L11 13" />
+                        <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+                      </svg>
+                      Send Reply
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

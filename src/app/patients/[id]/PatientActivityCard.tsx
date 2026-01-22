@@ -2803,7 +2803,7 @@ export default function PatientActivityCard({
                                     : "bg-emerald-100 text-emerald-700")
                                 }
                               >
-                                {isOutbound ? "Outbound email" : "Inbound email"}
+                                {isOutbound ? "Outbox" : "Inbox"}
                               </span>
                               <span className="max-w-[220px] truncate text-[11px] font-medium text-slate-900 sm:max-w-xs">
                                 {email.subject}
@@ -3087,7 +3087,7 @@ export default function PatientActivityCard({
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[11px] text-slate-500">
-                Emails associated with this patient. Compose outbound emails here.
+                Emails associated with this patient. Compose emails here.
               </p>
               <button
                 type="button"
@@ -3141,7 +3141,7 @@ export default function PatientActivityCard({
                       : "text-slate-600 hover:text-slate-900")
                   }
                 >
-                  Inbound
+                  Inbox
                 </button>
                 <button
                   type="button"
@@ -3153,7 +3153,7 @@ export default function PatientActivityCard({
                       : "text-slate-600 hover:text-slate-900")
                   }
                 >
-                  Outbound
+                  Outbox
                 </button>
                 <button
                   type="button"
@@ -3222,7 +3222,7 @@ export default function PatientActivityCard({
                                   : "bg-emerald-100 text-emerald-700")
                               }
                             >
-                              {isOutbound ? "Outbound" : "Inbound"}
+                              {isOutbound ? "Outbox" : "Inbox"}
                             </span>
                             <span className="font-medium text-slate-900 truncate max-w-[220px] sm:max-w-xs">
                               {email.subject}
@@ -4350,8 +4350,8 @@ export default function PatientActivityCard({
                     }
                   >
                     {viewEmail.direction === "outbound"
-                      ? "Outbound email"
-                      : "Inbound email"}
+                      ? "Outbox"
+                      : "Inbox"}
                   </span>
                   <h2 className="text-sm font-semibold text-slate-900 line-clamp-2">
                     {viewEmail.subject}
@@ -4542,7 +4542,7 @@ export default function PatientActivityCard({
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">Compose email</h2>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  This will be recorded on the patient timeline as an outbound email.
+                  This will be recorded on the patient timeline.
                 </p>
               </div>
               <div className="flex items-center gap-1.5">

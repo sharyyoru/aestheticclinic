@@ -46,12 +46,19 @@ export function CommentsUnreadProvider({ children }: { children: ReactNode }) {
         .eq("mentioned_user_id", user.id)
         .is("read_at", null);
 
-      if (noteError && taskError) {
+      // Count unread email reply notifications
+      const { count: emailReplyCount, error: emailReplyError } = await supabaseClient
+        .from("email_reply_notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .is("read_at", null);
+
+      if (noteError && taskError && emailReplyError) {
         setUnreadCount(0);
         return;
       }
 
-      setUnreadCount((noteCount ?? 0) + (taskCount ?? 0));
+      setUnreadCount((noteCount ?? 0) + (taskCount ?? 0) + (emailReplyCount ?? 0));
     } catch {
       setUnreadCount(0);
     }

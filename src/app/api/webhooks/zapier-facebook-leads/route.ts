@@ -102,19 +102,40 @@ export async function POST(request: NextRequest) {
     let payload: FacebookLeadPayload;
     
     const contentType = request.headers.get("content-type") || "";
+    console.log("[Zapier Facebook Leads] Content-Type:", contentType);
+    
+    // Clone the request to read body for logging
+    const bodyText = await request.clone().text();
+    console.log("[Zapier Facebook Leads] Raw body:", bodyText.substring(0, 500));
     
     if (contentType.includes("application/json")) {
-      payload = await request.json();
+      try {
+        payload = JSON.parse(bodyText);
+      } catch (parseError) {
+        console.error("[Zapier Facebook Leads] JSON parse error:", parseError);
+        return NextResponse.json(
+          { success: false, error: "Invalid JSON payload", rawBody: bodyText.substring(0, 200) },
+          { status: 400 }
+        );
+      }
     } else if (contentType.includes("application/x-www-form-urlencoded")) {
       const formData = await request.formData();
       payload = Object.fromEntries(formData.entries()) as unknown as FacebookLeadPayload;
     } else {
       // Try JSON first, fallback to form data
       try {
-        payload = await request.json();
+        payload = JSON.parse(bodyText);
       } catch {
-        const formData = await request.formData();
-        payload = Object.fromEntries(formData.entries()) as unknown as FacebookLeadPayload;
+        try {
+          const formData = await request.formData();
+          payload = Object.fromEntries(formData.entries()) as unknown as FacebookLeadPayload;
+        } catch (formError) {
+          console.error("[Zapier Facebook Leads] Failed to parse as form data:", formError);
+          return NextResponse.json(
+            { success: false, error: "Could not parse request body as JSON or form data" },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -143,10 +164,17 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!email && !phone) {
+      console.error("[Zapier Facebook Leads] Missing email and phone:", { payload });
       return NextResponse.json(
         { 
           success: false, 
-          error: "At least email or phone is required" 
+          error: "At least email or phone is required",
+          received: {
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            phone: phone,
+          }
         },
         { status: 400 }
       );

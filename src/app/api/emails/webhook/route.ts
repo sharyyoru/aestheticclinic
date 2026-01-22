@@ -308,6 +308,44 @@ export async function POST(request: Request) {
     
     console.log("Email reply logged successfully for patient:", targetPatientId);
     
+    // Create notification for email reply - notify the user who sent the original email
+    if (targetEmailId && targetPatientId) {
+      try {
+        // Get the original email to find who sent it
+        const { data: originalEmail } = await supabase
+          .from("emails")
+          .select("id, from_address, subject")
+          .eq("id", targetEmailId)
+          .single();
+        
+        if (originalEmail && originalEmail.from_address) {
+          // Find the user who sent the original email
+          const { data: senderUser } = await supabase
+            .from("users")
+            .select("id")
+            .eq("email", originalEmail.from_address)
+            .single();
+          
+          if (senderUser) {
+            // Create email reply notification
+            await supabase
+              .from("email_reply_notifications")
+              .insert({
+                user_id: senderUser.id,
+                patient_id: targetPatientId,
+                original_email_id: targetEmailId,
+                reply_email_id: newEmailId,
+                read_at: null,
+              });
+            console.log("Email reply notification created for user:", senderUser.id);
+          }
+        }
+      } catch (notifError) {
+        console.error("Failed to create email reply notification:", notifError);
+        // Don't fail the request for notification errors
+      }
+    }
+    
     return NextResponse.json({ 
       ok: true,
       message: "Reply logged successfully",

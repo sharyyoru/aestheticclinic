@@ -321,11 +321,11 @@ export default function EmailReportsPage() {
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-sky-500"></div>
-              <span className="text-sm text-slate-600">Outbound: <span className="font-semibold text-slate-900">{stats.outbound}</span></span>
+              <span className="text-sm text-slate-600">Outbox: <span className="font-semibold text-slate-900">{stats.outbound}</span></span>
             </div>
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-emerald-500"></div>
-              <span className="text-sm text-slate-600">Inbound: <span className="font-semibold text-slate-900">{stats.inbound}</span></span>
+              <span className="text-sm text-slate-600">Inbox: <span className="font-semibold text-slate-900">{stats.inbound}</span></span>
             </div>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
@@ -402,8 +402,8 @@ export default function EmailReportsPage() {
                 className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               >
                 <option value="all">All</option>
-                <option value="inbound">Inbound</option>
-                <option value="outbound">Outbound</option>
+                <option value="inbound">Inbox</option>
+                <option value="outbound">Outbox</option>
               </select>
             </div>
 
@@ -664,7 +664,7 @@ export default function EmailReportsPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-slate-900">
-                      {selectedEmail.direction === "inbound" ? "Inbound Email" : "Outbound Email"}
+                      {selectedEmail.direction === "inbound" ? "Inbox" : "Outbox"}
                     </p>
                     <p className="text-xs text-slate-500">{formatDate(selectedEmail.created_at)}</p>
                   </div>
