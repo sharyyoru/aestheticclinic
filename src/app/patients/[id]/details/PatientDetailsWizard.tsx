@@ -271,7 +271,7 @@ export default function PatientDetailsWizard({
     const providerName =
       (formData.get("provider_name") as string | null)?.trim() || "";
     const cardNumber =
-      (formData.get("card_number") as string | null)?.trim() || "";
+      (formData.get("insurance_card_number") as string | null)?.trim() || "";
 
     if (!providerName || !cardNumber || !insuranceType) {
       setError("Please fill in all required fields.");
@@ -702,16 +702,16 @@ export default function PatientDetailsWizard({
 
             <div className="space-y-1">
               <label
-                htmlFor="card_number"
+                htmlFor="insurance_card_number"
                 className="block text-xs font-medium text-slate-700"
               >
                 Insurance card number <span className="text-red-500">*</span>
               </label>
               <input
-                id="card_number"
-                name="card_number"
+                id="insurance_card_number"
+                name="insurance_card_number"
                 type="text"
-                autoComplete="off"
+                autoComplete="one-time-code"
                 defaultValue={existingInsurance?.card_number ?? ""}
                 className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
