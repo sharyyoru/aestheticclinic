@@ -309,35 +309,49 @@ export async function POST(request: Request) {
     console.log("Email reply logged successfully for patient:", targetPatientId);
     
     // Create notification for email reply - notify the user who sent the original email
-    if (targetEmailId && targetPatientId) {
+    // BUT only if this is actually from a patient (not a CC'd copy of our own outbound email)
+    if (targetEmailId && targetPatientId && senderEmail) {
       try {
-        // Get the original email to find who sent it
-        const { data: originalEmail } = await supabase
-          .from("emails")
-          .select("id, from_address, subject")
-          .eq("id", targetEmailId)
+        // First, check if the sender is a clinic user - if so, skip notification
+        // (This handles CC'd copies of outbound emails that Mailgun routes back to us)
+        const { data: senderIsUser } = await supabase
+          .from("users")
+          .select("id")
+          .eq("email", senderEmail.toLowerCase())
           .single();
         
-        if (originalEmail && originalEmail.from_address) {
-          // Find the user who sent the original email
-          const { data: senderUser } = await supabase
-            .from("users")
-            .select("id")
-            .eq("email", originalEmail.from_address)
+        if (senderIsUser) {
+          console.log("Skipping notification - sender is a clinic user:", senderEmail);
+        } else {
+          // Sender is NOT a clinic user, so this is a real patient reply
+          // Get the original email to find who sent it
+          const { data: originalEmail } = await supabase
+            .from("emails")
+            .select("id, from_address, subject")
+            .eq("id", targetEmailId)
             .single();
           
-          if (senderUser) {
-            // Create email reply notification
-            await supabase
-              .from("email_reply_notifications")
-              .insert({
-                user_id: senderUser.id,
-                patient_id: targetPatientId,
-                original_email_id: targetEmailId,
-                reply_email_id: newEmailId,
-                read_at: null,
-              });
-            console.log("Email reply notification created for user:", senderUser.id);
+          if (originalEmail && originalEmail.from_address) {
+            // Find the user who sent the original email
+            const { data: originalSenderUser } = await supabase
+              .from("users")
+              .select("id")
+              .eq("email", originalEmail.from_address)
+              .single();
+            
+            if (originalSenderUser) {
+              // Create email reply notification
+              await supabase
+                .from("email_reply_notifications")
+                .insert({
+                  user_id: originalSenderUser.id,
+                  patient_id: targetPatientId,
+                  original_email_id: targetEmailId,
+                  reply_email_id: newEmailId,
+                  read_at: null,
+                });
+              console.log("Email reply notification created for user:", originalSenderUser.id);
+            }
           }
         }
       } catch (notifError) {
