@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Image from "next/image";
 import { Language, getTranslation } from "@/lib/intakeTranslations";
+import InsurerSearchSelect from "@/components/InsurerSearchSelect";
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -80,6 +81,7 @@ function IntakeStepsContent() {
 
   // Step 2: Insurance Information
   const [insuranceProvider, setInsuranceProvider] = useState("");
+  const [insurerGln, setInsurerGln] = useState("");
   const [insuranceCardNumber, setInsuranceCardNumber] = useState("");
   const [insuranceType, setInsuranceType] = useState("");
 
@@ -1499,12 +1501,14 @@ function IntakeStepsContent() {
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">
                   {t.insuranceProvider} <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={insuranceProvider}
-                  onChange={(e) => setInsuranceProvider(e.target.value)}
+                <InsurerSearchSelect
+                  value={insurerGln}
+                  onChange={(gln, name) => {
+                    setInsurerGln(gln);
+                    setInsuranceProvider(name || "");
+                  }}
                   placeholder={t.insuranceProvider}
-                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                  inputClassName="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
               </div>
 

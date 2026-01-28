@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import InsurerSearchSelect from "@/components/InsurerSearchSelect";
 
 type InsuranceType = "private" | "semi_private" | "basic";
 
@@ -29,6 +30,7 @@ type PatientInsuranceRecord = {
   provider_name: string;
   card_number: string;
   insurance_type: InsuranceType;
+  insurer_gln: string | null;
 };
 
 function classNames(...values: (string | false | null | undefined)[]) {
@@ -57,6 +59,8 @@ export default function PatientDetailsWizard({
   );
   const [existingInsurance, setExistingInsurance] =
     useState<PatientInsuranceRecord | null>(null);
+  const [insurerGln, setInsurerGln] = useState<string>("");
+  const [insurerName, setInsurerName] = useState<string>("");
 
   useEffect(() => {
     let isMounted = true;
@@ -83,7 +87,7 @@ export default function PatientDetailsWizard({
 
       const { data: insuranceRows } = await supabaseClient
         .from("patient_insurances")
-        .select("id, provider_name, card_number, insurance_type")
+        .select("id, provider_name, card_number, insurance_type, insurer_gln")
         .eq("patient_id", patientId)
         .order("created_at", { ascending: false })
         .limit(1);
@@ -94,6 +98,9 @@ export default function PatientDetailsWizard({
         const first = insuranceRows[0] as PatientInsuranceRecord;
         setExistingInsurance(first);
         setInsuranceType(first.insurance_type as InsuranceType);
+        if (first.insurer_gln) {
+          setInsurerGln(first.insurer_gln);
+        }
       } else {
         setExistingInsurance(null);
       }
@@ -268,12 +275,10 @@ export default function PatientDetailsWizard({
     if (!patient) return;
 
     const formData = new FormData(event.currentTarget);
-    const providerName =
-      (formData.get("provider_name") as string | null)?.trim() || "";
     const cardNumber =
       (formData.get("insurance_card_number") as string | null)?.trim() || "";
 
-    if (!providerName || !cardNumber || !insuranceType) {
+    if (!insurerGln || !cardNumber || !insuranceType) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -287,7 +292,8 @@ export default function PatientDetailsWizard({
       const { error } = await supabaseClient
         .from("patient_insurances")
         .update({
-          provider_name: providerName,
+          provider_name: insurerName || null,
+          insurer_gln: insurerGln,
           card_number: cardNumber,
           insurance_type: insuranceType,
         })
@@ -299,7 +305,8 @@ export default function PatientDetailsWizard({
         .from("patient_insurances")
         .insert({
           patient_id: patient.id,
-          provider_name: providerName,
+          provider_name: insurerName || null,
+          insurer_gln: insurerGln,
           card_number: cardNumber,
           insurance_type: insuranceType,
         });
@@ -686,17 +693,17 @@ export default function PatientDetailsWizard({
           <form onSubmit={handleInsuranceSubmit} className="space-y-4">
             <div className="space-y-1">
               <label
-                htmlFor="provider_name"
                 className="block text-xs font-medium text-slate-700"
               >
                 Name of insurance provider <span className="text-red-500">*</span>
               </label>
-              <input
-                id="provider_name"
-                name="provider_name"
-                type="text"
-                defaultValue={existingInsurance?.provider_name ?? ""}
-                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              <InsurerSearchSelect
+                value={insurerGln}
+                onChange={(gln, name) => {
+                  setInsurerGln(gln);
+                  setInsurerName(name || "");
+                }}
+                placeholder="Search insurance provider..."
               />
             </div>
 

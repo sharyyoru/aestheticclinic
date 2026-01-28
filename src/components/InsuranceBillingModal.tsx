@@ -5,13 +5,13 @@ import {
   INVOICE_STATUS_CONFIG,
   getLawTypeLabel,
   getBillingTypeLabel,
-  COMMON_SWISS_INSURERS,
   formatAvsNumber,
   isValidAvsNumber,
   type SwissLawType,
   type BillingType,
   type MediDataInvoiceStatus,
 } from "@/lib/medidata";
+import InsurerSearchSelect from "@/components/InsurerSearchSelect";
 import { calculateSumexTardocPrice, SUMEX_TARDOC_CODES } from "@/lib/tardoc";
 
 type InsuranceBillingModalProps = {
@@ -41,9 +41,8 @@ export default function InsuranceBillingModal({
   const [diagnosisCodes, setDiagnosisCodes] = useState<string[]>([]);
   const [diagnosisInput, setDiagnosisInput] = useState("");
   const [treatmentReason, setTreatmentReason] = useState("disease");
-  const [insurerSearch, setInsurerSearch] = useState("");
-  const [selectedInsurer, setSelectedInsurer] = useState<{ gln: string; name: string } | null>(null);
-  const [insurerDropdownOpen, setInsurerDropdownOpen] = useState(false);
+  const [selectedInsurerGln, setSelectedInsurerGln] = useState("");
+  const [selectedInsurerName, setSelectedInsurerName] = useState("");
   const [avsNumber, setAvsNumber] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,13 +51,6 @@ export default function InsuranceBillingModal({
 
   // Calculate TARDOC price based on duration (valid from 01.01.2026)
   const tardocCalculation = calculateSumexTardocPrice(duration);
-
-  // Filter insurers based on search
-  const filteredInsurers = COMMON_SWISS_INSURERS.filter(
-    (ins) =>
-      ins.name?.toLowerCase().includes(insurerSearch.toLowerCase()) ||
-      ins.nameFr?.toLowerCase().includes(insurerSearch.toLowerCase())
-  );
 
   useEffect(() => {
     setDuration(durationMinutes);
@@ -77,7 +69,7 @@ export default function InsuranceBillingModal({
   };
 
   const handleSubmit = async () => {
-    if (!selectedInsurer) {
+    if (!selectedInsurerGln) {
       setError("Please select an insurance company");
       return;
     }
@@ -97,8 +89,8 @@ export default function InsuranceBillingModal({
           durationMinutes: duration,
           diagnosisCodes,
           treatmentReason,
-          insurerGln: selectedInsurer.gln,
-          insurerName: selectedInsurer.name,
+          insurerGln: selectedInsurerGln,
+          insurerName: selectedInsurerName,
           policyNumber,
           avsNumber,
         }),
@@ -283,50 +275,19 @@ export default function InsuranceBillingModal({
             <div className="rounded-xl border border-slate-200 p-4">
               <h3 className="mb-3 text-xs font-medium text-slate-700">Insurance Details</h3>
               <div className="space-y-3">
-                <div className="relative">
+                <div>
                   <label className="mb-1 block text-[11px] font-medium text-slate-500">
                     Insurance Company
                   </label>
-                  <input
-                    type="text"
-                    value={selectedInsurer ? selectedInsurer.name : insurerSearch}
-                    onChange={(e) => {
-                      setInsurerSearch(e.target.value);
-                      setSelectedInsurer(null);
-                      setInsurerDropdownOpen(true);
+                  <InsurerSearchSelect
+                    value={selectedInsurerGln}
+                    onChange={(gln, name) => {
+                      setSelectedInsurerGln(gln);
+                      setSelectedInsurerName(name || "");
                     }}
-                    onFocus={() => setInsurerDropdownOpen(true)}
                     placeholder="Search insurer (e.g., CSS, Helsana, Swica)..."
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    inputClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
-                  {selectedInsurer && (
-                    <button
-                      type="button"
-                      onClick={() => { setSelectedInsurer(null); setInsurerSearch(""); }}
-                      className="absolute right-2 top-7 text-slate-400 hover:text-slate-600"
-                    >
-                      ×
-                    </button>
-                  )}
-                  {insurerDropdownOpen && filteredInsurers.length > 0 && !selectedInsurer && (
-                    <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                      {filteredInsurers.map((ins) => (
-                        <button
-                          key={ins.gln}
-                          type="button"
-                          onClick={() => {
-                            setSelectedInsurer({ gln: ins.gln!, name: ins.name! });
-                            setInsurerSearch(ins.name!);
-                            setInsurerDropdownOpen(false);
-                          }}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-sky-50"
-                        >
-                          <div className="font-medium text-slate-700">{ins.name}</div>
-                          <div className="text-[10px] text-slate-400">GLN: {ins.gln}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>

@@ -2,6 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Image from "next/image";
+import InsurerSearchSelect from "@/components/InsurerSearchSelect";
 
 type Language = "en" | "fr";
 
@@ -280,6 +281,7 @@ export default function LeadForm() {
   const [employer, setEmployer] = useState("");
 
   const [insuranceProvider, setInsuranceProvider] = useState("");
+  const [insurerGln, setInsurerGln] = useState("");
   const [insuranceCardNumber, setInsuranceCardNumber] = useState("");
   const [insuranceType, setInsuranceType] = useState<
     "private" | "semi_private" | "basic" | ""
@@ -836,15 +838,17 @@ export default function LeadForm() {
         <p className="text-xs text-slate-500">{t.insuranceIntro}</p>
 
         <div className="space-y-1">
-          <label className="block text-xs font-medium text-slate-700" htmlFor="insurance-provider">
+          <label className="block text-xs font-medium text-slate-700">
             {t.insuranceProvider}
           </label>
-          <input
-            id="insurance-provider"
-            type="text"
-            value={insuranceProvider}
-            onChange={(event) => setInsuranceProvider(event.target.value)}
-            className="block w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          <InsurerSearchSelect
+            value={insurerGln}
+            onChange={(gln, name) => {
+              setInsurerGln(gln);
+              setInsuranceProvider(name || "");
+            }}
+            placeholder={t.insuranceProvider}
+            inputClassName="block w-full rounded-full border border-slate-200 bg-white px-4 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
           />
         </div>
 
