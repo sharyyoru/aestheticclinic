@@ -393,6 +393,8 @@ export default function PatientActivityCard({
     useState(false);
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
   const [taskIdFromQueryHandled, setTaskIdFromQueryHandled] = useState(false);
+  const [highlightedDealId, setHighlightedDealId] = useState<string | null>(null);
+  const [dealIdFromQueryHandled, setDealIdFromQueryHandled] = useState(false);
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
@@ -434,6 +436,31 @@ export default function PatientActivityCard({
       setTimeout(() => setHighlightedTaskId(null), 3000);
     }, 100);
   }, [searchParams, tasks, tasksLoading, taskIdFromQueryHandled]);
+
+  // Handle dealId URL parameter - scroll to and highlight specific deal
+  useEffect(() => {
+    if (dealIdFromQueryHandled || dealsLoading) return;
+
+    const dealIdParam = searchParams.get("dealId");
+    if (!dealIdParam) return;
+
+    // Check if the deal exists in the loaded deals
+    const dealExists = deals.some((d) => d.id === dealIdParam);
+    if (!dealExists) return;
+
+    setHighlightedDealId(dealIdParam);
+    setDealIdFromQueryHandled(true);
+
+    // Scroll to the deal element after a short delay
+    setTimeout(() => {
+      const dealElement = document.getElementById(`deal-${dealIdParam}`);
+      if (dealElement) {
+        dealElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      // Clear highlight after 3 seconds
+      setTimeout(() => setHighlightedDealId(null), 3000);
+    }, 100);
+  }, [searchParams, deals, dealsLoading, dealIdFromQueryHandled]);
 
   async function handleWhatsAppSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3705,7 +3732,12 @@ export default function PatientActivityCard({
                   return (
                     <div
                       key={deal.id}
-                      className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-800 shadow-sm sm:flex-row sm:items-start sm:justify-between"
+                      id={`deal-${deal.id}`}
+                      className={`flex flex-col gap-2 rounded-xl border px-3 py-2 text-[11px] text-slate-800 shadow-sm sm:flex-row sm:items-start sm:justify-between transition-all duration-300 ${
+                        highlightedDealId === deal.id
+                          ? "border-sky-400 bg-sky-50 ring-2 ring-sky-300"
+                          : "border-slate-200 bg-slate-50/80"
+                      }`}
                     >
                       <div className="space-y-1">
                         <p className="text-[12px] font-semibold text-slate-900">
