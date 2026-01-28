@@ -668,7 +668,7 @@ create index if not exists chat_messages_conversation_id_idx
 create index if not exists chat_messages_conversation_created_idx
   on chat_messages(conversation_id, created_at);
 
--- Swiss Insurance Companies (KVG/UVG/IVG/MVG)
+-- Swiss Insurance Companies (KVG/UVG/IVG/MVG/VVG)
 create table if not exists swiss_insurers (
   id uuid primary key default gen_random_uuid(),
   gln text unique not null, -- Global Location Number
@@ -676,7 +676,6 @@ create table if not exists swiss_insurers (
   name text not null,
   name_fr text,
   name_de text,
-  law_type text check (law_type in ('KVG', 'UVG', 'IVG', 'MVG', 'VVG')) not null,
   address_street text,
   address_postal_code text,
   address_city text,
@@ -687,7 +686,18 @@ create table if not exists swiss_insurers (
 
 create index if not exists swiss_insurers_gln_idx on swiss_insurers(gln);
 create index if not exists swiss_insurers_bag_number_idx on swiss_insurers(bag_number);
-create index if not exists swiss_insurers_law_type_idx on swiss_insurers(law_type);
+
+-- Swiss Insurer Laws (many-to-many relationship)
+create table if not exists swiss_insurer_laws (
+  id uuid primary key default gen_random_uuid(),
+  insurer_id uuid not null references swiss_insurers(id) on delete cascade,
+  law_type text check (law_type in ('KVG', 'UVG', 'IVG', 'MVG', 'VVG')) not null,
+  created_at timestamptz default now(),
+  unique(insurer_id, law_type)
+);
+
+create index if not exists swiss_insurer_laws_insurer_id_idx on swiss_insurer_laws(insurer_id);
+create index if not exists swiss_insurer_laws_law_type_idx on swiss_insurer_laws(law_type);
 
 -- Enhanced patient insurance with Swiss-specific fields
 alter table if exists patient_insurances
