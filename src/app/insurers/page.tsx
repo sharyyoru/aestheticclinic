@@ -315,7 +315,7 @@ export default function InsurersPage() {
                     city: row.address_city,
                     canton: row.address_canton,
                 },
-            }));
+            } as ManageableInsurer));
 
             setInsurers(formattedInsurers);
         } catch (err) {
