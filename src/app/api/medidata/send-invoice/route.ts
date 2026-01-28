@@ -76,7 +76,7 @@ const DEFAULT_CLINIC_CONFIG: MediDataConfig = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { 
+    const {
       consultationId,
       patientId: bodyPatientId,
       billingType = 'TG',
@@ -149,6 +149,19 @@ export async function POST(request: NextRequest) {
 
     const insurance = insurances?.[0] as InsuranceData | undefined;
 
+    // Get detailed Swiss insurer data if available
+    let swissInsurer: { receiver_gln: string | null; tp_allowed: boolean | null } | null = null;
+
+    if (insurance?.insurer_id) {
+      const { data } = await supabaseClient
+        .from("swiss_insurers")
+        .select("receiver_gln, tp_allowed")
+        .eq("id", insurance.insurer_id)
+        .single();
+
+      if (data) swissInsurer = data;
+    }
+
     // Get clinic configuration
     const { data: configData } = await supabaseClient
       .from("medidata_config")
@@ -203,6 +216,7 @@ export async function POST(request: NextRequest) {
         insurance: {
           insurerId: insurance?.insurer_id || null,
           insurerGln: insurerGln || insurance?.gln || '7601003000016',
+          receiverGln: swissInsurer?.receiver_gln || null,
           insurerName: insurerName || insurance?.provider_name || 'Unknown Insurer',
           policyNumber: policyNumber || insurance?.policy_number || null,
           cardNumber: insurance?.card_number || null,
@@ -311,10 +325,10 @@ export async function POST(request: NextRequest) {
 // Helper to extract duration from content
 function extractDurationFromContent(content: string | null): number {
   if (!content) return 15; // Default 15 minutes
-  
+
   const durationMatch = content.match(/Duration[:\s]*(\d+)\s*min/i) ||
-                        content.match(/Durée[:\s]*(\d+)\s*min/i) ||
-                        content.match(/(\d+)\s*minutes?/i);
-  
+    content.match(/Durée[:\s]*(\d+)\s*min/i) ||
+    content.match(/(\d+)\s*minutes?/i);
+
   return durationMatch ? parseInt(durationMatch[1]) : 15;
 }

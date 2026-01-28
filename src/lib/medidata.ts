@@ -21,7 +21,7 @@ export type SwissLawType = 'KVG' | 'UVG' | 'IVG' | 'MVG' | 'VVG';
 export type BillingType = 'TG' | 'TP'; // Tiers Garant or Tiers Payant
 
 // Invoice status tracking
-export type MediDataInvoiceStatus = 
+export type MediDataInvoiceStatus =
   | 'draft'           // Invoice created, not sent
   | 'pending'         // Sent to MediData, awaiting confirmation
   | 'transmitted'     // Confirmed received by MediData
@@ -68,7 +68,9 @@ export type SwissInsurer = {
   bagNumber: string | null;
   name: string;
   nameFr: string | null;
-  lawType: SwissLawType;
+  lawTypes: SwissLawType[]; // Changed from lawType to lawTypes array
+  receiverGln?: string | null; // GLN for invoice transmission if different from main GLN
+  tpAllowed?: boolean; // Whether Tiers Payant is allowed
   address: {
     street: string | null;
     postalCode: string | null;
@@ -93,6 +95,7 @@ export type InvoicePatient = {
   insurance: {
     insurerId: string | null;
     insurerGln: string | null;
+    receiverGln?: string | null; // Added receiver GLN for routing
     insurerName: string | null;
     policyNumber: string | null;
     cardNumber: string | null;
@@ -148,21 +151,21 @@ export type MediDataInvoiceRequest = {
   treatmentEnd: string;
   treatmentReason: string;
   diagnosisCodes: string[]; // ICD-10 codes
-  
+
   billingType: BillingType;
   lawType: SwissLawType;
   canton: SwissCanton;
-  
+
   patient: InvoicePatient;
   provider: InvoiceProvider;
   clinic: InvoiceClinic;
-  
+
   services: InvoiceServiceLine[];
-  
+
   subtotal: number;
   vatAmount: number;
   total: number;
-  
+
   reminderLevel?: number; // 0 = invoice, 1-3 = reminder levels
 };
 
@@ -173,16 +176,16 @@ export function generateSumexXml(request: MediDataInvoiceRequest): string {
   const now = new Date();
   const requestTimestamp = now.toISOString();
   const requestId = `INV-${request.invoiceNumber}-${Date.now()}`;
-  
+
   // Determine role based on billing type
   const billingRole = request.billingType === 'TP' ? 'payant' : 'garant';
-  
+
   // Format dates
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toISOString().split('T')[0];
   };
-  
+
   // Build service records XML
   const servicesXml = request.services.map((service, index) => `
       <record_tarmed
@@ -202,7 +205,10 @@ export function generateSumexXml(request: MediDataInvoiceRequest): string {
         <text>${escapeXml(service.description)}</text>
       </record_tarmed>`
   ).join('\n');
-  
+
+  // Determine recipient GLN (use receiver GLN if available, otherwise insurer GLN)
+  const recipientGln = request.patient.insurance?.receiverGln || request.patient.insurance?.insurerGln || '';
+
   // Build the XML document
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <request xmlns="http://www.forum-datenaustausch.ch/invoice"
@@ -213,7 +219,7 @@ export function generateSumexXml(request: MediDataInvoiceRequest): string {
   validation_status="0">
   
   <processing>
-    <transport from="${escapeXml(request.clinic.gln)}" to="${escapeXml(request.patient.insurance?.insurerGln || '')}">
+    <transport from="${escapeXml(request.clinic.gln)}" to="${escapeXml(recipientGln)}">
       <via via="${escapeXml(request.clinic.gln)}" sequence_id="1"/>
     </transport>
   </processing>
@@ -339,7 +345,7 @@ function generateEsrReference(invoiceNumber: string): string {
   // Remove non-numeric characters and pad to 26 digits
   const numericPart = invoiceNumber.replace(/[^0-9]/g, '').slice(0, 20);
   const padded = numericPart.padStart(26, '0');
-  
+
   // Calculate check digit using modulo 10 recursive
   let carry = 0;
   const checkTable = [0, 9, 4, 6, 8, 2, 7, 1, 3, 5];
@@ -347,7 +353,7 @@ function generateEsrReference(invoiceNumber: string): string {
     carry = checkTable[(carry + parseInt(char)) % 10];
   }
   const checkDigit = (10 - carry) % 10;
-  
+
   return padded + checkDigit;
 }
 
@@ -387,7 +393,7 @@ export function generateTardocServicesFromDuration(
   providerGln: string
 ): InvoiceServiceLine[] {
   const result = calculateSumexTardocPrice(durationMinutes);
-  
+
   return result.lines.map(line => ({
     code: line.code,
     tariffType: '001', // TARMED tariff type
@@ -409,7 +415,7 @@ export function isValidAvsNumber(avs: string): boolean {
   const cleaned = avs.replace(/[.\s-]/g, '');
   if (cleaned.length !== 13) return false;
   if (!cleaned.startsWith('756')) return false;
-  
+
   // Validate check digit using EAN-13 algorithm
   let sum = 0;
   for (let i = 0; i < 12; i++) {
@@ -436,7 +442,7 @@ export function isValidGln(gln: string): boolean {
   const cleaned = gln.replace(/\s/g, '');
   if (cleaned.length !== 13) return false;
   if (!/^\d+$/.test(cleaned)) return false;
-  
+
   // Validate check digit
   let sum = 0;
   for (let i = 0; i < 12; i++) {
@@ -472,16 +478,16 @@ export function getBillingTypeLabel(billingType: BillingType, language: 'en' | '
   return labels[billingType][language];
 }
 
-// Common Swiss health insurers (KVG)
+// Common Swiss health insurers - now with multiple law types per insurer
 export const COMMON_SWISS_INSURERS: Partial<SwissInsurer>[] = [
-  { gln: '7601003000016', name: 'CSS Versicherung', nameFr: 'CSS Assurance', lawType: 'KVG' },
-  { gln: '7601003000023', name: 'Helsana', nameFr: 'Helsana', lawType: 'KVG' },
-  { gln: '7601003000030', name: 'Swica', nameFr: 'Swica', lawType: 'KVG' },
-  { gln: '7601003000047', name: 'Sanitas', nameFr: 'Sanitas', lawType: 'KVG' },
-  { gln: '7601003000054', name: 'Concordia', nameFr: 'Concordia', lawType: 'KVG' },
-  { gln: '7601003000061', name: 'Groupe Mutuel', nameFr: 'Groupe Mutuel', lawType: 'KVG' },
-  { gln: '7601003000078', name: 'Visana', nameFr: 'Visana', lawType: 'KVG' },
-  { gln: '7601003000085', name: 'Assura', nameFr: 'Assura', lawType: 'KVG' },
-  { gln: '7601003000092', name: 'KPT', nameFr: 'CPT', lawType: 'KVG' },
-  { gln: '7601003000108', name: 'Atupri', nameFr: 'Atupri', lawType: 'KVG' },
+  { gln: '7601003000016', name: 'CSS Versicherung', nameFr: 'CSS Assurance', lawTypes: ['KVG', 'UVG', 'VVG'] },
+  { gln: '7601003000023', name: 'Helsana', nameFr: 'Helsana', lawTypes: ['KVG', 'UVG', 'VVG'] },
+  { gln: '7601003000030', name: 'Swica', nameFr: 'Swica', lawTypes: ['KVG', 'UVG', 'VVG'] },
+  { gln: '7601003000047', name: 'Sanitas', nameFr: 'Sanitas', lawTypes: ['KVG', 'UVG', 'VVG'] },
+  { gln: '7601003000054', name: 'Concordia', nameFr: 'Concordia', lawTypes: ['KVG', 'UVG', 'VVG'] },
+  { gln: '7601003000061', name: 'Groupe Mutuel', nameFr: 'Groupe Mutuel', lawTypes: ['KVG', 'UVG', 'IVG', 'VVG'] },
+  { gln: '7601003000078', name: 'Visana', nameFr: 'Visana', lawTypes: ['KVG', 'UVG', 'VVG'] },
+  { gln: '7601003000085', name: 'Assura', nameFr: 'Assura', lawTypes: ['KVG', 'VVG'] },
+  { gln: '7601003000092', name: 'KPT', nameFr: 'CPT', lawTypes: ['KVG', 'VVG'] },
+  { gln: '7601003000108', name: 'Atupri', nameFr: 'Atupri', lawTypes: ['KVG', 'VVG'] },
 ];
