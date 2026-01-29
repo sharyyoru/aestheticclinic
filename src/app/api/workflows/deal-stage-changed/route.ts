@@ -746,6 +746,185 @@ export async function POST(request: Request) {
             await createAndSendEmail(null);
           }
         }
+
+        // Handle send_whatsapp action type
+        if (action.action_type === "send_whatsapp") {
+          const config = (action.config || {}) as {
+            message_template?: string;
+            send_mode?: "immediate" | "delay" | "recurring";
+            delay_hours?: number | null;
+            recurring_days?: number | null;
+            recurring_times?: number | null;
+          };
+
+          const messageTemplate = config.message_template || 
+            "Hi {{patient.first_name}}, we wanted to follow up on your inquiry with {{clinic_name}}. Please let us know if you have any questions.";
+
+          // Get patient phone number
+          const patientPhone = safePatient.phone;
+          if (!patientPhone) {
+            console.log("No phone number for patient, skipping WhatsApp action");
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "send_whatsapp",
+                step_config: config,
+                status: "skipped",
+                executed_at: new Date().toISOString(),
+                error_message: "Patient has no phone number",
+              });
+            }
+            continue;
+          }
+
+          const now = new Date();
+          const sendMode: "immediate" | "delay" | "recurring" =
+            config.send_mode === "delay" || config.send_mode === "recurring"
+              ? config.send_mode
+              : "immediate";
+
+          const delayHours =
+            typeof config.delay_hours === "number" && config.delay_hours > 0
+              ? config.delay_hours
+              : null;
+          const recurringEveryDays =
+            typeof config.recurring_days === "number" && config.recurring_days > 0
+              ? config.recurring_days
+              : null;
+          const recurringTimes =
+            typeof config.recurring_times === "number" && config.recurring_times > 0
+              ? Math.min(config.recurring_times, 30)
+              : null;
+
+          async function sendWhatsAppMessage(scheduledAt: Date | null) {
+            const messageBody = renderTemplate(messageTemplate, templateContext);
+            const effectiveDate = scheduledAt ?? now;
+            const isFuture = effectiveDate.getTime() > now.getTime();
+
+            // For future messages, we store them as scheduled (would need a cron job to send)
+            // For immediate messages, send via Twilio API
+            if (isFuture) {
+              // Store as scheduled WhatsApp message
+              const { error: insertError } = await supabaseAdmin
+                .from("whatsapp_messages")
+                .insert({
+                  patient_id: safePatient.id,
+                  to_number: patientPhone,
+                  from_number: process.env.TWILIO_WHATSAPP_FROM || "",
+                  body: messageBody,
+                  status: "scheduled",
+                  direction: "outbound",
+                  scheduled_at: effectiveDate.toISOString(),
+                  metadata: {
+                    workflow_id: workflow.id,
+                    deal_id: safeDeal.id,
+                  },
+                });
+
+              if (insertError) {
+                console.error("Failed to schedule WhatsApp message:", insertError);
+                if (enrollmentId) {
+                  await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                    enrollment_id: enrollmentId,
+                    step_type: "action",
+                    step_action: "send_whatsapp",
+                    step_config: config,
+                    status: "failed",
+                    executed_at: new Date().toISOString(),
+                    error_message: insertError.message,
+                  });
+                }
+              } else {
+                console.log(`Scheduled WhatsApp message for ${effectiveDate.toISOString()}`);
+                if (enrollmentId) {
+                  await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                    enrollment_id: enrollmentId,
+                    step_type: "action",
+                    step_action: "send_whatsapp",
+                    step_config: config,
+                    status: "scheduled",
+                    executed_at: new Date().toISOString(),
+                    result: { scheduled_at: effectiveDate.toISOString(), to: patientPhone },
+                  });
+                }
+                actionsRun += 1;
+              }
+            } else {
+              // Send immediately via the WhatsApp API
+              try {
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+                const response = await fetch(`${appUrl}/api/whatsapp/send`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    patientId: safePatient.id,
+                    toNumber: patientPhone,
+                    message: messageBody,
+                  }),
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                  console.error("Failed to send WhatsApp message:", result);
+                  if (enrollmentId) {
+                    await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                      enrollment_id: enrollmentId,
+                      step_type: "action",
+                      step_action: "send_whatsapp",
+                      step_config: config,
+                      status: "failed",
+                      executed_at: new Date().toISOString(),
+                      error_message: result.error || "Failed to send",
+                    });
+                  }
+                } else {
+                  console.log(`Sent WhatsApp message to ${patientPhone}`);
+                  actionsRun += 1;
+                  if (enrollmentId) {
+                    await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                      enrollment_id: enrollmentId,
+                      step_type: "action",
+                      step_action: "send_whatsapp",
+                      step_config: config,
+                      status: "completed",
+                      executed_at: new Date().toISOString(),
+                      result: { message_id: result.id, to: patientPhone },
+                    });
+                  }
+                }
+              } catch (sendError) {
+                console.error("Unexpected error sending WhatsApp:", sendError);
+                if (enrollmentId) {
+                  await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                    enrollment_id: enrollmentId,
+                    step_type: "action",
+                    step_action: "send_whatsapp",
+                    step_config: config,
+                    status: "failed",
+                    executed_at: new Date().toISOString(),
+                    error_message: sendError instanceof Error ? sendError.message : "Unknown error",
+                  });
+                }
+              }
+            }
+          }
+
+          if (sendMode === "recurring" && recurringEveryDays && recurringTimes) {
+            const intervalMs = recurringEveryDays * 24 * 60 * 60 * 1000;
+            for (let i = 0; i < recurringTimes; i += 1) {
+              const scheduledAt = new Date(now.getTime() + i * intervalMs);
+              // eslint-disable-next-line no-await-in-loop
+              await sendWhatsAppMessage(scheduledAt);
+            }
+          } else if (sendMode === "delay" && delayHours) {
+            const scheduledAt = new Date(now.getTime() + delayHours * 60 * 60 * 1000);
+            await sendWhatsAppMessage(scheduledAt);
+          } else {
+            await sendWhatsAppMessage(null);
+          }
+        }
       }
     }
 

@@ -260,6 +260,7 @@ export default function WorkflowsPage() {
     return actions.map((a: any) => {
       switch (a.data?.actionType) {
         case "send_email": return "📧 Send Email";
+        case "send_whatsapp": return "💬 Send WhatsApp";
         case "send_notification": return "🔔 Notification";
         case "create_task": return "📋 Create Task";
         case "update_deal": return "📈 Update Deal";
