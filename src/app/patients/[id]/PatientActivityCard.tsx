@@ -3164,11 +3164,11 @@ export default function PatientActivityCard({
                   className={
                     "rounded-full px-2 py-0.5 text-[11px] " +
                     (emailFilter === "inbound"
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-900")
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "text-slate-600 hover:text-emerald-700")
                   }
                 >
-                  Inbox
+                  📥 Received
                 </button>
                 <button
                   type="button"
@@ -3176,11 +3176,11 @@ export default function PatientActivityCard({
                   className={
                     "rounded-full px-2 py-0.5 text-[11px] " +
                     (emailFilter === "outbound"
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-900")
+                      ? "bg-sky-600 text-white shadow-sm"
+                      : "text-slate-600 hover:text-sky-700")
                   }
                 >
-                  Outbox
+                  📤 Sent
                 </button>
                 <button
                   type="button"
@@ -3188,11 +3188,11 @@ export default function PatientActivityCard({
                   className={
                     "rounded-full px-2 py-0.5 text-[11px] " +
                     (emailFilter === "scheduled"
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-900")
+                      ? "bg-amber-600 text-white shadow-sm"
+                      : "text-slate-600 hover:text-amber-700")
                   }
                 >
-                  Scheduled
+                  ⏱ Scheduled
                 </button>
               </div>
             </div>
@@ -3215,7 +3215,11 @@ export default function PatientActivityCard({
                       ? tsDate.toLocaleString()
                       : null;
 
+                  // CRITICAL: direction field determines inbox vs outbox
+                  // outbound = sent BY the clinic (manual compose or automation)
+                  // inbound = received FROM the patient (replies via webhook)
                   const isOutbound = email.direction === "outbound";
+                  const isInbound = email.direction === "inbound";
 
                   const preview = email.body
                     ? email.body
@@ -3236,59 +3240,95 @@ export default function PatientActivityCard({
                       key={`${email.id}-${index}`}
                       type="button"
                       onClick={() => setViewEmail(email)}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-left text-[11px] text-slate-800 shadow-sm transition hover:border-sky-200 hover:bg-white"
+                      className={`w-full rounded-lg border-2 px-3 py-2 text-left text-[11px] shadow-sm transition hover:shadow-md ${
+                        isOutbound
+                          ? "border-sky-200 bg-sky-50/60 hover:border-sky-300 hover:bg-sky-50"
+                          : "border-emerald-200 bg-emerald-50/60 hover:border-emerald-300 hover:bg-emerald-50"
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-2">
+                            {/* Direction badge with icon */}
                             <span
-                              className={
-                                "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium " +
-                                (isOutbound
-                                  ? "bg-sky-100 text-sky-700"
-                                  : "bg-emerald-100 text-emerald-700")
-                              }
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                isOutbound
+                                  ? "bg-sky-500 text-white"
+                                  : "bg-emerald-500 text-white"
+                              }`}
                             >
-                              {isOutbound ? "Outbox" : "Inbox"}
+                              {isOutbound ? (
+                                <>
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                  </svg>
+                                  SENT
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                  </svg>
+                                  RECEIVED
+                                </>
+                              )}
                             </span>
-                            <span className="font-medium text-slate-900 truncate max-w-[220px] sm:max-w-xs">
+                            <span className="font-medium text-slate-900 truncate max-w-[200px] sm:max-w-xs">
                               {email.subject}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-500">
-                            To <span className="font-medium">{email.to_address}</span>
-                            {email.from_address ? (
+                          {/* Show different info based on direction */}
+                          <p className="text-[10px] text-slate-600">
+                            {isOutbound ? (
                               <>
-                                {" "}• From <span className="font-medium">{email.from_address}</span>
+                                <span className="font-medium text-sky-700">To:</span>{" "}
+                                <span className="font-medium">{email.to_address}</span>
+                                {email.from_address && (
+                                  <span className="text-slate-400"> • From: {email.from_address}</span>
+                                )}
                               </>
-                            ) : null}
+                            ) : (
+                              <>
+                                <span className="font-medium text-emerald-700">From:</span>{" "}
+                                <span className="font-medium">{email.from_address || "Unknown"}</span>
+                                <span className="text-slate-400"> • To: {email.to_address}</span>
+                              </>
+                            )}
                           </p>
                         </div>
                         {tsLabel ? (
-                          <p className="shrink-0 text-[10px] text-slate-400">
+                          <p className="shrink-0 text-[10px] text-slate-500 font-medium">
                             {tsLabel}
                           </p>
                         ) : null}
                       </div>
-                      <p className="mt-1 line-clamp-2 text-[11px] text-slate-700">
+                      <p className="mt-1.5 line-clamp-2 text-[11px] text-slate-700">
                         {preview || " "}
                       </p>
-                      {attachCount > 0 ? (
-                        <p className="mt-0.5 text-[9px] text-slate-500">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5">
+                      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                        {attachCount > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] text-slate-600">
                             <span>📎</span>
                             <span>{attachCount}</span>
                           </span>
-                        </p>
-                      ) : null}
-                      <p className="mt-0.5 text-[10px] text-slate-500">
-                        Status: <span className={`font-medium capitalize ${email.status === "read" ? "text-emerald-600" : email.status === "failed" ? "text-red-600" : ""}`}>{email.status}</span>
+                        )}
+                        <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
+                          email.status === "read" ? "bg-emerald-100 text-emerald-700" :
+                          email.status === "failed" ? "bg-red-100 text-red-700" :
+                          email.status === "queued" ? "bg-amber-100 text-amber-700" :
+                          "bg-slate-100 text-slate-600"
+                        }`}>
+                          {email.status === "read" ? "✓ Read" :
+                           email.status === "failed" ? "✗ Failed" :
+                           email.status === "queued" ? "⏱ Scheduled" :
+                           "● Sent"}
+                        </span>
                         {email.read_at && (
-                          <span className="ml-1 text-[9px] text-emerald-500">
-                            (opened {new Date(email.read_at).toLocaleDateString()})
+                          <span className="text-[9px] text-emerald-600">
+                            Opened {new Date(email.read_at).toLocaleDateString()}
                           </span>
                         )}
-                      </p>
+                      </div>
                     </button>
                   );
                 })}
@@ -4369,34 +4409,57 @@ export default function PatientActivityCard({
 
       {viewEmail ? (
         <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm py-6 sm:py-8">
-          <div className="w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
+          <div className={`w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border-2 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)] ${
+            viewEmail.direction === "outbound"
+              ? "border-sky-300 bg-gradient-to-b from-sky-50/95 to-white/95"
+              : "border-emerald-300 bg-gradient-to-b from-emerald-50/95 to-white/95"
+          }`}>
             <div className="flex items-start justify-between gap-2">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span
-                    className={
-                      "inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium " +
-                      (viewEmail.direction === "outbound"
-                        ? "bg-sky-100 text-sky-700"
-                        : "bg-emerald-100 text-emerald-700")
-                    }
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      viewEmail.direction === "outbound"
+                        ? "bg-sky-500 text-white"
+                        : "bg-emerald-500 text-white"
+                    }`}
                   >
-                    {viewEmail.direction === "outbound"
-                      ? "Outbox"
-                      : "Inbox"}
+                    {viewEmail.direction === "outbound" ? (
+                      <>
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                        SENT BY CLINIC
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        RECEIVED FROM PATIENT
+                      </>
+                    )}
                   </span>
-                  <h2 className="text-sm font-semibold text-slate-900 line-clamp-2">
-                    {viewEmail.subject}
-                  </h2>
                 </div>
-                <p className="text-[10px] text-slate-500">
-                  To <span className="font-medium">{viewEmail.to_address}</span>
-                  {viewEmail.from_address ? (
+                <h2 className="text-sm font-semibold text-slate-900 line-clamp-2">
+                  {viewEmail.subject}
+                </h2>
+                <p className="text-[10px] text-slate-600">
+                  {viewEmail.direction === "outbound" ? (
                     <>
-                      {" "}• From {""}
-                      <span className="font-medium">{viewEmail.from_address}</span>
+                      <span className="font-medium text-sky-700">To:</span>{" "}
+                      <span className="font-medium">{viewEmail.to_address}</span>
+                      {viewEmail.from_address && (
+                        <span className="text-slate-400"> • From: {viewEmail.from_address}</span>
+                      )}
                     </>
-                  ) : null}
+                  ) : (
+                    <>
+                      <span className="font-medium text-emerald-700">From:</span>{" "}
+                      <span className="font-medium">{viewEmail.from_address || "Unknown"}</span>
+                      <span className="text-slate-400"> • To: {viewEmail.to_address}</span>
+                    </>
+                  )}
                 </p>
                 <p className="text-[10px] text-slate-500">
                   {viewEmailTimestampLabel ? (
