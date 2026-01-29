@@ -941,7 +941,7 @@ export default function DealsPage() {
                   }
                 }}
               >
-                <div className="flex gap-3 px-3 md:gap-4" style={{ height: '18px' }}>
+                <div className="flex w-max gap-3 px-3 md:gap-4" style={{ height: '18px' }}>
                   {dealStages.map((stage) => (
                     <div key={stage.id} className="min-w-[260px] max-w-xs flex-shrink-0" />
                   ))}
@@ -958,7 +958,7 @@ export default function DealsPage() {
                   }
                 }}
               >
-                <div className="flex gap-3 px-3 py-3 md:gap-4">
+                <div className="flex w-max gap-3 px-3 py-3 md:gap-4">
                   {dealStages.map((stage) => {
                     const allStageDeals = boardDeals.filter(
                       (deal) => deal.stage_id === stage.id,
