@@ -7,9 +7,8 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const STAGE_ORDER = [
   'request for information',
-  'request processed',
-  'moment reflection',
   'appointment set',
+  'moment reflection',
   'image pending',
   'request for insurance support',
   'operation scheduled',

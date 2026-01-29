@@ -535,14 +535,14 @@ export async function POST(request: Request) {
 
           const subjectTemplate =
             config.subject || config.subject_template || templateSubject ||
-            "Your information request has been processed";
+            "Update on your inquiry";
 
           const bodyTemplate =
             config.body_template ??
             [
               "Hi {{patient.first_name}}",
               "",
-              "We wanted to let you know that your request for information has now been processed.",
+              "We wanted to provide you with an update on your inquiry.",
               "",
               "Deal: {{deal.title}}",
               "Pipeline: {{deal.pipeline}}",

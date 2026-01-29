@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       },
       to_stage: {
         id: "to-stage-id",
-        name: "Request processed",
+        name: "Appointment set",
         type: "consultation",
       },
     };

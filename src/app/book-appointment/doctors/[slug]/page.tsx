@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 const DOCTORS: Record<string, {
@@ -43,43 +43,135 @@ const DOCTORS: Record<string, {
   },
 };
 
-const SERVICE_OPTIONS = [
-  "Free Consultation",
-  "3D Simulation",
-  "Facial Rejuvenation",
-  "Body Contouring",
-  "Laser Treatment",
-  "Skin Care",
-  "Anti-Aging",
-  "Other",
-];
+// Doctor availability by location
+// Format: { [locationId]: { [dayOfWeek]: { start: "HH:MM", end: "HH:MM" } } }
+// dayOfWeek: 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start: string; end: string }>>> = {
+  "xavier-tenorio": {
+    rhone: {
+      1: { start: "14:00", end: "18:30" }, // Monday 2pm-6:30pm
+      5: { start: "14:00", end: "18:30" }, // Friday 2pm-6:30pm
+    },
+    montreux: {
+      4: { start: "10:00", end: "12:30" }, // Thursday 10am-12:30pm
+    },
+    gstaad: {
+      6: { start: "16:00", end: "18:30" }, // Saturday 4pm-6:30pm
+    },
+  },
+  "yulia-raspertova": {
+    rhone: {
+      1: { start: "10:00", end: "18:30" }, // Monday 10am-6:30pm
+      2: { start: "10:00", end: "12:30" }, // Tuesday 10am-12:30pm
+      4: { start: "10:00", end: "18:30" }, // Thursday 10am-6:30pm
+      3: { start: "08:00", end: "12:00" }, // Wednesday 8am-12pm
+      5: { start: "08:00", end: "12:00" }, // Friday 8am-12pm
+    },
+    champel: {
+      2: { start: "14:00", end: "18:30" }, // Tuesday 2pm-6:30pm
+    },
+  },
+  "cesar-rodriguez": {
+    champel: {
+      2: { start: "13:00", end: "17:00" }, // Tuesday 1pm-5pm
+      5: { start: "13:00", end: "17:00" }, // Friday 1pm-5pm
+    },
+    rhone: {
+      1: { start: "14:00", end: "18:30" }, // Monday 2pm-6:30pm
+      5: { start: "14:00", end: "18:30" }, // Friday 2pm-6:30pm
+    },
+    montreux: {
+      3: { start: "15:00", end: "17:00" }, // Wednesday 3pm-5pm
+    },
+  },
+  "clinic": {
+    champel: {
+      1: { start: "10:00", end: "18:30" }, // Monday 10am-6:30pm
+      2: { start: "10:00", end: "12:00" }, // Tuesday 10am-12pm
+      3: { start: "10:00", end: "12:00" }, // Wednesday 10am-12pm
+      4: { start: "10:00", end: "12:00" }, // Thursday 10am-12pm
+      5: { start: "10:00", end: "12:00" }, // Friday 10am-12pm
+      6: { start: "10:00", end: "12:00" }, // Saturday 10am-12pm
+    },
+  },
+};
 
-const CLINIC_LOCATIONS = [
-  { value: "Rhône", label: "Genève - Rue du Rhône" },
-  { value: "Champel", label: "Genève - Champel" },
-  { value: "Gstaad", label: "Gstaad" },
-  { value: "Montreux", label: "Montreux" },
-];
+const LOCATION_NAMES: Record<string, string> = {
+  rhone: "Rhône",
+  champel: "Champel",
+  gstaad: "Gstaad",
+  montreux: "Montreux",
+};
 
-const TIME_SLOTS = [
-  "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-  "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00",
-];
+const LOCATION_LABELS: Record<string, string> = {
+  rhone: "Genève - Rue du Rhône",
+  champel: "Genève - Champel",
+  gstaad: "Gstaad",
+  montreux: "Montreux",
+};
 
-type BookingStep = "info" | "datetime" | "service" | "confirm";
+// Generate 30-minute time slots based on doctor availability for a specific date
+function generateTimeSlots(doctorSlug: string, locationId: string, date: Date): string[] {
+  const dayOfWeek = date.getDay();
+  const availability = DOCTOR_AVAILABILITY[doctorSlug]?.[locationId]?.[dayOfWeek];
+  
+  if (!availability) {
+    return [];
+  }
 
-export default function DoctorBookingPage() {
+  const slots: string[] = [];
+  const [startHour, startMin] = availability.start.split(":").map(Number);
+  const [endHour, endMin] = availability.end.split(":").map(Number);
+  
+  let currentHour = startHour;
+  let currentMin = startMin;
+  
+  // Generate 30-minute slots until we reach the end time
+  // The last slot should start at least 30 minutes before end time
+  while (
+    currentHour < endHour || 
+    (currentHour === endHour && currentMin < endMin)
+  ) {
+    const slotTime = `${currentHour.toString().padStart(2, "0")}:${currentMin.toString().padStart(2, "0")}`;
+    slots.push(slotTime);
+    
+    // Move to next 30-minute slot
+    currentMin += 30;
+    if (currentMin >= 60) {
+      currentMin = 0;
+      currentHour += 1;
+    }
+  }
+  
+  return slots;
+}
+
+// Check if a date has available slots for the doctor at the location
+function hasAvailabilityOnDate(doctorSlug: string, locationId: string, date: Date): boolean {
+  const dayOfWeek = date.getDay();
+  const availability = DOCTOR_AVAILABILITY[doctorSlug]?.[locationId]?.[dayOfWeek];
+  return !!availability;
+}
+
+type BookingStep = "info" | "datetime" | "confirm";
+
+function DoctorBookingContent() {
   const params = useParams();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const slug = params.slug as string;
   const doctor = DOCTORS[slug];
+  
+  // Get location from query params (set during location selection)
+  const locationId = searchParams.get("location") || "";
+  const locationName = LOCATION_NAMES[locationId] || locationId;
+  const locationLabel = LOCATION_LABELS[locationId] || locationId;
 
   const [step, setStep] = useState<BookingStep>("info");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
 
   // Form state - pre-fill from query params if available (magic link support)
   const [firstName, setFirstName] = useState(searchParams.get("firstName") || "");
@@ -88,26 +180,14 @@ export default function DoctorBookingPage() {
   const [phone, setPhone] = useState(searchParams.get("phone") || "");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
-  const [selectedService, setSelectedService] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState("");
   const [notes, setNotes] = useState("");
+
+  // Fixed service - all appointments are general consultations
+  const selectedService = "General Consultation";
 
   // Autofill from patient data if coming from intake form
   const patientId = searchParams.get("pid");
   const autofill = searchParams.get("autofill");
-  const consultationType = searchParams.get("ctype"); // liposuction, breast, face
-
-  // Map consultation type to service
-  const getServiceFromConsultationType = (type: string | null): string => {
-    switch (type) {
-      case "liposuction": return "Body Contouring";
-      case "breast": return "Body Contouring";
-      case "face": return "Facial Rejuvenation";
-      default: return "";
-    }
-  };
-
-  const lockedService = consultationType ? getServiceFromConsultationType(consultationType) : null;
 
   useEffect(() => {
     if (autofill === "true" && patientId) {
@@ -125,39 +205,26 @@ export default function DoctorBookingPage() {
             setEmail(patient.email || "");
             setPhone(patient.phone || "");
           }
-
-          // Also fetch consultation data to determine service
-          const { data: consultation } = await supabaseClient
-            .from("patient_consultation_data")
-            .select("consultation_type")
-            .eq("patient_id", patientId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .single();
-
-          if (consultation) {
-            const service = getServiceFromConsultationType(consultation.consultation_type);
-            if (service) setSelectedService(service);
-          }
         } catch (err) {
           console.error("Error fetching patient data for autofill:", err);
         }
       };
       fetchPatientData();
     }
+  }, [autofill, patientId]);
 
-    // If consultation type is provided in URL, lock the service
-    if (lockedService) {
-      setSelectedService(lockedService);
-    }
-  }, [autofill, patientId, lockedService]);
-
-  // Check availability when date changes
+  // Generate time slots and check availability when date changes
   useEffect(() => {
-    if (selectedDate) {
+    if (selectedDate && locationId) {
+      const date = new Date(selectedDate);
+      const slots = generateTimeSlots(slug, locationId, date);
+      setAvailableSlots(slots);
+      setSelectedTime(""); // Reset selected time when date changes
       checkAvailability(selectedDate);
+    } else {
+      setAvailableSlots([]);
     }
-  }, [selectedDate]);
+  }, [selectedDate, locationId, slug]);
 
   async function checkAvailability(date: string) {
     try {
@@ -186,7 +253,7 @@ export default function DoctorBookingPage() {
   }
 
   async function handleSubmit() {
-    if (!firstName || !lastName || !email || !selectedDate || !selectedTime || !selectedService || !selectedLocation) {
+    if (!firstName || !lastName || !email || !selectedDate || !selectedTime || !locationId) {
       setError("Please fill in all required fields");
       return;
     }
@@ -209,7 +276,7 @@ export default function DoctorBookingPage() {
           doctorName: doctor.name,
           doctorEmail: doctor.email,
           notes,
-          location: selectedLocation,
+          location: locationName,
         }),
       });
 
@@ -313,14 +380,23 @@ export default function DoctorBookingPage() {
 
         {/* Back Link */}
         <Link
-          href="/book-appointment/doctors"
+          href={`/book-appointment/doctors?location=${locationId}`}
           className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 sm:mb-8 transition-colors text-sm sm:text-base"
         >
           <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Back to Doctors
+          Back to Specialists
         </Link>
+
+        {/* Location Badge */}
+        <div className="inline-flex items-center gap-2 bg-slate-100 rounded-full px-4 py-2 mb-6">
+          <svg className="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span className="text-sm font-medium text-slate-700">{locationLabel}</span>
+        </div>
 
         <div className="grid lg:grid-cols-[200px_1fr] gap-4 sm:gap-6 lg:gap-8">
           {/* Doctor Card - Fixed (smaller) */}
@@ -348,13 +424,12 @@ export default function DoctorBookingPage() {
 
             {/* Progress Steps */}
             <div className="flex items-center gap-1.5 sm:gap-2 mb-6 sm:mb-8 overflow-x-auto pb-2">
-              {(["info", "datetime", "service", "confirm"] as BookingStep[]).map((s, idx) => (
+              {(["info", "datetime", "confirm"] as BookingStep[]).map((s, idx) => (
                 <button
                   key={s}
                   onClick={() => {
                     if (s === "info" || (s === "datetime" && firstName && lastName && email) || 
-                        (s === "service" && selectedDate && selectedTime) || 
-                        (s === "confirm" && selectedService)) {
+                        (s === "confirm" && selectedDate && selectedTime)) {
                       setStep(s);
                     }
                   }}
@@ -370,13 +445,11 @@ export default function DoctorBookingPage() {
                   <span className="hidden sm:inline">
                     {s === "info" && "Personal Info"}
                     {s === "datetime" && "Date & Time"}
-                    {s === "service" && "Service"}
                     {s === "confirm" && "Confirm"}
                   </span>
                   <span className="sm:hidden">
                     {s === "info" && "Info"}
                     {s === "datetime" && "Date"}
-                    {s === "service" && "Service"}
                     {s === "confirm" && "Confirm"}
                   </span>
                 </button>
@@ -457,6 +530,9 @@ export default function DoctorBookingPage() {
             {step === "datetime" && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Select Date & Time</h3>
+                <p className="text-sm text-slate-600 mb-4">
+                  Please select a date when {doctor.name} is available at {locationLabel}.
+                </p>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Date *</label>
                   <input
@@ -472,11 +548,11 @@ export default function DoctorBookingPage() {
                   />
                 </div>
 
-                {selectedDate && (
+                {selectedDate && availableSlots.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-3">Available Time Slots *</label>
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {TIME_SLOTS.map((time) => {
+                      {availableSlots.map((time: string) => {
                         const isBooked = bookedSlots.includes(time);
                         return (
                           <button
@@ -499,88 +575,13 @@ export default function DoctorBookingPage() {
                   </div>
                 )}
 
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setStep("info")}
-                    className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-medium hover:bg-slate-200 transition-colors"
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (selectedDate && selectedTime) {
-                        setStep("service");
-                        setError(null);
-                      } else {
-                        setError("Please select a date and time");
-                      }
-                    }}
-                    className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-medium hover:bg-slate-800 transition-colors"
-                  >
-                    Continue
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Service Selection */}
-            {step === "service" && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4">Select Service & Location</h3>
-                
-                {/* Show locked service message if coming from intake */}
-                {lockedService && (
-                  <div className="mb-4 p-4 bg-sky-50 border border-sky-200 rounded-xl">
-                    <p className="text-sm text-sky-700">
-                      <span className="font-medium">Service auto-selected:</span> Based on your consultation, we&apos;ve pre-selected the most relevant service for your appointment.
+                {selectedDate && availableSlots.length === 0 && (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <p className="text-sm text-amber-700">
+                      {doctor.name} is not available at {locationLabel} on this day. Please select another date.
                     </p>
                   </div>
                 )}
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-3">Service *</label>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {SERVICE_OPTIONS.map((service) => (
-                      <button
-                        key={service}
-                        onClick={() => !lockedService && setSelectedService(service)}
-                        disabled={!!lockedService && service !== selectedService}
-                        className={`p-4 rounded-xl text-left transition-all border-2 ${
-                          selectedService === service
-                            ? "border-slate-900 bg-slate-50"
-                            : lockedService
-                            ? "border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed"
-                            : "border-slate-200 hover:border-slate-300"
-                        }`}
-                      >
-                        <span className={`font-medium ${selectedService === service ? "text-slate-900" : "text-slate-900"}`}>
-                          {service}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-3">Clinic Location *</label>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {CLINIC_LOCATIONS.map((loc) => (
-                      <button
-                        key={loc.value}
-                        onClick={() => setSelectedLocation(loc.value)}
-                        className={`p-4 rounded-xl text-left transition-all border-2 ${
-                          selectedLocation === loc.value
-                            ? "border-slate-900 bg-slate-50"
-                            : "border-slate-200 hover:border-slate-300"
-                        }`}
-                      >
-                        <span className={`font-medium ${selectedLocation === loc.value ? "text-slate-900" : "text-slate-900"}`}>
-                          {loc.label}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Additional Notes</label>
@@ -595,20 +596,18 @@ export default function DoctorBookingPage() {
 
                 <div className="flex gap-3 pt-4">
                   <button
-                    onClick={() => setStep("datetime")}
+                    onClick={() => setStep("info")}
                     className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-medium hover:bg-slate-200 transition-colors"
                   >
                     Back
                   </button>
                   <button
                     onClick={() => {
-                      if (selectedService && selectedLocation) {
+                      if (selectedDate && selectedTime) {
                         setStep("confirm");
                         setError(null);
-                      } else if (!selectedService) {
-                        setError("Please select a service");
                       } else {
-                        setError("Please select a clinic location");
+                        setError("Please select a date and time");
                       }
                     }}
                     className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-medium hover:bg-slate-800 transition-colors"
@@ -619,7 +618,7 @@ export default function DoctorBookingPage() {
               </div>
             )}
 
-            {/* Step 4: Confirmation */}
+            {/* Step 3: Confirmation */}
             {step === "confirm" && (
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Confirm Your Appointment</h3>
@@ -660,7 +659,7 @@ export default function DoctorBookingPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">Location</span>
-                    <span className="font-medium text-slate-900">{CLINIC_LOCATIONS.find(l => l.value === selectedLocation)?.label || selectedLocation}</span>
+                    <span className="font-medium text-slate-900">{locationLabel}</span>
                   </div>
                   {notes && (
                     <>
@@ -675,7 +674,7 @@ export default function DoctorBookingPage() {
 
                 <div className="flex gap-3">
                   <button
-                    onClick={() => setStep("service")}
+                    onClick={() => setStep("datetime")}
                     disabled={loading}
                     className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-medium hover:bg-slate-200 transition-colors disabled:opacity-50"
                   >
@@ -714,5 +713,17 @@ export default function DoctorBookingPage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+export default function DoctorBookingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+      </div>
+    }>
+      <DoctorBookingContent />
+    </Suspense>
   );
 }

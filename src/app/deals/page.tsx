@@ -74,6 +74,7 @@ export default function DealsPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
+  const [stageFilter, setStageFilter] = useState<string>("all");
   const [dragDealId, setDragDealId] = useState<string | null>(null);
   const [updatingDealId, setUpdatingDealId] = useState<string | null>(null);
   const [invoicedDealIds, setInvoicedDealIds] = useState<Set<string>>(new Set());
@@ -274,6 +275,11 @@ export default function DealsPage() {
       filtered = filtered.filter((deal) => deal.service?.id === serviceFilter);
     }
 
+    // Stage filter
+    if (stageFilter !== "all") {
+      filtered = filtered.filter((deal) => deal.stage_id === stageFilter);
+    }
+
     // Contact Owner filter - filter by patient's contact_owner_name
     if (contactOwnerFilter) {
       const selectedUser = userOptions.find(u => u.id === contactOwnerFilter);
@@ -321,7 +327,7 @@ export default function DealsPage() {
     }
 
     return filtered;
-  }, [deals, normalizedSearch, normalizedPatientSearch, serviceFilter, contactOwnerFilter, dealOwnerFilter, userOptions]);
+  }, [deals, normalizedSearch, normalizedPatientSearch, serviceFilter, stageFilter, contactOwnerFilter, dealOwnerFilter, userOptions]);
 
   const uniqueServices = useMemo(() => {
     const map = new Map<string, string>();
@@ -349,7 +355,7 @@ export default function DealsPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setListPage(1);
-  }, [searchQuery, serviceFilter]);
+  }, [searchQuery, serviceFilter, stageFilter]);
 
   // Helper to get visible deals count for a stage in kanban
   function getVisibleCountForStage(stageId: string): number {
@@ -596,6 +602,18 @@ export default function DealsPage() {
             {/* Global filters (applies to list + board) */}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={stageFilter}
+                  onChange={(event) => setStageFilter(event.target.value)}
+                  className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="all">All stages</option>
+                  {dealStages.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.name}
+                    </option>
+                  ))}
+                </select>
                 <select
                   value={serviceFilter}
                   onChange={(event) => setServiceFilter(event.target.value)}

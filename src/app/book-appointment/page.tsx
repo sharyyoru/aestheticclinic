@@ -99,7 +99,7 @@ export default function BookAppointmentPage() {
 
             {/* CTA Button */}
             <Link
-              href="/book-appointment/doctors"
+              href="/book-appointment/location"
               className="inline-flex items-center gap-3 bg-slate-900 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-full text-base sm:text-lg font-semibold shadow-lg hover:shadow-xl hover:bg-slate-800 transition-all transform hover:scale-105"
             >
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

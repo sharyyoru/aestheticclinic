@@ -3,7 +3,6 @@ import { createClient } from "@supabase/supabase-js";
 
 const STAGE_ORDER = [
   'request for information',
-  'request processed',
   'appointment set',
   'moment reflection',
   'image pending',
