@@ -924,14 +924,15 @@ export default function DealsPage() {
 
       {/* Floating kanban board, outside the main container but aligned to it */}
       {view === "board" && (
-        <div className="relative z-10 flex justify-center">
-          <div className="w-full max-w-5xl space-y-2">
+        <div className="relative z-10 w-full px-4">
+          <div className="mx-auto max-w-5xl">
             <div className="flex items-center justify-between gap-2 px-1 text-xs">
               <span className="text-[11px] text-slate-400">
                 Drag deals between stages to update their status.
               </span>
             </div>
-            <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 text-xs shadow-sm">
+          </div>
+          <div className="mt-2 rounded-xl border border-slate-200/80 bg-white/90 text-xs shadow-sm">
               {/* Top scrollbar - synced with main board */}
               <div
                 className="kanban-scroll-top w-full max-w-full"
@@ -1108,7 +1109,6 @@ export default function DealsPage() {
                 </div>
               </div>
             </div>
-          </div>
         </div>
       )}
 
