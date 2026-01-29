@@ -15,6 +15,41 @@ export async function GET() {
       );
     }
 
+    // Get existing users from public.users table
+    const { data: existingPublicUsers } = await supabaseAdmin
+      .from("users")
+      .select("id");
+    
+    const existingIds = new Set((existingPublicUsers || []).map((u) => u.id));
+
+    // Sync missing users to public.users table to satisfy foreign key constraints
+    const usersToSync = data.users.filter((user) => !existingIds.has(user.id));
+    
+    if (usersToSync.length > 0) {
+      const syncRecords = usersToSync.map((user) => {
+        const meta = (user.user_metadata || {}) as Record<string, unknown>;
+        const firstName = (meta["first_name"] as string) ?? null;
+        const lastName = (meta["last_name"] as string) ?? null;
+        const fullNameFromMeta = (meta["full_name"] as string) ?? null;
+        const fullName = fullNameFromMeta || 
+          (firstName && lastName ? `${firstName} ${lastName}` : null) ||
+          firstName || lastName;
+
+        return {
+          id: user.id,
+          email: user.email ?? null,
+          full_name: fullName,
+          role: (meta["role"] as string) ?? "staff",
+          designation: (meta["designation"] as string) ?? null,
+        };
+      });
+
+      // Insert missing users (ignore conflicts in case of race conditions)
+      await supabaseAdmin
+        .from("users")
+        .upsert(syncRecords, { onConflict: "id", ignoreDuplicates: true });
+    }
+
     const users = data.users.map((user) => {
       const meta = (user.user_metadata || {}) as Record<string, unknown>;
       const firstName = (meta["first_name"] as string) ?? null;
