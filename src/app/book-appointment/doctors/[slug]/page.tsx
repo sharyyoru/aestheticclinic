@@ -153,6 +153,39 @@ function hasAvailabilityOnDate(doctorSlug: string, locationId: string, date: Dat
   return !!availability;
 }
 
+// Find the nearest available date for the doctor at the location
+function findNearestAvailableDate(doctorSlug: string, locationId: string, maxDaysAhead: number = 90): Date | null {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  
+  for (let i = 0; i < maxDaysAhead; i++) {
+    const checkDate = new Date(tomorrow);
+    checkDate.setDate(tomorrow.getDate() + i);
+    if (hasAvailabilityOnDate(doctorSlug, locationId, checkDate)) {
+      return checkDate;
+    }
+  }
+  return null;
+}
+
+// Get all available dates for the doctor at the location within a range
+function getAvailableDates(doctorSlug: string, locationId: string, maxDaysAhead: number = 90): string[] {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  
+  const availableDates: string[] = [];
+  for (let i = 0; i < maxDaysAhead; i++) {
+    const checkDate = new Date(tomorrow);
+    checkDate.setDate(tomorrow.getDate() + i);
+    if (hasAvailabilityOnDate(doctorSlug, locationId, checkDate)) {
+      availableDates.push(checkDate.toISOString().split('T')[0]);
+    }
+  }
+  return availableDates;
+}
+
 type BookingStep = "info" | "datetime" | "confirm";
 
 function DoctorBookingContent() {
@@ -179,6 +212,8 @@ function DoctorBookingContent() {
   const [email, setEmail] = useState(searchParams.get("email") || "");
   const [phone, setPhone] = useState(searchParams.get("phone") || "");
   const [selectedDate, setSelectedDate] = useState("");
+  const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set());
+  const [nearestAvailableDate, setNearestAvailableDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -212,6 +247,26 @@ function DoctorBookingContent() {
       fetchPatientData();
     }
   }, [autofill, patientId]);
+
+  // Calculate available dates and nearest date when location changes
+  useEffect(() => {
+    if (locationId && slug) {
+      const dates = getAvailableDates(slug, locationId, 90);
+      setAvailableDatesSet(new Set(dates));
+      
+      const nearest = findNearestAvailableDate(slug, locationId, 90);
+      if (nearest) {
+        const nearestStr = nearest.toISOString().split('T')[0];
+        setNearestAvailableDate(nearestStr);
+        // Auto-select the nearest available date if no date selected yet
+        if (!selectedDate) {
+          setSelectedDate(nearestStr);
+        }
+      } else {
+        setNearestAvailableDate(null);
+      }
+    }
+  }, [locationId, slug]);
 
   // Generate time slots and check availability when date changes
   useEffect(() => {
@@ -535,13 +590,31 @@ function DoctorBookingContent() {
                     type="date"
                     value={selectedDate}
                     onChange={(e) => {
-                      setSelectedDate(e.target.value);
-                      setSelectedTime("");
+                      const newDate = e.target.value;
+                      // Only allow dates with availability
+                      if (availableDatesSet.has(newDate) || !newDate) {
+                        setSelectedDate(newDate);
+                        setSelectedTime("");
+                      } else {
+                        // If user selects unavailable date, show it but warn them
+                        setSelectedDate(newDate);
+                        setSelectedTime("");
+                      }
                     }}
                     min={getMinDate()}
                     max={getMaxDate()}
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
                   />
+                  {nearestAvailableDate && !selectedDate && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Next available date: {new Date(nearestAvailableDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    </p>
+                  )}
+                  {availableDatesSet.size > 0 && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      {availableDatesSet.size} available dates in the next 3 months
+                    </p>
+                  )}
                 </div>
 
                 {selectedDate && availableSlots.length > 0 && (
@@ -572,10 +645,22 @@ function DoctorBookingContent() {
                 )}
 
                 {selectedDate && availableSlots.length === 0 && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                    <p className="text-sm text-amber-700">
-                      {doctor.name} is not available at {locationLabel} on this day. Please select another date.
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                    <p className="text-sm text-amber-700 font-medium">
+                      {doctor.name} is fully booked at {locationLabel} on this day. Please select another date.
                     </p>
+                    <p className="text-sm text-amber-600 italic">
+                      Le {doctor.name.replace('Dr. ', 'Dr ')} est complet à {locationLabel} à cette date. Veuillez choisir une autre date.
+                    </p>
+                    {nearestAvailableDate && nearestAvailableDate !== selectedDate && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDate(nearestAvailableDate)}
+                        className="mt-2 text-sm text-sky-700 hover:text-sky-800 underline font-medium"
+                      >
+                        → Next available: {new Date(nearestAvailableDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                      </button>
+                    )}
                   </div>
                 )}
 
