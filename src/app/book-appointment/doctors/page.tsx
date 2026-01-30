@@ -193,7 +193,9 @@ function DoctorsListContent() {
                     src={doctor.image}
                     alt={doctor.name}
                     fill
-                    className="object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                    className={`object-cover group-hover:scale-105 transition-transform duration-300 ${
+                      doctor.slug === "lily-radionova" ? "object-[center_15%]" : "object-top"
+                    }`}
                   />
                 </div>
                 <div className="p-3 sm:p-4 md:p-5">

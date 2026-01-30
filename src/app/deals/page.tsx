@@ -819,7 +819,7 @@ export default function DealsPage() {
                               key={deal.id}
                               onClick={() =>
                                 router.push(
-                                  `/patients/${deal.patient_id}?mode=crm&tab=deals`,
+                                  `/patients/${deal.patient_id}?m_tab=crm&crm_sub=deals`,
                                 )
                               }
                               className="cursor-pointer hover:bg-slate-50/70"
@@ -1039,7 +1039,7 @@ export default function DealsPage() {
                                   onDragEnd={() => setDragDealId(null)}
                                   onClick={() =>
                                     router.push(
-                                      `/patients/${deal.patient_id}?mode=crm&tab=deals&dealId=${deal.id}`,
+                                      `/patients/${deal.patient_id}?m_tab=crm&crm_sub=deals&dealId=${deal.id}`,
                                     )
                                   }
                                   className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[11px] text-slate-800 shadow-sm transition hover:border-sky-300 hover:shadow-md"
