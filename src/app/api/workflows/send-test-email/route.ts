@@ -42,6 +42,16 @@ function textToHtml(text: string): string {
     .join("<br />");
 }
 
+function sanitizeTelLinks(html: string): string {
+  return html.replace(
+    /href\s*=\s*["']tel:([^"']+)["']/gi,
+    (_match, phoneNumber) => {
+      const cleaned = phoneNumber.replace(/[\s\-\(\)\.]/g, "");
+      return `href="tel:${cleaned}"`;
+    }
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SendTestEmailRequestBody;
@@ -104,6 +114,8 @@ export async function POST(request: Request) {
       const renderedText = renderTemplate(bodyTemplate, templateContext);
       html = textToHtml(renderedText || "(Empty body)");
     }
+
+    html = sanitizeTelLinks(html);
 
     const sendUrl = new URL("/api/emails/send", request.url);
 

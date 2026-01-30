@@ -53,6 +53,16 @@ function textToHtml(text: string): string {
     .join("<br />");
 }
 
+function sanitizeTelLinks(html: string): string {
+  return html.replace(
+    /href\s*=\s*["']tel:([^"']+)["']/gi,
+    (_match, phoneNumber) => {
+      const cleaned = phoneNumber.replace(/[\s\-\(\)\.]/g, "");
+      return `href="tel:${cleaned}"`;
+    }
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Partial<DealStageChangedPayload>;
@@ -622,6 +632,8 @@ export async function POST(request: Request) {
               const bodyText = renderTemplate(bodyTemplate, templateContext);
               bodyHtml = textToHtml(bodyText);
             }
+
+            bodyHtml = sanitizeTelLinks(bodyHtml);
 
             const effectiveDate = scheduledAt ?? now;
             const isFuture = effectiveDate.getTime() > now.getTime();
