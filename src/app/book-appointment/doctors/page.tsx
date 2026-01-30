@@ -57,6 +57,16 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       6: { start: "10:00", end: "12:00" }, // Saturday 10am-12pm
     },
   },
+  "lily-radionova": {
+    gstaad: {
+      1: { start: "10:00", end: "18:30" }, // Monday 10am-6:30pm
+      2: { start: "10:00", end: "18:30" }, // Tuesday 10am-6:30pm
+      3: { start: "10:00", end: "18:30" }, // Wednesday 10am-6:30pm
+      4: { start: "10:00", end: "18:30" }, // Thursday 10am-6:30pm
+      5: { start: "10:00", end: "18:30" }, // Friday 10am-6:30pm
+      6: { start: "10:00", end: "18:30" }, // Saturday 10am-6:30pm
+    },
+  },
 };
 
 const ALL_DOCTORS = [
@@ -87,6 +97,13 @@ const ALL_DOCTORS = [
     specialty: "Aesthetics Clinic Services",
     image: "/doctors/clinic.png",
     description: "Advanced laser treatments and aesthetic clinic services.",
+  },
+  {
+    slug: "lily-radionova",
+    name: "Nurse Lily Radionova",
+    specialty: "Aesthetic Nurse Specialist",
+    image: "/doctors/lily-radionova.jpeg",
+    description: "Expert aesthetic nurse specializing in non-invasive treatments at Gstaad.",
   },
 ];
 

@@ -41,6 +41,13 @@ const DOCTORS: Record<string, {
     email: "treatments@aesthetics-ge.ch",
     description: "Advanced laser treatments, body contouring, and aesthetic clinic services.",
   },
+  "lily-radionova": {
+    name: "Nurse Lily Radionova",
+    specialty: "Aesthetic Nurse Specialist",
+    image: "/doctors/lily-radionova.jpeg",
+    email: "lily@aesthetics-ge.ch",
+    description: "Expert aesthetic nurse specializing in non-invasive treatments and patient care at our Gstaad location.",
+  },
 };
 
 // Doctor availability by location
@@ -92,6 +99,16 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       4: { start: "10:00", end: "12:00" }, // Thursday 10am-12pm
       5: { start: "10:00", end: "12:00" }, // Friday 10am-12pm
       6: { start: "10:00", end: "12:00" }, // Saturday 10am-12pm
+    },
+  },
+  "lily-radionova": {
+    gstaad: {
+      1: { start: "10:00", end: "18:30" }, // Monday 10am-6:30pm
+      2: { start: "10:00", end: "18:30" }, // Tuesday 10am-6:30pm
+      3: { start: "10:00", end: "18:30" }, // Wednesday 10am-6:30pm
+      4: { start: "10:00", end: "18:30" }, // Thursday 10am-6:30pm
+      5: { start: "10:00", end: "18:30" }, // Friday 10am-6:30pm
+      6: { start: "10:00", end: "18:30" }, // Saturday 10am-6:30pm
     },
   },
 };
