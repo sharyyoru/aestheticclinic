@@ -110,8 +110,15 @@ const LOCATION_LABELS: Record<string, string> = {
   montreux: "Montreux",
 };
 
+// Parse date string YYYY-MM-DD as local date (not UTC)
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0); // noon to avoid timezone issues
+}
+
 // Generate 30-minute time slots based on doctor availability for a specific date
-function generateTimeSlots(doctorSlug: string, locationId: string, date: Date): string[] {
+function generateTimeSlots(doctorSlug: string, locationId: string, dateStr: string): string[] {
+  const date = parseLocalDate(dateStr);
   const dayOfWeek = date.getDay();
   const availability = DOCTOR_AVAILABILITY[doctorSlug]?.[locationId]?.[dayOfWeek];
   
@@ -153,17 +160,24 @@ function hasAvailabilityOnDate(doctorSlug: string, locationId: string, date: Dat
   return !!availability;
 }
 
+// Format date to YYYY-MM-DD string in local timezone (not UTC)
+function formatDateLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Find the nearest available date for the doctor at the location
-function findNearestAvailableDate(doctorSlug: string, locationId: string, maxDaysAhead: number = 90): Date | null {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
+function findNearestAvailableDate(doctorSlug: string, locationId: string, maxDaysAhead: number = 90): string | null {
+  const today = new Date();
+  today.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
   
-  for (let i = 0; i < maxDaysAhead; i++) {
-    const checkDate = new Date(tomorrow);
-    checkDate.setDate(tomorrow.getDate() + i);
+  for (let i = 1; i <= maxDaysAhead; i++) {
+    const checkDate = new Date(today);
+    checkDate.setDate(today.getDate() + i);
     if (hasAvailabilityOnDate(doctorSlug, locationId, checkDate)) {
-      return checkDate;
+      return formatDateLocal(checkDate);
     }
   }
   return null;
@@ -171,16 +185,15 @@ function findNearestAvailableDate(doctorSlug: string, locationId: string, maxDay
 
 // Get all available dates for the doctor at the location within a range
 function getAvailableDates(doctorSlug: string, locationId: string, maxDaysAhead: number = 90): string[] {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
   
   const availableDates: string[] = [];
-  for (let i = 0; i < maxDaysAhead; i++) {
-    const checkDate = new Date(tomorrow);
-    checkDate.setDate(tomorrow.getDate() + i);
+  for (let i = 1; i <= maxDaysAhead; i++) {
+    const checkDate = new Date(today);
+    checkDate.setDate(today.getDate() + i);
     if (hasAvailabilityOnDate(doctorSlug, locationId, checkDate)) {
-      availableDates.push(checkDate.toISOString().split('T')[0]);
+      availableDates.push(formatDateLocal(checkDate));
     }
   }
   return availableDates;
@@ -214,6 +227,7 @@ function DoctorBookingContent() {
   const [selectedDate, setSelectedDate] = useState("");
   const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set());
   const [nearestAvailableDate, setNearestAvailableDate] = useState<string | null>(null);
+  const [isLoadingDates, setIsLoadingDates] = useState(true);
   const [selectedTime, setSelectedTime] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -251,28 +265,26 @@ function DoctorBookingContent() {
   // Calculate available dates and nearest date when location changes
   useEffect(() => {
     if (locationId && slug) {
+      setIsLoadingDates(true);
       const dates = getAvailableDates(slug, locationId, 90);
       setAvailableDatesSet(new Set(dates));
       
       const nearest = findNearestAvailableDate(slug, locationId, 90);
       if (nearest) {
-        const nearestStr = nearest.toISOString().split('T')[0];
-        setNearestAvailableDate(nearestStr);
-        // Auto-select the nearest available date if no date selected yet
-        if (!selectedDate) {
-          setSelectedDate(nearestStr);
-        }
+        setNearestAvailableDate(nearest);
+        // Auto-select the nearest available date
+        setSelectedDate(nearest);
       } else {
         setNearestAvailableDate(null);
       }
+      setIsLoadingDates(false);
     }
   }, [locationId, slug]);
 
   // Generate time slots and check availability when date changes
   useEffect(() => {
     if (selectedDate && locationId) {
-      const date = new Date(selectedDate);
-      const slots = generateTimeSlots(slug, locationId, date);
+      const slots = generateTimeSlots(slug, locationId, selectedDate);
       setAvailableSlots(slots);
       setSelectedTime(""); // Reset selected time when date changes
       checkAvailability(selectedDate);
@@ -652,15 +664,6 @@ function DoctorBookingContent() {
                     <p className="text-sm text-amber-600 italic">
                       Le {doctor.name.replace('Dr. ', 'Dr ')} est complet à {locationLabel} à cette date. Veuillez choisir une autre date.
                     </p>
-                    {nearestAvailableDate && nearestAvailableDate !== selectedDate && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDate(nearestAvailableDate)}
-                        className="mt-2 text-sm text-sky-700 hover:text-sky-800 underline font-medium"
-                      >
-                        → Next available: {new Date(nearestAvailableDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                      </button>
-                    )}
                   </div>
                 )}
 
