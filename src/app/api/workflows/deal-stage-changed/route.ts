@@ -54,13 +54,32 @@ function textToHtml(text: string): string {
 }
 
 function sanitizeTelLinks(html: string): string {
-  return html.replace(
+  // First, decode any URL-encoded tel: protocols (tel%3A -> tel:)
+  let result = html.replace(/href\s*=\s*(["'])tel%3A/gi, 'href=$1tel:');
+  
+  // Now handle all tel: links and clean the phone numbers
+  result = result.replace(
     /href\s*=\s*["']tel:([^"']+)["']/gi,
     (_match, phoneNumber) => {
-      const cleaned = phoneNumber.replace(/[\s\-\(\)\.]/g, "");
+      // Decode any remaining URL encoding in the phone number
+      let decoded = phoneNumber;
+      try {
+        decoded = decodeURIComponent(phoneNumber);
+      } catch {
+        // If decoding fails, use original
+      }
+      // Remove all non-phone characters: spaces, dashes, dots, parentheses, nbsp, etc.
+      // Keep only digits and the leading + sign
+      const cleaned = decoded
+        .replace(/&nbsp;/gi, '')  // HTML nbsp entity
+        .replace(/&#160;/g, '')   // Numeric nbsp entity
+        .replace(/\u00A0/g, '')   // Unicode nbsp
+        .replace(/[\s\-\(\)\.\u2013\u2014]/g, ''); // spaces, dashes, dots, parens, en-dash, em-dash
       return `href="tel:${cleaned}"`;
     }
   );
+  
+  return result;
 }
 
 export async function POST(request: Request) {
