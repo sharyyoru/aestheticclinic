@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import TaskEditModal from "@/components/TaskEditModal";
+import { useTasksNotifications } from "@/components/TasksNotificationsContext";
 
 type TaskStatus = "not_started" | "in_progress" | "completed";
 
@@ -53,6 +54,23 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { refreshOpenTasksCount } = useTasksNotifications();
+
+  // Mark all unread tasks as read for the current user
+  const markTasksAsRead = useCallback(async (userId: string) => {
+    try {
+      await supabaseClient
+        .from("tasks")
+        .update({ assigned_read_at: new Date().toISOString() })
+        .eq("assigned_user_id", userId)
+        .is("assigned_read_at", null);
+      
+      // Refresh the count after marking as read
+      await refreshOpenTasksCount();
+    } catch (err) {
+      console.error("Failed to mark tasks as read:", err);
+    }
+  }, [refreshOpenTasksCount]);
 
   const [patientSearch, setPatientSearch] = useState("");
   const [patientFilterId, setPatientFilterId] = useState<string | null>(null);
@@ -122,6 +140,11 @@ export default function TasksPage() {
 
         setTasks(data as unknown as TaskRow[]);
         setLoading(false);
+
+        // Mark tasks as read when viewing own tasks (not when admin views another user's tasks)
+        if (!selectedUserId || selectedUserId === user.id) {
+          void markTasksAsRead(user.id);
+        }
       } catch {
         if (!isMounted) return;
         setError("Failed to load tasks.");
