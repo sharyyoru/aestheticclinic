@@ -474,7 +474,6 @@ function DoctorBookingContent() {
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
-                      placeholder="John"
                     />
                   </div>
                   <div>
@@ -484,7 +483,6 @@ function DoctorBookingContent() {
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
-                      placeholder="Doe"
                     />
                   </div>
                 </div>
@@ -495,7 +493,6 @@ function DoctorBookingContent() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
-                    placeholder="john@example.com"
                   />
                 </div>
                 <div>
@@ -505,7 +502,6 @@ function DoctorBookingContent() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
-                    placeholder="+41 XX XXX XX XX"
                   />
                 </div>
                 <div className="pt-4">
