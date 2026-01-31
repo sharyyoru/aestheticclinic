@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { isTransactionPaid, type PayrexxWebhookPayload } from "@/lib/payrexx";
+import { isTransactionPaid, type PayrexxWebhookPayload, type PayrexxTransactionStatus } from "@/lib/payrexx";
 
 // Use service role for webhook processing (no user context)
 const supabaseAdmin = createClient(
@@ -12,29 +12,114 @@ export async function POST(request: NextRequest) {
   try {
     // Parse the webhook payload
     const contentType = request.headers.get("content-type") || "";
-    let payload: PayrexxWebhookPayload;
+    let payload: PayrexxWebhookPayload | null = null;
+    let rawBody = "";
 
-    if (contentType.includes("application/json")) {
-      payload = await request.json();
-    } else if (contentType.includes("application/x-www-form-urlencoded")) {
-      const formData = await request.formData();
-      const transactionData = formData.get("transaction");
-      if (typeof transactionData === "string") {
-        payload = { transaction: JSON.parse(transactionData) };
-      } else {
-        console.error("Invalid webhook payload format");
-        return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
-      }
-    } else {
-      console.error("Unsupported content type:", contentType);
-      return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
+    // Clone request to read body for logging
+    try {
+      rawBody = await request.clone().text();
+      console.log("Payrexx webhook raw body:", rawBody.substring(0, 500));
+    } catch {
+      // Ignore clone errors
     }
 
-    const { transaction } = payload;
+    if (contentType.includes("application/json")) {
+      const jsonData = await request.json();
+      // Handle both direct transaction object and wrapped payload
+      if (jsonData.transaction) {
+        payload = jsonData;
+      } else if (jsonData.id && jsonData.status) {
+        // Direct transaction object without wrapper
+        payload = { transaction: jsonData };
+      }
+    } else if (contentType.includes("application/x-www-form-urlencoded")) {
+      const formData = await request.formData();
+      
+      // Try multiple field names that Payrexx might use
+      const transactionData = formData.get("transaction") || formData.get("data") || formData.get("payload");
+      
+      if (typeof transactionData === "string") {
+        try {
+          const parsed = JSON.parse(transactionData);
+          if (parsed.transaction) {
+            payload = parsed;
+          } else if (parsed.id && parsed.status) {
+            payload = { transaction: parsed };
+          } else {
+            payload = { transaction: parsed };
+          }
+        } catch {
+          console.error("Failed to parse transaction JSON from form data");
+        }
+      }
+      
+      // If no transaction field, try to build from individual form fields
+      if (!payload) {
+        const id = formData.get("id");
+        const status = formData.get("status");
+        const uuid = formData.get("uuid");
+        const referenceId = formData.get("referenceId") || formData.get("reference_id");
+        
+        if (id && status) {
+          payload = {
+            transaction: {
+              id: Number(id),
+              uuid: String(uuid || ""),
+              status: String(status) as PayrexxTransactionStatus,
+              referenceId: String(referenceId || ""),
+              time: new Date().toISOString(),
+              lang: "en",
+              pageUuid: "",
+              payment: { brand: "", wallet: null, cardType: "" },
+              psp: "",
+              pspId: 0,
+              mode: "",
+              invoice: {
+                number: "",
+                products: [],
+                amount: 0,
+                currency: "CHF",
+                discount: { code: "", amount: 0, percentage: 0 },
+                customFields: {},
+                test: false,
+                referenceId: String(referenceId || ""),
+                paymentLink: { hash: "", referenceId: String(referenceId || ""), email: null, name: "", differentBillingAddress: false, expirationDate: null },
+                paymentRequestId: 0,
+                originalAmount: 0,
+              },
+              contact: { id: 0, uuid: "", title: "", firstname: "", lastname: "", company: "", street: "", zip: "", place: "", country: "", countryISO: "", phone: "", email: "", dateOfBirth: null, deliveryGender: "", deliveryTitle: "", deliveryFirstname: "", deliveryLastname: "", deliveryCompany: "", deliveryStreet: "", deliveryZip: "", deliveryPlace: "", deliveryCountry: "", deliveryCountryISO: "", deliveryPhone: "" },
+              subscription: null,
+              refundable: false,
+              partiallyRefundable: false,
+              metadata: {},
+            }
+          };
+        }
+      }
+    } else {
+      // Try to parse as JSON regardless of content type
+      try {
+        const jsonData = JSON.parse(rawBody);
+        if (jsonData.transaction) {
+          payload = jsonData;
+        } else if (jsonData.id && jsonData.status) {
+          payload = { transaction: jsonData };
+        }
+      } catch {
+        console.error("Unsupported content type and failed to parse as JSON:", contentType);
+      }
+    }
+
+    const transaction = payload?.transaction;
 
     if (!transaction) {
-      console.error("No transaction data in webhook payload");
-      return NextResponse.json({ error: "No transaction data" }, { status: 400 });
+      console.error("No transaction data in webhook payload. Content-Type:", contentType, "Raw body preview:", rawBody.substring(0, 200));
+      // Return 200 to prevent Payrexx from retrying - log the issue but don't block
+      return NextResponse.json({ 
+        received: true, 
+        warning: "No transaction data found in payload",
+        contentType,
+      });
     }
 
     console.log("Payrexx webhook received:", {

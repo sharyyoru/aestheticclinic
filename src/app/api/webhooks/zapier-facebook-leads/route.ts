@@ -343,7 +343,7 @@ export async function POST(request: NextRequest) {
           service_id: serviceId,
           service_interest: finalServiceInterest,
           source: "Facebook Lead Ads",
-          deal_value: null,
+          value: null,
           notes: `Facebook Ad: ${adName || "N/A"}\nCampaign: ${campaignName || "N/A"}\nForm: ${formName || "N/A"}`,
         })
         .select("id")

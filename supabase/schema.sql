@@ -168,6 +168,11 @@ create index if not exists deals_owner_id_idx on deals(owner_id);
 create index if not exists deals_patient_id_idx on deals(patient_id);
 create index if not exists deals_stage_id_idx on deals(stage_id);
 
+-- Add service_interest and source columns to deals (for lead tracking)
+alter table if exists deals
+  add column if not exists service_interest text,
+  add column if not exists source text;
+
 -- Crisalix reconstructions
 create table if not exists crisalix_reconstructions (
   id uuid primary key default gen_random_uuid(),
@@ -184,11 +189,38 @@ create index if not exists crisalix_reconstructions_patient_type_idx on crisalix
 DO $$ BEGIN
   CREATE TYPE workflow_trigger_type AS ENUM (
     'deal_stage_changed',
+    'patient_created',
     'appointment_created',
-    'appointment_updated'
+    'appointment_completed',
+    'appointment_updated',
+    'form_submitted',
+    'task_completed',
+    'manual'
   );
 EXCEPTION
   WHEN duplicate_object THEN null;
+END $$;
+
+-- Add missing values to workflow_trigger_type enum (for existing databases)
+DO $$ BEGIN
+  ALTER TYPE workflow_trigger_type ADD VALUE IF NOT EXISTS 'patient_created';
+EXCEPTION WHEN others THEN null;
+END $$;
+DO $$ BEGIN
+  ALTER TYPE workflow_trigger_type ADD VALUE IF NOT EXISTS 'appointment_completed';
+EXCEPTION WHEN others THEN null;
+END $$;
+DO $$ BEGIN
+  ALTER TYPE workflow_trigger_type ADD VALUE IF NOT EXISTS 'form_submitted';
+EXCEPTION WHEN others THEN null;
+END $$;
+DO $$ BEGIN
+  ALTER TYPE workflow_trigger_type ADD VALUE IF NOT EXISTS 'task_completed';
+EXCEPTION WHEN others THEN null;
+END $$;
+DO $$ BEGIN
+  ALTER TYPE workflow_trigger_type ADD VALUE IF NOT EXISTS 'manual';
+EXCEPTION WHEN others THEN null;
 END $$;
 
 -- Workflows
