@@ -7,7 +7,7 @@ import Image from "next/image";
 import { Language, getTranslation } from "@/lib/intakeTranslations";
 import InsurerSearchSelect from "@/components/InsurerSearchSelect";
 
-type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+type Step = 0 | 1 | 2 | 3 | 4 | 5;
 
 const STEP_INFO = [
   { num: 1, desc: "Fill Out the Form with all your preferences." },
@@ -15,9 +15,7 @@ const STEP_INFO = [
   { num: 3, desc: "Enter Measurements." },
   { num: 4, desc: "Upload clear photos of the areas you wish to treat to help our experts assess your needs." },
   { num: 5, desc: "If available, view a personalized simulation of your potential results or receive a link to the simulation after review." },
-  { num: 6, desc: "Select your treatment preferences and finalize your choices, including preferred dates and any additional options." },
-  { num: 7, desc: "Select your treatment preferences and finalize your choices, including preferred dates and any additional options." },
-  { num: 8, desc: "You're All Set! Once submitted, your information will be reviewed by our expert team, and we'll reach out to discuss the next steps in your journey." },
+  { num: 6, desc: "You're All Set! Once submitted, your information will be reviewed by our expert team, and we'll reach out to discuss the next steps in your journey." },
 ];
 
 const NATIONALITIES = [
@@ -479,6 +477,25 @@ function IntakeStepsContent() {
 
       // Save personal information to patient record
       if (currentStep === 1) {
+        // Validate required fields
+        if (!firstName.trim()) {
+          throw new Error("First name is required");
+        }
+        if (!lastName.trim()) {
+          throw new Error("Last name is required");
+        }
+        if (!email.trim()) {
+          throw new Error("Email is required");
+        }
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+          throw new Error("Please enter a valid email address");
+        }
+        if (!mobile.trim()) {
+          throw new Error("Mobile number is required");
+        }
+
         const dob = dobYear && dobMonth && dobDay 
           ? `${dobYear}-${dobMonth.padStart(2, '0')}-${dobDay.padStart(2, '0')}`
           : null;
@@ -512,7 +529,7 @@ function IntakeStepsContent() {
           .from("patient_insurances")
           .select("id")
           .eq("patient_id", patientId)
-          .single();
+          .maybeSingle();
 
         const insuranceData = {
           patient_id: patientId,
@@ -1160,6 +1177,12 @@ function IntakeStepsContent() {
                 {error}
               </div>
             )}
+
+            {!consultationCategory && (
+              <p className="text-sm text-slate-500 italic text-center">
+                Please select a consultation type above to continue
+              </p>
+            )}
           </div>
         </div>
 
@@ -1580,9 +1603,10 @@ function IntakeStepsContent() {
                   type="number"
                   value={height}
                   onChange={(e) => setHeight(e.target.value)}
-                  placeholder={t.height}
+                  placeholder={`${t.height} (e.g., 170 for 170cm or 1.7 for meters)`}
                   className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
                 />
+                <p className="text-xs text-slate-500 mt-1">Enter in cm (e.g., 170) or meters (e.g., 1.70)</p>
               </div>
 
               <div>

@@ -336,9 +336,32 @@ function DoctorBookingContent() {
     }
   }
 
+  // Email validation helper
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email.trim());
+  };
+
+  // Phone validation helper (optional but if provided, should be valid)
+  const isValidPhone = (phone: string): boolean => {
+    if (!phone.trim()) return true; // Phone is optional
+    const phoneRegex = /^[+]?[\d\s()-]{7,20}$/;
+    return phoneRegex.test(phone.trim());
+  };
+
   async function handleSubmit() {
     if (!firstName || !lastName || !email || !selectedDate || !selectedTime || !locationId) {
       setError("Please fill in all required fields");
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    if (!isValidPhone(phone)) {
+      setError("Please enter a valid phone number");
       return;
     }
 
@@ -591,12 +614,24 @@ function DoctorBookingContent() {
                 <div className="pt-4">
                   <button
                     onClick={() => {
-                      if (firstName && lastName && email) {
-                        setStep("datetime");
-                        setError(null);
-                      } else {
+                      if (!firstName || !lastName || !email) {
                         setError("Please fill in all required fields");
+                        return;
                       }
+                      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                      if (!emailRegex.test(email.trim())) {
+                        setError("Please enter a valid email address");
+                        return;
+                      }
+                      if (phone.trim()) {
+                        const phoneRegex = /^[+]?[\d\s()-]{7,20}$/;
+                        if (!phoneRegex.test(phone.trim())) {
+                          setError("Please enter a valid phone number");
+                          return;
+                        }
+                      }
+                      setStep("datetime");
+                      setError(null);
                     }}
                     className="w-full bg-slate-900 text-white py-3 rounded-xl font-medium hover:bg-slate-800 transition-colors"
                   >
