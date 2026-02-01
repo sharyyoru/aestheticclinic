@@ -320,14 +320,20 @@ export async function POST(request: NextRequest) {
 
     console.log(`Service interest "${serviceInterest}" matched to HubSpot service: ${matchedService?.name || "None"}`);
 
-    // Check if deal already exists for this patient with similar service
-    const { data: existingDeal } = await supabaseAdmin
+    // Check if deal already exists for this patient with same service
+    let existingDealQuery = supabaseAdmin
       .from("deals")
       .select("id")
-      .eq("patient_id", patientId)
-      .ilike("service_interest", `%${serviceInterest}%`)
-      .limit(1)
-      .maybeSingle();
+      .eq("patient_id", patientId);
+    
+    // If we matched a service, check by service_id, otherwise check by title containing service interest
+    if (serviceId) {
+      existingDealQuery = existingDealQuery.eq("service_id", serviceId);
+    } else {
+      existingDealQuery = existingDealQuery.ilike("title", `%${serviceInterest}%`);
+    }
+    
+    const { data: existingDeal } = await existingDealQuery.limit(1).maybeSingle();
 
     let dealId: string | null = null;
 
@@ -341,10 +347,7 @@ export async function POST(request: NextRequest) {
           pipeline: "Lead to Surgery",
           stage_id: defaultStageId,
           service_id: serviceId,
-          service_interest: finalServiceInterest,
-          source: "Facebook Lead Ads",
-          value: null,
-          notes: `Facebook Ad: ${adName || "N/A"}\nCampaign: ${campaignName || "N/A"}\nForm: ${formName || "N/A"}`,
+          notes: `Source: Facebook Lead Ads\nFacebook Ad: ${adName || "N/A"}\nCampaign: ${campaignName || "N/A"}\nForm: ${formName || "N/A"}\nService Interest: ${finalServiceInterest}`,
         })
         .select("id")
         .single();
