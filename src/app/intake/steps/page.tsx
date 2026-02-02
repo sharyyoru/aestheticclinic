@@ -1075,20 +1075,15 @@ function IntakeStepsContent() {
 
   // Thank You + Consultation Category Selection (Step 5)
   if (step === 5) {
-    // Check if this is a first-time registration or an edit
-    const isFirstRegistration = !termsAccepted;
-
-    const handleSelectCategory = async (category: string) => {
-      setConsultationCategory(category);
+    const handleCompleteIntake = async () => {
       setLoading(true);
       setError(null);
       
       try {
-        // Save consultation category to submission
+        // Mark submission as completed
         await supabaseClient
           .from("patient_intake_submissions")
           .update({
-            consultation_category: category,
             status: "completed",
             completed_at: new Date().toISOString(),
             terms_accepted: true,
@@ -1105,10 +1100,11 @@ function IntakeStepsContent() {
           })
           .eq("id", patientId);
 
-        // Redirect to the specific consultation path
-        router.push(`/intake/consultation/${category}?pid=${patientId}&sid=${submissionId}`);
+        // Show confirmation
+        setShowConfirmation(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to save");
+      } finally {
         setLoading(false);
       }
     };
@@ -1126,51 +1122,27 @@ function IntakeStepsContent() {
           <LanguageSelector />
         </header>
 
-        <div className="flex-1 flex flex-col items-center px-4 sm:px-6 py-6">
+        <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 py-6">
           <div className="w-full max-w-md text-center">
-            {/* Congratulatory Message */}
-            <div className="mb-8">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-100 flex items-center justify-center">
-                <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-medium text-slate-800 mb-2">
-                {isFirstRegistration ? t.thankYouRegistering : t.changesSaved}
-              </h2>
-              <p className="text-slate-600">
-                {t.hi} <span className="font-semibold text-amber-600">{firstName || patientName}</span>
-              </p>
+            {/* Success Icon */}
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-100 flex items-center justify-center">
+              <svg className="w-10 h-10 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
             </div>
 
-            {/* Consultation Options */}
-            <p className="text-slate-600 text-sm mb-2 italic">{t.contactPrefTitle}</p>
-            
-            <div className="mb-6">
-              <label className="block text-[#1a4d7c] text-sm font-medium mb-4">
-                {t.categoryQuestion} <span className="text-red-500">*</span>
-              </label>
-              <div className="space-y-3">
-                {[
-                  { value: "liposuction", label: t.consultationOptions.liposuction },
-                  { value: "breast", label: t.consultationOptions.breast },
-                  { value: "face", label: t.consultationOptions.face }
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setConsultationCategory(option.value)}
-                    className={`w-full py-3 px-4 rounded-full border text-center transition-colors ${
-                      consultationCategory === option.value
-                        ? "bg-slate-800 text-white border-slate-800"
-                        : "bg-white border-slate-300 text-slate-700 hover:border-slate-400"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Thank You Message */}
+            <h2 className="text-2xl sm:text-3xl font-medium text-slate-800 mb-3">
+              {language === "fr" ? "Merci!" : "Thank You!"}
+            </h2>
+            <p className="text-slate-600 mb-2">
+              {t.hi} <span className="font-semibold text-amber-600">{firstName || patientName}</span>
+            </p>
+            <p className="text-slate-600 text-lg mb-8">
+              {language === "fr" 
+                ? "Votre formulaire a été soumis avec succès. Un de nos assistants vous contactera sous peu."
+                : "Your form has been submitted successfully. One of our assistants will get in touch with you shortly."}
+            </p>
 
             {error && (
               <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
@@ -1178,25 +1150,29 @@ function IntakeStepsContent() {
               </div>
             )}
 
-            {!consultationCategory && (
-              <p className="text-sm text-slate-500 italic text-center">
-                Please select a consultation type above to continue
+            {/* Submit Button */}
+            <button
+              onClick={handleCompleteIntake}
+              disabled={loading}
+              className="w-full py-3 rounded-full bg-slate-800 text-white font-medium hover:bg-slate-700 transition-colors disabled:opacity-50"
+            >
+              {loading ? t.processing : (language === "fr" ? "Terminer" : "Complete")}
+            </button>
+
+            {/* Contact Info */}
+            <div className="mt-8 pt-6 border-t border-slate-200">
+              <p className="text-sm text-slate-500 mb-2">
+                {language === "fr" ? "Des questions?" : "Have any questions?"}
               </p>
-            )}
+              <div className="flex items-center justify-center gap-2 text-slate-600">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                </svg>
+                <span className="text-sm">info@aesthetics-ge.ch</span>
+              </div>
+            </div>
           </div>
         </div>
-
-        <footer className="sticky bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent px-4 sm:px-6 py-4">
-          <div className="max-w-md mx-auto flex justify-center items-center gap-4">
-            <button
-              onClick={() => consultationCategory && handleSelectCategory(consultationCategory)}
-              disabled={loading || !consultationCategory}
-              className="px-8 py-3 rounded-full bg-slate-200 text-slate-600 font-medium hover:bg-slate-300 transition-colors disabled:opacity-50"
-            >
-              {loading ? t.processing : t.next.toLowerCase()}
-            </button>
-          </div>
-        </footer>
       </main>
     );
   }
