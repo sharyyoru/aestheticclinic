@@ -41,7 +41,6 @@ export default function ConsultationsPage() {
             patient_id: patient.id,
             status: "in_progress",
             current_step: 1,
-            submission_type: "consultation",
           })
           .select("id")
           .single();
