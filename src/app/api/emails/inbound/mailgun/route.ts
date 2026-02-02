@@ -72,16 +72,19 @@ export async function POST(request: Request) {
     let patientId: string | null = null;
     let dealId: string | null = null;
 
+    let originalSenderId: string | null = null;
+
     if (originalEmailId) {
       const { data: original, error: originalError } = await supabaseAdmin
         .from("emails")
-        .select("id, patient_id, deal_id")
+        .select("id, patient_id, deal_id, sent_by_user_id")
         .eq("id", originalEmailId)
         .single();
 
       if (!originalError && original) {
         patientId = (original as any).patient_id ?? null;
         dealId = (original as any).deal_id ?? null;
+        originalSenderId = (original as any).sent_by_user_id ?? null;
       }
     }
 
@@ -128,7 +131,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to store inbound email" }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true });
+    const replyEmailId = (data as { id: string }).id;
+
+    // Create email reply notification for the original sender
+    if (originalSenderId && originalEmailId && patientId) {
+      try {
+        await supabaseAdmin
+          .from("email_reply_notifications")
+          .insert({
+            user_id: originalSenderId,
+            patient_id: patientId,
+            original_email_id: originalEmailId,
+            reply_email_id: replyEmailId,
+            read_at: null,
+          });
+      } catch (notifError) {
+        console.error("Failed to create email reply notification", notifError);
+        // Don't fail the request if notification creation fails
+      }
+    }
+
+    return NextResponse.json({ ok: true, emailId: replyEmailId });
   } catch (error) {
     console.error("Error handling inbound Mailgun email", error);
     return NextResponse.json({ error: "Failed to process inbound email" }, { status: 500 });

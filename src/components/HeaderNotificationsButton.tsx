@@ -152,7 +152,7 @@ export default function HeaderNotificationsButton() {
               type="button"
               onClick={() => {
                 setDropdownOpen(false);
-                router.push("/comments");
+                router.push("/notifications/email-replies");
               }}
               className="w-full text-center text-[11px] font-medium text-sky-600 hover:text-sky-700"
             >
