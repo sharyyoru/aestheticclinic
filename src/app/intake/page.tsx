@@ -10,7 +10,7 @@ type ViewState = "search" | "register";
 
 export default function IntakePage() {
   const router = useRouter();
-  const [view, setView] = useState<ViewState>("search");
+  const [view, setView] = useState<ViewState>("register");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
