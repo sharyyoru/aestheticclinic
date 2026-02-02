@@ -382,9 +382,9 @@ function ConsultationStepsContent() {
 
             <div className="space-y-3 mb-6">
               {[
-                { value: "liposuction", label: t.consultationOptions.liposuction, icon: "💪" },
-                { value: "breast", label: t.consultationOptions.breast, icon: "✨" },
-                { value: "face", label: t.consultationOptions.face, icon: "🌟" }
+                { value: "liposuction", label: t.consultationOptions.liposuction },
+                { value: "breast", label: t.consultationOptions.breast },
+                { value: "face", label: t.consultationOptions.face }
               ].map((option) => (
                 <button
                   key={option.value}
@@ -396,7 +396,6 @@ function ConsultationStepsContent() {
                       : "bg-white border-slate-200 text-slate-700 hover:border-slate-400 hover:shadow"
                   }`}
                 >
-                  <span className="mr-3">{option.icon}</span>
                   {option.label}
                 </button>
               ))}
