@@ -172,10 +172,8 @@ type AxenitaPdfDocument = {
   fileName: string;
   fileType: "ap" | "consultation";
   content: string;
-  axenitaId: string | null;
   firstName: string | null;
   lastName: string | null;
-  date: string | null;
 };
 
 export default function MedicalConsultationsCard({
