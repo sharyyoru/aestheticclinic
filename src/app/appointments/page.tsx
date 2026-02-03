@@ -755,7 +755,7 @@ export default function CalendarPage() {
   const [doctorCalendars, setDoctorCalendars] = useState<DoctorCalendar[]>([]);
   const [isCreatingCalendar, setIsCreatingCalendar] = useState(false);
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
-  const [view, setView] = useState<CalendarView>("day");
+  const [view, setView] = useState<CalendarView>("month");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
   const [isDraggingRange, setIsDraggingRange] = useState(false);
@@ -938,18 +938,6 @@ export default function CalendarPage() {
     };
   }, []);
 
-  // Allowed doctor calendar names - filter at DB level for performance
-  const ALLOWED_DOCTOR_PATTERNS = [
-    "xavier tenorio",
-    "cesar rodrigues", 
-    "cezar rodrigues",
-    "yulia raspertova",
-    "burbuqe fazliu",
-    "laser",
-    "monia khedir",
-    "lily radionova",
-  ];
-
   useEffect(() => {
     let isMounted = true;
 
@@ -958,11 +946,9 @@ export default function CalendarPage() {
         setProvidersLoading(true);
         setProvidersError(null);
 
-        // Load only allowed doctors using ilike filters for performance
         const { data, error } = await supabaseClient
           .from("users")
           .select("id, full_name, email")
-          .or(ALLOWED_DOCTOR_PATTERNS.map(p => `full_name.ilike.%${p}%`).join(','))
           .order("full_name", { ascending: true });
 
         if (!isMounted) return;
@@ -1007,20 +993,33 @@ export default function CalendarPage() {
     setDoctorCalendars((prev) => {
       if (prev.length > 0) return prev;
 
-      // Providers are already filtered at DB level
-      // Default: no doctors selected for better initial performance
       const baseCalendars: DoctorCalendar[] = providers.map((provider, index) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const trimmedName = rawName.trim() || "Unnamed doctor";
+
+        let selected = true;
+        if (currentUserId) {
+          selected = provider.id === currentUserId;
+        }
 
         return {
           id: provider.id,
           providerId: provider.id,
           name: trimmedName,
           color: getCalendarColorForIndex(index),
-          selected: false, // No doctors selected by default
+          selected,
         };
       });
+
+      if (currentUserId) {
+        const anySelected = baseCalendars.some((calendar) => calendar.selected);
+        if (!anySelected && baseCalendars.length > 0) {
+          baseCalendars[0] = {
+            ...baseCalendars[0],
+            selected: true,
+          };
+        }
+      }
 
       const xavierIndex = baseCalendars.findIndex((calendar) => {
         const value = calendar.name.toLowerCase();
@@ -1988,24 +1987,19 @@ export default function CalendarPage() {
     navigateToDate(date, "day");
   }
 
-  // Show full-page loading state until critical data is ready
-  const isInitialLoading = loading || providersLoading;
-
-  if (isInitialLoading) {
-    return (
-      <div className="flex h-[calc(100vh-96px)] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600" />
-          <span className="text-sm font-medium text-slate-600">
-            Loading calendar...
-          </span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="relative flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
+      {/* Loading overlay */}
+      {loading && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600" />
+            <span className="text-sm font-medium text-slate-600">
+              Loading appointments...
+            </span>
+          </div>
+        </div>
+      )}
       {/* Left sidebar similar to Google Calendar */}
       <aside className="hidden w-64 flex-shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex">
         <div className="mb-3 flex gap-2">
@@ -2241,8 +2235,35 @@ export default function CalendarPage() {
                   </button>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  const providerIdsWithCalendars = new Set(
+                    doctorCalendars.map((calendar) => calendar.providerId),
+                  );
+                  const nextProvider = providers.find(
+                    (provider) => !providerIdsWithCalendars.has(provider.id),
+                  );
+                  setNewCalendarProviderId(nextProvider?.id ?? "");
+                  setIsCreatingCalendar(true);
+                }}
+                className="inline-flex items-center rounded-full border border-dashed border-sky-300 bg-sky-50 px-3 py-1.5 text-[11px] font-medium text-sky-700 hover:bg-sky-100"
+              >
+                + New calendar
+              </button>
+            )}
           </div>
+        </div>
+
+        {/* Booking pages / Other calendars placeholders */}
+        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
+          <p className="font-semibold">Booking pages</p>
+          <p className="text-slate-400">Coming soon</p>
+        </div>
+        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
+          <p className="font-semibold">Other calendars</p>
+          <p className="text-slate-400">Coming soon</p>
         </div>
       </aside>
 
@@ -2492,42 +2513,24 @@ export default function CalendarPage() {
         ) : (
           <div className="flex-1 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
             <div className="flex flex-col h-full">
-              {/* Sticky header row with doctor tabs */}
+              {/* Sticky header row */}
               <div className="flex border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium text-slate-500 sticky top-0 z-10">
                 {/* Empty cell for time axis column */}
                 <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0" />
-                {/* Doctor column headers - show selected doctors */}
-                {view === "day" && doctorCalendars.filter(c => c.selected).length > 0 ? (
-                  doctorCalendars.filter(c => c.selected).map((calendar) => (
-                    <div
-                      key={calendar.id}
-                      className="flex-1 px-2 py-2 text-center border-r border-slate-100 last:border-r-0"
-                      style={{ backgroundColor: calendar.color ? `${calendar.color}20` : undefined }}
-                    >
-                      <div 
-                        className="text-[11px] font-semibold truncate"
-                        style={{ color: calendar.color || '#334155' }}
-                      >
-                        {calendar.name}
-                      </div>
+                {/* Day headers */}
+                {activeRangeDates.map((date) => (
+                  <div
+                    key={formatYmd(date)}
+                    className="flex-1 px-2 py-2 text-center border-r border-slate-100 last:border-r-0"
+                  >
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                      {date.toLocaleDateString("en-US", { weekday: "short", timeZone: SWITZERLAND_TIMEZONE })}
                     </div>
-                  ))
-                ) : (
-                  /* Day headers for range view */
-                  activeRangeDates.map((date) => (
-                    <div
-                      key={formatYmd(date)}
-                      className="flex-1 px-2 py-2 text-center border-r border-slate-100 last:border-r-0"
-                    >
-                      <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                        {date.toLocaleDateString("en-US", { weekday: "short", timeZone: SWITZERLAND_TIMEZONE })}
-                      </div>
-                      <div className="text-sm font-semibold text-slate-800">
-                        {getSwissDateParts(date).day}
-                      </div>
+                    <div className="text-sm font-semibold text-slate-800">
+                      {getSwissDateParts(date).day}
                     </div>
-                  ))
-                )}
+                  </div>
+                ))}
               </div>
               {/* Scrollable content area with time axis and day columns */}
               <div className="flex-1 overflow-auto">
@@ -2544,7 +2547,7 @@ export default function CalendarPage() {
                       </div>
                     ))}
                   </div>
-                  {/* Doctor columns (day view) or Day columns (range view) with appointments */}
+                  {/* Day columns with appointments */}
                   <div
                     className="flex flex-1 relative"
                     style={{
@@ -2553,209 +2556,63 @@ export default function CalendarPage() {
                         (DAY_VIEW_SLOT_HEIGHT / DAY_VIEW_SLOT_MINUTES),
                     }}
                   >
-                    {view === "day" && doctorCalendars.filter(c => c.selected).length > 0 ? (
-                      /* Doctor columns for day view */
-                      doctorCalendars.filter(c => c.selected).map((calendar) => {
-                        const ymd = selectedDate ? formatYmd(selectedDate) : "";
-                        const allDayAppointments = appointmentsByDay[ymd] ?? [];
-                        // Filter appointments for this doctor
-                        const doctorAppointments = allDayAppointments.filter((appt) => {
-                          const doctorFromReason = getDoctorNameFromReason(appt.reason);
-                          const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
-                          const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
-                          return doctorKey === calendar.name.trim().toLowerCase();
-                        });
+                    {activeRangeDates.map((date) => {
+                      const ymd = formatYmd(date);
+                      const dayAppointments = appointmentsByDay[ymd] ?? [];
 
-                        return (
-                          <div
-                            key={calendar.id}
-                            className="relative flex-1 border-r border-slate-100 last:border-r-0"
-                            style={{ backgroundColor: calendar.color ? `${calendar.color}08` : undefined }}
-                          >
-                            {/* Horizontal slot lines / clickable empty timeslots */}
-                            {timeSlots.map((totalMinutes) => (
-                              <button
-                                key={totalMinutes}
-                                type="button"
-                                onClick={() => {
-                                  if (!selectedDate) return;
-                                  const dateParts = getSwissDateParts(selectedDate);
-                                  const year = dateParts.year;
-                                  const month = `${dateParts.month}`.padStart(2, "0");
-                                  const day = `${dateParts.day}`.padStart(2, "0");
-                                  const hours = Math.floor(totalMinutes / 60);
-                                  const minutes = totalMinutes % 60;
-                                  const timeValue = `${hours.toString().padStart(2, "0")}:${minutes
-                                    .toString()
-                                    .padStart(2, "0")}`;
+                      return (
+                        <div
+                          key={ymd}
+                          className="relative flex-1 border-r border-slate-100 last:border-r-0"
+                        >
+                          {/* Horizontal slot lines / clickable empty timeslots */}
+                          {timeSlots.map((totalMinutes) => (
+                            <button
+                              key={totalMinutes}
+                              type="button"
+                              onClick={() => {
+                                const dateParts = getSwissDateParts(date);
+                                const year = dateParts.year;
+                                const month = `${dateParts.month}`.padStart(2, "0");
+                                const day = `${dateParts.day}`.padStart(2, "0");
+                                const hours = Math.floor(totalMinutes / 60);
+                                const minutes = totalMinutes % 60;
+                                const timeValue = `${hours.toString().padStart(2, "0")}:${minutes
+                                  .toString()
+                                  .padStart(2, "0")}`;
 
-                                  setDraftDate(`${year}-${month}-${day}`);
-                                  setDraftTime(timeValue);
-                                  setDraftTitle("");
-                                  setCreatePatientSearch("");
-                                  setCreatePatientId(null);
-                                  setCreatePatientName("");
-                                  setConsultationDuration(15);
-                                  setSelectedServiceId("");
-                                  setServiceSearch("");
-                                  setBookingStatus("");
-                                  setStatusSearch("");
-                                  setAppointmentCategory("");
-                                  setCategorySearch("");
-                                  setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
-                                  setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
-                                  setDurationSearch("15 minutes");
-                                  setDraftDescription("");
-                                  // Pre-select this doctor's calendar
-                                  setCreateDoctorCalendarId(calendar.id);
-                                  setCreateModalOpen(true);
-                                }}
-                                className="block w-full border-t border-slate-100 text-left focus:outline-none"
-                                style={{ height: DAY_VIEW_SLOT_HEIGHT, background: "transparent" }}
-                              />
-                            ))}
+                                setDraftDate(`${year}-${month}-${day}`);
+                                setDraftTime(timeValue);
+                                setDraftTitle("");
+                                setCreatePatientSearch("");
+                                setCreatePatientId(null);
+                                setCreatePatientName("");
+                                setConsultationDuration(15);
+                                setSelectedServiceId("");
+                                setServiceSearch("");
+                                setBookingStatus("");
+                                setStatusSearch("");
+                                setAppointmentCategory("");
+                                setCategorySearch("");
+                                setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
+                                setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
+                                setDurationSearch("15 minutes");
+                                setDraftDescription("");
+                                const defaultCalendar =
+                                  doctorCalendars.find((calendar) => calendar.selected) ||
+                                  doctorCalendars[0] ||
+                                  null;
+                                setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
+                                setCreateModalOpen(true);
+                              }}
+                              className="block w-full border-t border-slate-100 text-left focus:outline-none"
+                              style={{ height: DAY_VIEW_SLOT_HEIGHT, background: "transparent" }}
+                            />
+                          ))}
 
-                            {/* Render appointments for this doctor */}
-                            {(() => {
-                              const overlapMap = calculateOverlapPositions(doctorAppointments);
-                              return doctorAppointments.map((appt) => {
-                                const start = new Date(appt.start_time);
-                                if (Number.isNaN(start.getTime())) return null;
-
-                                const rawStartMinutes = getSwissHours(start) * 60 + getSwissMinutes(start);
-                                const topMinutes = Math.max(rawStartMinutes - DAY_VIEW_START_MINUTES, 0);
-
-                                let end = appt.end_time ? new Date(appt.end_time) : null;
-                                let endMinutes = end && !Number.isNaN(end.getTime())
-                                  ? getSwissHours(end) * 60 + getSwissMinutes(end)
-                                  : rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
-
-                                if (end && !Number.isNaN(end.getTime())) {
-                                  const startParts = getSwissDateParts(start);
-                                  const endParts = getSwissDateParts(end);
-                                  if (startParts.day !== endParts.day || endMinutes <= rawStartMinutes) {
-                                    endMinutes = DAY_VIEW_END_MINUTES;
-                                  }
-                                }
-
-                                endMinutes = Math.min(endMinutes, DAY_VIEW_END_MINUTES);
-                                const durationMinutes = Math.max(endMinutes - rawStartMinutes, DAY_VIEW_SLOT_MINUTES);
-
-                                const top = (topMinutes / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
-                                const calculatedHeight = (durationMinutes / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
-
-                                const overlapInfo = overlapMap.get(appt.id);
-                                const colIndex = overlapInfo?.columnIndex ?? 0;
-                                const totalCols = overlapInfo?.totalColumns ?? 1;
-                                const widthPercent = 100 / totalCols;
-                                const leftPercent = colIndex * widthPercent;
-
-                                const minHeight = totalCols > 1 ? 44 : 36;
-                                const height = Math.max(calculatedHeight, minHeight);
-
-                                const { serviceLabel } = getServiceAndStatusFromReason(appt.reason);
-                                const timeLabel = formatTimeRangeLabel(start, end && !Number.isNaN(end.getTime()) ? end : null);
-                                const patientName = appt.patient
-                                  ? `${appt.patient.first_name ?? ""} ${appt.patient.last_name ?? ""}`.trim().replace(/\s+/g, " ")
-                                  : (appt.temporary_text ?? "");
-                                const category = getCategoryFromReason(appt.reason);
-                                const notes = getNotesFromReason(appt.reason);
-                                const { statusLabel: dayStatusLabel } = getServiceAndStatusFromReason(appt.reason);
-                                const dayStatusIcon = getStatusIcon(dayStatusLabel);
-
-                                return (
-                                  <button
-                                    key={`doctor-${calendar.id}-${appt.id}`}
-                                    type="button"
-                                    onClick={() => openEditModalForAppointment(appt)}
-                                    className={`absolute rounded-md px-1 py-1 text-[11px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)}`}
-                                    style={{
-                                      top,
-                                      height,
-                                      left: `calc(${leftPercent}% + 2px)`,
-                                      width: `calc(${widthPercent}% - 4px)`,
-                                      borderLeft: `3px solid ${calendar.color || '#64748b'}`,
-                                    }}
-                                  >
-                                    <div className="flex items-center gap-1 truncate font-medium text-slate-800">
-                                      {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
-                                      <span className="truncate">{patientName || serviceLabel}</span>
-                                    </div>
-                                    <div className="truncate text-[10px] text-slate-600">
-                                      {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
-                                    </div>
-                                    {category && height > 60 && (
-                                      <div className="truncate text-[9px] text-slate-500">{category}</div>
-                                    )}
-                                    {notes && height > 80 && (
-                                      <div className="truncate text-[9px] text-slate-500 italic">{notes}</div>
-                                    )}
-                                  </button>
-                                );
-                              });
-                            })()}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      /* Date columns for range view */
-                      activeRangeDates.map((date) => {
-                        const ymd = formatYmd(date);
-                        const dayAppointments = appointmentsByDay[ymd] ?? [];
-
-                        return (
-                          <div
-                            key={ymd}
-                            className="relative flex-1 border-r border-slate-100 last:border-r-0"
-                          >
-                            {/* Horizontal slot lines / clickable empty timeslots */}
-                            {timeSlots.map((totalMinutes) => (
-                              <button
-                                key={totalMinutes}
-                                type="button"
-                                onClick={() => {
-                                  const dateParts = getSwissDateParts(date);
-                                  const year = dateParts.year;
-                                  const month = `${dateParts.month}`.padStart(2, "0");
-                                  const day = `${dateParts.day}`.padStart(2, "0");
-                                  const hours = Math.floor(totalMinutes / 60);
-                                  const minutes = totalMinutes % 60;
-                                  const timeValue = `${hours.toString().padStart(2, "0")}:${minutes
-                                    .toString()
-                                    .padStart(2, "0")}`;
-
-                                  setDraftDate(`${year}-${month}-${day}`);
-                                  setDraftTime(timeValue);
-                                  setDraftTitle("");
-                                  setCreatePatientSearch("");
-                                  setCreatePatientId(null);
-                                  setCreatePatientName("");
-                                  setConsultationDuration(15);
-                                  setSelectedServiceId("");
-                                  setServiceSearch("");
-                                  setBookingStatus("");
-                                  setStatusSearch("");
-                                  setAppointmentCategory("");
-                                  setCategorySearch("");
-                                  setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
-                                  setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
-                                  setDurationSearch("15 minutes");
-                                  setDraftDescription("");
-                                  const defaultCalendar =
-                                    doctorCalendars.find((calendar) => calendar.selected) ||
-                                    doctorCalendars[0] ||
-                                    null;
-                                  setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
-                                  setCreateModalOpen(true);
-                                }}
-                                className="block w-full border-t border-slate-100 text-left focus:outline-none"
-                                style={{ height: DAY_VIEW_SLOT_HEIGHT, background: "transparent" }}
-                              />
-                            ))}
-
-                            {(() => {
-                              const overlapMap = calculateOverlapPositions(dayAppointments);
-                              return dayAppointments.map((appt) => {
+                          {(() => {
+                            const overlapMap = calculateOverlapPositions(dayAppointments);
+                            return dayAppointments.map((appt) => {
                             const start = new Date(appt.start_time);
                             if (Number.isNaN(start.getTime())) return null;
 
@@ -2869,8 +2726,7 @@ export default function CalendarPage() {
                           })()}
                         </div>
                       );
-                    })
-                    )}
+                    })}
                   </div>
                 </div>
               </div>
