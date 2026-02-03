@@ -755,7 +755,7 @@ export default function CalendarPage() {
   const [doctorCalendars, setDoctorCalendars] = useState<DoctorCalendar[]>([]);
   const [isCreatingCalendar, setIsCreatingCalendar] = useState(false);
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
-  const [view, setView] = useState<CalendarView>("month");
+  const [view, setView] = useState<CalendarView>("day");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
   const [isDraggingRange, setIsDraggingRange] = useState(false);
@@ -1008,33 +1008,19 @@ export default function CalendarPage() {
       if (prev.length > 0) return prev;
 
       // Providers are already filtered at DB level
+      // Default: no doctors selected for better initial performance
       const baseCalendars: DoctorCalendar[] = providers.map((provider, index) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const trimmedName = rawName.trim() || "Unnamed doctor";
-
-        let selected = true;
-        if (currentUserId) {
-          selected = provider.id === currentUserId;
-        }
 
         return {
           id: provider.id,
           providerId: provider.id,
           name: trimmedName,
           color: getCalendarColorForIndex(index),
-          selected,
+          selected: false, // No doctors selected by default
         };
       });
-
-      if (currentUserId) {
-        const anySelected = baseCalendars.some((calendar) => calendar.selected);
-        if (!anySelected && baseCalendars.length > 0) {
-          baseCalendars[0] = {
-            ...baseCalendars[0],
-            selected: true,
-          };
-        }
-      }
 
       const xavierIndex = baseCalendars.findIndex((calendar) => {
         const value = calendar.name.toLowerCase();
