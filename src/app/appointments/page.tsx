@@ -755,7 +755,7 @@ export default function CalendarPage() {
   const [doctorCalendars, setDoctorCalendars] = useState<DoctorCalendar[]>([]);
   const [isCreatingCalendar, setIsCreatingCalendar] = useState(false);
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
-  const [view, setView] = useState<CalendarView>("month");
+  const [view, setView] = useState<CalendarView>("day");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
   const [isDraggingRange, setIsDraggingRange] = useState(false);
@@ -1009,33 +1009,19 @@ export default function CalendarPage() {
     setDoctorCalendars((prev) => {
       if (prev.length > 0) return prev;
 
+      // NO doctors selected by default to prevent page crash
       const baseCalendars: DoctorCalendar[] = providers.map((provider, index) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const trimmedName = rawName.trim() || "Unnamed doctor";
-
-        let selected = true;
-        if (currentUserId) {
-          selected = provider.id === currentUserId;
-        }
 
         return {
           id: provider.id,
           providerId: provider.id,
           name: trimmedName,
           color: getCalendarColorForIndex(index),
-          selected,
+          selected: false, // Start with none selected
         };
       });
-
-      if (currentUserId) {
-        const anySelected = baseCalendars.some((calendar) => calendar.selected);
-        if (!anySelected && baseCalendars.length > 0) {
-          baseCalendars[0] = {
-            ...baseCalendars[0],
-            selected: true,
-          };
-        }
-      }
 
       const xavierIndex = baseCalendars.findIndex((calendar) => {
         const value = calendar.name.toLowerCase();
@@ -2205,81 +2191,6 @@ export default function CalendarPage() {
               ))
             )}
           </div>
-          <div className="pt-1">
-            {isCreatingCalendar ? (
-              <div className="space-y-1">
-                <select
-                  value={newCalendarProviderId}
-                  onChange={(event) => setNewCalendarProviderId(event.target.value)}
-                  className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  <option value="">Select doctor</option>
-                  {providers
-                    .filter((provider) =>
-                      !doctorCalendars.some(
-                        (calendar) => calendar.providerId === provider.id,
-                      ),
-                    )
-                    .map((provider) => {
-                      const rawName = provider.name ?? "Unnamed doctor";
-                      const trimmedName = rawName.trim() || "Unnamed doctor";
-                      return (
-                        <option key={provider.id} value={provider.id}>
-                          {trimmedName}
-                        </option>
-                      );
-                    })}
-                </select>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={handleConfirmNewCalendar}
-                    className="inline-flex flex-1 items-center justify-center rounded-full bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={!newCalendarProviderId}
-                  >
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCreatingCalendar(false);
-                      setNewCalendarProviderId("");
-                    }}
-                    className="inline-flex flex-1 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  const providerIdsWithCalendars = new Set(
-                    doctorCalendars.map((calendar) => calendar.providerId),
-                  );
-                  const nextProvider = providers.find(
-                    (provider) => !providerIdsWithCalendars.has(provider.id),
-                  );
-                  setNewCalendarProviderId(nextProvider?.id ?? "");
-                  setIsCreatingCalendar(true);
-                }}
-                className="inline-flex items-center rounded-full border border-dashed border-sky-300 bg-sky-50 px-3 py-1.5 text-[11px] font-medium text-sky-700 hover:bg-sky-100"
-              >
-                + New calendar
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Booking pages / Other calendars placeholders */}
-        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
-          <p className="font-semibold">Booking pages</p>
-          <p className="text-slate-400">Coming soon</p>
-        </div>
-        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
-          <p className="font-semibold">Other calendars</p>
-          <p className="text-slate-400">Coming soon</p>
         </div>
       </aside>
 
