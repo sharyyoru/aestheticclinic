@@ -422,10 +422,29 @@ function calculateOverlapPositions(
   const parsed = appointments.map((appt) => {
     const start = new Date(appt.start_time);
     const end = appt.end_time ? new Date(appt.end_time) : new Date(start.getTime() + 30 * 60 * 1000);
+    
+    let startMinutes = start.getHours() * 60 + start.getMinutes();
+    let endMinutes = end.getHours() * 60 + end.getMinutes();
+    
+    // Handle appointments spanning midnight or with invalid end times
+    // If end is on a different day or endMinutes <= startMinutes, clamp to end of day view
+    if (end.getDate() !== start.getDate() || endMinutes <= startMinutes) {
+      endMinutes = DAY_VIEW_END_MINUTES;
+    }
+    
+    // Clamp to day view bounds
+    startMinutes = Math.max(startMinutes, DAY_VIEW_START_MINUTES);
+    endMinutes = Math.min(endMinutes, DAY_VIEW_END_MINUTES);
+    
+    // Ensure minimum duration for overlap detection
+    if (endMinutes <= startMinutes) {
+      endMinutes = startMinutes + DAY_VIEW_SLOT_MINUTES;
+    }
+    
     return {
       id: appt.id,
-      startMinutes: start.getHours() * 60 + start.getMinutes(),
-      endMinutes: end.getHours() * 60 + end.getMinutes(),
+      startMinutes,
+      endMinutes,
     };
   }).sort((a, b) => a.startMinutes - b.startMinutes || a.endMinutes - b.endMinutes);
 
@@ -2426,6 +2445,12 @@ export default function CalendarPage() {
                               end && !Number.isNaN(end.getTime())
                                 ? end.getHours() * 60 + end.getMinutes()
                                 : rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
+
+                            // Handle appointments spanning midnight or with end time on different day
+                            if (end && !Number.isNaN(end.getTime()) && 
+                                (end.getDate() !== start.getDate() || endMinutes <= rawStartMinutes)) {
+                              endMinutes = DAY_VIEW_END_MINUTES;
+                            }
 
                             endMinutes = Math.min(endMinutes, DAY_VIEW_END_MINUTES);
                             const durationMinutes = Math.max(
