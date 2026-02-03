@@ -1234,61 +1234,20 @@ export default function CalendarPage() {
       minutes <= windowEnd - desiredDuration;
       minutes += DAY_VIEW_SLOT_MINUTES
     ) {
-      const slotStart = minutes;
-      const slotEnd = minutes + desiredDuration;
-
-      // System users can book any time slot (allow overlapping appointments)
-      // Non-system users are restricted to non-overlapping slots only
-      let overlaps = false;
-      if (!isSystemUser) {
-        overlaps = dayAppointments.some((appt) => {
-          const start = new Date(appt.start_time);
-          if (Number.isNaN(start.getTime())) return false;
-
-          // Use Switzerland timezone
-          const rawStartMinutes = getSwissHours(start) * 60 + getSwissMinutes(start);
-          let endMinutes = rawStartMinutes + 60;
-
-          if (appt.end_time) {
-            const end = new Date(appt.end_time);
-            if (!Number.isNaN(end.getTime())) {
-              endMinutes = getSwissHours(end) * 60 + getSwissMinutes(end);
-            }
-          }
-
-          if (endMinutes <= rawStartMinutes) {
-            endMinutes = rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
-          }
-
-          if (endMinutes > windowEnd) {
-            endMinutes = windowEnd;
-          }
-
-          const apptStart = Math.max(rawStartMinutes, windowStart);
-          const apptEnd = Math.max(
-            apptStart + DAY_VIEW_SLOT_MINUTES,
-            Math.min(endMinutes, windowEnd),
-          );
-
-          return apptStart < slotEnd && apptEnd > slotStart;
-        });
-      }
-
-      if (!overlaps) {
-        const hours24 = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        const value = `${hours24.toString().padStart(2, "0")}:${mins
-          .toString()
-          .padStart(2, "0")}`;
-        options.push({
-          value,
-          label: formatTimeOptionLabel(minutes),
-        });
-      }
+      // All users can select any time slot (overlapping appointments allowed)
+      const hours24 = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      const value = `${hours24.toString().padStart(2, "0")}:${mins
+        .toString()
+        .padStart(2, "0")}`;
+      options.push({
+        value,
+        label: formatTimeOptionLabel(minutes),
+      });
     }
 
     return options;
-  }, [draftDate, appointmentsByDay, consultationDuration, isSystemUser]);
+  }, [draftDate, consultationDuration]);
 
   // Filtered options for smart search dropdowns
   const filteredServiceOptions = useMemo(() => {
@@ -1983,7 +1942,7 @@ export default function CalendarPage() {
             <button
               type="button"
               onClick={handlePasteAppointment}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              className="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 shadow-sm hover:bg-amber-100"
               title={`Paste: ${copiedAppointment.patient ? `${copiedAppointment.patient.first_name ?? ""} ${copiedAppointment.patient.last_name ?? ""}`.trim() : "Copied appointment"}`}
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2952,13 +2911,13 @@ export default function CalendarPage() {
                     handleCopyAppointment(editingAppointment);
                     closeEditModal();
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                  title="Copy appointment details"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 shadow-sm hover:bg-amber-100"
+                  title="Copy appointment to clipboard for pasting"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  Copy
+                  Copy Appointment
                 </button>
                 <div className="flex items-center gap-2">
                   <button
