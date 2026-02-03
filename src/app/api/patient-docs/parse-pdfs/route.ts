@@ -23,6 +23,7 @@ type ParsedPdfDocument = {
 };
 
 // Parse folder name pattern: axenita-id_firstname_lastname_dd-mm-yyyy
+// Only extract firstName and lastName for matching (axenitaId and date not used for DB matching)
 function parseFolderName(folderName: string): {
   axenitaId: string | null;
   firstName: string | null;
@@ -30,20 +31,19 @@ function parseFolderName(folderName: string): {
   date: string | null;
 } {
   // Pattern: 10009_Arlette_Menoud_02-01-2025
+  // We only use firstName (parts[1]) and lastName (parts[2]) for matching
   const parts = folderName.split("_");
   
-  if (parts.length >= 4) {
-    const axenitaId = parts[0];
+  if (parts.length >= 3) {
+    // Only extract firstName and lastName - these are used for matching
     const firstName = parts[1];
     const lastName = parts[2];
-    // Date could be in the last part or combined with more parts
-    const datePart = parts.slice(3).join("_");
     
     return {
-      axenitaId,
+      axenitaId: null, // Not used for matching
       firstName,
       lastName,
-      date: datePart,
+      date: null, // Not used for matching
     };
   }
   

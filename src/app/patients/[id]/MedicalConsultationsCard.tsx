@@ -2802,9 +2802,6 @@ export default function MedicalConsultationsCard({
                   }`}>
                     {doc.fileType === "ap" ? "Medical Notes (AP)" : "Consultation"}
                   </span>
-                  {doc.date && (
-                    <span className="text-[10px] text-slate-500">{doc.date}</span>
-                  )}
                   <span className="text-[10px] text-slate-400">
                     {doc.fileName}
                   </span>
