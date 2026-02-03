@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { inflateSync, inflateRawSync } from "zlib";
 
 // Force Node.js runtime and dynamic rendering
 export const runtime = "nodejs";
@@ -95,37 +96,123 @@ function getFileType(fileName: string): "ap" | "consultation" | null {
   return null;
 }
 
-// Simple PDF text extraction without external library
+// Extract text from PDF text objects (BT...ET blocks)
+function extractTextFromPdfContent(content: string): string[] {
+  const textMatches: string[] = [];
+  
+  // Find all BT...ET blocks (text objects)
+  const btEtRegex = /BT[\s\S]*?ET/g;
+  const blocks = content.match(btEtRegex) || [];
+  
+  for (const block of blocks) {
+    // Extract text from Tj operator: (text) Tj
+    const tjMatches = block.match(/\(([^)]*)\)\s*Tj/g) || [];
+    for (const tj of tjMatches) {
+      const text = tj.match(/\(([^)]*)\)/)?.[1] || "";
+      if (text && text.length > 0) textMatches.push(text);
+    }
+    
+    // Extract text from TJ operator: [(text) num (text) ...] TJ
+    const tjArrayMatches = block.match(/\[([^\]]*)\]\s*TJ/gi) || [];
+    for (const tjArray of tjArrayMatches) {
+      const innerTexts = tjArray.match(/\(([^)]*)\)/g) || [];
+      for (const innerText of innerTexts) {
+        const text = innerText.slice(1, -1); // Remove parentheses
+        if (text && text.length > 0) textMatches.push(text);
+      }
+    }
+  }
+  
+  return textMatches;
+}
+
+// Decode PDF escape sequences
+function decodePdfString(str: string): string {
+  return str
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\\/g, "\\")
+    .replace(/\\([0-7]{1,3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)))
+    .replace(/\\(.)/g, "$1");
+}
+
+// PDF text extraction with FlateDecode decompression
 async function extractPdfText(buffer: Buffer): Promise<string> {
   try {
-    // Convert buffer to string and look for text content
-    const content = buffer.toString("utf8");
+    const allText: string[] = [];
     
-    // Simple extraction: find text between stream...endstream or BT...ET
-    const textMatches: string[] = [];
+    // Find all stream...endstream sections
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let match;
     
-    // Look for text objects (simplified approach)
-    const btEtRegex = /BT[\s\S]*?ET/g;
-    const matches = content.match(btEtRegex) || [];
+    // Also check for FlateDecode filter before streams
+    const pdfContent = buffer.toString("binary");
     
-    for (const match of matches) {
-      // Extract text from Tj and TJ operators
-      const tjMatches = match.match(/\(([^)]*)\)\s*Tj/g) || [];
-      for (const tj of tjMatches) {
-        const text = tj.match(/\(([^)]*)\)/)?.[1] || "";
-        if (text) textMatches.push(text);
+    while ((match = streamRegex.exec(pdfContent)) !== null) {
+      const streamData = match[1];
+      
+      // Check if this stream is FlateDecode compressed
+      // Look backwards for /Filter /FlateDecode
+      const beforeStream = pdfContent.substring(Math.max(0, match.index - 500), match.index);
+      const isFlateEncoded = /\/Filter\s*\/FlateDecode/i.test(beforeStream) || 
+                             /\/Filter\s*\[\s*\/FlateDecode\s*\]/i.test(beforeStream);
+      
+      try {
+        let decompressed: string;
+        
+        if (isFlateEncoded) {
+          // Convert binary string to buffer and decompress
+          const streamBuffer = Buffer.from(streamData, "binary");
+          try {
+            // Try raw deflate first (most common in PDFs)
+            const inflated = inflateRawSync(streamBuffer);
+            decompressed = inflated.toString("latin1");
+          } catch {
+            try {
+              // Try with zlib header
+              const inflated = inflateSync(streamBuffer);
+              decompressed = inflated.toString("latin1");
+            } catch {
+              continue; // Skip this stream if decompression fails
+            }
+          }
+        } else {
+          decompressed = streamData;
+        }
+        
+        // Extract text from the decompressed content
+        const texts = extractTextFromPdfContent(decompressed);
+        for (const text of texts) {
+          const decoded = decodePdfString(text);
+          if (decoded.trim().length > 0) {
+            allText.push(decoded);
+          }
+        }
+      } catch {
+        // Skip streams that can't be processed
+        continue;
       }
     }
     
-    // If no text found with PDF parsing, try to find readable strings
-    if (textMatches.length === 0) {
-      // Look for readable text patterns
-      const readableText = content.match(/[\x20-\x7E]{10,}/g) || [];
-      return readableText.slice(0, 20).join(" ").substring(0, 500);
+    // If we found text, return it
+    if (allText.length > 0) {
+      const result = allText.join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return result.substring(0, 2000) || "[Document content extracted]";
     }
     
-    return textMatches.join(" ").substring(0, 1000);
-  } catch {
+    // Fallback: try to find any readable text in uncompressed parts
+    const readableText = pdfContent.match(/[\x20-\x7E]{20,}/g) || [];
+    const filtered = readableText
+      .filter(t => !t.includes("/Filter") && !t.includes("/Length") && !t.includes("endobj"))
+      .slice(0, 10)
+      .join(" ");
+    
+    return filtered.substring(0, 500) || "[PDF document - text extraction limited]";
+  } catch (err) {
+    console.error("PDF extraction error:", err);
     return "[PDF content - unable to extract text]";
   }
 }
