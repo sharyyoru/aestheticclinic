@@ -61,28 +61,76 @@ export function EmailNotificationsProvider({ children }: { children: ReactNode }
         return;
       }
 
-      // Fetch email reply notifications
+      // Fetch email reply notifications with simpler query
       const { data, error } = await supabaseClient
         .from("email_reply_notifications")
         .select(
-          "id, created_at, read_at, patient_id, original_email_id, reply_email_id, reply_email:emails!reply_email_id(id, subject, body, from_address, sent_at, created_at), patient:patients(id, first_name, last_name)",
+          "id, created_at, read_at, patient_id, original_email_id, reply_email_id",
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(20);
 
       if (error) {
+        console.error("Error fetching email notifications:", error);
         setUnreadCount(0);
         setNotifications([]);
         setLoading(false);
         return;
       }
 
-      const typedData = (data || []) as unknown as EmailNotification[];
+      if (!data || data.length === 0) {
+        setUnreadCount(0);
+        setNotifications([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch related emails and patients separately for reliability
+      const replyEmailIds = data.map(n => n.reply_email_id).filter(Boolean);
+      const patientIds = [...new Set(data.map(n => n.patient_id).filter(Boolean))];
+
+      // Fetch reply emails
+      let emailsMap: Record<string, { id: string; subject: string | null; body: string | null; from_address: string | null; sent_at: string | null; created_at: string | null }> = {};
+      if (replyEmailIds.length > 0) {
+        const { data: emails } = await supabaseClient
+          .from("emails")
+          .select("id, subject, body, from_address, sent_at, created_at")
+          .in("id", replyEmailIds);
+        if (emails) {
+          emailsMap = Object.fromEntries(emails.map(e => [e.id, e]));
+        }
+      }
+
+      // Fetch patients
+      let patientsMap: Record<string, { id: string; first_name: string | null; last_name: string | null }> = {};
+      if (patientIds.length > 0) {
+        const { data: patients } = await supabaseClient
+          .from("patients")
+          .select("id, first_name, last_name")
+          .in("id", patientIds);
+        if (patients) {
+          patientsMap = Object.fromEntries(patients.map(p => [p.id, p]));
+        }
+      }
+
+      // Combine data
+      const typedData: EmailNotification[] = data.map(n => ({
+        id: n.id,
+        created_at: n.created_at,
+        read_at: n.read_at,
+        patient_id: n.patient_id,
+        original_email_id: n.original_email_id,
+        reply_email_id: n.reply_email_id,
+        reply_email: n.reply_email_id ? emailsMap[n.reply_email_id] || null : null,
+        patient: n.patient_id ? patientsMap[n.patient_id] || null : null,
+      }));
+
       setNotifications(typedData);
       setUnreadCount(typedData.filter(n => !n.read_at).length);
       setLoading(false);
-    } catch {
+    } catch (err) {
+      console.error("Error in refreshNotifications:", err);
       setUnreadCount(0);
       setNotifications([]);
       setLoading(false);
