@@ -734,14 +734,14 @@ async function sendAppointmentConfirmationEmail(
 }
 
 export default function CalendarPage() {
-  // Initialize with today's date in Switzerland timezone
+  // Initialize with today's date
   const [visibleMonth, setVisibleMonth] = useState(() => {
-    const swiss = getSwissNow();
-    return new Date(swiss.year, swiss.month - 1, 1);
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [selectedDate, setSelectedDate] = useState<Date | null>(() => {
-    const swiss = getSwissNow();
-    return new Date(swiss.year, swiss.month - 1, swiss.day);
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate());
   });
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1171,17 +1171,21 @@ export default function CalendarPage() {
 
   const gridDates = useMemo(() => {
     const dates: Date[] = [];
-    const firstDayOfWeek = 0; // Sunday
-    const vmParts = getSwissDateParts(visibleMonth);
-    const firstOfMonth = new Date(vmParts.year, vmParts.month - 1, 1);
+    // Get the year and month from visibleMonth directly (no timezone conversion)
+    const year = visibleMonth.getFullYear();
+    const month = visibleMonth.getMonth();
+    
+    // First day of the visible month
+    const firstOfMonth = new Date(year, month, 1);
+    // Day of week (0=Sunday)
     const startWeekday = firstOfMonth.getDay();
-    const diff = (startWeekday - firstDayOfWeek + 7) % 7;
-    const fomParts = getSwissDateParts(firstOfMonth);
-    const gridStart = new Date(fomParts.year, fomParts.month - 1, fomParts.day - diff);
+    
+    // Calculate the first date to show (may be in previous month)
+    const gridStart = new Date(year, month, 1 - startWeekday);
 
+    // Generate 42 dates (6 weeks)
     for (let i = 0; i < 42; i += 1) {
-      const gsParts = getSwissDateParts(gridStart);
-      const d = new Date(gsParts.year, gsParts.month - 1, gsParts.day + i);
+      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
       dates.push(d);
     }
 
@@ -1189,7 +1193,7 @@ export default function CalendarPage() {
   }, [visibleMonth]);
 
   const todayYmd = formatYmd(new Date());
-  const visibleMonthIndex = getSwissDateParts(visibleMonth).month - 1;
+  const visibleMonthIndex = visibleMonth.getMonth();
 
   const activeRangeDates = useMemo(() => {
     if (!selectedDate) return [] as Date[];
@@ -1861,43 +1865,37 @@ export default function CalendarPage() {
   }
 
   function goToToday() {
-    const swiss = getSwissNow();
-    const todayDate = new Date(swiss.year, swiss.month - 1, swiss.day);
+    const today = new Date();
+    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     setSelectedDate(todayDate);
-    setVisibleMonth(new Date(swiss.year, swiss.month - 1, 1));
+    setVisibleMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     setView("day");
   }
 
   function goPrevMonth() {
     setVisibleMonth((prev) => {
-      const parts = getSwissDateParts(prev);
-      return new Date(parts.year, parts.month - 2, 1);
+      return new Date(prev.getFullYear(), prev.getMonth() - 1, 1);
     });
   }
 
   function goNextMonth() {
     setVisibleMonth((prev) => {
-      const parts = getSwissDateParts(prev);
-      return new Date(parts.year, parts.month, 1);
+      return new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
     });
   }
 
   function goPrevDay() {
     if (!selectedDate) return;
-    const parts = getSwissDateParts(selectedDate);
-    const newDate = new Date(parts.year, parts.month - 1, parts.day - 1);
+    const newDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() - 1);
     setSelectedDate(newDate);
-    const newParts = getSwissDateParts(newDate);
-    setVisibleMonth(new Date(newParts.year, newParts.month - 1, 1));
+    setVisibleMonth(new Date(newDate.getFullYear(), newDate.getMonth(), 1));
   }
 
   function goNextDay() {
     if (!selectedDate) return;
-    const parts = getSwissDateParts(selectedDate);
-    const newDate = new Date(parts.year, parts.month - 1, parts.day + 1);
+    const newDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() + 1);
     setSelectedDate(newDate);
-    const newParts = getSwissDateParts(newDate);
-    setVisibleMonth(new Date(newParts.year, newParts.month - 1, 1));
+    setVisibleMonth(new Date(newDate.getFullYear(), newDate.getMonth(), 1));
   }
 
   function handleNavPrev() {
@@ -1918,22 +1916,10 @@ export default function CalendarPage() {
 
   // Navigate to specific date
   function navigateToDate(date: Date, newView: CalendarView = "day") {
-    const parts = getSwissDateParts(date);
     setSelectedDate(date);
-    setVisibleMonth(new Date(parts.year, parts.month - 1, 1));
+    setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
     setRangeEndDate(null);
     setView(newView);
-  }
-
-  function handleMiniDayMouseDown(date: Date) {
-    // Only start drag, don't navigate yet
-    setIsDraggingRange(true);
-  }
-
-  function handleMiniDayMouseEnter(date: Date) {
-    if (!isDraggingRange || !selectedDate) return;
-    setRangeEndDate(date);
-    setView("range");
   }
 
   function handleMiniDayClick(date: Date) {
@@ -2063,7 +2049,7 @@ export default function CalendarPage() {
             {gridDates.map((date) => {
               const ymd = formatYmd(date);
               const isToday = ymd === todayYmd;
-              const isCurrentMonth = getSwissDateParts(date).month - 1 === visibleMonthIndex;
+              const isCurrentMonth = date.getMonth() === visibleMonthIndex;
 
               // Highlight if inside selected range
               const inRange = (() => {
@@ -2073,9 +2059,7 @@ export default function CalendarPage() {
                 }
                 const start = selectedDate < rangeEndDate ? selectedDate : rangeEndDate;
                 const end = selectedDate < rangeEndDate ? rangeEndDate : selectedDate;
-                const dParts = getSwissDateParts(date);
-                const d = new Date(dParts.year, dParts.month - 1, dParts.day);
-                return d >= start && d <= end;
+                return date >= start && date <= end;
               })();
 
               return (
@@ -2093,7 +2077,7 @@ export default function CalendarPage() {
                         : "hover:bg-slate-100"
                   }`}
                 >
-                  {getSwissDateParts(date).day}
+                  {date.getDate()}
                 </button>
               );
             })}
@@ -2390,9 +2374,7 @@ export default function CalendarPage() {
                   <div
                     key={ymd}
                     onClick={() => handleMonthDayClick(date)}
-                    onMouseDown={() => handleMiniDayMouseDown(date)}
-                    onMouseEnter={() => handleMiniDayMouseEnter(date)}
-                    className={`flex min-h-[96px] flex-col border-b border-r border-slate-100 px-2 py-1 text-left last:border-r-0 ${
+                    className={`flex min-h-[96px] cursor-pointer flex-col border-b border-r border-slate-100 px-2 py-1 text-left last:border-r-0 hover:bg-slate-50 ${
                       isCurrentMonth ? "bg-white" : "bg-slate-50/80 text-slate-400"
                     } ${inRange ? "bg-sky-50" : ""}`}
                   >
@@ -2402,7 +2384,7 @@ export default function CalendarPage() {
                           isToday ? "bg-sky-600 text-white" : "text-slate-700"
                         }`}
                       >
-                        {getSwissDateParts(date).day}
+                        {date.getDate()}
                       </span>
                     </div>
                     <div className="space-y-0.5">
