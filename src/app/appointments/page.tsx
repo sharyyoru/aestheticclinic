@@ -89,41 +89,70 @@ const BOOKING_STATUS_OPTIONS = [
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  "No selection": "bg-slate-100",
-  "Mesotherapy": "bg-violet-200",
-  "Dermomask": "bg-amber-200",
+  // French names (from Axenita)
+  "Aucune sélection": "bg-sky-100",
+  "Mésothérapie": "bg-purple-500",
+  "Mesotherapie": "bg-purple-500",
+  "Dermomask": "bg-lime-400",
   "1ère consultation": "bg-yellow-300",
-  "Administration": "bg-slate-300",
-  "Cavitation": "bg-lime-300",
-  "CO2": "bg-yellow-600",
-  "Control": "bg-lime-400",
-  "Emla Cream": "bg-slate-200",
-  "Cryotherapy": "bg-purple-400",
-  "Discussion": "bg-slate-300",
-  "EMSCULPT": "bg-teal-400",
-  "Cutera laser hair removal": "bg-green-500",
-  "Epilation laser Gentel": "bg-lime-300",
-  "Electrolysis hair removal": "bg-purple-500",
-  "HIFU": "bg-rose-400",
-  "Injection (botox; Acide hyaluronic)": "bg-yellow-400",
-  "Important": "bg-slate-800 text-white",
-  "IPL": "bg-sky-300",
-  "Meso Anti-age": "bg-orange-500",
-  "Meso Anti-cellulite": "bg-orange-400",
-  "Meso Anti-tache": "bg-orange-300",
-  "Microdermabrasion": "bg-indigo-400",
-  "MORPHEUS8": "bg-indigo-500",
-  "Radio frequency": "bg-purple-300",
-  "Meeting": "bg-orange-600",
-  "OP Surgery": "bg-red-500 text-white",
-  "Breaks/Change of Location": "bg-amber-400",
-  "PRP": "bg-orange-400",
-  "Tatoo removal": "bg-slate-400",
-  "TCA": "bg-sky-200",
-  "Treatment": "bg-slate-300",
-  "Caviar treatment": "bg-slate-300",
-  "Vacation/Leave": "bg-green-400",
-  "Visia": "bg-slate-200",
+  "1ere consultation": "bg-yellow-300",
+  "Administration": "bg-slate-400",
+  "Cavitation": "bg-green-500",
+  "CO2": "bg-pink-300",
+  "Contrôle": "bg-teal-600",
+  "Controle": "bg-teal-600",
+  "Crème Emla": "bg-teal-400",
+  "Creme Emla": "bg-teal-400",
+  "Cryothérapie": "bg-purple-700",
+  "Cryotherapie": "bg-purple-700",
+  "Discussion": "bg-sky-200",
+  "EMSCULPT": "bg-teal-500",
+  "Épilation laser Cutera": "bg-slate-400",
+  "Epilation laser Cutera": "bg-slate-400",
+  "Epilation laser Gentel": "bg-green-500",
+  "Épilation éléctrique": "bg-indigo-400",
+  "Epilation electrique": "bg-indigo-400",
+  "Epilation éléctrique": "bg-indigo-400",
+  "HIFU": "bg-pink-300",
+  "Injection (botox; Acide hyaluronic)": "bg-sky-300",
+  "Injection (botox; Aci": "bg-sky-300",
+  "Important": "bg-red-500 text-white",
+  "IPL": "bg-purple-200",
+  "Meso Anti-age": "bg-amber-700",
+  "Meso Anti-cellulite": "bg-amber-600",
+  "Meso Anti-tache": "bg-amber-700",
+  "Microdermabrasion": "bg-blue-500",
+  "MORPHEUS8": "bg-amber-800",
+  "Radio-fréquence": "bg-lime-200",
+  "Radio-frequence": "bg-lime-200",
+  "Radio frequency": "bg-lime-200",
+  "Réunion": "bg-pink-300",
+  "Reunion": "bg-pink-300",
+  "OP Chirurgie": "bg-green-500",
+  "Pauses/Changement de salle/lieu": "bg-purple-600",
+  "Pauses/Changeme": "bg-purple-600",
+  "PRP": "bg-orange-500",
+  "Tatoo removal": "bg-amber-700",
+  "TCA": "bg-purple-200",
+  "Traitement": "bg-purple-200",
+  "Traitement caviar": "bg-indigo-200",
+  "Vacances/Congés": "bg-lime-300",
+  "Vacances/Conges": "bg-lime-300",
+  "Visia": "bg-yellow-400",
+  // English fallbacks
+  "No selection": "bg-sky-100",
+  "Mesotherapy": "bg-purple-500",
+  "Control": "bg-teal-600",
+  "Emla Cream": "bg-teal-400",
+  "Cryotherapy": "bg-purple-700",
+  "Cutera laser hair removal": "bg-slate-400",
+  "Electrolysis hair removal": "bg-indigo-400",
+  "Meeting": "bg-pink-300",
+  "OP Surgery": "bg-green-500",
+  "Breaks/Change of Location": "bg-purple-600",
+  "Treatment": "bg-purple-200",
+  "Caviar treatment": "bg-indigo-200",
+  "Vacation/Leave": "bg-lime-300",
 };
 
 const STATUS_ICONS: Record<string, string> = {
@@ -154,9 +183,39 @@ const STATUS_ICONS: Record<string, string> = {
   "ESPECES": "💵",
 };
 
+function normalizeString(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Remove accents
+    .trim();
+}
+
 function getCategoryColor(category: string | null): string {
   if (!category) return "bg-slate-100";
-  return CATEGORY_COLORS[category] ?? "bg-slate-100";
+  
+  // Direct match first
+  if (CATEGORY_COLORS[category]) {
+    return CATEGORY_COLORS[category];
+  }
+  
+  // Normalized match (case-insensitive, accent-insensitive)
+  const normalizedCategory = normalizeString(category);
+  for (const [key, value] of Object.entries(CATEGORY_COLORS)) {
+    if (normalizeString(key) === normalizedCategory) {
+      return value;
+    }
+  }
+  
+  // Partial match (for truncated category names)
+  for (const [key, value] of Object.entries(CATEGORY_COLORS)) {
+    const normalizedKey = normalizeString(key);
+    if (normalizedKey.startsWith(normalizedCategory) || normalizedCategory.startsWith(normalizedKey)) {
+      return value;
+    }
+  }
+  
+  return "bg-slate-100";
 }
 
 function getStatusIcon(status: string | null): string {
