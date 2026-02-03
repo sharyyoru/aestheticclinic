@@ -2422,15 +2422,20 @@ export default function CalendarPage() {
                             const top =
                               (topMinutes / DAY_VIEW_SLOT_MINUTES) *
                               DAY_VIEW_SLOT_HEIGHT;
-                            const height =
+                            const calculatedHeight =
                               (durationMinutes / DAY_VIEW_SLOT_MINUTES) *
                               DAY_VIEW_SLOT_HEIGHT;
-
+                            
                             const overlapInfo = overlapMap.get(appt.id);
                             const colIndex = overlapInfo?.columnIndex ?? 0;
                             const totalCols = overlapInfo?.totalColumns ?? 1;
                             const widthPercent = 100 / totalCols;
                             const leftPercent = colIndex * widthPercent;
+                            
+                            // Minimum height to show at least patient name and time (2 lines)
+                            // When side by side, ensure minimum visibility
+                            const minHeight = totalCols > 1 ? 44 : 36;
+                            const height = Math.max(calculatedHeight, minHeight);
 
                             const { serviceLabel } = getServiceAndStatusFromReason(
                               appt.reason,
