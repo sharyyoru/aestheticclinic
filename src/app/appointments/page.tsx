@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 type AppointmentStatus =
@@ -734,12 +735,36 @@ async function sendAppointmentConfirmationEmail(
 }
 
 export default function CalendarPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Parse date from URL or use today
+  const getInitialDate = useCallback(() => {
+    const dateParam = searchParams.get("date");
+    if (dateParam) {
+      const [year, month, day] = dateParam.split("-").map(Number);
+      if (year && month && day) {
+        return new Date(year, month - 1, day);
+      }
+    }
+    const swiss = getSwissNow();
+    return new Date(swiss.year, swiss.month - 1, swiss.day);
+  }, [searchParams]);
+
+  const getInitialView = useCallback((): CalendarView => {
+    const viewParam = searchParams.get("view");
+    if (viewParam === "day" || viewParam === "month" || viewParam === "range") {
+      return viewParam;
+    }
+    return "month";
+  }, [searchParams]);
+
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const swiss = getSwissNow();
     return new Date(swiss.year, swiss.month - 1, 1);
   });
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [patientSearch, setPatientSearch] = useState("");
   const [providers, setProviders] = useState<ProviderOption[]>([]);
@@ -754,6 +779,25 @@ export default function CalendarPage() {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  // Initialize from URL params on mount
+  useEffect(() => {
+    const initialDate = getInitialDate();
+    const initialView = getInitialView();
+    setSelectedDate(initialDate);
+    setView(initialView);
+    const parts = getSwissDateParts(initialDate);
+    setVisibleMonth(new Date(parts.year, parts.month - 1, 1));
+  }, []);
+
+  // Update URL when date or view changes
+  const updateUrl = useCallback((date: Date, newView: CalendarView) => {
+    const parts = getSwissDateParts(date);
+    const dateStr = `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+    const url = `/appointments?date=${dateStr}&view=${newView}`;
+    router.replace(url, { scroll: false });
+  }, [router]);
   const [isDraggingRange, setIsDraggingRange] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -1858,7 +1902,11 @@ export default function CalendarPage() {
 
   function goToToday() {
     const swiss = getSwissNow();
+    const todayDate = new Date(swiss.year, swiss.month - 1, swiss.day);
+    setSelectedDate(todayDate);
     setVisibleMonth(new Date(swiss.year, swiss.month - 1, 1));
+    setView("day");
+    updateUrl(todayDate, "day");
   }
 
   function goPrevMonth() {
@@ -1877,20 +1925,26 @@ export default function CalendarPage() {
 
   function goPrevDay() {
     if (!selectedDate) return;
+    setIsNavigating(true);
     const parts = getSwissDateParts(selectedDate);
     const newDate = new Date(parts.year, parts.month - 1, parts.day - 1);
     setSelectedDate(newDate);
     const newParts = getSwissDateParts(newDate);
     setVisibleMonth(new Date(newParts.year, newParts.month - 1, 1));
+    updateUrl(newDate, "day");
+    setTimeout(() => setIsNavigating(false), 100);
   }
 
   function goNextDay() {
     if (!selectedDate) return;
+    setIsNavigating(true);
     const parts = getSwissDateParts(selectedDate);
     const newDate = new Date(parts.year, parts.month - 1, parts.day + 1);
     setSelectedDate(newDate);
     const newParts = getSwissDateParts(newDate);
     setVisibleMonth(new Date(newParts.year, newParts.month - 1, 1));
+    updateUrl(newDate, "day");
+    setTimeout(() => setIsNavigating(false), 100);
   }
 
   function handleNavPrev() {
@@ -1909,11 +1963,21 @@ export default function CalendarPage() {
     }
   }
 
-  function handleMiniDayMouseDown(date: Date) {
+  // Navigate to specific date via URL
+  function navigateToDate(date: Date, newView: CalendarView = "day") {
+    setIsNavigating(true);
+    const parts = getSwissDateParts(date);
     setSelectedDate(date);
+    setVisibleMonth(new Date(parts.year, parts.month - 1, 1));
     setRangeEndDate(null);
+    setView(newView);
+    updateUrl(date, newView);
+    setTimeout(() => setIsNavigating(false), 100);
+  }
+
+  function handleMiniDayMouseDown(date: Date) {
+    navigateToDate(date, "day");
     setIsDraggingRange(true);
-    setView("day");
   }
 
   function handleMiniDayMouseEnter(date: Date) {
@@ -1923,15 +1987,22 @@ export default function CalendarPage() {
   }
 
   function handleMonthDayClick(date: Date) {
-    const parts = getSwissDateParts(date);
-    setVisibleMonth(new Date(parts.year, parts.month - 1, 1));
-    setSelectedDate(date);
-    setRangeEndDate(null);
-    setView("day");
+    navigateToDate(date, "day");
   }
 
   return (
-    <div className="flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
+    <div className="relative flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
+      {/* Loading overlay */}
+      {(loading || isNavigating) && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600" />
+            <span className="text-sm font-medium text-slate-600">
+              {isNavigating ? "Loading date..." : "Loading appointments..."}
+            </span>
+          </div>
+        </div>
+      )}
       {/* Left sidebar similar to Google Calendar */}
       <aside className="hidden w-64 flex-shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex">
         <div className="mb-3 flex gap-2">
@@ -2059,12 +2130,9 @@ export default function CalendarPage() {
                   type="button"
                   onMouseDown={() => handleMiniDayMouseDown(date)}
                   onMouseEnter={() => handleMiniDayMouseEnter(date)}
-                  onClick={() => {
-                    const clickParts = getSwissDateParts(date);
-                    setVisibleMonth(new Date(clickParts.year, clickParts.month - 1, 1));
-                    setSelectedDate(date);
-                    setRangeEndDate(null);
-                    setView("day");
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigateToDate(date, "day");
                   }}
                   className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] ${
                     isCurrentMonth ? "text-slate-700" : "text-slate-400"
