@@ -370,27 +370,84 @@ function calculateOverlapPositions(
     };
   }).sort((a, b) => a.startMinutes - b.startMinutes || a.endMinutes - b.endMinutes);
 
-  const columns: { endMinutes: number }[] = [];
+  // Helper to check if two appointments overlap
+  const overlaps = (a: typeof parsed[0], b: typeof parsed[0]) => {
+    return a.startMinutes < b.endMinutes && b.startMinutes < a.endMinutes;
+  };
 
+  // Group overlapping appointments together
+  const groups: (typeof parsed[0])[][] = [];
+  
   for (const appt of parsed) {
-    let placed = false;
-    for (let col = 0; col < columns.length; col++) {
-      if (columns[col].endMinutes <= appt.startMinutes) {
-        columns[col].endMinutes = appt.endMinutes;
-        result.set(appt.id, { id: appt.id, columnIndex: col, totalColumns: 0 });
-        placed = true;
+    let addedToGroup = false;
+    
+    for (const group of groups) {
+      // Check if this appointment overlaps with any appointment in the group
+      const overlapsWithGroup = group.some((member) => overlaps(appt, member));
+      if (overlapsWithGroup) {
+        group.push(appt);
+        addedToGroup = true;
         break;
       }
     }
-    if (!placed) {
-      result.set(appt.id, { id: appt.id, columnIndex: columns.length, totalColumns: 0 });
-      columns.push({ endMinutes: appt.endMinutes });
+    
+    if (!addedToGroup) {
+      groups.push([appt]);
     }
   }
 
-  const totalCols = columns.length;
-  for (const info of result.values()) {
-    info.totalColumns = totalCols;
+  // Merge groups that overlap (in case an appointment bridges two groups)
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < groups.length; i++) {
+      for (let j = i + 1; j < groups.length; j++) {
+        const groupOverlaps = groups[i].some((a) => 
+          groups[j].some((b) => overlaps(a, b))
+        );
+        if (groupOverlaps) {
+          groups[i] = [...groups[i], ...groups[j]];
+          groups.splice(j, 1);
+          merged = true;
+          break;
+        }
+      }
+      if (merged) break;
+    }
+  }
+
+  // Assign column positions within each group
+  for (const group of groups) {
+    // Sort group by start time
+    group.sort((a, b) => a.startMinutes - b.startMinutes || a.endMinutes - b.endMinutes);
+    
+    const columns: { endMinutes: number; ids: string[] }[] = [];
+    
+    for (const appt of group) {
+      let placed = false;
+      for (let col = 0; col < columns.length; col++) {
+        if (columns[col].endMinutes <= appt.startMinutes) {
+          columns[col].endMinutes = appt.endMinutes;
+          columns[col].ids.push(appt.id);
+          result.set(appt.id, { id: appt.id, columnIndex: col, totalColumns: 0 });
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        result.set(appt.id, { id: appt.id, columnIndex: columns.length, totalColumns: 0 });
+        columns.push({ endMinutes: appt.endMinutes, ids: [appt.id] });
+      }
+    }
+    
+    // Set totalColumns for this group
+    const totalCols = columns.length;
+    for (const appt of group) {
+      const info = result.get(appt.id);
+      if (info) {
+        info.totalColumns = totalCols;
+      }
+    }
   }
 
   return result;
