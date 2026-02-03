@@ -760,6 +760,20 @@ export default function CalendarPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Helper to close all edit modal dropdowns
+  const closeEditModalDropdowns = () => {
+    setEditCategoryDropdownOpen(false);
+    setEditBookingStatusDropdownOpen(false);
+  };
+
+  // Helper to close edit modal and reset state
+  const closeEditModal = () => {
+    if (savingEdit) return;
+    setEditModalOpen(false);
+    setEditingAppointment(null);
+    closeEditModalDropdowns();
+  };
+
   const monthStart = useMemo(() => {
     return new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
   }, [visibleMonth]);
@@ -2514,9 +2528,8 @@ export default function CalendarPage() {
             className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
             style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
             onClick={(e) => {
-              if (e.target === e.currentTarget && !savingEdit) {
-                setEditModalOpen(false);
-                setEditingAppointment(null);
+              if (e.target === e.currentTarget) {
+                closeEditModal();
               }
             }}
           >
@@ -2525,11 +2538,7 @@ export default function CalendarPage() {
                 <h2 className="text-sm font-semibold text-slate-900">Edit appointment</h2>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (savingEdit) return;
-                    setEditModalOpen(false);
-                    setEditingAppointment(null);
-                  }}
+                  onClick={closeEditModal}
                   className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-500 shadow-sm hover:bg-slate-50"
                 >
                   <span className="sr-only">Close</span>
@@ -2782,11 +2791,7 @@ export default function CalendarPage() {
               <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (savingEdit) return;
-                    setEditModalOpen(false);
-                    setEditingAppointment(null);
-                  }}
+                  onClick={closeEditModal}
                   className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
                 >
                   Close
