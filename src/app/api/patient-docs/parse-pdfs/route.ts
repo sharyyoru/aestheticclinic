@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Force Node.js runtime for pdf-parse compatibility
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require("pdf-parse");
 
