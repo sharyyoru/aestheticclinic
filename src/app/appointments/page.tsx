@@ -938,6 +938,18 @@ export default function CalendarPage() {
     };
   }, []);
 
+  // Allowed doctor calendar names - filter at DB level for performance
+  const ALLOWED_DOCTOR_PATTERNS = [
+    "xavier tenorio",
+    "cesar rodrigues", 
+    "cezar rodrigues",
+    "yulia raspertova",
+    "burbuqe fazliu",
+    "laser",
+    "monia khedir",
+    "lily radionova",
+  ];
+
   useEffect(() => {
     let isMounted = true;
 
@@ -946,9 +958,11 @@ export default function CalendarPage() {
         setProvidersLoading(true);
         setProvidersError(null);
 
+        // Load only allowed doctors using ilike filters for performance
         const { data, error } = await supabaseClient
           .from("users")
           .select("id, full_name, email")
+          .or(ALLOWED_DOCTOR_PATTERNS.map(p => `full_name.ilike.%${p}%`).join(','))
           .order("full_name", { ascending: true });
 
         if (!isMounted) return;
@@ -987,31 +1001,14 @@ export default function CalendarPage() {
     };
   }, []);
 
-  // Allowed doctor calendar names (case-insensitive partial match)
-  const ALLOWED_DOCTOR_CALENDARS = [
-    "xavier tenorio",
-    "cezar rodrigues",
-    "cesar rodrigues",
-    "yulia raspertova",
-    "burbuqe fazliu",
-    "laser",
-    "monia khedir",
-    "lily radionova",
-  ];
-
   useEffect(() => {
     if (providers.length === 0) return;
 
     setDoctorCalendars((prev) => {
       if (prev.length > 0) return prev;
 
-      // Filter providers to only allowed doctors
-      const allowedProviders = providers.filter((provider) => {
-        const name = (provider.name ?? "").toLowerCase();
-        return ALLOWED_DOCTOR_CALENDARS.some((allowed) => name.includes(allowed));
-      });
-
-      const baseCalendars: DoctorCalendar[] = allowedProviders.map((provider, index) => {
+      // Providers are already filtered at DB level
+      const baseCalendars: DoctorCalendar[] = providers.map((provider, index) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const trimmedName = rawName.trim() || "Unnamed doctor";
 
@@ -2005,19 +2002,24 @@ export default function CalendarPage() {
     navigateToDate(date, "day");
   }
 
+  // Show full-page loading state until critical data is ready
+  const isInitialLoading = loading || providersLoading;
+
+  if (isInitialLoading) {
+    return (
+      <div className="flex h-[calc(100vh-96px)] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600" />
+          <span className="text-sm font-medium text-slate-600">
+            Loading calendar...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
-      {/* Loading overlay */}
-      {loading && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-2">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600" />
-            <span className="text-sm font-medium text-slate-600">
-              Loading appointments...
-            </span>
-          </div>
-        </div>
-      )}
       {/* Left sidebar similar to Google Calendar */}
       <aside className="hidden w-64 flex-shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex">
         <div className="mb-3 flex gap-2">
