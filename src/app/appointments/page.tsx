@@ -2431,16 +2431,18 @@ export default function CalendarPage() {
                 <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                   <p className="text-[11px] font-semibold text-slate-700">Patient Information</p>
                   <div className="space-y-1">
-                    <p className="text-[11px] text-slate-800 font-medium">
-                      {(() => {
-                        const p = editingAppointment.patient;
-                        const name = p
-                          ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() ||
-                            "Unknown patient"
-                          : "Unknown patient";
-                        return name;
-                      })()}
-                    </p>
+                    {editingAppointment.patient?.id ? (
+                      <Link
+                        href={`/patients/${editingAppointment.patient.id}`}
+                        className="text-[11px] text-sky-600 font-bold hover:text-sky-700 hover:underline"
+                      >
+                        {`${editingAppointment.patient.first_name ?? ""} ${editingAppointment.patient.last_name ?? ""}`.trim() || "Unknown patient"}
+                      </Link>
+                    ) : (
+                      <p className="text-[11px] text-slate-800 font-medium">
+                        Unknown patient
+                      </p>
+                    )}
                     {editingAppointment.patient?.email && (
                       <p className="text-[10px] text-slate-500">
                         {editingAppointment.patient.email}
