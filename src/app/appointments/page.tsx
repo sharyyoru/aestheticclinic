@@ -815,6 +815,7 @@ export default function CalendarPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] =
     useState<CalendarAppointment | null>(null);
+  const [copiedAppointment, setCopiedAppointment] = useState<CalendarAppointment | null>(null);
   const [editWorkflowStatus, setEditWorkflowStatus] =
     useState<WorkflowStatus>("pending");
   const [editDate, setEditDate] = useState("");
@@ -1236,37 +1237,42 @@ export default function CalendarPage() {
       const slotStart = minutes;
       const slotEnd = minutes + desiredDuration;
 
-      const overlaps = dayAppointments.some((appt) => {
-        const start = new Date(appt.start_time);
-        if (Number.isNaN(start.getTime())) return false;
+      // System users can book any time slot (allow overlapping appointments)
+      // Non-system users are restricted to non-overlapping slots only
+      let overlaps = false;
+      if (!isSystemUser) {
+        overlaps = dayAppointments.some((appt) => {
+          const start = new Date(appt.start_time);
+          if (Number.isNaN(start.getTime())) return false;
 
-        // Use Switzerland timezone
-        const rawStartMinutes = getSwissHours(start) * 60 + getSwissMinutes(start);
-        let endMinutes = rawStartMinutes + 60;
+          // Use Switzerland timezone
+          const rawStartMinutes = getSwissHours(start) * 60 + getSwissMinutes(start);
+          let endMinutes = rawStartMinutes + 60;
 
-        if (appt.end_time) {
-          const end = new Date(appt.end_time);
-          if (!Number.isNaN(end.getTime())) {
-            endMinutes = getSwissHours(end) * 60 + getSwissMinutes(end);
+          if (appt.end_time) {
+            const end = new Date(appt.end_time);
+            if (!Number.isNaN(end.getTime())) {
+              endMinutes = getSwissHours(end) * 60 + getSwissMinutes(end);
+            }
           }
-        }
 
-        if (endMinutes <= rawStartMinutes) {
-          endMinutes = rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
-        }
+          if (endMinutes <= rawStartMinutes) {
+            endMinutes = rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
+          }
 
-        if (endMinutes > windowEnd) {
-          endMinutes = windowEnd;
-        }
+          if (endMinutes > windowEnd) {
+            endMinutes = windowEnd;
+          }
 
-        const apptStart = Math.max(rawStartMinutes, windowStart);
-        const apptEnd = Math.max(
-          apptStart + DAY_VIEW_SLOT_MINUTES,
-          Math.min(endMinutes, windowEnd),
-        );
+          const apptStart = Math.max(rawStartMinutes, windowStart);
+          const apptEnd = Math.max(
+            apptStart + DAY_VIEW_SLOT_MINUTES,
+            Math.min(endMinutes, windowEnd),
+          );
 
-        return apptStart < slotEnd && apptEnd > slotStart;
-      });
+          return apptStart < slotEnd && apptEnd > slotStart;
+        });
+      }
 
       if (!overlaps) {
         const hours24 = Math.floor(minutes / 60);
@@ -1282,7 +1288,7 @@ export default function CalendarPage() {
     }
 
     return options;
-  }, [draftDate, appointmentsByDay, consultationDuration]);
+  }, [draftDate, appointmentsByDay, consultationDuration, isSystemUser]);
 
   // Filtered options for smart search dropdowns
   const filteredServiceOptions = useMemo(() => {
@@ -1727,6 +1733,75 @@ export default function CalendarPage() {
     setEditModalOpen(true);
   }
 
+  // Copy appointment for pasting
+  function handleCopyAppointment(appt: CalendarAppointment) {
+    setCopiedAppointment(appt);
+    // Show a brief notification or feedback could be added here
+  }
+
+  // Paste copied appointment - opens create modal with pre-filled data
+  function handlePasteAppointment() {
+    if (!copiedAppointment) return;
+
+    // Extract data from copied appointment
+    const { serviceLabel, statusLabel } = getServiceAndStatusFromReason(copiedAppointment.reason);
+    const doctorName = getDoctorNameFromReason(copiedAppointment.reason);
+    const categoryFromReason = getCategoryFromReason(copiedAppointment.reason);
+
+    // Find matching service
+    const matchingService = serviceOptions.find(
+      (opt) => opt.name.toLowerCase() === (serviceLabel ?? "").toLowerCase()
+    );
+    if (matchingService) {
+      setSelectedServiceId(matchingService.id);
+      setServiceSearch(matchingService.name);
+    }
+
+    // Set patient if available
+    if (copiedAppointment.patient?.id) {
+      const patientName = `${copiedAppointment.patient.first_name ?? ""} ${copiedAppointment.patient.last_name ?? ""}`.trim();
+      setCreatePatientId(copiedAppointment.patient.id);
+      setCreatePatientName(patientName);
+      setCreatePatientSearch(patientName);
+      setDraftTitle(`Consultation for ${patientName}`);
+    }
+
+    // Set status
+    setBookingStatus(statusLabel ?? "");
+    setStatusSearch(statusLabel ?? "");
+
+    // Set category
+    setAppointmentCategory(categoryFromReason ?? "");
+    setCategorySearch(categoryFromReason ?? "");
+
+    // Set location
+    setDraftLocation(copiedAppointment.location ?? "Rhône");
+    setLocationSearch(copiedAppointment.location ?? "Rhône");
+
+    // Set duration from copied appointment
+    const start = new Date(copiedAppointment.start_time);
+    const end = copiedAppointment.end_time ? new Date(copiedAppointment.end_time) : null;
+    if (!Number.isNaN(start.getTime()) && end && !Number.isNaN(end.getTime())) {
+      const diffMinutes = Math.round((end.getTime() - start.getTime()) / (60 * 1000));
+      const validDuration = CONSULTATION_DURATION_OPTIONS.find(opt => opt.value === diffMinutes);
+      setConsultationDuration(validDuration ? diffMinutes : 15);
+      setDurationSearch(`${validDuration ? diffMinutes : 15} minutes`);
+    }
+
+    // Find and set doctor calendar
+    if (doctorName) {
+      const matchingCalendar = doctorCalendars.find(
+        (cal) => cal.name.toLowerCase() === doctorName.toLowerCase()
+      );
+      if (matchingCalendar) {
+        setCreateDoctorCalendarId(matchingCalendar.id);
+      }
+    }
+
+    // Open create modal (date/time will be selected by user)
+    setCreateModalOpen(true);
+  }
+
   async function handleSaveEditAppointment() {
     if (!editingAppointment || savingEdit) return;
 
@@ -1866,7 +1941,7 @@ export default function CalendarPage() {
     <div className="flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
       {/* Left sidebar similar to Google Calendar */}
       <aside className="hidden w-64 flex-shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex">
-        <div className="mb-3">
+        <div className="mb-3 flex gap-2">
           <button
             type="button"
             onClick={() => {
@@ -1900,10 +1975,23 @@ export default function CalendarPage() {
               setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
               setCreateModalOpen(true);
             }}
-            className="inline-flex w-full items-center justify-center rounded-full bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700"
+            className="inline-flex flex-1 items-center justify-center rounded-full bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700"
           >
             Create
           </button>
+          {copiedAppointment && (
+            <button
+              type="button"
+              onClick={handlePasteAppointment}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              title={`Paste: ${copiedAppointment.patient ? `${copiedAppointment.patient.first_name ?? ""} ${copiedAppointment.patient.last_name ?? ""}`.trim() : "Copied appointment"}`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              Paste
+            </button>
+          )}
         </div>
         {/* Mini month */}
         <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-2">
@@ -2857,22 +2945,38 @@ export default function CalendarPage() {
               {editError ? (
                 <p className="mt-2 text-[11px] text-red-600">{editError}</p>
               ) : null}
-              <div className="mt-4 flex items-center justify-end gap-2">
+              <div className="mt-4 flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={closeEditModal}
-                  className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  onClick={() => {
+                    handleCopyAppointment(editingAppointment);
+                    closeEditModal();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  title="Copy appointment details"
                 >
-                  Close
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveEditAppointment()}
-                  disabled={savingEdit}
-                  className="inline-flex items-center rounded-full border border-sky-500/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Save changes
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={closeEditModal}
+                    className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveEditAppointment()}
+                    disabled={savingEdit}
+                    className="inline-flex items-center rounded-full border border-sky-500/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Save changes
+                  </button>
+                </div>
               </div>
             </div>
           </div>
