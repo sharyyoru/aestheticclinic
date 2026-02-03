@@ -167,12 +167,27 @@ function formatDuration(totalSeconds: number): string {
     .padStart(2, "0")}`;
 }
 
+type AxenitaPdfDocument = {
+  folderName: string;
+  fileName: string;
+  fileType: "ap" | "consultation";
+  content: string;
+  axenitaId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  date: string | null;
+};
+
 export default function MedicalConsultationsCard({
   patientId,
   recordTypeFilter,
+  patientFirstName,
+  patientLastName,
 }: {
   patientId: string;
   recordTypeFilter?: ConsultationRecordType;
+  patientFirstName?: string;
+  patientLastName?: string;
 }) {
   const router = useRouter();
 
@@ -285,6 +300,10 @@ export default function MedicalConsultationsCard({
 
   const [insuranceBillingModalOpen, setInsuranceBillingModalOpen] = useState(false);
   const [insuranceBillingTarget, setInsuranceBillingTarget] = useState<ConsultationRow | null>(null);
+
+  const [axenitaPdfDocs, setAxenitaPdfDocs] = useState<AxenitaPdfDocument[]>([]);
+  const [axenitaPdfLoading, setAxenitaPdfLoading] = useState(false);
+  const [axenitaPdfError, setAxenitaPdfError] = useState<string | null>(null);
 
   const consultationRecordTypeOptions: {
     value: ConsultationRecordType;
@@ -434,6 +453,54 @@ export default function MedicalConsultationsCard({
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAxenitaPdfDocuments() {
+      if (!patientFirstName || !patientLastName) return;
+
+      try {
+        setAxenitaPdfLoading(true);
+        setAxenitaPdfError(null);
+
+        const response = await fetch("/api/patient-docs/parse-pdfs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: patientFirstName,
+            lastName: patientLastName,
+            patientId,
+          }),
+        });
+
+        if (!isMounted) return;
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          setAxenitaPdfError(errorData.error || "Failed to load PDF documents");
+          setAxenitaPdfDocs([]);
+          setAxenitaPdfLoading(false);
+          return;
+        }
+
+        const data = await response.json();
+        setAxenitaPdfDocs(data.documents || []);
+        setAxenitaPdfLoading(false);
+      } catch (err: any) {
+        if (!isMounted) return;
+        setAxenitaPdfError(err.message || "Failed to load PDF documents");
+        setAxenitaPdfDocs([]);
+        setAxenitaPdfLoading(false);
+      }
+    }
+
+    void loadAxenitaPdfDocuments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [patientFirstName, patientLastName, patientId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -2714,6 +2781,54 @@ export default function MedicalConsultationsCard({
             </form>
           </div>
         ) : null}
+
+        {/* Axenita PDF Documents Section */}
+        {axenitaPdfDocs.length > 0 && !recordTypeFilter && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-[11px] font-semibold text-slate-700">Axenita Medical Records</h4>
+              <span className="text-[10px] text-slate-400">({axenitaPdfDocs.length} document{axenitaPdfDocs.length !== 1 ? 's' : ''})</span>
+            </div>
+            {axenitaPdfDocs.map((doc, index) => (
+              <div
+                key={`${doc.folderName}-${doc.fileName}-${index}`}
+                className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    doc.fileType === "ap" 
+                      ? "bg-purple-100 text-purple-700" 
+                      : "bg-blue-100 text-blue-700"
+                  }`}>
+                    {doc.fileType === "ap" ? "Medical Notes (AP)" : "Consultation"}
+                  </span>
+                  {doc.date && (
+                    <span className="text-[10px] text-slate-500">{doc.date}</span>
+                  )}
+                  <span className="text-[10px] text-slate-400">
+                    {doc.fileName}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-700 leading-relaxed line-clamp-3">
+                  {doc.content || "No content extracted"}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {axenitaPdfLoading && (
+          <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+            Loading Axenita medical records...
+          </div>
+        )}
+
+        {axenitaPdfError && (
+          <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+            {axenitaPdfError}
+          </div>
+        )}
+
         <div className="mt-3 space-y-2">
           {consultationsError ? (
             <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[11px] text-red-700">
