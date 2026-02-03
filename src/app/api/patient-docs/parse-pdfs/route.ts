@@ -139,25 +139,32 @@ export async function GET(request: NextRequest) {
     const firstName = searchParams.get("firstName");
     const lastName = searchParams.get("lastName");
 
+    console.log("DEBUG GET - Bucket:", BUCKET_NAME);
+
     const { data: folders, error: listError } = await supabaseAdmin.storage
       .from(BUCKET_NAME)
       .list("", { limit: 1000 });
 
+    console.log("DEBUG GET - Folders found:", folders?.length, folders?.map(f => ({ name: f.name, id: f.id })));
+    console.log("DEBUG GET - List error:", listError);
+
     if (listError) {
       console.error("Error listing folders:", listError);
-      return NextResponse.json({ error: "Failed to list folders" }, { status: 500 });
+      return NextResponse.json({ error: "Failed to list folders", details: listError }, { status: 500 });
     }
 
     if (!folders || folders.length === 0) {
-      return NextResponse.json({ documents: [] });
+      return NextResponse.json({ documents: [], debug: { bucket: BUCKET_NAME, foldersFound: 0 } });
     }
 
     const parsedDocuments: ParsedPdfDocument[] = [];
 
     for (const folder of folders) {
-      if (!folder.id || folder.name.includes(".")) continue;
+      // Skip files at root level (folders don't have extensions)
+      if (folder.name.includes(".")) continue;
 
       const folderInfo = parseFolderName(folder.name);
+      console.log("DEBUG GET - Processing folder:", folder.name, "->", folderInfo);
 
       if (firstName && lastName) {
         const folderFirstName = folderInfo.firstName?.toLowerCase() || "";
@@ -229,7 +236,8 @@ export async function POST(request: NextRequest) {
     const parsedDocuments: ParsedPdfDocument[] = [];
 
     for (const folder of folders) {
-      if (!folder.id || folder.name.includes(".")) continue;
+      // Skip files at root level (folders don't have extensions)
+      if (folder.name.includes(".")) continue;
 
       const folderInfo = parseFolderName(folder.name);
 
