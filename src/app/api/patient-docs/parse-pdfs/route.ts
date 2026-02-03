@@ -182,6 +182,35 @@ async function processPdfFile(
   }
 }
 
+// Helper to fetch all folders with pagination
+async function fetchAllFolders(): Promise<{ name: string; id: string | null }[]> {
+  const allFolders: { name: string; id: string | null }[] = [];
+  const PAGE_SIZE = 1000;
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const { data: folders, error } = await supabaseAdmin.storage
+      .from(BUCKET_NAME)
+      .list("", { limit: PAGE_SIZE, offset });
+
+    if (error) {
+      console.error("Error listing folders at offset", offset, error);
+      break;
+    }
+
+    if (!folders || folders.length === 0) {
+      hasMore = false;
+    } else {
+      allFolders.push(...folders.map(f => ({ name: f.name, id: f.id })));
+      offset += folders.length;
+      hasMore = folders.length === PAGE_SIZE;
+    }
+  }
+
+  return allFolders;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -190,41 +219,43 @@ export async function GET(request: NextRequest) {
 
     console.log("DEBUG GET - Bucket:", BUCKET_NAME);
 
-    const { data: folders, error: listError } = await supabaseAdmin.storage
-      .from(BUCKET_NAME)
-      .list("", { limit: 1000 });
+    // Fetch ALL folders with pagination
+    const folders = await fetchAllFolders();
 
-    console.log("DEBUG GET - Folders found:", folders?.length, folders?.map(f => ({ name: f.name, id: f.id })));
-    console.log("DEBUG GET - List error:", listError);
+    console.log("DEBUG GET - Total folders found:", folders.length);
 
-    if (listError) {
-      console.error("Error listing folders:", listError);
-      return NextResponse.json({ error: "Failed to list folders", details: listError }, { status: 500 });
-    }
-
-    if (!folders || folders.length === 0) {
+    if (folders.length === 0) {
       return NextResponse.json({ documents: [], debug: { bucket: BUCKET_NAME, foldersFound: 0 } });
     }
 
     const parsedDocuments: ParsedPdfDocument[] = [];
 
     for (const folder of folders) {
-      // Skip files at root level (folders don't have extensions)
-      if (folder.name.includes(".")) continue;
+      // Skip files at root level (folders typically don't have common file extensions)
+      if (/\.(pdf|jpg|jpeg|png|gif|txt|doc|docx)$/i.test(folder.name)) continue;
 
       const folderInfo = parseFolderName(folder.name);
-      console.log("DEBUG GET - Processing folder:", folder.name, "->", folderInfo);
 
       if (firstName && lastName) {
-        const folderFirstName = folderInfo.firstName?.toLowerCase() || "";
-        const folderLastName = folderInfo.lastName?.toLowerCase() || "";
-        const searchFirstName = firstName.toLowerCase();
-        const searchLastName = lastName.toLowerCase();
+        const folderFirstName = folderInfo.firstName?.toLowerCase().trim() || "";
+        const folderLastName = folderInfo.lastName?.toLowerCase().trim() || "";
+        const searchFirstNameLower = firstName.toLowerCase().trim();
+        const searchLastNameLower = lastName.toLowerCase().trim();
 
-        const firstNameMatch = folderFirstName.includes(searchFirstName) || searchFirstName.includes(folderFirstName);
-        const lastNameMatch = folderLastName.includes(searchLastName) || searchLastName.includes(folderLastName);
+        // More flexible matching - check if names match in either order
+        const directMatch = 
+          (folderFirstName.includes(searchFirstNameLower) || searchFirstNameLower.includes(folderFirstName)) &&
+          (folderLastName.includes(searchLastNameLower) || searchLastNameLower.includes(folderLastName));
+        
+        const reverseMatch = 
+          (folderFirstName.includes(searchLastNameLower) || searchLastNameLower.includes(folderFirstName)) &&
+          (folderLastName.includes(searchFirstNameLower) || searchFirstNameLower.includes(folderLastName));
+        
+        // Also check if the full folder name contains both names
+        const folderNameLower = folder.name.toLowerCase();
+        const containsBothNames = folderNameLower.includes(searchFirstNameLower) && folderNameLower.includes(searchLastNameLower);
 
-        if (!firstNameMatch || !lastNameMatch) continue;
+        if (!directMatch && !reverseMatch && !containsBothNames) continue;
       }
 
       const { data: subItems, error: subError } = await supabaseAdmin.storage
@@ -271,29 +302,22 @@ export async function POST(request: NextRequest) {
 
     console.log("DEBUG POST - Searching for:", { firstName, lastName });
 
-    const { data: folders, error: listError } = await supabaseAdmin.storage
-      .from(BUCKET_NAME)
-      .list("", { limit: 1000 });
+    // Fetch ALL folders with pagination
+    const folders = await fetchAllFolders();
 
     console.log("DEBUG POST - Bucket:", BUCKET_NAME);
-    console.log("DEBUG POST - List error:", listError);
-    console.log("DEBUG POST - Folders found:", folders?.length, folders?.map(f => f.name));
-
-    if (listError) {
-      console.error("Error listing folders:", listError);
-      return NextResponse.json({ error: "Failed to list folders", details: listError.message }, { status: 500 });
-    }
+    console.log("DEBUG POST - Total folders found:", folders.length);
 
     const debugInfo: DebugInfo = {
       bucket: BUCKET_NAME,
       searchFirstName: firstName,
       searchLastName: lastName,
-      foldersFound: folders?.length || 0,
-      folderNames: folders?.map(f => f.name) || [],
+      foldersFound: folders.length,
+      folderNames: [], // Don't include all folder names in debug to avoid huge response
       parsedFolders: [],
     };
 
-    if (!folders || folders.length === 0) {
+    if (folders.length === 0) {
       return NextResponse.json({ documents: [], debug: debugInfo });
     }
 
