@@ -987,13 +987,31 @@ export default function CalendarPage() {
     };
   }, []);
 
+  // Allowed doctor calendar names (case-insensitive partial match)
+  const ALLOWED_DOCTOR_CALENDARS = [
+    "xavier tenorio",
+    "cezar rodrigues",
+    "cesar rodrigues",
+    "yulia raspertova",
+    "burbuqe fazliu",
+    "laser",
+    "monia khedir",
+    "lily radionova",
+  ];
+
   useEffect(() => {
     if (providers.length === 0) return;
 
     setDoctorCalendars((prev) => {
       if (prev.length > 0) return prev;
 
-      const baseCalendars: DoctorCalendar[] = providers.map((provider, index) => {
+      // Filter providers to only allowed doctors
+      const allowedProviders = providers.filter((provider) => {
+        const name = (provider.name ?? "").toLowerCase();
+        return ALLOWED_DOCTOR_CALENDARS.some((allowed) => name.includes(allowed));
+      });
+
+      const baseCalendars: DoctorCalendar[] = allowedProviders.map((provider, index) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const trimmedName = rawName.trim() || "Unnamed doctor";
 
@@ -2235,35 +2253,8 @@ export default function CalendarPage() {
                   </button>
                 </div>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  const providerIdsWithCalendars = new Set(
-                    doctorCalendars.map((calendar) => calendar.providerId),
-                  );
-                  const nextProvider = providers.find(
-                    (provider) => !providerIdsWithCalendars.has(provider.id),
-                  );
-                  setNewCalendarProviderId(nextProvider?.id ?? "");
-                  setIsCreatingCalendar(true);
-                }}
-                className="inline-flex items-center rounded-full border border-dashed border-sky-300 bg-sky-50 px-3 py-1.5 text-[11px] font-medium text-sky-700 hover:bg-sky-100"
-              >
-                + New calendar
-              </button>
-            )}
+            ) : null}
           </div>
-        </div>
-
-        {/* Booking pages / Other calendars placeholders */}
-        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
-          <p className="font-semibold">Booking pages</p>
-          <p className="text-slate-400">Coming soon</p>
-        </div>
-        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
-          <p className="font-semibold">Other calendars</p>
-          <p className="text-slate-400">Coming soon</p>
         </div>
       </aside>
 

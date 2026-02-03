@@ -46,14 +46,24 @@ export async function POST(request: Request) {
         .eq("doctor_user_id", userId);
 
       if (consultationsError) {
-        console.error("Error merging consultations:", consultationsError);
+        console.error("Error merging consultations (doctor):", consultationsError);
+      }
+
+      // Update consultations where user is the creator
+      const { error: consultationsCreatedError } = await supabase
+        .from("consultations")
+        .update({ created_by_user_id: primaryUserId })
+        .eq("created_by_user_id", userId);
+
+      if (consultationsCreatedError) {
+        console.error("Error merging consultations (created_by):", consultationsCreatedError);
       }
 
       // Update tasks where user is the assignee
       const { error: tasksError } = await supabase
         .from("tasks")
-        .update({ assignee_user_id: primaryUserId })
-        .eq("assignee_user_id", userId);
+        .update({ assigned_user_id: primaryUserId })
+        .eq("assigned_user_id", userId);
 
       if (tasksError) {
         console.error("Error merging tasks:", tasksError);
