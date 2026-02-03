@@ -295,6 +295,29 @@ const DAY_VIEW_END_MINUTES = 22 * 60;
 const DAY_VIEW_SLOT_MINUTES = 15;
 const DAY_VIEW_SLOT_HEIGHT = 48;
 
+// Switzerland timezone - all times displayed in this timezone
+const SWITZERLAND_TIMEZONE = "Europe/Zurich";
+
+// Helper to get hours in Switzerland timezone
+function getSwissHours(date: Date): number {
+  return parseInt(date.toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: SWITZERLAND_TIMEZONE }), 10);
+}
+
+// Helper to get minutes in Switzerland timezone
+function getSwissMinutes(date: Date): number {
+  return parseInt(date.toLocaleString("en-US", { minute: "numeric", timeZone: SWITZERLAND_TIMEZONE }), 10);
+}
+
+// Helper to get date parts in Switzerland timezone
+function getSwissDateParts(date: Date): { year: number; month: number; day: number } {
+  const parts = date.toLocaleDateString("en-CA", { timeZone: SWITZERLAND_TIMEZONE }).split("-");
+  return {
+    year: parseInt(parts[0], 10),
+    month: parseInt(parts[1], 10),
+    day: parseInt(parts[2], 10),
+  };
+}
+
 type ProviderOption = {
   id: string;
   name: string | null;
@@ -317,38 +340,43 @@ function getCalendarColorForIndex(index: number): string {
 }
 
 function formatMonthYear(date: Date) {
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
+    timeZone: SWITZERLAND_TIMEZONE,
   });
 }
 
 function formatYmd(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
+  const parts = getSwissDateParts(date);
+  const year = parts.year;
+  const month = `${parts.month}`.padStart(2, "0");
+  const day = `${parts.day}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
 function formatTimeRangeLabel(start: Date, end: Date | null): string {
   if (Number.isNaN(start.getTime())) return "";
 
-  const startLabel = start.toLocaleTimeString(undefined, {
+  const startLabel = start.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: SWITZERLAND_TIMEZONE,
   });
 
   let endLabel: string;
   if (end && !Number.isNaN(end.getTime())) {
-    endLabel = end.toLocaleTimeString(undefined, {
+    endLabel = end.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: SWITZERLAND_TIMEZONE,
     });
   } else {
     const fallbackEnd = new Date(start.getTime() + DAY_VIEW_SLOT_MINUTES * 60 * 1000);
-    endLabel = fallbackEnd.toLocaleTimeString(undefined, {
+    endLabel = fallbackEnd.toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: SWITZERLAND_TIMEZONE,
     });
   }
 
@@ -423,12 +451,15 @@ function calculateOverlapPositions(
     const start = new Date(appt.start_time);
     const end = appt.end_time ? new Date(appt.end_time) : new Date(start.getTime() + 30 * 60 * 1000);
     
-    let startMinutes = start.getHours() * 60 + start.getMinutes();
-    let endMinutes = end.getHours() * 60 + end.getMinutes();
+    // Use Switzerland timezone for time calculations
+    let startMinutes = getSwissHours(start) * 60 + getSwissMinutes(start);
+    let endMinutes = getSwissHours(end) * 60 + getSwissMinutes(end);
     
     // Handle appointments spanning midnight or with invalid end times
     // If end is on a different day or endMinutes <= startMinutes, clamp to end of day view
-    if (end.getDate() !== start.getDate() || endMinutes <= startMinutes) {
+    const startParts = getSwissDateParts(start);
+    const endParts = getSwissDateParts(end);
+    if (startParts.day !== endParts.day || endMinutes <= startMinutes) {
       endMinutes = DAY_VIEW_END_MINUTES;
     }
     
@@ -545,10 +576,11 @@ async function sendAppointmentConfirmationEmail(
     const start = new Date(appointment.start_time);
     const end = appointment.end_time ? new Date(appointment.end_time) : null;
 
-    const dateLabel = start.toLocaleDateString(undefined, {
+    const dateLabel = start.toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
+      timeZone: SWITZERLAND_TIMEZONE,
     });
     const timeLabel = formatTimeRangeLabel(start, end);
     const dateTimeLabel = `${dateLabel} ${timeLabel}`;
@@ -1197,13 +1229,14 @@ export default function CalendarPage() {
         const start = new Date(appt.start_time);
         if (Number.isNaN(start.getTime())) return false;
 
-        const rawStartMinutes = start.getHours() * 60 + start.getMinutes();
+        // Use Switzerland timezone
+        const rawStartMinutes = getSwissHours(start) * 60 + getSwissMinutes(start);
         let endMinutes = rawStartMinutes + 60;
 
         if (appt.end_time) {
           const end = new Date(appt.end_time);
           if (!Number.isNaN(end.getTime())) {
-            endMinutes = end.getHours() * 60 + end.getMinutes();
+            endMinutes = getSwissHours(end) * 60 + getSwissMinutes(end);
           }
         }
 
@@ -1656,11 +1689,13 @@ export default function CalendarPage() {
     const end = appt.end_time ? new Date(appt.end_time) : null;
 
     if (!Number.isNaN(start.getTime())) {
-      const year = start.getFullYear();
-      const month = `${start.getMonth() + 1}`.padStart(2, "0");
-      const day = `${start.getDate()}`.padStart(2, "0");
-      const hours = `${start.getHours()}`.padStart(2, "0");
-      const minutes = `${start.getMinutes()}`.padStart(2, "0");
+      // Use Switzerland timezone for display
+      const parts = getSwissDateParts(start);
+      const year = parts.year;
+      const month = `${parts.month}`.padStart(2, "0");
+      const day = `${parts.day}`.padStart(2, "0");
+      const hours = `${getSwissHours(start)}`.padStart(2, "0");
+      const minutes = `${getSwissMinutes(start)}`.padStart(2, "0");
       setEditDate(`${year}-${month}-${day}`);
       setEditTime(`${hours}:${minutes}`);
     } else {
@@ -2139,25 +2174,28 @@ export default function CalendarPage() {
               {view === "month" && formatMonthYear(visibleMonth)}
               {view === "day" &&
                 selectedDate &&
-                selectedDate.toLocaleDateString(undefined, {
+                selectedDate.toLocaleDateString("en-US", {
                   weekday: "long",
                   year: "numeric",
                   month: "long",
                   day: "numeric",
+                  timeZone: SWITZERLAND_TIMEZONE,
                 })}
               {view === "range" && activeRangeDates.length > 0 && (
                 <>
-                  {activeRangeDates[0].toLocaleDateString(undefined, {
+                  {activeRangeDates[0].toLocaleDateString("en-US", {
                     month: "short",
                     day: "numeric",
+                    timeZone: SWITZERLAND_TIMEZONE,
                   })}
                   {" – "}
                   {activeRangeDates[activeRangeDates.length - 1].toLocaleDateString(
-                    undefined,
+                    "en-US",
                     {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
+                      timeZone: SWITZERLAND_TIMEZONE,
                     },
                   )}
                 </>
@@ -2342,7 +2380,7 @@ export default function CalendarPage() {
                     className="flex-1 px-2 py-2 text-center border-r border-slate-100 last:border-r-0"
                   >
                     <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                      {date.toLocaleDateString(undefined, { weekday: "short" })}
+                      {date.toLocaleDateString("en-US", { weekday: "short", timeZone: SWITZERLAND_TIMEZONE })}
                     </div>
                     <div className="text-sm font-semibold text-slate-800">
                       {date.getDate()}
@@ -2433,8 +2471,9 @@ export default function CalendarPage() {
                             const start = new Date(appt.start_time);
                             if (Number.isNaN(start.getTime())) return null;
 
+                            // Use Switzerland timezone for positioning
                             const rawStartMinutes =
-                              start.getHours() * 60 + start.getMinutes();
+                              getSwissHours(start) * 60 + getSwissMinutes(start);
                             const topMinutes = Math.max(
                               rawStartMinutes - DAY_VIEW_START_MINUTES,
                               0,
@@ -2443,13 +2482,16 @@ export default function CalendarPage() {
                             let end = appt.end_time ? new Date(appt.end_time) : null;
                             let endMinutes =
                               end && !Number.isNaN(end.getTime())
-                                ? end.getHours() * 60 + end.getMinutes()
+                                ? getSwissHours(end) * 60 + getSwissMinutes(end)
                                 : rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
 
                             // Handle appointments spanning midnight or with end time on different day
-                            if (end && !Number.isNaN(end.getTime()) && 
-                                (end.getDate() !== start.getDate() || endMinutes <= rawStartMinutes)) {
-                              endMinutes = DAY_VIEW_END_MINUTES;
+                            if (end && !Number.isNaN(end.getTime())) {
+                              const startParts = getSwissDateParts(start);
+                              const endParts = getSwissDateParts(end);
+                              if (startParts.day !== endParts.day || endMinutes <= rawStartMinutes) {
+                                endMinutes = DAY_VIEW_END_MINUTES;
+                              }
                             }
 
                             endMinutes = Math.min(endMinutes, DAY_VIEW_END_MINUTES);
