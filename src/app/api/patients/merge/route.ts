@@ -7,17 +7,16 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 type MergeRequest = {
   primaryPatientId: string;
   patientIdsToMerge: string[];
-  mergedData: {
-    first_name: string;
-    last_name: string;
-    email: string | null;
-    phone: string | null;
-    date_of_birth: string | null;
-    address: string | null;
-    city: string | null;
-    postal_code: string | null;
-    country: string | null;
-    contact_owner_name: string | null;
+  mergedData?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string | null;
+    phone?: string | null;
+    dob?: string | null;
+    street_address?: string | null;
+    town?: string | null;
+    postal_code?: string | null;
+    contact_owner_name?: string | null;
   };
 };
 
@@ -38,21 +37,23 @@ export async function POST(request: Request) {
     // Start a transaction-like operation by doing all updates in sequence
     console.log(`Merging ${patientIdsToMerge.length} patients into primary patient ${primaryPatientId}`);
 
-    // 1. Update the primary patient with the merged data
-    const { error: updateError } = await supabase
-      .from("patients")
-      .update({
-        ...mergedData,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", primaryPatientId);
+    // 1. Update the primary patient with the merged data (if provided)
+    if (mergedData && Object.keys(mergedData).length > 0) {
+      const { error: updateError } = await supabase
+        .from("patients")
+        .update({
+          ...mergedData,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", primaryPatientId);
 
-    if (updateError) {
-      console.error("Error updating primary patient:", updateError);
-      return NextResponse.json(
-        { error: "Failed to update primary patient" },
-        { status: 500 }
-      );
+      if (updateError) {
+        console.error("Error updating primary patient:", updateError);
+        return NextResponse.json(
+          { error: "Failed to update primary patient" },
+          { status: 500 }
+        );
+      }
     }
 
     // 2. Merge all related data from other patients to primary patient
@@ -187,6 +188,26 @@ export async function POST(request: Request) {
 
       if (crisalixError) {
         console.error("Error merging Crisalix simulations:", crisalixError);
+      }
+
+      // Update consultations
+      const { error: consultationsError } = await supabase
+        .from("consultations")
+        .update({ patient_id: primaryPatientId })
+        .eq("patient_id", patientId);
+
+      if (consultationsError) {
+        console.error("Error merging consultations:", consultationsError);
+      }
+
+      // Update scheduled_emails
+      const { error: scheduledEmailsError } = await supabase
+        .from("scheduled_emails")
+        .update({ patient_id: primaryPatientId })
+        .eq("patient_id", patientId);
+
+      if (scheduledEmailsError) {
+        console.error("Error merging scheduled emails:", scheduledEmailsError);
       }
     }
 

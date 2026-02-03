@@ -1410,6 +1410,53 @@ export default function CalendarPage() {
     });
   }, [createPatientSearch, patientOptions]);
 
+  // Detect potential duplicate patients based on similar names
+  const potentialDuplicates = useMemo(() => {
+    if (filteredCreatePatientSuggestions.length < 2) return [];
+    
+    const duplicateGroups: { name: string; patients: typeof patientOptions }[] = [];
+    const checked = new Set<string>();
+    
+    // Normalize name for comparison (remove accents, lowercase, trim)
+    const normalize = (str: string) => 
+      str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    
+    // Check if two names are similar (same letters, minor spelling variations)
+    const areSimilar = (a: string, b: string) => {
+      const na = normalize(a);
+      const nb = normalize(b);
+      if (na === nb) return true;
+      // Check for common variations (s/z, c/k, etc.)
+      const variations = na.replace(/[sz]/g, 's').replace(/[ck]/g, 'c');
+      const variationsB = nb.replace(/[sz]/g, 's').replace(/[ck]/g, 'c');
+      return variations === variationsB;
+    };
+    
+    for (const p1 of filteredCreatePatientSuggestions) {
+      if (checked.has(p1.id)) continue;
+      
+      const p1Name = `${p1.first_name ?? ""} ${p1.last_name ?? ""}`.trim();
+      const similar = filteredCreatePatientSuggestions.filter(p2 => {
+        if (p1.id === p2.id) return false;
+        const p2Name = `${p2.first_name ?? ""} ${p2.last_name ?? ""}`.trim();
+        return areSimilar(p1Name, p2Name) || 
+               (p1.phone && p2.phone && p1.phone === p2.phone) ||
+               (p1.email && p2.email && p1.email.toLowerCase() === p2.email.toLowerCase());
+      });
+      
+      if (similar.length > 0) {
+        duplicateGroups.push({
+          name: p1Name,
+          patients: [p1, ...similar]
+        });
+        checked.add(p1.id);
+        similar.forEach(s => checked.add(s.id));
+      }
+    }
+    
+    return duplicateGroups;
+  }, [filteredCreatePatientSuggestions]);
+
   async function handleCreateNewPatient() {
     const firstName = newPatientFirstName.trim();
     const lastName = newPatientLastName.trim();
@@ -3082,7 +3129,21 @@ export default function CalendarPage() {
                             No patients found
                           </div>
                         ) : (
-                          filteredCreatePatientSuggestions.map((p) => {
+                          <>
+                            {potentialDuplicates.length > 0 && (
+                              <div className="mx-2 mb-2 rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5">
+                                <div className="flex items-center gap-1.5 text-[10px] font-medium text-amber-700">
+                                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                  </svg>
+                                  Potential duplicates detected
+                                </div>
+                                <p className="mt-0.5 text-[9px] text-amber-600">
+                                  Similar names or contact info found. Please verify before selecting.
+                                </p>
+                              </div>
+                            )}
+                            {filteredCreatePatientSuggestions.map((p) => {
                             const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`
                               .trim() || "Unnamed patient";
                             const details =
@@ -3109,7 +3170,8 @@ export default function CalendarPage() {
                                 </span>
                               </button>
                             );
-                          })
+                          })}
+                          </>
                         )}
                       </div>
                     ) : null}
