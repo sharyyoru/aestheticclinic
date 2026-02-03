@@ -1875,6 +1875,40 @@ export default function CalendarPage() {
     });
   }
 
+  function goPrevDay() {
+    if (!selectedDate) return;
+    const parts = getSwissDateParts(selectedDate);
+    const newDate = new Date(parts.year, parts.month - 1, parts.day - 1);
+    setSelectedDate(newDate);
+    const newParts = getSwissDateParts(newDate);
+    setVisibleMonth(new Date(newParts.year, newParts.month - 1, 1));
+  }
+
+  function goNextDay() {
+    if (!selectedDate) return;
+    const parts = getSwissDateParts(selectedDate);
+    const newDate = new Date(parts.year, parts.month - 1, parts.day + 1);
+    setSelectedDate(newDate);
+    const newParts = getSwissDateParts(newDate);
+    setVisibleMonth(new Date(newParts.year, newParts.month - 1, 1));
+  }
+
+  function handleNavPrev() {
+    if (view === "day") {
+      goPrevDay();
+    } else {
+      goPrevMonth();
+    }
+  }
+
+  function handleNavNext() {
+    if (view === "day") {
+      goNextDay();
+    } else {
+      goNextMonth();
+    }
+  }
+
   function handleMiniDayMouseDown(date: Date) {
     setSelectedDate(date);
     setRangeEndDate(null);
@@ -2028,6 +2062,9 @@ export default function CalendarPage() {
                   onClick={() => {
                     const clickParts = getSwissDateParts(date);
                     setVisibleMonth(new Date(clickParts.year, clickParts.month - 1, 1));
+                    setSelectedDate(date);
+                    setRangeEndDate(null);
+                    setView("day");
                   }}
                   className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] ${
                     isCurrentMonth ? "text-slate-700" : "text-slate-400"
@@ -2187,9 +2224,9 @@ export default function CalendarPage() {
             <div className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-1 py-0.5 text-slate-600 shadow-sm">
               <button
                 type="button"
-                onClick={goPrevMonth}
+                onClick={handleNavPrev}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50"
-                aria-label="Previous month"
+                aria-label={view === "day" ? "Previous day" : "Previous month"}
               >
                 <svg
                   className="h-3 w-3"
@@ -2205,9 +2242,9 @@ export default function CalendarPage() {
               </button>
               <button
                 type="button"
-                onClick={goNextMonth}
+                onClick={handleNavNext}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50"
-                aria-label="Next month"
+                aria-label={view === "day" ? "Next day" : "Next month"}
               >
                 <svg
                   className="h-3 w-3"
