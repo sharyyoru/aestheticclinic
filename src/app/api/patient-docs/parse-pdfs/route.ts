@@ -21,17 +21,66 @@ type ParsedPdfDocument = {
   lastName: string | null;
 };
 
+type DebugInfo = {
+  bucket: string;
+  searchFirstName: string | null;
+  searchLastName: string | null;
+  foldersFound: number;
+  folderNames: string[];
+  parsedFolders: Array<{ name: string; firstName: string | null; lastName: string | null; matched: boolean }>;
+};
+
 // Parse folder name pattern: axenita-id_firstname_lastname_dd-mm-yyyy
+// Also try other patterns like firstname_lastname or lastname_firstname
 function parseFolderName(folderName: string): {
   firstName: string | null;
   lastName: string | null;
 } {
-  const parts = folderName.split("_");
+  // Remove file extensions if any
+  const cleanName = folderName.replace(/\.[^.]+$/, "");
   
-  if (parts.length >= 3) {
+  // Try splitting by underscore
+  const underscoreParts = cleanName.split("_");
+  
+  // Pattern: axenita-id_firstname_lastname_dd-mm-yyyy (4+ parts)
+  if (underscoreParts.length >= 4) {
     return {
-      firstName: parts[1],
-      lastName: parts[2],
+      firstName: underscoreParts[1],
+      lastName: underscoreParts[2],
+    };
+  }
+  
+  // Pattern: axenita-id_firstname_lastname (3 parts)
+  if (underscoreParts.length === 3) {
+    return {
+      firstName: underscoreParts[1],
+      lastName: underscoreParts[2],
+    };
+  }
+  
+  // Pattern: firstname_lastname (2 parts)
+  if (underscoreParts.length === 2) {
+    return {
+      firstName: underscoreParts[0],
+      lastName: underscoreParts[1],
+    };
+  }
+  
+  // Try splitting by hyphen
+  const hyphenParts = cleanName.split("-");
+  if (hyphenParts.length >= 2) {
+    return {
+      firstName: hyphenParts[0],
+      lastName: hyphenParts[1],
+    };
+  }
+  
+  // Try splitting by space
+  const spaceParts = cleanName.split(/\s+/);
+  if (spaceParts.length >= 2) {
+    return {
+      firstName: spaceParts[0],
+      lastName: spaceParts[spaceParts.length - 1],
     };
   }
   
@@ -220,40 +269,71 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "firstName and lastName are required" }, { status: 400 });
     }
 
+    console.log("DEBUG POST - Searching for:", { firstName, lastName });
+
     const { data: folders, error: listError } = await supabaseAdmin.storage
       .from(BUCKET_NAME)
       .list("", { limit: 1000 });
 
+    console.log("DEBUG POST - Bucket:", BUCKET_NAME);
+    console.log("DEBUG POST - List error:", listError);
+    console.log("DEBUG POST - Folders found:", folders?.length, folders?.map(f => f.name));
+
     if (listError) {
       console.error("Error listing folders:", listError);
-      return NextResponse.json({ error: "Failed to list folders" }, { status: 500 });
+      return NextResponse.json({ error: "Failed to list folders", details: listError.message }, { status: 500 });
     }
 
+    const debugInfo: DebugInfo = {
+      bucket: BUCKET_NAME,
+      searchFirstName: firstName,
+      searchLastName: lastName,
+      foldersFound: folders?.length || 0,
+      folderNames: folders?.map(f => f.name) || [],
+      parsedFolders: [],
+    };
+
     if (!folders || folders.length === 0) {
-      return NextResponse.json({ documents: [] });
+      return NextResponse.json({ documents: [], debug: debugInfo });
     }
 
     const parsedDocuments: ParsedPdfDocument[] = [];
+    const searchFirstNameLower = firstName.toLowerCase().trim();
+    const searchLastNameLower = lastName.toLowerCase().trim();
 
     for (const folder of folders) {
-      // Skip files at root level (folders don't have extensions)
-      if (folder.name.includes(".")) continue;
+      // Skip files at root level (folders typically don't have common file extensions)
+      if (/\.(pdf|jpg|jpeg|png|gif|txt|doc|docx)$/i.test(folder.name)) continue;
 
       const folderInfo = parseFolderName(folder.name);
+      const folderFirstName = folderInfo.firstName?.toLowerCase().trim() || "";
+      const folderLastName = folderInfo.lastName?.toLowerCase().trim() || "";
 
-      const folderFirstName = folderInfo.firstName?.toLowerCase() || "";
-      const folderLastName = folderInfo.lastName?.toLowerCase() || "";
-      const searchFirstName = firstName.toLowerCase();
-      const searchLastName = lastName.toLowerCase();
+      // More flexible matching - check if names match in either order
+      const directMatch = 
+        (folderFirstName.includes(searchFirstNameLower) || searchFirstNameLower.includes(folderFirstName)) &&
+        (folderLastName.includes(searchLastNameLower) || searchLastNameLower.includes(folderLastName));
+      
+      const reverseMatch = 
+        (folderFirstName.includes(searchLastNameLower) || searchLastNameLower.includes(folderFirstName)) &&
+        (folderLastName.includes(searchFirstNameLower) || searchFirstNameLower.includes(folderLastName));
+      
+      // Also check if the full folder name contains both names
+      const folderNameLower = folder.name.toLowerCase();
+      const containsBothNames = folderNameLower.includes(searchFirstNameLower) && folderNameLower.includes(searchLastNameLower);
 
-      const firstNameMatch = folderFirstName === searchFirstName || 
-        folderFirstName.includes(searchFirstName) || 
-        searchFirstName.includes(folderFirstName);
-      const lastNameMatch = folderLastName === searchLastName || 
-        folderLastName.includes(searchLastName) || 
-        searchLastName.includes(folderLastName);
+      const matched = directMatch || reverseMatch || containsBothNames;
 
-      if (!firstNameMatch || !lastNameMatch) continue;
+      debugInfo.parsedFolders.push({
+        name: folder.name,
+        firstName: folderInfo.firstName,
+        lastName: folderInfo.lastName,
+        matched,
+      });
+
+      console.log("DEBUG POST - Folder:", folder.name, "Parsed:", folderInfo, "Matched:", matched);
+
+      if (!matched) continue;
 
       const { data: subItems, error: subError } = await supabaseAdmin.storage
         .from(BUCKET_NAME)
@@ -281,7 +361,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ documents: parsedDocuments });
+    return NextResponse.json({ documents: parsedDocuments, debug: debugInfo });
   } catch (error: any) {
     console.error("Error in parse-pdfs POST:", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
