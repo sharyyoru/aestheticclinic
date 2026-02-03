@@ -274,13 +274,14 @@ const APPOINTMENT_CATEGORY_OPTIONS = [
 
 type CalendarAppointment = {
   id: string;
-  patient_id: string;
+  patient_id: string | null;
   provider_id: string | null;
   start_time: string;
   end_time: string | null;
   status: AppointmentStatus;
   reason: string | null;
   location: string | null;
+  temporary_text: string | null;
   patient: AppointmentPatient | null;
   provider: {
     id: string;
@@ -847,7 +848,7 @@ export default function CalendarPage() {
         const { data, error } = await supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+            "id, patient_id, provider_id, start_time, end_time, status, reason, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
@@ -1611,7 +1612,7 @@ export default function CalendarPage() {
           source: "manual",
         })
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, start_time, end_time, status, reason, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -1784,7 +1785,7 @@ export default function CalendarPage() {
         })
         .eq("id", editingAppointment.id)
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, start_time, end_time, status, reason, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -2309,11 +2310,9 @@ export default function CalendarPage() {
                             appt.reason,
                           );
 
-                          const patientName = `${appt.patient?.first_name ?? ""} ${
-                            appt.patient?.last_name ?? ""
-                          }`
-                            .trim()
-                            .replace(/\s+/g, " ");
+                          const patientName = appt.patient
+                            ? `${appt.patient.first_name ?? ""} ${appt.patient.last_name ?? ""}`.trim().replace(/\s+/g, " ")
+                            : (appt.temporary_text ?? "");
 
                           const doctorFromReason = getDoctorNameFromReason(appt.reason);
                           const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
@@ -2534,11 +2533,9 @@ export default function CalendarPage() {
                             );
                             const doctorColor = doctorCalendar?.color ?? "";
 
-                            const patientName = `${appt.patient?.first_name ?? ""} ${
-                              appt.patient?.last_name ?? ""
-                            }`
-                              .trim()
-                              .replace(/\s+/g, " ");
+                            const patientName = appt.patient
+                              ? `${appt.patient.first_name ?? ""} ${appt.patient.last_name ?? ""}`.trim().replace(/\s+/g, " ")
+                              : (appt.temporary_text ?? "");
 
                             const category = getCategoryFromReason(appt.reason);
                             const notes = getNotesFromReason(appt.reason);
@@ -2637,7 +2634,7 @@ export default function CalendarPage() {
                       </Link>
                     ) : (
                       <p className="text-[11px] text-slate-800 font-medium">
-                        Unknown patient
+                        {editingAppointment.temporary_text || "Unknown patient"}
                       </p>
                     )}
                     {editingAppointment.patient?.email && (
