@@ -906,22 +906,21 @@ export default function CalendarPage() {
         setProvidersLoading(true);
         setProvidersError(null);
 
+        // Load from providers table (what appointments link to)
         const { data, error } = await supabaseClient
-          .from("users")
-          .select("id, full_name, email")
-          .order("full_name", { ascending: true });
+          .from("providers")
+          .select("id, name")
+          .order("name", { ascending: true });
 
         if (!isMounted) return;
 
         if (error || !data) {
           setProviders([]);
-          setProvidersError(error?.message ?? "Failed to load users.");
+          setProvidersError(error?.message ?? "Failed to load providers.");
         } else {
           setProviders(
             (data as any[]).map((row) => {
-              const fullName = (row.full_name as string | null) ?? null;
-              const email = (row.email as string | null) ?? null;
-              const rawName = fullName && fullName.trim().length > 0 ? fullName : email;
+              const rawName = (row.name as string | null) ?? null;
               const name = rawName && rawName.trim().length > 0 ? rawName : null;
               return {
                 id: row.id as string,
@@ -935,7 +934,7 @@ export default function CalendarPage() {
       } catch {
         if (!isMounted) return;
         setProviders([]);
-        setProvidersError("Failed to load users.");
+        setProvidersError("Failed to load providers.");
         setProvidersLoading(false);
       }
     }
@@ -1095,34 +1094,43 @@ export default function CalendarPage() {
 
     const search = patientSearch.trim().toLowerCase();
     const selectedCalendars = doctorCalendars.filter((calendar) => calendar.selected);
+    const selectedProviderIds = selectedCalendars.map((c) => c.providerId).filter(Boolean);
     const selectedDoctorNames = selectedCalendars
       .map((calendar) => calendar.name.trim().toLowerCase())
       .filter((value) => value.length > 0);
     const hasAnyCalendars = doctorCalendars.length > 0;
 
-    // Get active tab doctor name if a specific doctor tab is selected
+    // Get active tab info if a specific doctor tab is selected
     const activeTabCalendar = activeDoctorTabId
       ? selectedCalendars.find((c) => c.id === activeDoctorTabId)
       : null;
+    const activeTabProviderId = activeTabCalendar?.providerId ?? null;
     const activeTabDoctorName = activeTabCalendar?.name.trim().toLowerCase() ?? null;
 
     appointments.forEach((appt) => {
-      if (hasAnyCalendars && selectedDoctorNames.length > 0) {
+      if (hasAnyCalendars && selectedCalendars.length > 0) {
         const doctorFromReason = getDoctorNameFromReason(appt.reason);
         const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
         const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
         
-        // Use partial matching - check if any selected doctor name is contained in the doctorKey or vice versa
-        const matchesSelectedDoctor = doctorKey && selectedDoctorNames.some((selectedName) => 
+        // Match by provider_id first (most reliable)
+        const matchesByProviderId = appt.provider_id && selectedProviderIds.includes(appt.provider_id);
+        
+        // Also match by name (partial matching for flexibility)
+        const matchesByName = doctorKey && selectedDoctorNames.some((selectedName) => 
           doctorKey.includes(selectedName) || selectedName.includes(doctorKey)
         );
         
-        // Skip if no doctor match found
-        if (!matchesSelectedDoctor) return;
+        // Skip if no match found by either method
+        if (!matchesByProviderId && !matchesByName) return;
 
-        // Filter by active doctor tab if one is selected (also use partial matching)
-        if (activeTabDoctorName && doctorKey && 
-            !doctorKey.includes(activeTabDoctorName) && !activeTabDoctorName.includes(doctorKey)) return;
+        // Filter by active doctor tab if one is selected
+        if (activeTabCalendar) {
+          const matchesActiveTabById = appt.provider_id && appt.provider_id === activeTabProviderId;
+          const matchesActiveTabByName = activeTabDoctorName && doctorKey && 
+            (doctorKey.includes(activeTabDoctorName) || activeTabDoctorName.includes(doctorKey));
+          if (!matchesActiveTabById && !matchesActiveTabByName) return;
+        }
       }
 
       const startDate = appt.start_time ? new Date(appt.start_time) : null;
