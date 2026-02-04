@@ -976,7 +976,7 @@ export default function DealsPage() {
                   }
                 }}
               >
-                <div style={{ width: boardContentWidth || 'auto', height: '1px' }} />
+                <div style={{ width: boardContentWidth || 'auto', height: '18px' }} />
               </div>
               <div
                 className="kanban-scroll w-full max-w-full pb-2"
