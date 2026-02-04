@@ -296,6 +296,18 @@ const DAY_VIEW_END_MINUTES = 22 * 60;
 const DAY_VIEW_SLOT_MINUTES = 15;
 const DAY_VIEW_SLOT_HEIGHT = 48;
 
+// Priority doctors to show first in the list
+const PRIORITY_DOCTOR_NAMES = [
+  "xavier tenorio",
+  "cesar rodrigues",
+  "cezar rodrigues",
+  "yulia raspertova",
+  "burbuqe fazliu",
+  "laser",
+  "monia khedir",
+  "lily radionova",
+];
+
 type ProviderOption = {
   id: string;
   name: string | null;
@@ -698,6 +710,8 @@ export default function CalendarPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isSystemUser, setIsSystemUser] = useState(false);
   const [doctorCalendars, setDoctorCalendars] = useState<DoctorCalendar[]>([]);
+  const [showAllDoctors, setShowAllDoctors] = useState(false);
+  const [activeDoctorTabId, setActiveDoctorTabId] = useState<string | null>(null);
   const [isCreatingCalendar, setIsCreatingCalendar] = useState(false);
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
   const [view, setView] = useState<CalendarView>("month");
@@ -1080,11 +1094,17 @@ export default function CalendarPage() {
     const map: Record<string, CalendarAppointment[]> = {};
 
     const search = patientSearch.trim().toLowerCase();
-    const selectedDoctorNames = doctorCalendars
-      .filter((calendar) => calendar.selected)
+    const selectedCalendars = doctorCalendars.filter((calendar) => calendar.selected);
+    const selectedDoctorNames = selectedCalendars
       .map((calendar) => calendar.name.trim().toLowerCase())
       .filter((value) => value.length > 0);
     const hasAnyCalendars = doctorCalendars.length > 0;
+
+    // Get active tab doctor name if a specific doctor tab is selected
+    const activeTabCalendar = activeDoctorTabId
+      ? selectedCalendars.find((c) => c.id === activeDoctorTabId)
+      : null;
+    const activeTabDoctorName = activeTabCalendar?.name.trim().toLowerCase() ?? null;
 
     appointments.forEach((appt) => {
       if (hasAnyCalendars) {
@@ -1094,6 +1114,9 @@ export default function CalendarPage() {
         if (!doctorKey) return;
         if (selectedDoctorNames.length === 0) return;
         if (!selectedDoctorNames.includes(doctorKey)) return;
+
+        // Filter by active doctor tab if one is selected
+        if (activeTabDoctorName && doctorKey !== activeTabDoctorName) return;
       }
 
       const startDate = appt.start_time ? new Date(appt.start_time) : null;
@@ -1113,7 +1136,7 @@ export default function CalendarPage() {
     });
 
     return map;
-  }, [appointments, patientSearch, doctorCalendars]);
+  }, [appointments, patientSearch, doctorCalendars, activeDoctorTabId]);
 
   const gridDates = useMemo(() => {
     const dates: Date[] = [];
@@ -1145,6 +1168,11 @@ export default function CalendarPage() {
 
   const todayYmd = formatYmd(new Date());
   const visibleMonthIndex = visibleMonth.getMonth();
+
+  // Get selected doctor calendars for tabs
+  const selectedDoctorCalendars = useMemo(() => {
+    return doctorCalendars.filter((calendar) => calendar.selected);
+  }, [doctorCalendars]);
 
   const activeRangeDates = useMemo(() => {
     if (!selectedDate) return [] as Date[];
@@ -2047,29 +2075,57 @@ export default function CalendarPage() {
               <p className="text-[10px] text-red-600">{providersError}</p>
             ) : doctorCalendars.length === 0 ? (
               <p className="text-[10px] text-slate-400">No provider calendars yet.</p>
-            ) : (
-              doctorCalendars
-                .filter((calendar) => !calendar.name.toLowerCase().includes("(deactivated"))
-                .map((calendar) => (
-                <label
-                  key={calendar.id}
-                  className="flex cursor-pointer items-center gap-2 text-[11px] text-slate-700"
-                >
-                  <input
-                    type="checkbox"
-                    checked={calendar.selected}
-                    onChange={() => handleToggleCalendarSelected(calendar.id)}
-                    className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                  />
-                  <span className="inline-flex items-center gap-1">
-                    <span
-                      className={`h-2 w-2 rounded-sm ${calendar.color}`}
-                    />
-                    <span className="truncate">{calendar.name}</span>
-                  </span>
-                </label>
-              ))
-            )}
+            ) : (() => {
+              const activeCalendars = doctorCalendars.filter(
+                (calendar) => !calendar.name.toLowerCase().includes("(deactivated")
+              );
+              const priorityCalendars = activeCalendars.filter((calendar) =>
+                PRIORITY_DOCTOR_NAMES.some((name) =>
+                  calendar.name.toLowerCase().includes(name)
+                )
+              );
+              const otherCalendars = activeCalendars.filter((calendar) =>
+                !PRIORITY_DOCTOR_NAMES.some((name) =>
+                  calendar.name.toLowerCase().includes(name)
+                )
+              );
+              const calendarsToShow = showAllDoctors
+                ? [...priorityCalendars, ...otherCalendars]
+                : priorityCalendars;
+
+              return (
+                <>
+                  {calendarsToShow.map((calendar) => (
+                    <label
+                      key={calendar.id}
+                      className="flex cursor-pointer items-center gap-2 text-[11px] text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={calendar.selected}
+                        onChange={() => handleToggleCalendarSelected(calendar.id)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      />
+                      <span className="inline-flex items-center gap-1">
+                        <span
+                          className={`h-2 w-2 rounded-sm ${calendar.color}`}
+                        />
+                        <span className="truncate">{calendar.name}</span>
+                      </span>
+                    </label>
+                  ))}
+                  {otherCalendars.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllDoctors(!showAllDoctors)}
+                      className="mt-1 text-[10px] font-medium text-sky-600 hover:text-sky-700"
+                    >
+                      {showAllDoctors ? `Hide ${otherCalendars.length} doctors` : `Show ${otherCalendars.length} more doctors`}
+                    </button>
+                  )}
+                </>
+              );
+            })()}
           </div>
           <div className="pt-1">
             {isCreatingCalendar ? (
@@ -2396,6 +2452,39 @@ export default function CalendarPage() {
         ) : (
           <div className="flex-1 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
             <div className="flex flex-col h-full">
+              {/* Doctor tabs when multiple selected */}
+              {selectedDoctorCalendars.length > 1 && (
+                <div className="flex items-center gap-1 border-b border-slate-100 bg-slate-50/80 px-3 py-2 overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={() => setActiveDoctorTabId(null)}
+                    className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${
+                      activeDoctorTabId === null
+                        ? "bg-sky-600 text-white"
+                        : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                    }`}
+                  >
+                    All ({selectedDoctorCalendars.length})
+                  </button>
+                  {selectedDoctorCalendars.map((calendar) => (
+                    <button
+                      key={calendar.id}
+                      type="button"
+                      onClick={() => setActiveDoctorTabId(calendar.id)}
+                      className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${
+                        activeDoctorTabId === calendar.id
+                          ? "bg-sky-600 text-white"
+                          : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                      }`}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <span className={`h-2 w-2 rounded-sm ${calendar.color}`} />
+                        {calendar.name.split(" ")[0]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* Sticky header row */}
               <div className="flex border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium text-slate-500 sticky top-0 z-10">
                 {/* Empty cell for time axis column */}
