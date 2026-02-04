@@ -906,21 +906,23 @@ export default function CalendarPage() {
         setProvidersLoading(true);
         setProvidersError(null);
 
-        // Load from providers table (what appointments link to)
+        // Load from users table (has all doctors)
         const { data, error } = await supabaseClient
-          .from("providers")
-          .select("id, name")
-          .order("name", { ascending: true });
+          .from("users")
+          .select("id, full_name, email")
+          .order("full_name", { ascending: true });
 
         if (!isMounted) return;
 
         if (error || !data) {
           setProviders([]);
-          setProvidersError(error?.message ?? "Failed to load providers.");
+          setProvidersError(error?.message ?? "Failed to load users.");
         } else {
           setProviders(
             (data as any[]).map((row) => {
-              const rawName = (row.name as string | null) ?? null;
+              const fullName = (row.full_name as string | null) ?? null;
+              const email = (row.email as string | null) ?? null;
+              const rawName = fullName && fullName.trim().length > 0 ? fullName : email;
               const name = rawName && rawName.trim().length > 0 ? rawName : null;
               return {
                 id: row.id as string,
@@ -934,7 +936,7 @@ export default function CalendarPage() {
       } catch {
         if (!isMounted) return;
         setProviders([]);
-        setProvidersError("Failed to load providers.");
+        setProvidersError("Failed to load users.");
         setProvidersLoading(false);
       }
     }
