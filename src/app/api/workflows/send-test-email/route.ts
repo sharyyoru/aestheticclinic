@@ -46,7 +46,10 @@ function sanitizeTelLinks(html: string): string {
   // First, decode any URL-encoded tel: protocols (tel%3A -> tel:)
   let result = html.replace(/href\s*=\s*(["'])tel%3A/gi, 'href=$1tel:');
   
-  // Now handle all tel: links and clean the phone numbers
+  // Also handle %2B (URL-encoded +) at the start of phone numbers
+  result = result.replace(/href\s*=\s*(["'])tel:%2B/gi, 'href=$1tel:+');
+  
+  // Now handle all tel: links and clean the phone numbers for iPhone compatibility
   result = result.replace(
     /href\s*=\s*["']tel:([^"']+)["']/gi,
     (_match, phoneNumber) => {
@@ -57,13 +60,18 @@ function sanitizeTelLinks(html: string): string {
       } catch {
         // If decoding fails, use original
       }
-      // Remove all non-phone characters: spaces, dashes, dots, parentheses, nbsp, etc.
-      // Keep only digits and the leading + sign
-      const cleaned = decoded
+      // Remove HTML entities first
+      decoded = decoded
         .replace(/&nbsp;/gi, '')  // HTML nbsp entity
         .replace(/&#160;/g, '')   // Numeric nbsp entity
-        .replace(/\u00A0/g, '')   // Unicode nbsp
-        .replace(/[\s\-\(\)\.\u2013\u2014]/g, ''); // spaces, dashes, dots, parens, en-dash, em-dash
+        .replace(/&amp;/gi, '&')  // Ampersand entity
+        .replace(/&plus;/gi, '+') // Plus entity
+        .replace(/\u00A0/g, '');  // Unicode nbsp
+      
+      // CRITICAL FOR iPHONE: Keep ONLY digits and leading + sign
+      // Remove everything else (letters, spaces, dashes, dots, parens, etc.)
+      const cleaned = decoded.replace(/[^0-9+]/g, '');
+      
       return `href="tel:${cleaned}"`;
     }
   );
