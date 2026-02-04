@@ -16,7 +16,7 @@ const BUCKET_NAME = "patient-docs";
 type ParsedPdfDocument = {
   folderName: string;
   fileName: string;
-  fileType: "ap" | "consultation";
+  fileType: "ap" | "af" | "notes" | "consultation";
   content: string;
   firstName: string | null;
   lastName: string | null;
@@ -89,9 +89,11 @@ function parseFolderName(folderName: string): {
 }
 
 // Determine file type from filename
-function getFileType(fileName: string): "ap" | "consultation" | null {
+function getFileType(fileName: string): "ap" | "af" | "notes" | "consultation" | null {
   const lowerName = fileName.toLowerCase();
   if (lowerName === "ap.pdf") return "ap";
+  if (lowerName === "af.pdf") return "af";
+  if (lowerName === "notes.pdf") return "notes";
   if (lowerName.startsWith("consultation") && lowerName.endsWith(".pdf")) return "consultation";
   return null;
 }
@@ -247,22 +249,35 @@ async function processPdfFile(
       .replace(/\s+/g, " ")
       .trim();
 
+    const fileTypeLabels: Record<string, string> = {
+      ap: "Medical Notes (AP)",
+      af: "Medical Notes (AF)",
+      notes: "Notes",
+      consultation: "Consultation",
+    };
+    
     parsedDocuments.push({
       folderName: folderPath.split("/")[0],
       fileName,
       fileType,
-      content: singleLineContent || `[${fileType === "ap" ? "Medical Notes" : "Consultation"} document]`,
+      content: singleLineContent || `[${fileTypeLabels[fileType] || "Document"} document]`,
       firstName: folderInfo.firstName,
       lastName: folderInfo.lastName,
     });
   } catch (parseError: any) {
     console.error(`Error processing PDF ${filePath}:`, parseError.message);
+    const fileTypeLabels: Record<string, string> = {
+      ap: "Medical Notes (AP)",
+      af: "Medical Notes (AF)",
+      notes: "Notes",
+      consultation: "Consultation",
+    };
     // Still add the document with placeholder content
     parsedDocuments.push({
       folderName: folderPath.split("/")[0],
       fileName,
       fileType,
-      content: `[${fileType === "ap" ? "Medical Notes" : "Consultation"} document]`,
+      content: `[${fileTypeLabels[fileType] || "Document"} document]`,
       firstName: folderInfo.firstName,
       lastName: folderInfo.lastName,
     });

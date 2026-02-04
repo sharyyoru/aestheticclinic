@@ -170,7 +170,7 @@ function formatDuration(totalSeconds: number): string {
 type AxenitaPdfDocument = {
   folderName: string;
   fileName: string;
-  fileType: "ap" | "consultation";
+  fileType: "ap" | "af" | "notes" | "consultation";
   content: string;
   firstName: string | null;
   lastName: string | null;
@@ -2809,11 +2809,18 @@ export default function MedicalConsultationsCard({
                 className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs"
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${doc.fileType === "ap"
-                      ? "bg-purple-100 text-purple-700"
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    doc.fileType === "ap" 
+                      ? "bg-purple-100 text-purple-700" 
+                      : doc.fileType === "af"
+                      ? "bg-indigo-100 text-indigo-700"
+                      : doc.fileType === "notes"
+                      ? "bg-emerald-100 text-emerald-700"
                       : "bg-blue-100 text-blue-700"
-                    }`}>
-                    {doc.fileType === "ap" ? "Medical Notes (AP)" : "Consultation"}
+                  }`}>
+                    {doc.fileType === "ap" ? "Medical Notes (AP)" : 
+                     doc.fileType === "af" ? "Medical Notes (AF)" :
+                     doc.fileType === "notes" ? "Notes" : "Consultation"}
                   </span>
                   <span className="text-[10px] text-slate-400">
                     {doc.fileName}
@@ -2827,15 +2834,32 @@ export default function MedicalConsultationsCard({
           </div>
         )}
 
-        {axenitaPdfLoading && (
+        {axenitaPdfLoading && !recordTypeFilter && (
           <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
             Loading Axenita medical records...
           </div>
         )}
 
-        {axenitaPdfError && (
+        {/* Show message when no Axenita documents found (after loading) */}
+        {!axenitaPdfLoading && !axenitaPdfError && axenitaPdfDocs.length === 0 && !recordTypeFilter && patientFirstName && patientLastName && (
+          <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2 text-[11px] text-slate-500">
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>No Axenita medical records found for this patient.</span>
+            </div>
+          </div>
+        )}
+
+        {axenitaPdfError && !recordTypeFilter && (
           <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-            {axenitaPdfError}
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>{axenitaPdfError}</span>
+            </div>
           </div>
         )}
 
