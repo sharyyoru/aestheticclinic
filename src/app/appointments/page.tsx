@@ -876,8 +876,7 @@ export default function CalendarPage() {
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
           .lte("start_time", toIso)
-          .order("start_time", { ascending: true })
-          .limit(500);
+          .order("start_time", { ascending: true });
 
         if (!isMounted) return;
 
@@ -939,18 +938,6 @@ export default function CalendarPage() {
     };
   }, []);
 
-  // Only load these specific doctors for the calendar
-  const ALLOWED_DOCTORS = [
-    "Xavier Tenorio",
-    "Cesar Rodrigues",
-    "Cezar Rodrigues",
-    "Yulia Raspertova",
-    "Burbuqe Fazliu",
-    "Laser",
-    "Monia Khedir",
-    "Lily Radionova",
-  ];
-
   useEffect(() => {
     let isMounted = true;
 
@@ -959,13 +946,11 @@ export default function CalendarPage() {
         setProvidersLoading(true);
         setProvidersError(null);
 
-        // Load only specific doctors instead of all users
+        // Simple query - load all users (original working version)
         const { data, error } = await supabaseClient
           .from("users")
           .select("id, full_name, email")
-          .or(ALLOWED_DOCTORS.map(name => `full_name.ilike.%${name}%`).join(","))
-          .order("full_name", { ascending: true })
-          .limit(20);
+          .order("full_name", { ascending: true });
 
         if (!isMounted) return;
 
