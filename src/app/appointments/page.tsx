@@ -941,16 +941,29 @@ export default function CalendarPage() {
   useEffect(() => {
     let isMounted = true;
 
+    // Only these doctors should appear in the calendar
+    const ALLOWED_DOCTOR_NAMES = [
+      "xavier tenorio",
+      "cesar rodrigues",
+      "cezar rodrigues", 
+      "yulia raspertova",
+      "burbuqe fazliu",
+      "laser",
+      "monia khedir",
+      "lily radionova",
+    ];
+
     async function loadProviders() {
       try {
         setProvidersLoading(true);
         setProvidersError(null);
 
-        // Simple query - load all users (original working version)
+        // Load only first 50 users to prevent crash, then filter client-side
         const { data, error } = await supabaseClient
           .from("users")
           .select("id, full_name, email")
-          .order("full_name", { ascending: true });
+          .order("full_name", { ascending: true })
+          .limit(50);
 
         if (!isMounted) return;
 
@@ -958,8 +971,14 @@ export default function CalendarPage() {
           setProviders([]);
           setProvidersError(error?.message ?? "Failed to load users.");
         } else {
+          // Filter to only allowed doctors client-side
+          const filtered = (data as any[]).filter((row) => {
+            const fullName = ((row.full_name as string | null) ?? "").toLowerCase();
+            return ALLOWED_DOCTOR_NAMES.some(allowed => fullName.includes(allowed));
+          });
+          
           setProviders(
-            (data as any[]).map((row) => {
+            filtered.map((row) => {
               const fullName = (row.full_name as string | null) ?? null;
               const email = (row.email as string | null) ?? null;
               const rawName = fullName && fullName.trim().length > 0 ? fullName : email;
