@@ -370,6 +370,21 @@ export default function DealsPage() {
   }
 
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const boardContentRef = useRef<HTMLDivElement | null>(null);
+  const [boardContentWidth, setBoardContentWidth] = useState<number>(0);
+
+  // Sync top scroller width with actual board content width
+  useEffect(() => {
+    const updateWidth = () => {
+      if (boardContentRef.current) {
+        setBoardContentWidth(boardContentRef.current.scrollWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [dealStages, boardDeals]);
 
   function handleBoardDragOver(event: any) {
     if (!dragDealId) return;
@@ -953,6 +968,7 @@ export default function DealsPage() {
           <div className="mt-2 rounded-xl border border-slate-200/80 bg-white/90 text-xs shadow-sm">
               {/* Top scrollbar - synced with main board */}
               <div
+                ref={topScrollRef}
                 className="kanban-scroll-top w-full max-w-full"
                 onScroll={(e) => {
                   if (boardScrollRef.current) {
@@ -960,11 +976,7 @@ export default function DealsPage() {
                   }
                 }}
               >
-                <div className="flex w-max gap-3 px-3 md:gap-4" style={{ height: '18px' }}>
-                  {dealStages.map((stage) => (
-                    <div key={stage.id} className="min-w-[260px] max-w-xs flex-shrink-0" />
-                  ))}
-                </div>
+                <div style={{ width: boardContentWidth || 'auto', height: '1px' }} />
               </div>
               <div
                 className="kanban-scroll w-full max-w-full pb-2"
@@ -977,7 +989,7 @@ export default function DealsPage() {
                   }
                 }}
               >
-                <div className="flex w-max gap-3 px-3 py-3 md:gap-4">
+                <div ref={boardContentRef} className="flex w-max gap-3 px-3 py-3 md:gap-4">
                   {dealStages.map((stage) => {
                     const allStageDeals = boardDeals.filter(
                       (deal) => deal.stage_id === stage.id,
