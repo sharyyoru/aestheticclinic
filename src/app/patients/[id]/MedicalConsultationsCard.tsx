@@ -799,11 +799,18 @@ export default function MedicalConsultationsCard({
         return;
       }
 
+      // Get current user for audit trail
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const userId = authData?.user?.id || null;
+      const paidAt = new Date().toISOString();
+      
       const { error } = await supabaseClient
         .from("consultations")
         .update({
           invoice_is_paid: true,
           cash_receipt_path: path,
+          paid_at: paidAt,
+          paid_by_user_id: userId,
         })
         .eq("id", cashReceiptTarget.id);
 
@@ -913,9 +920,19 @@ export default function MedicalConsultationsCard({
   async function handleMarkInvoicePaid(consultationId: string) {
     try {
       setMarkingPaid(true);
+      
+      // Get current user for audit trail
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const userId = authData?.user?.id || null;
+      const paidAt = new Date().toISOString();
+      
       const { error } = await supabaseClient
         .from("consultations")
-        .update({ invoice_is_paid: true })
+        .update({ 
+          invoice_is_paid: true,
+          paid_at: paidAt,
+          paid_by_user_id: userId,
+        })
         .eq("id", consultationId);
 
       if (error) throw error;

@@ -102,9 +102,32 @@ export async function POST(request: NextRequest) {
       changed_by: authData.user.id,
     });
 
+    // Sync insurance payment status to consultation
+    // When insurance marks as paid or partially_paid, update the main invoice
+    if (['paid', 'partially_paid'].includes(newStatus) && submission.consultation_id) {
+      const paidAt = new Date().toISOString();
+      const { error: consultationUpdateError } = await supabaseClient
+        .from("consultations")
+        .update({
+          invoice_is_paid: true,
+          paid_at: paidAt,
+          paid_by_user_id: authData.user.id,
+          insurance_payment_status: newStatus,
+          insurance_paid_amount: paidAmount || null,
+          insurance_paid_date: paidDate || paidAt,
+        })
+        .eq("id", submission.consultation_id);
+
+      if (consultationUpdateError) {
+        console.error("Error syncing insurance payment to consultation:", consultationUpdateError);
+        // Don't fail the request, just log the error
+      }
+    }
+
     return NextResponse.json({
       success: true,
       submission: updatedSubmission,
+      consultationSynced: ['paid', 'partially_paid'].includes(newStatus),
     });
   } catch (error) {
     console.error("Error in update-status:", error);
