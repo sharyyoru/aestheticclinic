@@ -51,7 +51,8 @@ export async function POST(request: Request) {
     // Initialize Supabase client early for deduplication check
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // DEDUPLICATION: Check if we've already processed this email by message-id
+    // DEDUPLICATION: Check if we've already processed this email
+    // Method 1: Check by message-id (most reliable)
     if (messageId) {
       const { data: existingEmail } = await supabase
         .from("emails")
@@ -68,6 +69,34 @@ export async function POST(request: Request) {
           existingEmailId: existingEmail.id
         });
       }
+    }
+    
+    // Method 2: Fallback deduplication using sender + timestamp + subject hash
+    // This catches duplicates even when message-id is missing or Mailgun retries
+    const dedupEmailMatch = from.match(/<([^>]+)>/) || [null, from];
+    const senderEmailForDedup = dedupEmailMatch[1]?.trim().toLowerCase() || from.trim().toLowerCase();
+    const timestampMs = timestamp ? parseInt(timestamp) * 1000 : Date.now();
+    // Check for emails from same sender with same subject within 60 seconds
+    const windowStart = new Date(timestampMs - 60000).toISOString();
+    const windowEnd = new Date(timestampMs + 60000).toISOString();
+    
+    const { data: recentDuplicate } = await supabase
+      .from("emails")
+      .select("id")
+      .ilike("from_address", senderEmailForDedup)
+      .eq("subject", subject)
+      .gte("sent_at", windowStart)
+      .lte("sent_at", windowEnd)
+      .maybeSingle();
+    
+    if (recentDuplicate) {
+      console.log("Skipping duplicate email - found recent email with same sender/subject:", recentDuplicate.id);
+      return NextResponse.json({ 
+        ok: true, 
+        message: "Skipped duplicate email",
+        reason: "duplicate_sender_subject_window",
+        existingEmailId: recentDuplicate.id
+      });
     }
     
     // Get custom variables we set when sending
