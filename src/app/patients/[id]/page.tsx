@@ -130,7 +130,7 @@ async function getInvoiceSummary(
     const { data, error } = await supabaseClient
       .from("consultations")
       .select(
-        "content, record_type, is_archived, payment_method, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount",
+        "content, record_type, is_archived, payment_method, invoice_total_amount, invoice_is_complimentary, invoice_is_paid",
       )
       .eq("patient_id", patientId)
       .eq("record_type", "invoice");
@@ -195,21 +195,13 @@ async function getInvoiceSummary(
         continue;
       }
 
-      // Get invoice status - default to OPEN if not set, or derive from invoice_is_paid
-      const invoiceStatusRaw = (row as any).invoice_status as InvoiceStatus | null;
+      // Get invoice status - derive from invoice_is_paid since invoice_status column doesn't exist yet
       const invoiceIsPaidRaw = (row as any).invoice_is_paid;
       const isPaid = typeof invoiceIsPaidRaw === "boolean" ? invoiceIsPaidRaw : false;
-      const paidAmount = Number((row as any).invoice_paid_amount) || 0;
 
-      // Determine effective status
-      let effectiveStatus: InvoiceStatus;
-      if (invoiceStatusRaw && ["OPEN", "PAID", "CANCELLED", "OVERPAID", "PARTIAL_LOSS", "PARTIAL_PAID"].includes(invoiceStatusRaw)) {
-        effectiveStatus = invoiceStatusRaw;
-      } else if (isPaid) {
-        effectiveStatus = "PAID";
-      } else {
-        effectiveStatus = "OPEN";
-      }
+      // Determine effective status based on invoice_is_paid for now
+      // When invoice_status column is added, this can be updated to use it
+      const effectiveStatus: InvoiceStatus = isPaid ? "PAID" : "OPEN";
 
       // Count by status
       countByStatus[effectiveStatus]++;
@@ -217,28 +209,11 @@ async function getInvoiceSummary(
       // Calculate totals based on status
       totalAmountNonComplimentary += amount;
 
-      switch (effectiveStatus) {
-        case "PAID":
-          totalPaid += amount;
-          break;
-        case "OPEN":
-          totalUnpaid += amount;
-          break;
-        case "CANCELLED":
-          totalCancelled += amount;
-          break;
-        case "OVERPAID":
-          totalOverpaid += paidAmount > 0 ? paidAmount - amount : amount;
-          totalPaid += amount;
-          break;
-        case "PARTIAL_LOSS":
-          totalPartialLoss += paidAmount > 0 ? amount - paidAmount : amount;
-          totalPaid += paidAmount > 0 ? paidAmount : 0;
-          break;
-        case "PARTIAL_PAID":
-          totalPartialPaid += paidAmount > 0 ? paidAmount : 0;
-          totalUnpaid += paidAmount > 0 ? amount - paidAmount : amount;
-          break;
+      // Simplified switch - only PAID/OPEN until invoice_status column is added
+      if (effectiveStatus === "PAID") {
+        totalPaid += amount;
+      } else {
+        totalUnpaid += amount;
       }
     }
 

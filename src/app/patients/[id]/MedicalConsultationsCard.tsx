@@ -411,7 +411,7 @@ export default function MedicalConsultationsCard({
         const { data, error } = await supabaseClient
           .from("consultations")
           .select(
-            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -827,8 +827,6 @@ export default function MedicalConsultationsCard({
         .from("consultations")
         .update({
           invoice_is_paid: true,
-          invoice_status: "PAID" as InvoiceStatus,
-          invoice_paid_amount: cashReceiptTarget.invoice_total_amount,
           cash_receipt_path: path,
           paid_at: paidAt,
           paid_by_user_id: userId,
@@ -844,7 +842,7 @@ export default function MedicalConsultationsCard({
       setConsultations((prev) =>
         prev.map((row) =>
           row.id === cashReceiptTarget.id
-            ? { ...row, invoice_is_paid: true, invoice_status: "PAID" as InvoiceStatus, cash_receipt_path: path }
+            ? { ...row, invoice_is_paid: true, cash_receipt_path: path }
             : row,
         ),
       );
@@ -947,16 +945,13 @@ export default function MedicalConsultationsCard({
       const userId = authData?.user?.id || null;
       const paidAt = new Date().toISOString();
 
+      // Note: invoice_status and invoice_paid_amount columns don't exist in DB yet
+      // For now, we only update invoice_is_paid which determines paid/unpaid status
       const updateData: Record<string, unknown> = {
-        invoice_is_paid: status === "PAID" || status === "OVERPAID",
-        invoice_status: status,
+        invoice_is_paid: status === "PAID" || status === "OVERPAID" || status === "PARTIAL_PAID",
         paid_at: paidAt,
         paid_by_user_id: userId,
       };
-
-      if (paidAmount !== undefined) {
-        updateData.invoice_paid_amount = paidAmount;
-      }
 
       const { error } = await supabaseClient
         .from("consultations")
@@ -969,9 +964,7 @@ export default function MedicalConsultationsCard({
         prev.map(c =>
           c.id === consultationId ? { 
             ...c, 
-            invoice_is_paid: status === "PAID" || status === "OVERPAID",
-            invoice_status: status,
-            invoice_paid_amount: paidAmount ?? c.invoice_paid_amount,
+            invoice_is_paid: status === "PAID" || status === "OVERPAID" || status === "PARTIAL_PAID",
           } : c
         )
       );
@@ -1631,7 +1624,7 @@ export default function MedicalConsultationsCard({
                       .from("consultations")
                       .insert(insertPayload)
                       .select(
-                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
                       )
                       .single();
 
