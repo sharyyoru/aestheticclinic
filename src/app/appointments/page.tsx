@@ -281,6 +281,7 @@ type CalendarAppointment = {
   status: AppointmentStatus;
   reason: string | null;
   location: string | null;
+  temporary_text: string | null;
   patient: AppointmentPatient | null;
   provider: {
     id: string;
@@ -766,6 +767,7 @@ export default function CalendarPage() {
     useState<CalendarAppointment | null>(null);
   const [editWorkflowStatus, setEditWorkflowStatus] =
     useState<WorkflowStatus>("pending");
+  const [copiedAppointment, setCopiedAppointment] = useState<CalendarAppointment | null>(null);
   const [editDate, setEditDate] = useState("");
   const [editTime, setEditTime] = useState("");
   const [editConsultationDuration, setEditConsultationDuration] = useState(15);
@@ -815,7 +817,7 @@ export default function CalendarPage() {
         const { data, error } = await supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+            "id, patient_id, provider_id, start_time, end_time, status, reason, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
@@ -1691,6 +1693,56 @@ export default function CalendarPage() {
     setEditModalOpen(true);
   }
 
+  function handleCopyAppointment(appt: CalendarAppointment) {
+    setCopiedAppointment(appt);
+  }
+
+  function handlePasteAppointment() {
+    if (!copiedAppointment) return;
+
+    // Extract data from copied appointment
+    const { serviceLabel, statusLabel } = getServiceAndStatusFromReason(copiedAppointment.reason);
+    const categoryFromReason = getCategoryFromReason(copiedAppointment.reason);
+
+    // Find matching service
+    const matchedService = serviceOptions.find(
+      (s) => s.name.toLowerCase() === serviceLabel?.toLowerCase()
+    );
+
+    if (copiedAppointment.patient?.id) {
+      const patientName = `${copiedAppointment.patient.first_name ?? ""} ${copiedAppointment.patient.last_name ?? ""}`.trim();
+      setCreatePatientId(copiedAppointment.patient.id);
+      setCreatePatientName(patientName);
+      setCreatePatientSearch(patientName);
+    }
+
+    if (matchedService) {
+      setSelectedServiceId(matchedService.id);
+      setServiceSearch(matchedService.name);
+    }
+
+    setBookingStatus(statusLabel ?? "");
+    setStatusSearch(statusLabel ?? "");
+    setAppointmentCategory(categoryFromReason ?? "");
+    setCategorySearch(categoryFromReason ?? "");
+    setDraftLocation(copiedAppointment.location ?? "Rhône");
+    setLocationSearch(copiedAppointment.location ?? "Rhône");
+
+    // Set duration from copied appointment
+    const start = new Date(copiedAppointment.start_time);
+    const end = copiedAppointment.end_time ? new Date(copiedAppointment.end_time) : null;
+    if (!Number.isNaN(start.getTime()) && end && !Number.isNaN(end.getTime())) {
+      const diffMinutes = Math.round((end.getTime() - start.getTime()) / (60 * 1000));
+      if (diffMinutes > 0) {
+        setConsultationDuration(diffMinutes);
+        setDurationSearch(String(diffMinutes));
+      }
+    }
+
+    // Open the create modal
+    setCreateModalOpen(true);
+  }
+
   async function handleSaveEditAppointment() {
     if (!editingAppointment || savingEdit) return;
 
@@ -1864,6 +1916,19 @@ export default function CalendarPage() {
           >
             Create
           </button>
+          {copiedAppointment && (
+            <button
+              type="button"
+              onClick={handlePasteAppointment}
+              className="inline-flex w-full items-center justify-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              title={`Paste: ${copiedAppointment.patient ? `${copiedAppointment.patient.first_name ?? ""} ${copiedAppointment.patient.last_name ?? ""}`.trim() : "Copied appointment"}`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              Paste
+            </button>
+          )}
         </div>
         {/* Mini month */}
         <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-2">
@@ -2814,6 +2879,21 @@ export default function CalendarPage() {
                 <p className="mt-2 text-[11px] text-red-600">{editError}</p>
               ) : null}
               <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingAppointment) {
+                      handleCopyAppointment(editingAppointment);
+                      closeEditModal();
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy
+                </button>
                 <button
                   type="button"
                   onClick={closeEditModal}
