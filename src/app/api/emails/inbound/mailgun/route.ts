@@ -108,6 +108,28 @@ export async function POST(request: Request) {
 
     const inboundSubject = subject && subject.trim().length > 0 ? subject : "(no subject)";
 
+    // Extract sender email address
+    const senderEmail = extractFirstEmail(sender);
+    
+    // IMPORTANT: Check if sender is a clinic user - if so, this is a CC'd copy of an outbound email
+    // We should NOT log this as an inbound email (it would create a duplicate)
+    if (senderEmail) {
+      const { data: senderIsClinicUser } = await supabaseAdmin
+        .from("users")
+        .select("id")
+        .ilike("email", senderEmail)
+        .maybeSingle();
+      
+      if (senderIsClinicUser) {
+        console.log("Skipping CC'd copy - sender is a clinic user:", senderEmail);
+        return NextResponse.json({ 
+          ok: true, 
+          message: "Skipped CC copy from clinic user",
+          reason: "sender_is_clinic_user"
+        });
+      }
+    }
+
     const insertPayload: Record<string, unknown> = {
       patient_id: patientId,
       deal_id: dealId,

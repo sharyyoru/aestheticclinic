@@ -187,6 +187,23 @@ export async function POST(request: Request) {
     const emailMatch = from.match(/<([^>]+)>/) || [null, from];
     const senderEmail = emailMatch[1]?.trim() || from.trim();
     
+    // IMPORTANT: Check if sender is a clinic user - if so, this is a CC'd copy of an outbound email
+    // We should NOT log this as an inbound email (it would create a duplicate)
+    const { data: senderIsClinicUser } = await supabase
+      .from("users")
+      .select("id")
+      .ilike("email", senderEmail)
+      .maybeSingle();
+    
+    if (senderIsClinicUser) {
+      console.log("Skipping CC'd copy - sender is a clinic user:", senderEmail);
+      return NextResponse.json({ 
+        ok: true, 
+        message: "Skipped CC copy from clinic user",
+        reason: "sender_is_clinic_user"
+      });
+    }
+    
     // If no patient found, try to create one from the sender email OR log without patient
     if (!targetPatientId) {
       console.log("No patient found for email from:", from);
@@ -332,12 +349,12 @@ export async function POST(request: Request) {
             .single();
           
           if (originalEmail && originalEmail.from_address) {
-            // Find the user who sent the original email
+            // Find the user who sent the original email (case-insensitive)
             const { data: originalSenderUser } = await supabase
               .from("users")
               .select("id")
-              .eq("email", originalEmail.from_address)
-              .single();
+              .ilike("email", originalEmail.from_address)
+              .maybeSingle();
             
             if (originalSenderUser) {
               // Create email reply notification
