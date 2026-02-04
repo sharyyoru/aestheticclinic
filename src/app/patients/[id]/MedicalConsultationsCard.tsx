@@ -3,13 +3,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { 
-  TARDOC_MEDICINES, 
+import {
+  TARDOC_MEDICINES,
   TARDOC_TARIFF_ITEMS,
   DEFAULT_CANTON,
   CANTON_TAX_POINT_VALUES,
   calculateTardocPrice,
-  formatChf, 
+  formatChf,
   type TardocMedicine,
   type SwissCanton,
 } from "@/lib/tardoc";
@@ -124,15 +124,15 @@ const CLINIC_MEDICINES = TARDOC_MEDICINES.filter(med => med.isActive).map(med =>
   pharmacode: med.pharmacode,
   requiresPrescription: med.requiresPrescription,
   dosages: [
-    { 
-      id: `${med.id}_standard`, 
-      label: `${med.unitSize} - Standard dose`, 
-      price: med.pricePublic 
+    {
+      id: `${med.id}_standard`,
+      label: `${med.unitSize} - Standard dose`,
+      price: med.pricePublic
     },
-    { 
-      id: `${med.id}_double`, 
-      label: `${med.unitSize} x2 - Double quantity`, 
-      price: med.pricePublic * 2 
+    {
+      id: `${med.id}_double`,
+      label: `${med.unitSize} x2 - Double quantity`,
+      price: med.pricePublic * 2
     },
   ],
 }));
@@ -307,16 +307,16 @@ export default function MedicalConsultationsCard({
     value: ConsultationRecordType;
     label: string;
   }[] = [
-    { value: "notes", label: "Notes" },
-    { value: "prescription", label: "Prescription" },
-    { value: "invoice", label: "Invoice" },
-    { value: "file", label: "File" },
-    { value: "photo", label: "Photo" },
-    { value: "3d", label: "3D" },
-    { value: "patient_information", label: "Patient Information" },
-    { value: "documents", label: "Documents" },
-    { value: "form_photos", label: "Form Photos" },
-  ];
+      { value: "notes", label: "Notes" },
+      { value: "prescription", label: "Prescription" },
+      { value: "invoice", label: "Invoice" },
+      { value: "file", label: "File" },
+      { value: "photo", label: "Photo" },
+      { value: "3d", label: "3D" },
+      { value: "patient_information", label: "Patient Information" },
+      { value: "documents", label: "Documents" },
+      { value: "form_photos", label: "Form Photos" },
+    ];
 
   const filteredSortedConsultations = useMemo(() => {
     const fromDate = dateFrom ? new Date(dateFrom) : null;
@@ -621,8 +621,8 @@ export default function MedicalConsultationsCard({
         const assignedUser = userOptions.find((user) => user.id === assignedUserId);
         assignedUserName =
           (assignedUser?.full_name || assignedUser?.email || null) as
-            | string
-            | null;
+          | string
+          | null;
       }
 
       const { error } = await supabaseClient.from("tasks").insert({
@@ -803,7 +803,7 @@ export default function MedicalConsultationsCard({
       const { data: authData } = await supabaseClient.auth.getUser();
       const userId = authData?.user?.id || null;
       const paidAt = new Date().toISOString();
-      
+
       const { error } = await supabaseClient
         .from("consultations")
         .update({
@@ -920,15 +920,15 @@ export default function MedicalConsultationsCard({
   async function handleMarkInvoicePaid(consultationId: string) {
     try {
       setMarkingPaid(true);
-      
+
       // Get current user for audit trail
       const { data: authData } = await supabaseClient.auth.getUser();
       const userId = authData?.user?.id || null;
       const paidAt = new Date().toISOString();
-      
+
       const { error } = await supabaseClient
         .from("consultations")
-        .update({ 
+        .update({
           invoice_is_paid: true,
           paid_at: paidAt,
           paid_by_user_id: userId,
@@ -954,12 +954,12 @@ export default function MedicalConsultationsCard({
   const formBaseSeconds = consultationDurationSeconds;
   const formRunningSeconds = consultationStopwatchStartedAt
     ? formBaseSeconds +
-      Math.max(
-        0,
-        Math.floor(
-          (consultationStopwatchNow - consultationStopwatchStartedAt) / 1000,
-        ),
-      )
+    Math.max(
+      0,
+      Math.floor(
+        (consultationStopwatchNow - consultationStopwatchStartedAt) / 1000,
+      ),
+    )
     : formBaseSeconds;
   const formDisplayDuration = formatDuration(formRunningSeconds);
   const formStopwatchRunning = consultationStopwatchStartedAt !== null;
@@ -1261,8 +1261,8 @@ export default function MedicalConsultationsCard({
                   `${consultationDate}T${hourNumber
                     .toString()
                     .padStart(2, "0")}:${minuteNumber
-                    .toString()
-                    .padStart(2, "0")}:00`,
+                      .toString()
+                      .padStart(2, "0")}:00`,
                 );
                 if (Number.isNaN(scheduledAtLocal.getTime())) {
                   setConsultationError("Please enter a valid date and time.");
@@ -1448,7 +1448,7 @@ export default function MedicalConsultationsCard({
                             }
                             const base =
                               service?.base_price !== null &&
-                              service?.base_price !== undefined
+                                service?.base_price !== undefined
                                 ? Number(service.base_price)
                                 : 0;
                             return Number.isFinite(base) && base > 0 ? base : 0;
@@ -1623,7 +1623,7 @@ export default function MedicalConsultationsCard({
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ consultationId: inserted.id }),
                           });
-                          
+
                           if (!payrexxResponse.ok) {
                             console.error("Failed to create Payrexx payment gateway");
                           }
@@ -1742,17 +1742,16 @@ export default function MedicalConsultationsCard({
                   </label>
                   <select
                     value={consultationRecordType}
-                    onChange={(event) =>
-                      {
-                        const nextType =
-                          event.target.value as ConsultationRecordType;
-                        setConsultationRecordType(nextType);
-                        if (nextType === "prescription") {
-                          setPrescriptionLines((prev) =>
-                            prev.length > 0 ? prev : [{ medicineId: "", dosageId: "" }],
-                          );
-                        }
+                    onChange={(event) => {
+                      const nextType =
+                        event.target.value as ConsultationRecordType;
+                      setConsultationRecordType(nextType);
+                      if (nextType === "prescription") {
+                        setPrescriptionLines((prev) =>
+                          prev.length > 0 ? prev : [{ medicineId: "", dosageId: "" }],
+                        );
                       }
+                    }
                     }
                     className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   >
@@ -1806,7 +1805,7 @@ export default function MedicalConsultationsCard({
                         }}
                         className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-[13px] text-slate-700 hover:bg-slate-100"
                       >
-                        7
+                        7
                       </button>
                     </div>
                     <div className="relative">
@@ -1816,7 +1815,7 @@ export default function MedicalConsultationsCard({
                         onInput={(event) => {
                           const html = (event.currentTarget as HTMLDivElement).innerHTML;
                           setConsultationContentHtml(html);
-                          
+
                           // Detect @ mentions
                           const text = (event.currentTarget as HTMLDivElement).textContent || "";
                           const match = text.match(/@([^\s@]{0,50})$/);
@@ -1853,14 +1852,14 @@ export default function MedicalConsultationsCard({
                                     const currentHtml = consultationContentHtml;
                                     const newHtml = currentHtml.replace(/@([^\s@]{0,50})$/, `@${display} `);
                                     setConsultationContentHtml(newHtml);
-                                    
+
                                     if (!consultationMentionUserIds.includes(user.id)) {
                                       setConsultationMentionUserIds((prev) => [...prev, user.id]);
                                     }
-                                    
+
                                     setConsultationMentionActive(false);
                                     setConsultationMentionQuery("");
-                                    
+
                                     // Update the contentEditable div
                                     const editableDiv = document.querySelector('[contenteditable="true"]');
                                     if (editableDiv) {
@@ -2131,7 +2130,7 @@ export default function MedicalConsultationsCard({
                                       (service) =>
                                         !invoiceSelectedCategoryId ||
                                         service.category_id ===
-                                          invoiceSelectedCategoryId,
+                                        invoiceSelectedCategoryId,
                                     )
                                     .map((service) => (
                                       <option key={service.id} value={service.id}>
@@ -2151,7 +2150,7 @@ export default function MedicalConsultationsCard({
                                   if (!service) return;
                                   const base =
                                     service.base_price !== null &&
-                                    service.base_price !== undefined
+                                      service.base_price !== undefined
                                       ? Number(service.base_price)
                                       : 0;
                                   const unitPrice = Number.isFinite(base)
@@ -2223,25 +2222,25 @@ export default function MedicalConsultationsCard({
                                       if (!service) continue;
                                       const base =
                                         service.base_price !== null &&
-                                        service.base_price !== undefined
+                                          service.base_price !== undefined
                                           ? Number(service.base_price)
                                           : 0;
                                       const discountSource =
                                         link.discount_percent !== null &&
-                                        link.discount_percent !== undefined
+                                          link.discount_percent !== undefined
                                           ? Number(link.discount_percent)
                                           : groupDiscountRaw !== null &&
-                                              groupDiscountRaw !== undefined
+                                            groupDiscountRaw !== undefined
                                             ? Number(groupDiscountRaw)
                                             : null;
                                       const discountPercent =
                                         discountSource !== null &&
-                                        Number.isFinite(discountSource) &&
-                                        discountSource > 0
+                                          Number.isFinite(discountSource) &&
+                                          discountSource > 0
                                           ? Math.min(
-                                              100,
-                                              Math.max(0, discountSource),
-                                            )
+                                            100,
+                                            Math.max(0, discountSource),
+                                          )
                                           : null;
                                       const discountedBase =
                                         base > 0 && discountPercent !== null
@@ -2317,7 +2316,7 @@ export default function MedicalConsultationsCard({
                                   const tariff = TARDOC_TARIFF_ITEMS.find(t => t.code === selectedTardocCode);
                                   if (!tariff) return;
                                   const unitPrice = calculateTardocPrice(tariff.taxPoints, invoiceCanton);
-                                  
+
                                   setInvoiceServiceLines((prev) => [
                                     ...prev,
                                     {
@@ -2575,8 +2574,8 @@ export default function MedicalConsultationsCard({
                               const group =
                                 line.groupId !== null
                                   ? invoiceServiceGroups.find(
-                                      (g) => g.id === line.groupId,
-                                    )
+                                    (g) => g.id === line.groupId,
+                                  )
                                   : null;
                               const metaBits: string[] = [];
                               if (group) metaBits.push(group.name);
@@ -2594,7 +2593,7 @@ export default function MedicalConsultationsCard({
                               const quantity = line.quantity > 0 ? line.quantity : 1;
                               const unit =
                                 line.unitPrice !== null &&
-                                Number.isFinite(line.unitPrice)
+                                  Number.isFinite(line.unitPrice)
                                   ? Math.max(0, line.unitPrice)
                                   : 0;
                               const lineTotal = unit * quantity;
@@ -2627,7 +2626,7 @@ export default function MedicalConsultationsCard({
                                       step="0.01"
                                       value={
                                         line.unitPrice !== null &&
-                                        Number.isFinite(line.unitPrice)
+                                          Number.isFinite(line.unitPrice)
                                           ? line.unitPrice
                                           : ""
                                       }
@@ -2810,11 +2809,10 @@ export default function MedicalConsultationsCard({
                 className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs"
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                    doc.fileType === "ap" 
-                      ? "bg-purple-100 text-purple-700" 
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${doc.fileType === "ap"
+                      ? "bg-purple-100 text-purple-700"
                       : "bg-blue-100 text-blue-700"
-                  }`}>
+                    }`}>
                     {doc.fileType === "ap" ? "Medical Notes (AP)" : "Consultation"}
                   </span>
                   <span className="text-[10px] text-slate-400">
@@ -2952,8 +2950,8 @@ export default function MedicalConsultationsCard({
                           {displayDuration}
                         </span>
                         {is3d &&
-                        threeDMeta?.player_id &&
-                        threeDMeta.reconstruction_type ? (
+                          threeDMeta?.player_id &&
+                          threeDMeta.reconstruction_type ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -2984,8 +2982,8 @@ export default function MedicalConsultationsCard({
                               <>
                                 {row.payment_method === "Online Payment" || row.payment_method === "Cash" ? (
                                   <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                                    {row.payrexx_payment_status === "confirmed" ? "Paid" : 
-                                     row.payrexx_payment_status === "waiting" ? "Waiting" : "Pending"}
+                                    {row.payrexx_payment_status === "confirmed" ? "Paid" :
+                                      row.payrexx_payment_status === "waiting" ? "Waiting" : "Pending"}
                                   </span>
                                 ) : row.payment_method === "Bank transfer" ? (
                                   <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-800">
@@ -3033,39 +3031,39 @@ export default function MedicalConsultationsCard({
                             </button>
 
                             {/* Copy Payment Link Button (for payments with cash/online) */}
-                            {!row.invoice_is_paid && row.payment_method && 
-                             (row.payment_method.toLowerCase().includes("cash") || 
-                              row.payment_method.toLowerCase().includes("online")) && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  // Use Payrexx payment link if available, otherwise use internal payment page
-                                  let paymentLink = row.payrexx_payment_link;
-                                  if (!paymentLink && row.payment_link_token) {
-                                    const baseUrl = window.location.origin;
-                                    paymentLink = `${baseUrl}/invoice/pay/${row.payment_link_token}`;
-                                  }
-                                  
-                                  if (!paymentLink) {
-                                    alert("Payment link not yet generated. Please generate the invoice PDF first or create a Payrexx payment link.");
-                                    return;
-                                  }
-                                  
-                                  navigator.clipboard.writeText(paymentLink).then(() => {
-                                    alert("Payment link copied to clipboard!");
-                                  }).catch(err => {
-                                    console.error("Failed to copy:", err);
-                                    alert("Failed to copy link");
-                                  });
-                                }}
-                                className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-800 shadow-sm hover:bg-blue-100"
-                              >
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                </svg>
-                                Copy Link
-                              </button>
-                            )}
+                            {!row.invoice_is_paid && row.payment_method &&
+                              (row.payment_method.toLowerCase().includes("cash") ||
+                                row.payment_method.toLowerCase().includes("online")) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Use Payrexx payment link if available, otherwise use internal payment page
+                                    let paymentLink = row.payrexx_payment_link;
+                                    if (!paymentLink && row.payment_link_token) {
+                                      const baseUrl = window.location.origin;
+                                      paymentLink = `${baseUrl}/invoice/pay/${row.payment_link_token}`;
+                                    }
+
+                                    if (!paymentLink) {
+                                      alert("Payment link not yet generated. Please generate the invoice PDF first or create a Payrexx payment link.");
+                                      return;
+                                    }
+
+                                    navigator.clipboard.writeText(paymentLink).then(() => {
+                                      alert("Payment link copied to clipboard!");
+                                    }).catch(err => {
+                                      console.error("Failed to copy:", err);
+                                      alert("Failed to copy link");
+                                    });
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-800 shadow-sm hover:bg-blue-100"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                                  </svg>
+                                  Copy Link
+                                </button>
+                              )}
 
                             {/* Payment Status Button (if not paid) */}
                             {!row.invoice_is_paid && (
@@ -3183,6 +3181,12 @@ export default function MedicalConsultationsCard({
                     </div>
 
                     <div className="mt-2 text-[11px] text-slate-800">
+                      {isNotes ? (
+                        <div className="mb-2 text-[10px] text-slate-600">
+                          <span className="font-semibold">Consultation ID:</span>{" "}
+                          <span className="font-mono text-slate-800">{row.consultation_id}</span>
+                        </div>
+                      ) : null}
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="font-semibold">{displayTitle}</div>
                         {isComplimentaryInvoice ? (
@@ -3206,7 +3210,13 @@ export default function MedicalConsultationsCard({
                           ) : null}
                         </div>
                       ) : null}
-                      {(isNotes || isPrescription || isInvoice) && row.content ? (
+                      {isNotes && row.content ? (
+                        <div
+                          className="mt-1 text-[11px] leading-relaxed text-slate-800"
+                          style={{ whiteSpace: "pre-wrap" }}
+                          dangerouslySetInnerHTML={{ __html: row.content }}
+                        />
+                      ) : (isPrescription || isInvoice) && row.content ? (
                         <div
                           className="mt-1 text-[11px] leading-relaxed text-slate-800"
                           dangerouslySetInnerHTML={{ __html: row.content }}
