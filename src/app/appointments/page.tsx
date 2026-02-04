@@ -1113,25 +1113,34 @@ export default function CalendarPage() {
       if (hasAnyCalendars && selectedCalendars.length > 0) {
         const doctorFromReason = getDoctorNameFromReason(appt.reason);
         const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
+        const reasonLower = (appt.reason ?? "").toLowerCase();
         const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
         
         // Match by provider_id first (most reliable)
         const matchesByProviderId = appt.provider_id && selectedProviderIds.includes(appt.provider_id);
         
-        // Also match by name (partial matching for flexibility)
-        const matchesByName = doctorKey && selectedDoctorNames.some((selectedName) => 
+        // Match by doctor key (from [Doctor:] tag or provider.name)
+        const matchesByDoctorKey = doctorKey && selectedDoctorNames.some((selectedName) => 
           doctorKey.includes(selectedName) || selectedName.includes(doctorKey)
         );
         
-        // Skip if no match found by either method
-        if (!matchesByProviderId && !matchesByName) return;
+        // Also search the entire reason field for doctor name mentions
+        const matchesByReasonText = selectedDoctorNames.some((selectedName) => {
+          const nameParts = selectedName.split(/\s+/);
+          return nameParts.some((part) => part.length > 2 && reasonLower.includes(part));
+        });
+        
+        // Skip only if no match found by any method
+        if (!matchesByProviderId && !matchesByDoctorKey && !matchesByReasonText) return;
 
         // Filter by active doctor tab if one is selected
         if (activeTabCalendar) {
           const matchesActiveTabById = appt.provider_id && appt.provider_id === activeTabProviderId;
           const matchesActiveTabByName = activeTabDoctorName && doctorKey && 
             (doctorKey.includes(activeTabDoctorName) || activeTabDoctorName.includes(doctorKey));
-          if (!matchesActiveTabById && !matchesActiveTabByName) return;
+          const activeTabParts = (activeTabDoctorName ?? "").split(/\s+/);
+          const matchesActiveTabByReason = activeTabParts.some((part) => part.length > 2 && reasonLower.includes(part));
+          if (!matchesActiveTabById && !matchesActiveTabByName && !matchesActiveTabByReason) return;
         }
       }
 
