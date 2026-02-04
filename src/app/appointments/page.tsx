@@ -274,14 +274,13 @@ const APPOINTMENT_CATEGORY_OPTIONS = [
 
 type CalendarAppointment = {
   id: string;
-  patient_id: string | null;
+  patient_id: string;
   provider_id: string | null;
   start_time: string;
   end_time: string | null;
   status: AppointmentStatus;
   reason: string | null;
   location: string | null;
-  temporary_text: string | null;
   patient: AppointmentPatient | null;
   provider: {
     id: string;
@@ -295,47 +294,6 @@ const DAY_VIEW_START_MINUTES = 8 * 60;
 const DAY_VIEW_END_MINUTES = 22 * 60;
 const DAY_VIEW_SLOT_MINUTES = 15;
 const DAY_VIEW_SLOT_HEIGHT = 48;
-
-// Switzerland timezone - all times displayed in this timezone
-const SWITZERLAND_TIMEZONE = "Europe/Zurich";
-
-// Helper to get hours in Switzerland timezone
-function getSwissHours(date: Date): number {
-  return parseInt(date.toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: SWITZERLAND_TIMEZONE }), 10);
-}
-
-// Helper to get minutes in Switzerland timezone
-function getSwissMinutes(date: Date): number {
-  return parseInt(date.toLocaleString("en-US", { minute: "numeric", timeZone: SWITZERLAND_TIMEZONE }), 10);
-}
-
-// Helper to get date parts in Switzerland timezone
-function getSwissDateParts(date: Date): { year: number; month: number; day: number } {
-  const parts = date.toLocaleDateString("en-CA", { timeZone: SWITZERLAND_TIMEZONE }).split("-");
-  return {
-    year: parseInt(parts[0], 10),
-    month: parseInt(parts[1], 10),
-    day: parseInt(parts[2], 10),
-  };
-}
-
-// Helper to get current Swiss date as a Date object (normalized to midnight local but representing Swiss date)
-function getSwissNow(): { year: number; month: number; day: number } {
-  return getSwissDateParts(new Date());
-}
-
-// Helper to create a Date for the first of a month in Swiss time context
-function createSwissMonthStart(year: number, month: number): Date {
-  return new Date(year, month - 1, 1);
-}
-
-// Helper to get Swiss day of week (0=Sunday)
-function getSwissDayOfWeek(date: Date): number {
-  return parseInt(date.toLocaleDateString("en-US", { weekday: "narrow", timeZone: SWITZERLAND_TIMEZONE }).charAt(0), 10) || 
-    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(
-      date.toLocaleDateString("en-US", { weekday: "short", timeZone: SWITZERLAND_TIMEZONE })
-    );
-}
 
 type ProviderOption = {
   id: string;
@@ -359,43 +317,38 @@ function getCalendarColorForIndex(index: number): string {
 }
 
 function formatMonthYear(date: Date) {
-  return date.toLocaleDateString("en-US", {
+  return date.toLocaleDateString(undefined, {
     month: "long",
     year: "numeric",
-    timeZone: SWITZERLAND_TIMEZONE,
   });
 }
 
 function formatYmd(date: Date) {
-  const parts = getSwissDateParts(date);
-  const year = parts.year;
-  const month = `${parts.month}`.padStart(2, "0");
-  const day = `${parts.day}`.padStart(2, "0");
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
 function formatTimeRangeLabel(start: Date, end: Date | null): string {
   if (Number.isNaN(start.getTime())) return "";
 
-  const startLabel = start.toLocaleTimeString("en-US", {
+  const startLabel = start.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: SWITZERLAND_TIMEZONE,
   });
 
   let endLabel: string;
   if (end && !Number.isNaN(end.getTime())) {
-    endLabel = end.toLocaleTimeString("en-US", {
+    endLabel = end.toLocaleTimeString(undefined, {
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: SWITZERLAND_TIMEZONE,
     });
   } else {
     const fallbackEnd = new Date(start.getTime() + DAY_VIEW_SLOT_MINUTES * 60 * 1000);
-    endLabel = fallbackEnd.toLocaleTimeString("en-US", {
+    endLabel = fallbackEnd.toLocaleTimeString(undefined, {
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: SWITZERLAND_TIMEZONE,
     });
   }
 
@@ -470,15 +423,12 @@ function calculateOverlapPositions(
     const start = new Date(appt.start_time);
     const end = appt.end_time ? new Date(appt.end_time) : new Date(start.getTime() + 30 * 60 * 1000);
     
-    // Use Switzerland timezone for time calculations
-    let startMinutes = getSwissHours(start) * 60 + getSwissMinutes(start);
-    let endMinutes = getSwissHours(end) * 60 + getSwissMinutes(end);
+    let startMinutes = start.getHours() * 60 + start.getMinutes();
+    let endMinutes = end.getHours() * 60 + end.getMinutes();
     
     // Handle appointments spanning midnight or with invalid end times
     // If end is on a different day or endMinutes <= startMinutes, clamp to end of day view
-    const startParts = getSwissDateParts(start);
-    const endParts = getSwissDateParts(end);
-    if (startParts.day !== endParts.day || endMinutes <= startMinutes) {
+    if (end.getDate() !== start.getDate() || endMinutes <= startMinutes) {
       endMinutes = DAY_VIEW_END_MINUTES;
     }
     
@@ -595,11 +545,10 @@ async function sendAppointmentConfirmationEmail(
     const start = new Date(appointment.start_time);
     const end = appointment.end_time ? new Date(appointment.end_time) : null;
 
-    const dateLabel = start.toLocaleDateString("en-US", {
+    const dateLabel = start.toLocaleDateString(undefined, {
       year: "numeric",
       month: "long",
       day: "numeric",
-      timeZone: SWITZERLAND_TIMEZONE,
     });
     const timeLabel = formatTimeRangeLabel(start, end);
     const dateTimeLabel = `${dateLabel} ${timeLabel}`;
@@ -734,17 +683,12 @@ async function sendAppointmentConfirmationEmail(
 }
 
 export default function CalendarPage() {
-  // Initialize with today's date in Switzerland timezone (at noon to avoid TZ shift)
   const [visibleMonth, setVisibleMonth] = useState(() => {
-    const swiss = getSwissNow();
-    return new Date(swiss.year, swiss.month - 1, 1, 12, 0, 0);
-  });
-  const [selectedDate, setSelectedDate] = useState<Date | null>(() => {
-    const swiss = getSwissNow();
-    return new Date(swiss.year, swiss.month - 1, swiss.day, 12, 0, 0);
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [patientSearch, setPatientSearch] = useState("");
   const [providers, setProviders] = useState<ProviderOption[]>([]);
@@ -755,8 +699,9 @@ export default function CalendarPage() {
   const [doctorCalendars, setDoctorCalendars] = useState<DoctorCalendar[]>([]);
   const [isCreatingCalendar, setIsCreatingCalendar] = useState(false);
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
-  const [view, setView] = useState<CalendarView>("day");
+  const [view, setView] = useState<CalendarView>("month");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
   const [isDraggingRange, setIsDraggingRange] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -819,7 +764,6 @@ export default function CalendarPage() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] =
     useState<CalendarAppointment | null>(null);
-  const [copiedAppointment, setCopiedAppointment] = useState<CalendarAppointment | null>(null);
   const [editWorkflowStatus, setEditWorkflowStatus] =
     useState<WorkflowStatus>("pending");
   const [editDate, setEditDate] = useState("");
@@ -871,7 +815,7 @@ export default function CalendarPage() {
         const { data, error } = await supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, start_time, end_time, status, reason, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+            "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
@@ -941,29 +885,15 @@ export default function CalendarPage() {
   useEffect(() => {
     let isMounted = true;
 
-    // Only these doctors should appear in the calendar
-    const ALLOWED_DOCTOR_NAMES = [
-      "xavier tenorio",
-      "cesar rodrigues",
-      "cezar rodrigues", 
-      "yulia raspertova",
-      "burbuqe fazliu",
-      "laser",
-      "monia khedir",
-      "lily radionova",
-    ];
-
     async function loadProviders() {
       try {
         setProvidersLoading(true);
         setProvidersError(null);
 
-        // Load only first 50 users to prevent crash, then filter client-side
         const { data, error } = await supabaseClient
           .from("users")
           .select("id, full_name, email")
-          .order("full_name", { ascending: true })
-          .limit(50);
+          .order("full_name", { ascending: true });
 
         if (!isMounted) return;
 
@@ -971,14 +901,8 @@ export default function CalendarPage() {
           setProviders([]);
           setProvidersError(error?.message ?? "Failed to load users.");
         } else {
-          // Filter to only allowed doctors client-side
-          const filtered = (data as any[]).filter((row) => {
-            const fullName = ((row.full_name as string | null) ?? "").toLowerCase();
-            return ALLOWED_DOCTOR_NAMES.some(allowed => fullName.includes(allowed));
-          });
-          
           setProviders(
-            filtered.map((row) => {
+            (data as any[]).map((row) => {
               const fullName = (row.full_name as string | null) ?? null;
               const email = (row.email as string | null) ?? null;
               const rawName = fullName && fullName.trim().length > 0 ? fullName : email;
@@ -1013,19 +937,33 @@ export default function CalendarPage() {
     setDoctorCalendars((prev) => {
       if (prev.length > 0) return prev;
 
-      // NO doctors selected by default to prevent page crash
       const baseCalendars: DoctorCalendar[] = providers.map((provider, index) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const trimmedName = rawName.trim() || "Unnamed doctor";
+
+        let selected = true;
+        if (currentUserId) {
+          selected = provider.id === currentUserId;
+        }
 
         return {
           id: provider.id,
           providerId: provider.id,
           name: trimmedName,
           color: getCalendarColorForIndex(index),
-          selected: false, // Start with none selected
+          selected,
         };
       });
+
+      if (currentUserId) {
+        const anySelected = baseCalendars.some((calendar) => calendar.selected);
+        if (!anySelected && baseCalendars.length > 0) {
+          baseCalendars[0] = {
+            ...baseCalendars[0],
+            selected: true,
+          };
+        }
+      }
 
       const xavierIndex = baseCalendars.findIndex((calendar) => {
         const value = calendar.name.toLowerCase();
@@ -1177,22 +1115,26 @@ export default function CalendarPage() {
 
   const gridDates = useMemo(() => {
     const dates: Date[] = [];
-    // Use Swiss timezone to get correct year/month for the visible month
-    const vmParts = getSwissDateParts(visibleMonth);
-    const year = vmParts.year;
-    const month = vmParts.month - 1; // Convert to 0-indexed
-    
-    // First day of the visible month (at noon to avoid timezone shift)
-    const firstOfMonth = new Date(year, month, 1, 12, 0, 0);
-    // Day of week (0=Sunday)
+    const firstDayOfWeek = 0; // Sunday
+    const firstOfMonth = new Date(
+      visibleMonth.getFullYear(),
+      visibleMonth.getMonth(),
+      1,
+    );
     const startWeekday = firstOfMonth.getDay();
-    
-    // Calculate the first date to show (may be in previous month)
-    const gridStart = new Date(year, month, 1 - startWeekday, 12, 0, 0);
+    const diff = (startWeekday - firstDayOfWeek + 7) % 7;
+    const gridStart = new Date(
+      firstOfMonth.getFullYear(),
+      firstOfMonth.getMonth(),
+      firstOfMonth.getDate() - diff,
+    );
 
-    // Generate 42 dates (6 weeks) - all at noon to avoid timezone issues
     for (let i = 0; i < 42; i += 1) {
-      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i, 12, 0, 0);
+      const d = new Date(
+        gridStart.getFullYear(),
+        gridStart.getMonth(),
+        gridStart.getDate() + i,
+      );
       dates.push(d);
     }
 
@@ -1200,7 +1142,7 @@ export default function CalendarPage() {
   }, [visibleMonth]);
 
   const todayYmd = formatYmd(new Date());
-  const visibleMonthIndex = getSwissDateParts(visibleMonth).month - 1;
+  const visibleMonthIndex = visibleMonth.getMonth();
 
   const activeRangeDates = useMemo(() => {
     if (!selectedDate) return [] as Date[];
@@ -1212,8 +1154,7 @@ export default function CalendarPage() {
     const end = selectedDate < rangeEndDate ? rangeEndDate : selectedDate;
 
     const dates: Date[] = [];
-    const startParts = getSwissDateParts(start);
-    const current = new Date(startParts.year, startParts.month - 1, startParts.day);
+    const current = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     while (current <= end) {
       dates.push(new Date(current));
       current.setDate(current.getDate() + 1);
@@ -1249,20 +1190,55 @@ export default function CalendarPage() {
       minutes <= windowEnd - desiredDuration;
       minutes += DAY_VIEW_SLOT_MINUTES
     ) {
-      // All users can select any time slot (overlapping appointments allowed)
-      const hours24 = Math.floor(minutes / 60);
-      const mins = minutes % 60;
-      const value = `${hours24.toString().padStart(2, "0")}:${mins
-        .toString()
-        .padStart(2, "0")}`;
-      options.push({
-        value,
-        label: formatTimeOptionLabel(minutes),
+      const slotStart = minutes;
+      const slotEnd = minutes + desiredDuration;
+
+      const overlaps = dayAppointments.some((appt) => {
+        const start = new Date(appt.start_time);
+        if (Number.isNaN(start.getTime())) return false;
+
+        const rawStartMinutes = start.getHours() * 60 + start.getMinutes();
+        let endMinutes = rawStartMinutes + 60;
+
+        if (appt.end_time) {
+          const end = new Date(appt.end_time);
+          if (!Number.isNaN(end.getTime())) {
+            endMinutes = end.getHours() * 60 + end.getMinutes();
+          }
+        }
+
+        if (endMinutes <= rawStartMinutes) {
+          endMinutes = rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
+        }
+
+        if (endMinutes > windowEnd) {
+          endMinutes = windowEnd;
+        }
+
+        const apptStart = Math.max(rawStartMinutes, windowStart);
+        const apptEnd = Math.max(
+          apptStart + DAY_VIEW_SLOT_MINUTES,
+          Math.min(endMinutes, windowEnd),
+        );
+
+        return apptStart < slotEnd && apptEnd > slotStart;
       });
+
+      if (!overlaps) {
+        const hours24 = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        const value = `${hours24.toString().padStart(2, "0")}:${mins
+          .toString()
+          .padStart(2, "0")}`;
+        options.push({
+          value,
+          label: formatTimeOptionLabel(minutes),
+        });
+      }
     }
 
     return options;
-  }, [draftDate, consultationDuration]);
+  }, [draftDate, appointmentsByDay, consultationDuration]);
 
   // Filtered options for smart search dropdowns
   const filteredServiceOptions = useMemo(() => {
@@ -1297,8 +1273,11 @@ export default function CalendarPage() {
 
   function handleSelectDayView() {
     const base = selectedDate ?? new Date();
-    const parts = getSwissDateParts(base);
-    const day = new Date(parts.year, parts.month - 1, parts.day);
+    const day = new Date(
+      base.getFullYear(),
+      base.getMonth(),
+      base.getDate(),
+    );
     setSelectedDate(day);
     setRangeEndDate(null);
     setView("day");
@@ -1307,13 +1286,16 @@ export default function CalendarPage() {
 
   function handleSelectWeekView() {
     const base = selectedDate ?? new Date();
-    const parts = getSwissDateParts(base);
-    const start = new Date(parts.year, parts.month - 1, parts.day);
+    const start = new Date(
+      base.getFullYear(),
+      base.getMonth(),
+      base.getDate(),
+    );
     const weekday = start.getDay();
     start.setDate(start.getDate() - weekday);
 
-    const startParts = getSwissDateParts(start);
-    const end = new Date(startParts.year, startParts.month - 1, startParts.day + 6);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    end.setDate(start.getDate() + 6);
 
     setSelectedDate(start);
     setRangeEndDate(end);
@@ -1323,8 +1305,7 @@ export default function CalendarPage() {
 
   function handleSelectMonthView() {
     const base = selectedDate ?? new Date();
-    const parts = getSwissDateParts(base);
-    setVisibleMonth(new Date(parts.year, parts.month - 1, 1));
+    setVisibleMonth(new Date(base.getFullYear(), base.getMonth(), 1));
     setSelectedDate(null);
     setRangeEndDate(null);
     setView("month");
@@ -1415,53 +1396,6 @@ export default function CalendarPage() {
       );
     });
   }, [createPatientSearch, patientOptions]);
-
-  // Detect potential duplicate patients based on similar names
-  const potentialDuplicates = useMemo(() => {
-    if (filteredCreatePatientSuggestions.length < 2) return [];
-    
-    const duplicateGroups: { name: string; patients: typeof patientOptions }[] = [];
-    const checked = new Set<string>();
-    
-    // Normalize name for comparison (remove accents, lowercase, trim)
-    const normalize = (str: string) => 
-      str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    
-    // Check if two names are similar (same letters, minor spelling variations)
-    const areSimilar = (a: string, b: string) => {
-      const na = normalize(a);
-      const nb = normalize(b);
-      if (na === nb) return true;
-      // Check for common variations (s/z, c/k, etc.)
-      const variations = na.replace(/[sz]/g, 's').replace(/[ck]/g, 'c');
-      const variationsB = nb.replace(/[sz]/g, 's').replace(/[ck]/g, 'c');
-      return variations === variationsB;
-    };
-    
-    for (const p1 of filteredCreatePatientSuggestions) {
-      if (checked.has(p1.id)) continue;
-      
-      const p1Name = `${p1.first_name ?? ""} ${p1.last_name ?? ""}`.trim();
-      const similar = filteredCreatePatientSuggestions.filter(p2 => {
-        if (p1.id === p2.id) return false;
-        const p2Name = `${p2.first_name ?? ""} ${p2.last_name ?? ""}`.trim();
-        return areSimilar(p1Name, p2Name) || 
-               (p1.phone && p2.phone && p1.phone === p2.phone) ||
-               (p1.email && p2.email && p1.email.toLowerCase() === p2.email.toLowerCase());
-      });
-      
-      if (similar.length > 0) {
-        duplicateGroups.push({
-          name: p1Name,
-          patients: [p1, ...similar]
-        });
-        checked.add(p1.id);
-        similar.forEach(s => checked.add(s.id));
-      }
-    }
-    
-    return duplicateGroups;
-  }, [filteredCreatePatientSuggestions]);
 
   async function handleCreateNewPatient() {
     const firstName = newPatientFirstName.trim();
@@ -1644,7 +1578,7 @@ export default function CalendarPage() {
           source: "manual",
         })
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -1661,8 +1595,13 @@ export default function CalendarPage() {
       if (!Number.isNaN(insertedStart.getTime())) {
         setSelectedDate(insertedStart);
         setRangeEndDate(null);
-        const startParts = getSwissDateParts(insertedStart);
-        setVisibleMonth(new Date(startParts.year, startParts.month - 1, 1));
+        setVisibleMonth(
+          new Date(
+            insertedStart.getFullYear(),
+            insertedStart.getMonth(),
+            1,
+          ),
+        );
       }
 
       void sendAppointmentConfirmationEmail(inserted);
@@ -1717,13 +1656,11 @@ export default function CalendarPage() {
     const end = appt.end_time ? new Date(appt.end_time) : null;
 
     if (!Number.isNaN(start.getTime())) {
-      // Use Switzerland timezone for display
-      const parts = getSwissDateParts(start);
-      const year = parts.year;
-      const month = `${parts.month}`.padStart(2, "0");
-      const day = `${parts.day}`.padStart(2, "0");
-      const hours = `${getSwissHours(start)}`.padStart(2, "0");
-      const minutes = `${getSwissMinutes(start)}`.padStart(2, "0");
+      const year = start.getFullYear();
+      const month = `${start.getMonth() + 1}`.padStart(2, "0");
+      const day = `${start.getDate()}`.padStart(2, "0");
+      const hours = `${start.getHours()}`.padStart(2, "0");
+      const minutes = `${start.getMinutes()}`.padStart(2, "0");
       setEditDate(`${year}-${month}-${day}`);
       setEditTime(`${hours}:${minutes}`);
     } else {
@@ -1752,75 +1689,6 @@ export default function CalendarPage() {
     setEditCategorySearch(categoryFromReason ?? "");
 
     setEditModalOpen(true);
-  }
-
-  // Copy appointment for pasting
-  function handleCopyAppointment(appt: CalendarAppointment) {
-    setCopiedAppointment(appt);
-    // Show a brief notification or feedback could be added here
-  }
-
-  // Paste copied appointment - opens create modal with pre-filled data
-  function handlePasteAppointment() {
-    if (!copiedAppointment) return;
-
-    // Extract data from copied appointment
-    const { serviceLabel, statusLabel } = getServiceAndStatusFromReason(copiedAppointment.reason);
-    const doctorName = getDoctorNameFromReason(copiedAppointment.reason);
-    const categoryFromReason = getCategoryFromReason(copiedAppointment.reason);
-
-    // Find matching service
-    const matchingService = serviceOptions.find(
-      (opt) => opt.name.toLowerCase() === (serviceLabel ?? "").toLowerCase()
-    );
-    if (matchingService) {
-      setSelectedServiceId(matchingService.id);
-      setServiceSearch(matchingService.name);
-    }
-
-    // Set patient if available
-    if (copiedAppointment.patient?.id) {
-      const patientName = `${copiedAppointment.patient.first_name ?? ""} ${copiedAppointment.patient.last_name ?? ""}`.trim();
-      setCreatePatientId(copiedAppointment.patient.id);
-      setCreatePatientName(patientName);
-      setCreatePatientSearch(patientName);
-      setDraftTitle(`Consultation for ${patientName}`);
-    }
-
-    // Set status
-    setBookingStatus(statusLabel ?? "");
-    setStatusSearch(statusLabel ?? "");
-
-    // Set category
-    setAppointmentCategory(categoryFromReason ?? "");
-    setCategorySearch(categoryFromReason ?? "");
-
-    // Set location
-    setDraftLocation(copiedAppointment.location ?? "Rhône");
-    setLocationSearch(copiedAppointment.location ?? "Rhône");
-
-    // Set duration from copied appointment
-    const start = new Date(copiedAppointment.start_time);
-    const end = copiedAppointment.end_time ? new Date(copiedAppointment.end_time) : null;
-    if (!Number.isNaN(start.getTime()) && end && !Number.isNaN(end.getTime())) {
-      const diffMinutes = Math.round((end.getTime() - start.getTime()) / (60 * 1000));
-      const validDuration = CONSULTATION_DURATION_OPTIONS.find(opt => opt.value === diffMinutes);
-      setConsultationDuration(validDuration ? diffMinutes : 15);
-      setDurationSearch(`${validDuration ? diffMinutes : 15} minutes`);
-    }
-
-    // Find and set doctor calendar
-    if (doctorName) {
-      const matchingCalendar = doctorCalendars.find(
-        (cal) => cal.name.toLowerCase() === doctorName.toLowerCase()
-      );
-      if (matchingCalendar) {
-        setCreateDoctorCalendarId(matchingCalendar.id);
-      }
-    }
-
-    // Open create modal (date/time will be selected by user)
-    setCreateModalOpen(true);
   }
 
   async function handleSaveEditAppointment() {
@@ -1881,7 +1749,7 @@ export default function CalendarPage() {
         })
         .eq("id", editingAppointment.id)
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -1919,104 +1787,54 @@ export default function CalendarPage() {
   }
 
   function goToToday() {
-    const swiss = getSwissNow();
-    // Create date at noon to avoid timezone shift
-    const todayDate = new Date(swiss.year, swiss.month - 1, swiss.day, 12, 0, 0);
-    setSelectedDate(todayDate);
-    setVisibleMonth(new Date(swiss.year, swiss.month - 1, 1, 12, 0, 0));
-    setView("day");
+    const now = new Date();
+    setVisibleMonth(new Date(now.getFullYear(), now.getMonth(), 1));
   }
 
   function goPrevMonth() {
-    setVisibleMonth((prev) => {
-      const parts = getSwissDateParts(prev);
-      return new Date(parts.year, parts.month - 2, 1, 12, 0, 0);
-    });
+    setVisibleMonth((prev) =>
+      new Date(prev.getFullYear(), prev.getMonth() - 1, 1),
+    );
   }
 
   function goNextMonth() {
-    setVisibleMonth((prev) => {
-      const parts = getSwissDateParts(prev);
-      return new Date(parts.year, parts.month, 1, 12, 0, 0);
-    });
+    setVisibleMonth((prev) =>
+      new Date(prev.getFullYear(), prev.getMonth() + 1, 1),
+    );
   }
 
-  function goPrevDay() {
-    if (!selectedDate) return;
-    const parts = getSwissDateParts(selectedDate);
-    const newDate = new Date(parts.year, parts.month - 1, parts.day - 1, 12, 0, 0);
-    setSelectedDate(newDate);
-    const newParts = getSwissDateParts(newDate);
-    setVisibleMonth(new Date(newParts.year, newParts.month - 1, 1, 12, 0, 0));
-  }
-
-  function goNextDay() {
-    if (!selectedDate) return;
-    const parts = getSwissDateParts(selectedDate);
-    const newDate = new Date(parts.year, parts.month - 1, parts.day + 1, 12, 0, 0);
-    setSelectedDate(newDate);
-    const newParts = getSwissDateParts(newDate);
-    setVisibleMonth(new Date(newParts.year, newParts.month - 1, 1, 12, 0, 0));
-  }
-
-  function handleNavPrev() {
-    if (view === "day") {
-      goPrevDay();
-    } else {
-      goPrevMonth();
-    }
-  }
-
-  function handleNavNext() {
-    if (view === "day") {
-      goNextDay();
-    } else {
-      goNextMonth();
-    }
-  }
-
-  // Navigate to specific date
-  function navigateToDate(date: Date, newView: CalendarView = "day") {
-    // The date passed already has time set to noon from gridDates
+  function handleMiniDayMouseDown(date: Date) {
     setSelectedDate(date);
-    const parts = getSwissDateParts(date);
-    setVisibleMonth(new Date(parts.year, parts.month - 1, 1, 12, 0, 0));
     setRangeEndDate(null);
-    setView(newView);
+    setIsDraggingRange(true);
+    setView("day");
   }
 
-  function handleMiniDayClick(date: Date) {
-    navigateToDate(date, "day");
+  function handleMiniDayMouseEnter(date: Date) {
+    if (!isDraggingRange || !selectedDate) return;
+    setRangeEndDate(date);
+    setView("range");
   }
 
   function handleMonthDayClick(date: Date) {
-    navigateToDate(date, "day");
+    setVisibleMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+    setSelectedDate(date);
+    setRangeEndDate(null);
+    setView("day");
   }
 
   return (
-    <div className="relative flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
-      {/* Loading overlay */}
-      {loading && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-2">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600" />
-            <span className="text-sm font-medium text-slate-600">
-              Loading appointments...
-            </span>
-          </div>
-        </div>
-      )}
+    <div className="flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
       {/* Left sidebar similar to Google Calendar */}
       <aside className="hidden w-64 flex-shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex">
-        <div className="mb-3 flex gap-2">
+        <div className="mb-3">
           <button
             type="button"
             onClick={() => {
               const baseDate = selectedDate ?? new Date();
-              const parts = getSwissDateParts(baseDate);
-              const year = parts.year;
-              const month = `${parts.month}`.padStart(2, "0");
-              const day = `${parts.day}`.padStart(2, "0");
+              const year = baseDate.getFullYear();
+              const month = `${baseDate.getMonth() + 1}`.padStart(2, "0");
+              const day = `${baseDate.getDate()}`.padStart(2, "0");
               setDraftDate(`${year}-${month}-${day}`);
               setDraftTime("");
               setDraftTitle("");
@@ -2042,23 +1860,10 @@ export default function CalendarPage() {
               setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
               setCreateModalOpen(true);
             }}
-            className="inline-flex flex-1 items-center justify-center rounded-full bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700"
+            className="inline-flex w-full items-center justify-center rounded-full bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700"
           >
             Create
           </button>
-          {copiedAppointment && (
-            <button
-              type="button"
-              onClick={handlePasteAppointment}
-              className="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 shadow-sm hover:bg-amber-100"
-              title={`Paste: ${copiedAppointment.patient ? `${copiedAppointment.patient.first_name ?? ""} ${copiedAppointment.patient.last_name ?? ""}`.trim() : "Copied appointment"}`}
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-              Paste
-            </button>
-          )}
         </div>
         {/* Mini month */}
         <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-2">
@@ -2111,9 +1916,8 @@ export default function CalendarPage() {
           <div className="grid grid-cols-7 text-[10px]">
             {gridDates.map((date) => {
               const ymd = formatYmd(date);
-              const dateParts = getSwissDateParts(date);
               const isToday = ymd === todayYmd;
-              const isCurrentMonth = dateParts.month - 1 === visibleMonthIndex;
+              const isCurrentMonth = date.getMonth() === visibleMonthIndex;
 
               // Highlight if inside selected range
               const inRange = (() => {
@@ -2123,14 +1927,21 @@ export default function CalendarPage() {
                 }
                 const start = selectedDate < rangeEndDate ? selectedDate : rangeEndDate;
                 const end = selectedDate < rangeEndDate ? rangeEndDate : selectedDate;
-                return date >= start && date <= end;
+                const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                return d >= start && d <= end;
               })();
 
               return (
                 <button
                   key={ymd + "mini"}
                   type="button"
-                  onClick={() => handleMiniDayClick(date)}
+                  onMouseDown={() => handleMiniDayMouseDown(date)}
+                  onMouseEnter={() => handleMiniDayMouseEnter(date)}
+                  onClick={() =>
+                    setVisibleMonth(
+                      new Date(date.getFullYear(), date.getMonth(), 1),
+                    )
+                  }
                   className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] ${
                     isCurrentMonth ? "text-slate-700" : "text-slate-400"
                   } ${
@@ -2141,7 +1952,7 @@ export default function CalendarPage() {
                         : "hover:bg-slate-100"
                   }`}
                 >
-                  {dateParts.day}
+                  {date.getDate()}
                 </button>
               );
             })}
@@ -2195,6 +2006,81 @@ export default function CalendarPage() {
               ))
             )}
           </div>
+          <div className="pt-1">
+            {isCreatingCalendar ? (
+              <div className="space-y-1">
+                <select
+                  value={newCalendarProviderId}
+                  onChange={(event) => setNewCalendarProviderId(event.target.value)}
+                  className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="">Select doctor</option>
+                  {providers
+                    .filter((provider) =>
+                      !doctorCalendars.some(
+                        (calendar) => calendar.providerId === provider.id,
+                      ),
+                    )
+                    .map((provider) => {
+                      const rawName = provider.name ?? "Unnamed doctor";
+                      const trimmedName = rawName.trim() || "Unnamed doctor";
+                      return (
+                        <option key={provider.id} value={provider.id}>
+                          {trimmedName}
+                        </option>
+                      );
+                    })}
+                </select>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={handleConfirmNewCalendar}
+                    className="inline-flex flex-1 items-center justify-center rounded-full bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!newCalendarProviderId}
+                  >
+                    Add
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingCalendar(false);
+                      setNewCalendarProviderId("");
+                    }}
+                    className="inline-flex flex-1 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  const providerIdsWithCalendars = new Set(
+                    doctorCalendars.map((calendar) => calendar.providerId),
+                  );
+                  const nextProvider = providers.find(
+                    (provider) => !providerIdsWithCalendars.has(provider.id),
+                  );
+                  setNewCalendarProviderId(nextProvider?.id ?? "");
+                  setIsCreatingCalendar(true);
+                }}
+                className="inline-flex items-center rounded-full border border-dashed border-sky-300 bg-sky-50 px-3 py-1.5 text-[11px] font-medium text-sky-700 hover:bg-sky-100"
+              >
+                + New calendar
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Booking pages / Other calendars placeholders */}
+        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
+          <p className="font-semibold">Booking pages</p>
+          <p className="text-slate-400">Coming soon</p>
+        </div>
+        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
+          <p className="font-semibold">Other calendars</p>
+          <p className="text-slate-400">Coming soon</p>
         </div>
       </aside>
 
@@ -2214,9 +2100,9 @@ export default function CalendarPage() {
             <div className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-1 py-0.5 text-slate-600 shadow-sm">
               <button
                 type="button"
-                onClick={handleNavPrev}
+                onClick={goPrevMonth}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50"
-                aria-label={view === "day" ? "Previous day" : "Previous month"}
+                aria-label="Previous month"
               >
                 <svg
                   className="h-3 w-3"
@@ -2232,9 +2118,9 @@ export default function CalendarPage() {
               </button>
               <button
                 type="button"
-                onClick={handleNavNext}
+                onClick={goNextMonth}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50"
-                aria-label={view === "day" ? "Next day" : "Next month"}
+                aria-label="Next month"
               >
                 <svg
                   className="h-3 w-3"
@@ -2253,28 +2139,25 @@ export default function CalendarPage() {
               {view === "month" && formatMonthYear(visibleMonth)}
               {view === "day" &&
                 selectedDate &&
-                selectedDate.toLocaleDateString("en-US", {
+                selectedDate.toLocaleDateString(undefined, {
                   weekday: "long",
                   year: "numeric",
                   month: "long",
                   day: "numeric",
-                  timeZone: SWITZERLAND_TIMEZONE,
                 })}
               {view === "range" && activeRangeDates.length > 0 && (
                 <>
-                  {activeRangeDates[0].toLocaleDateString("en-US", {
+                  {activeRangeDates[0].toLocaleDateString(undefined, {
                     month: "short",
                     day: "numeric",
-                    timeZone: SWITZERLAND_TIMEZONE,
                   })}
                   {" – "}
                   {activeRangeDates[activeRangeDates.length - 1].toLocaleDateString(
-                    "en-US",
+                    undefined,
                     {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
-                      timeZone: SWITZERLAND_TIMEZONE,
                     },
                   )}
                 </>
@@ -2352,7 +2235,7 @@ export default function CalendarPage() {
               {gridDates.map((date) => {
                 const ymd = formatYmd(date);
                 const isToday = ymd === todayYmd;
-                const isCurrentMonth = getSwissDateParts(date).month - 1 === visibleMonthIndex;
+                const isCurrentMonth = date.getMonth() === visibleMonthIndex;
 
                 // Highlight if inside selected range
                 const inRange = activeRangeDates.some(
@@ -2363,7 +2246,9 @@ export default function CalendarPage() {
                   <div
                     key={ymd}
                     onClick={() => handleMonthDayClick(date)}
-                    className={`flex min-h-[96px] cursor-pointer flex-col border-b border-r border-slate-100 px-2 py-1 text-left last:border-r-0 hover:bg-slate-50 ${
+                    onMouseDown={() => handleMiniDayMouseDown(date)}
+                    onMouseEnter={() => handleMiniDayMouseEnter(date)}
+                    className={`flex min-h-[96px] flex-col border-b border-r border-slate-100 px-2 py-1 text-left last:border-r-0 ${
                       isCurrentMonth ? "bg-white" : "bg-slate-50/80 text-slate-400"
                     } ${inRange ? "bg-sky-50" : ""}`}
                   >
@@ -2386,9 +2271,11 @@ export default function CalendarPage() {
                             appt.reason,
                           );
 
-                          const patientName = appt.patient
-                            ? `${appt.patient.first_name ?? ""} ${appt.patient.last_name ?? ""}`.trim().replace(/\s+/g, " ")
-                            : (appt.temporary_text ?? "");
+                          const patientName = `${appt.patient?.first_name ?? ""} ${
+                            appt.patient?.last_name ?? ""
+                          }`
+                            .trim()
+                            .replace(/\s+/g, " ");
 
                           const doctorFromReason = getDoctorNameFromReason(appt.reason);
                           const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
@@ -2455,10 +2342,10 @@ export default function CalendarPage() {
                     className="flex-1 px-2 py-2 text-center border-r border-slate-100 last:border-r-0"
                   >
                     <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                      {date.toLocaleDateString("en-US", { weekday: "short", timeZone: SWITZERLAND_TIMEZONE })}
+                      {date.toLocaleDateString(undefined, { weekday: "short" })}
                     </div>
                     <div className="text-sm font-semibold text-slate-800">
-                      {getSwissDateParts(date).day}
+                      {date.getDate()}
                     </div>
                   </div>
                 ))}
@@ -2502,10 +2389,9 @@ export default function CalendarPage() {
                               key={totalMinutes}
                               type="button"
                               onClick={() => {
-                                const dateParts = getSwissDateParts(date);
-                                const year = dateParts.year;
-                                const month = `${dateParts.month}`.padStart(2, "0");
-                                const day = `${dateParts.day}`.padStart(2, "0");
+                                const year = date.getFullYear();
+                                const month = `${date.getMonth() + 1}`.padStart(2, "0");
+                                const day = `${date.getDate()}`.padStart(2, "0");
                                 const hours = Math.floor(totalMinutes / 60);
                                 const minutes = totalMinutes % 60;
                                 const timeValue = `${hours.toString().padStart(2, "0")}:${minutes
@@ -2547,9 +2433,8 @@ export default function CalendarPage() {
                             const start = new Date(appt.start_time);
                             if (Number.isNaN(start.getTime())) return null;
 
-                            // Use Switzerland timezone for positioning
                             const rawStartMinutes =
-                              getSwissHours(start) * 60 + getSwissMinutes(start);
+                              start.getHours() * 60 + start.getMinutes();
                             const topMinutes = Math.max(
                               rawStartMinutes - DAY_VIEW_START_MINUTES,
                               0,
@@ -2558,16 +2443,13 @@ export default function CalendarPage() {
                             let end = appt.end_time ? new Date(appt.end_time) : null;
                             let endMinutes =
                               end && !Number.isNaN(end.getTime())
-                                ? getSwissHours(end) * 60 + getSwissMinutes(end)
+                                ? end.getHours() * 60 + end.getMinutes()
                                 : rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
 
                             // Handle appointments spanning midnight or with end time on different day
-                            if (end && !Number.isNaN(end.getTime())) {
-                              const startParts = getSwissDateParts(start);
-                              const endParts = getSwissDateParts(end);
-                              if (startParts.day !== endParts.day || endMinutes <= rawStartMinutes) {
-                                endMinutes = DAY_VIEW_END_MINUTES;
-                              }
+                            if (end && !Number.isNaN(end.getTime()) && 
+                                (end.getDate() !== start.getDate() || endMinutes <= rawStartMinutes)) {
+                              endMinutes = DAY_VIEW_END_MINUTES;
                             }
 
                             endMinutes = Math.min(endMinutes, DAY_VIEW_END_MINUTES);
@@ -2610,9 +2492,11 @@ export default function CalendarPage() {
                             );
                             const doctorColor = doctorCalendar?.color ?? "";
 
-                            const patientName = appt.patient
-                              ? `${appt.patient.first_name ?? ""} ${appt.patient.last_name ?? ""}`.trim().replace(/\s+/g, " ")
-                              : (appt.temporary_text ?? "");
+                            const patientName = `${appt.patient?.first_name ?? ""} ${
+                              appt.patient?.last_name ?? ""
+                            }`
+                              .trim()
+                              .replace(/\s+/g, " ");
 
                             const category = getCategoryFromReason(appt.reason);
                             const notes = getNotesFromReason(appt.reason);
@@ -2711,7 +2595,7 @@ export default function CalendarPage() {
                       </Link>
                     ) : (
                       <p className="text-[11px] text-slate-800 font-medium">
-                        {editingAppointment.temporary_text || "Unknown patient"}
+                        Unknown patient
                       </p>
                     )}
                     {editingAppointment.patient?.email && (
@@ -2929,38 +2813,22 @@ export default function CalendarPage() {
               {editError ? (
                 <p className="mt-2 text-[11px] text-red-600">{editError}</p>
               ) : null}
-              <div className="mt-4 flex items-center justify-between">
+              <div className="mt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    handleCopyAppointment(editingAppointment);
-                    closeEditModal();
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-700 shadow-sm hover:bg-amber-100"
-                  title="Copy appointment to clipboard for pasting"
+                  onClick={closeEditModal}
+                  className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Copy Appointment
+                  Close
                 </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={closeEditModal}
-                    className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                  >
-                    Close
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveEditAppointment()}
-                    disabled={savingEdit}
-                    className="inline-flex items-center rounded-full border border-sky-500/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    Save changes
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveEditAppointment()}
+                  disabled={savingEdit}
+                  className="inline-flex items-center rounded-full border border-sky-500/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Save changes
+                </button>
               </div>
             </div>
           </div>
@@ -3060,21 +2928,7 @@ export default function CalendarPage() {
                             No patients found
                           </div>
                         ) : (
-                          <>
-                            {potentialDuplicates.length > 0 && (
-                              <div className="mx-2 mb-2 rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5">
-                                <div className="flex items-center gap-1.5 text-[10px] font-medium text-amber-700">
-                                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                  </svg>
-                                  Potential duplicates detected
-                                </div>
-                                <p className="mt-0.5 text-[9px] text-amber-600">
-                                  Similar names or contact info found. Please verify before selecting.
-                                </p>
-                              </div>
-                            )}
-                            {filteredCreatePatientSuggestions.map((p) => {
+                          filteredCreatePatientSuggestions.map((p) => {
                             const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`
                               .trim() || "Unnamed patient";
                             const details =
@@ -3101,8 +2955,7 @@ export default function CalendarPage() {
                                 </span>
                               </button>
                             );
-                          })}
-                          </>
+                          })
                         )}
                       </div>
                     ) : null}
