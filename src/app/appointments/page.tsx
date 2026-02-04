@@ -294,7 +294,7 @@ type CalendarView = "month" | "day" | "range";
 const DAY_VIEW_START_MINUTES = 8 * 60;
 const DAY_VIEW_END_MINUTES = 22 * 60;
 const DAY_VIEW_SLOT_MINUTES = 15;
-const DAY_VIEW_SLOT_HEIGHT = 48;
+const DAY_VIEW_SLOT_HEIGHT = 28;
 
 // Priority doctors to show first in the list
 const PRIORITY_DOCTOR_NAMES = [
@@ -2653,9 +2653,8 @@ export default function CalendarPage() {
                             const widthPercent = 100 / totalCols;
                             const leftPercent = colIndex * widthPercent;
                             
-                            // Minimum height to show at least patient name and time (2 lines)
-                            // When side by side, ensure minimum visibility
-                            const minHeight = totalCols > 1 ? 44 : 36;
+                            // Minimum height to show at least patient name and time
+                            const minHeight = totalCols > 1 ? 28 : 24;
                             const height = Math.max(calculatedHeight, minHeight);
 
                             const { serviceLabel } = getServiceAndStatusFromReason(
@@ -2688,12 +2687,19 @@ export default function CalendarPage() {
                             const { statusLabel: dayStatusLabel } = getServiceAndStatusFromReason(appt.reason);
                             const dayStatusIcon = getStatusIcon(dayStatusLabel);
 
+                            const patientPhone = appt.patient?.phone ?? null;
+                            const patientEmail = appt.patient?.email ?? null;
+                            const durationMins = end && !Number.isNaN(end.getTime()) 
+                              ? Math.round((end.getTime() - start.getTime()) / 60000) 
+                              : null;
+                            const durationLabel = durationMins ? `${String(Math.floor(durationMins / 60)).padStart(2, "0")}:${String(durationMins % 60).padStart(2, "0")}h` : "";
+
                             return (
                               <button
                                 key={`${ymd}-${appt.id}`}
                                 type="button"
                                 onClick={() => openEditModalForAppointment(appt)}
-                                className={`absolute rounded-md px-1 py-1 text-[11px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(
+                                className={`group absolute rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(
                                   appt.status,
                                 )} ${getCategoryColor(category)}`}
                                 style={{
@@ -2707,19 +2713,29 @@ export default function CalendarPage() {
                                   {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
                                   <span className="truncate">{patientName || serviceLabel}</span>
                                 </div>
-                                <div className="truncate text-[10px] text-slate-600">
+                                <div className="truncate text-[9px] text-slate-600">
                                   {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
                                 </div>
-                                {category && height > 60 && (
-                                  <div className="truncate text-[9px] text-slate-500">
-                                    {category}
+                                {/* Hover tooltip */}
+                                <div className="pointer-events-none absolute left-full top-0 z-50 ml-2 hidden min-w-[280px] rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-lg group-hover:block">
+                                  <div className="font-semibold text-slate-800 mb-1">
+                                    {formatYmd(date)} {timeLabel} {durationLabel && `(${durationLabel})`}
                                   </div>
-                                )}
-                                {notes && height > 80 && (
-                                  <div className="truncate text-[9px] text-slate-500 italic">
-                                    {notes}
-                                  </div>
-                                )}
+                                  <div className="text-slate-700 font-medium">{patientName || "No Patient"}</div>
+                                  {serviceLabel && <div className="text-slate-600 mt-1">{serviceLabel}</div>}
+                                  {category && <div className="text-slate-500">Catégorie: {category}</div>}
+                                  {patientPhone && (
+                                    <div className="text-slate-500 mt-1">
+                                      <span className="text-slate-400">privé:</span> {patientPhone}
+                                    </div>
+                                  )}
+                                  {patientEmail && (
+                                    <div className="text-slate-500">
+                                      <span className="text-slate-400">privé:</span> {patientEmail}
+                                    </div>
+                                  )}
+                                  {appt.location && <div className="text-slate-500 mt-1">📍 {appt.location}</div>}
+                                </div>
                               </button>
                             );
                           });
