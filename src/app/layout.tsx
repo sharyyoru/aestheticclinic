@@ -14,6 +14,7 @@ import { CommentsUnreadProvider } from "@/components/CommentsUnreadContext";
 import { TasksNotificationsProvider } from "@/components/TasksNotificationsContext";
 import { EmailNotificationsProvider } from "@/components/EmailNotificationsContext";
 import GlobalLoader from "@/components/GlobalLoader";
+import SidebarLeadImportDropdown from "@/components/SidebarLeadImportDropdown";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -155,51 +156,7 @@ export default function RootLayout({
                     <span>Deals &amp; Pipeline</span>
                   </Link>
                 </div>
-                <div className="border-b border-slate-100/80">
-                  <Link
-                    href="/lead-import"
-                    className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
-                  >
-                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/70 text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.18)] backdrop-blur group-hover:bg-sky-500/90 group-hover:text-white">
-                      <svg
-                        className="h-3.5 w-3.5"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                      </svg>
-                    </span>
-                    <span>Lead Import</span>
-                  </Link>
-                  {/* Lead Import Sub-navigation */}
-                  <div className="ml-10 space-y-0.5 pb-2">
-                    <Link
-                      href="/lead-import"
-                      className="block py-1.5 pl-3 text-xs text-slate-500 hover:text-sky-600"
-                    >
-                      CSV Import
-                    </Link>
-                    <Link
-                      href="/lead-import/history"
-                      className="block py-1.5 pl-3 text-xs text-slate-500 hover:text-sky-600"
-                    >
-                      Import History
-                    </Link>
-                    <Link
-                      href="/lead-import/meta-leads"
-                      className="block py-1.5 pl-3 text-xs text-slate-500 hover:text-sky-600"
-                    >
-                      Meta & Zapier Leads
-                    </Link>
-                  </div>
-                </div>
+                <SidebarLeadImportDropdown />
                 <div className="border-b border-slate-100/80">
                   <Link
                     href="/financials"
