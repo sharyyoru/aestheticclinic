@@ -5,6 +5,11 @@ import { extractReplyContent } from "@/utils/emailCleaner";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+// Mailgun configuration for forwarding emails
+const mailgunApiKey = process.env.MAILGUN_API_KEY;
+const mailgunDomain = process.env.MAILGUN_DOMAIN;
+const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.eu.mailgun.net";
+
 type AttachmentInfo = {
   fileName: string;
   contentType: string;
@@ -187,14 +192,106 @@ export async function POST(request: Request) {
     const emailMatch = from.match(/<([^>]+)>/) || [null, from];
     const senderEmail = emailMatch[1]?.trim() || from.trim();
     
-    // IMPORTANT: Check if sender is a clinic user - if so, this is a CC'd copy of an outbound email
-    // We should NOT log this as an inbound email (it would create a duplicate)
+    // Check if sender is a clinic user
     const { data: senderIsClinicUser } = await supabase
       .from("users")
-      .select("id")
+      .select("id, email")
       .ilike("email", senderEmail)
       .maybeSingle();
     
+    // If sender is a clinic user AND this is a reply to a patient thread,
+    // treat it as an outbound reply from the clinic user to the patient
+    if (senderIsClinicUser && targetEmailId && targetPatientId) {
+      console.log("Clinic user reply detected - processing as outbound to patient");
+      
+      // Get the patient's email to forward the reply
+      const { data: patient } = await supabase
+        .from("patients")
+        .select("id, email, first_name, last_name")
+        .eq("id", targetPatientId)
+        .single();
+      
+      if (patient && patient.email) {
+        // Log this as an outbound email from the clinic
+        const { data: insertedOutbound, error: outboundError } = await supabase
+          .from("emails")
+          .insert({
+            patient_id: targetPatientId,
+            from_address: senderEmail,
+            to_address: patient.email,
+            subject: subject,
+            body: cleanedBody || rawBody,
+            status: "sent",
+            direction: "outbound",
+            sent_at: timestamp ? new Date(parseInt(timestamp) * 1000).toISOString() : new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+        
+        if (outboundError) {
+          console.error("Error logging clinic user reply:", outboundError);
+        } else {
+          console.log("Clinic user reply logged as outbound email:", insertedOutbound?.id);
+          
+          // Forward the reply to the patient
+          if (mailgunApiKey && mailgunDomain) {
+            try {
+              const forwardFormData = new FormData();
+              
+              // Send from the clinic user's perspective
+              const senderName = from.match(/^([^<]+)/) ? from.match(/^([^<]+)/)?.[1]?.trim() : senderEmail.split("@")[0];
+              forwardFormData.append("from", `${senderName} <${senderEmail}>`);
+              forwardFormData.append("to", patient.email);
+              forwardFormData.append("subject", subject || "Re: Your inquiry");
+              forwardFormData.append("html", cleanedBody || rawBody);
+              
+              // Set Reply-To with tracking so patient replies come back to our system
+              const replyToAddress = `reply+${insertedOutbound?.id}+${targetPatientId}@${mailgunDomain}`;
+              forwardFormData.append("h:Reply-To", replyToAddress);
+              
+              // Also CC the tracking address so we capture replies
+              forwardFormData.append("cc", replyToAddress);
+              
+              // Add tracking metadata
+              if (insertedOutbound?.id) {
+                forwardFormData.append("v:email-id", insertedOutbound.id);
+              }
+              forwardFormData.append("v:patient-id", targetPatientId);
+              
+              const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
+              
+              const sendResponse = await fetch(`${mailgunApiBaseUrl}/v3/${mailgunDomain}/messages`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Basic ${auth}`,
+                },
+                body: forwardFormData,
+              });
+              
+              if (sendResponse.ok) {
+                console.log("Clinic user reply sent to patient:", patient.email);
+              } else {
+                const errorText = await sendResponse.text();
+                console.error("Failed to send reply to patient:", sendResponse.status, errorText);
+              }
+            } catch (sendError) {
+              console.error("Error sending reply to patient:", sendError);
+            }
+          }
+        }
+        
+        return NextResponse.json({ 
+          ok: true, 
+          message: "Clinic user reply processed and sent to patient",
+          emailId: insertedOutbound?.id,
+          patientId: targetPatientId
+        });
+      }
+    }
+    
+    // If sender is a clinic user but NOT replying to a patient thread,
+    // this is likely a CC'd copy of an outbound email - skip it
     if (senderIsClinicUser) {
       console.log("Skipping CC'd copy - sender is a clinic user:", senderEmail);
       return NextResponse.json({ 
@@ -368,6 +465,69 @@ export async function POST(request: Request) {
                   read_at: null,
                 });
               console.log("Email reply notification created for user:", originalSenderUser.id);
+              
+              // Forward the patient reply to the original sender's work email
+              // This allows them to see it in their inbox and reply directly
+              if (mailgunApiKey && mailgunDomain && originalEmail.from_address) {
+                try {
+                  const forwardFormData = new FormData();
+                  
+                  // Send from our domain but set Reply-To as patient's email
+                  // so replies go back through our system
+                  forwardFormData.append("from", `Patient Reply <noreply@${mailgunDomain}>`);
+                  forwardFormData.append("to", originalEmail.from_address);
+                  forwardFormData.append("subject", subject || `Re: ${originalEmail.subject || 'No Subject'}`);
+                  
+                  // Format the forwarded email body
+                  const patientName = senderEmail.split('@')[0];
+                  const forwardedBody = `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                      <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px 16px; margin-bottom: 16px;">
+                        <strong style="color: #166534;">📧 Patient Reply Received</strong>
+                        <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;">From: ${senderEmail}</p>
+                      </div>
+                      <div style="padding: 16px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;">
+                        ${cleanedBody || rawBody}
+                      </div>
+                      <div style="margin-top: 16px; padding: 12px; background: #fefce8; border: 1px solid #fef08a; border-radius: 8px;">
+                        <p style="margin: 0; color: #854d0e; font-size: 12px;">
+                          <strong>💡 Tip:</strong> Reply to this email to respond to the patient. Your reply will be automatically recorded in the CRM.
+                        </p>
+                      </div>
+                    </div>
+                  `;
+                  forwardFormData.append("html", forwardedBody);
+                  
+                  // Set Reply-To with tracking so replies come back to our system
+                  const replyToAddress = `reply+${newEmailId}+${targetPatientId}@${mailgunDomain}`;
+                  forwardFormData.append("h:Reply-To", replyToAddress);
+                  
+                  // Add custom headers to track the thread
+                  forwardFormData.append("v:email-id", newEmailId);
+                  forwardFormData.append("v:patient-id", targetPatientId);
+                  forwardFormData.append("v:forwarded-reply", "true");
+                  
+                  const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
+                  
+                  const forwardResponse = await fetch(`${mailgunApiBaseUrl}/v3/${mailgunDomain}/messages`, {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Basic ${auth}`,
+                    },
+                    body: forwardFormData,
+                  });
+                  
+                  if (forwardResponse.ok) {
+                    console.log("Patient reply forwarded to:", originalEmail.from_address);
+                  } else {
+                    const errorText = await forwardResponse.text();
+                    console.error("Failed to forward reply:", forwardResponse.status, errorText);
+                  }
+                } catch (forwardError) {
+                  console.error("Error forwarding patient reply:", forwardError);
+                  // Don't fail the request if forwarding fails
+                }
+              }
             }
           }
         }
