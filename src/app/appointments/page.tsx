@@ -1107,16 +1107,22 @@ export default function CalendarPage() {
     const activeTabDoctorName = activeTabCalendar?.name.trim().toLowerCase() ?? null;
 
     appointments.forEach((appt) => {
-      if (hasAnyCalendars) {
+      if (hasAnyCalendars && selectedDoctorNames.length > 0) {
         const doctorFromReason = getDoctorNameFromReason(appt.reason);
         const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
         const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
-        if (!doctorKey) return;
-        if (selectedDoctorNames.length === 0) return;
-        if (!selectedDoctorNames.includes(doctorKey)) return;
+        
+        // Use partial matching - check if any selected doctor name is contained in the doctorKey or vice versa
+        const matchesSelectedDoctor = doctorKey && selectedDoctorNames.some((selectedName) => 
+          doctorKey.includes(selectedName) || selectedName.includes(doctorKey)
+        );
+        
+        // Skip if no doctor match found
+        if (!matchesSelectedDoctor) return;
 
-        // Filter by active doctor tab if one is selected
-        if (activeTabDoctorName && doctorKey !== activeTabDoctorName) return;
+        // Filter by active doctor tab if one is selected (also use partial matching)
+        if (activeTabDoctorName && doctorKey && 
+            !doctorKey.includes(activeTabDoctorName) && !activeTabDoctorName.includes(doctorKey)) return;
       }
 
       const startDate = appt.start_time ? new Date(appt.start_time) : null;
@@ -2402,7 +2408,10 @@ export default function CalendarPage() {
                           const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
                           const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
                           const doctorCalendar = doctorCalendars.find(
-                            (calendar) => calendar.name.trim().toLowerCase() === doctorKey,
+                            (calendar) => {
+                              const calName = calendar.name.trim().toLowerCase();
+                              return calName === doctorKey || calName.includes(doctorKey) || doctorKey.includes(calName);
+                            }
                           );
                           const doctorColor = doctorCalendar?.color ?? "";
 
@@ -2642,7 +2651,10 @@ export default function CalendarPage() {
                             const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
                             const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
                             const doctorCalendar = doctorCalendars.find(
-                              (calendar) => calendar.name.trim().toLowerCase() === doctorKey,
+                              (calendar) => {
+                                const calName = calendar.name.trim().toLowerCase();
+                                return calName === doctorKey || calName.includes(doctorKey) || doctorKey.includes(calName);
+                              }
                             );
                             const doctorColor = doctorCalendar?.color ?? "";
 
