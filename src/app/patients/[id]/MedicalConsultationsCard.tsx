@@ -34,6 +34,23 @@ type ConsultationRecordType =
 
 type SortOrder = "desc" | "asc";
 
+type InvoiceStatus = 
+  | "OPEN"
+  | "PAID"
+  | "CANCELLED"
+  | "OVERPAID"
+  | "PARTIAL_LOSS"
+  | "PARTIAL_PAID";
+
+const INVOICE_STATUS_DISPLAY: Record<InvoiceStatus, { label: string; color: string; bgColor: string; borderColor: string }> = {
+  OPEN: { label: "Open", color: "text-amber-700", bgColor: "bg-amber-50", borderColor: "border-amber-200" },
+  PAID: { label: "Paid", color: "text-emerald-700", bgColor: "bg-emerald-50", borderColor: "border-emerald-200" },
+  CANCELLED: { label: "Cancelled", color: "text-slate-500", bgColor: "bg-slate-50", borderColor: "border-slate-200" },
+  OVERPAID: { label: "Overpaid", color: "text-blue-700", bgColor: "bg-blue-50", borderColor: "border-blue-200" },
+  PARTIAL_LOSS: { label: "Partial Loss", color: "text-red-700", bgColor: "bg-red-50", borderColor: "border-red-200" },
+  PARTIAL_PAID: { label: "Partial Paid", color: "text-cyan-700", bgColor: "bg-cyan-50", borderColor: "border-cyan-200" },
+};
+
 type ConsultationRow = {
   id: string;
   patient_id: string;
@@ -49,6 +66,8 @@ type ConsultationRow = {
   invoice_total_amount: number | null;
   invoice_is_complimentary: boolean;
   invoice_is_paid: boolean | null;
+  invoice_status: InvoiceStatus | null;
+  invoice_paid_amount: number | null;
   cash_receipt_path: string | null;
   invoice_pdf_path: string | null;
   payment_link_token: string | null;
@@ -392,7 +411,7 @@ export default function MedicalConsultationsCard({
         const { data, error } = await supabaseClient
           .from("consultations")
           .select(
-            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -808,6 +827,8 @@ export default function MedicalConsultationsCard({
         .from("consultations")
         .update({
           invoice_is_paid: true,
+          invoice_status: "PAID" as InvoiceStatus,
+          invoice_paid_amount: cashReceiptTarget.invoice_total_amount,
           cash_receipt_path: path,
           paid_at: paidAt,
           paid_by_user_id: userId,
@@ -823,7 +844,7 @@ export default function MedicalConsultationsCard({
       setConsultations((prev) =>
         prev.map((row) =>
           row.id === cashReceiptTarget.id
-            ? { ...row, invoice_is_paid: true, cash_receipt_path: path }
+            ? { ...row, invoice_is_paid: true, invoice_status: "PAID" as InvoiceStatus, cash_receipt_path: path }
             : row,
         ),
       );
@@ -917,7 +938,7 @@ export default function MedicalConsultationsCard({
     setPaymentStatusModalOpen(true);
   }
 
-  async function handleMarkInvoicePaid(consultationId: string) {
+  async function handleMarkInvoicePaid(consultationId: string, status: InvoiceStatus = "PAID", paidAmount?: number) {
     try {
       setMarkingPaid(true);
 
@@ -926,20 +947,32 @@ export default function MedicalConsultationsCard({
       const userId = authData?.user?.id || null;
       const paidAt = new Date().toISOString();
 
+      const updateData: Record<string, unknown> = {
+        invoice_is_paid: status === "PAID" || status === "OVERPAID",
+        invoice_status: status,
+        paid_at: paidAt,
+        paid_by_user_id: userId,
+      };
+
+      if (paidAmount !== undefined) {
+        updateData.invoice_paid_amount = paidAmount;
+      }
+
       const { error } = await supabaseClient
         .from("consultations")
-        .update({
-          invoice_is_paid: true,
-          paid_at: paidAt,
-          paid_by_user_id: userId,
-        })
+        .update(updateData)
         .eq("id", consultationId);
 
       if (error) throw error;
 
       setConsultations(prev =>
         prev.map(c =>
-          c.id === consultationId ? { ...c, invoice_is_paid: true } : c
+          c.id === consultationId ? { 
+            ...c, 
+            invoice_is_paid: status === "PAID" || status === "OVERPAID",
+            invoice_status: status,
+            invoice_paid_amount: paidAmount ?? c.invoice_paid_amount,
+          } : c
         )
       );
       setPaymentStatusModalOpen(false);
@@ -1598,7 +1631,7 @@ export default function MedicalConsultationsCard({
                       .from("consultations")
                       .insert(insertPayload)
                       .select(
-                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
                       )
                       .single();
 
@@ -2994,28 +3027,26 @@ export default function MedicalConsultationsCard({
                         ) : null}
                         {isInvoice && !isComplimentaryInvoice ? (
                           <>
-                            {/* Payment Status Indicator */}
-                            {row.invoice_is_paid ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                Paid
-                              </span>
-                            ) : (
-                              <>
-                                {row.payment_method === "Online Payment" || row.payment_method === "Cash" ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                                    {row.payrexx_payment_status === "confirmed" ? "Paid" :
-                                      row.payrexx_payment_status === "waiting" ? "Waiting" : "Pending"}
-                                  </span>
-                                ) : row.payment_method === "Bank transfer" ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-800">
-                                    Pending
-                                  </span>
-                                ) : null}
-                              </>
-                            )}
+                            {/* Invoice Status Badge */}
+                            {(() => {
+                              const effectiveStatus: InvoiceStatus = row.invoice_status || (row.invoice_is_paid ? "PAID" : "OPEN");
+                              const statusConfig = INVOICE_STATUS_DISPLAY[effectiveStatus];
+                              return (
+                                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
+                                  {effectiveStatus === "PAID" && (
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                  {effectiveStatus === "CANCELLED" && (
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  )}
+                                  {statusConfig.label}
+                                </span>
+                              );
+                            })()}
 
                             {/* View PDF Button */}
                             {row.invoice_pdf_path ? (
@@ -3494,7 +3525,7 @@ export default function MedicalConsultationsCard({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-2xl">
             <div className="border-b border-slate-200 px-6 py-4">
-              <h3 className="text-sm font-semibold text-slate-900">Payment Status</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Update Invoice Status</h3>
               <p className="mt-1 text-xs text-slate-600">
                 Invoice #{paymentStatusTarget.consultation_id}
               </p>
@@ -3507,35 +3538,78 @@ export default function MedicalConsultationsCard({
                     <span className="font-medium text-slate-900">{paymentStatusTarget.payment_method}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Amount:</span>
+                    <span className="text-slate-600">Invoice Amount:</span>
                     <span className="font-medium text-slate-900">
                       {paymentStatusTarget.invoice_total_amount?.toFixed(2)} CHF
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Status:</span>
-                    <span className="font-medium text-slate-900">
-                      {paymentStatusTarget.invoice_is_paid ? "Paid" : "Pending"}
+                    <span className="text-slate-600">Current Status:</span>
+                    <span className={`font-medium ${INVOICE_STATUS_DISPLAY[paymentStatusTarget.invoice_status || (paymentStatusTarget.invoice_is_paid ? "PAID" : "OPEN")]?.color || "text-slate-900"}`}>
+                      {INVOICE_STATUS_DISPLAY[paymentStatusTarget.invoice_status || (paymentStatusTarget.invoice_is_paid ? "PAID" : "OPEN")]?.label || "Open"}
                     </span>
                   </div>
-                  {paymentStatusTarget.payrexx_payment_status && (
+                  {paymentStatusTarget.invoice_paid_amount && paymentStatusTarget.invoice_paid_amount > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-slate-600">Payrexx Status:</span>
-                      <span className="font-medium text-slate-900 capitalize">
-                        {paymentStatusTarget.payrexx_payment_status}
+                      <span className="text-slate-600">Paid Amount:</span>
+                      <span className="font-medium text-emerald-700">
+                        {paymentStatusTarget.invoice_paid_amount.toFixed(2)} CHF
                       </span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {!paymentStatusTarget.invoice_is_paid && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                  <p className="text-xs text-amber-800">
-                    <strong>Note:</strong> {paymentStatusTarget.payment_method === "Bank transfer" ? "Manually mark this invoice as paid once you verify the bank transfer." : "Payment status will update automatically via Payrexx webhook."}
-                  </p>
+              <div className="space-y-3">
+                <label className="block text-xs font-medium text-slate-700">Update Status</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["PAID", "OPEN", "PARTIAL_PAID", "OVERPAID", "PARTIAL_LOSS", "CANCELLED"] as InvoiceStatus[]).map((status) => {
+                    const config = INVOICE_STATUS_DISPLAY[status];
+                    const isCurrentStatus = (paymentStatusTarget.invoice_status || (paymentStatusTarget.invoice_is_paid ? "PAID" : "OPEN")) === status;
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        disabled={markingPaid || isCurrentStatus}
+                        onClick={() => {
+                          if (status === "PARTIAL_PAID" || status === "PARTIAL_LOSS" || status === "OVERPAID") {
+                            const amount = prompt(`Enter paid amount in CHF (Invoice: ${paymentStatusTarget.invoice_total_amount?.toFixed(2)} CHF):`);
+                            if (amount !== null) {
+                              const paidAmount = parseFloat(amount);
+                              if (!isNaN(paidAmount) && paidAmount >= 0) {
+                                handleMarkInvoicePaid(paymentStatusTarget.id, status, paidAmount);
+                              } else {
+                                alert("Please enter a valid amount.");
+                              }
+                            }
+                          } else {
+                            handleMarkInvoicePaid(paymentStatusTarget.id, status, status === "PAID" ? paymentStatusTarget.invoice_total_amount ?? undefined : undefined);
+                          }
+                        }}
+                        className={`inline-flex items-center justify-center gap-1 rounded-lg border px-3 py-2 text-[11px] font-medium transition-all ${
+                          isCurrentStatus 
+                            ? `${config.bgColor} ${config.color} ${config.borderColor} ring-2 ring-offset-1 ring-slate-300`
+                            : `border-slate-200 bg-white text-slate-700 hover:${config.bgColor} hover:${config.color}`
+                        } disabled:opacity-50`}
+                      >
+                        {config.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
+
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <p className="text-[10px] text-blue-800">
+                  <strong>Status Guide:</strong><br />
+                  • <strong>Paid</strong> - Full payment received<br />
+                  • <strong>Open</strong> - Awaiting payment<br />
+                  • <strong>Partial Paid</strong> - Some payment received, balance pending<br />
+                  • <strong>Overpaid</strong> - More than invoice amount received<br />
+                  • <strong>Partial Loss</strong> - Partial payment accepted as full settlement<br />
+                  • <strong>Cancelled</strong> - Invoice voided/cancelled
+                </p>
+              </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
               <button
@@ -3545,15 +3619,6 @@ export default function MedicalConsultationsCard({
               >
                 Close
               </button>
-              {!paymentStatusTarget.invoice_is_paid && (
-                <button
-                  onClick={() => handleMarkInvoicePaid(paymentStatusTarget.id)}
-                  disabled={markingPaid}
-                  className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {markingPaid ? "Updating..." : "Mark as Paid"}
-                </button>
-              )}
             </div>
           </div>
         </div>

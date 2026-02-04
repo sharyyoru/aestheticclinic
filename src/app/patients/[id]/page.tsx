@@ -89,37 +89,72 @@ function extractInvoiceInfoFromContent(content: string | null): {
   return { total, isComplimentary };
 }
 
-async function getInvoiceSummary(
-  patientId: string,
-  paymentMethodFilter: string | null = null,
-): Promise<{
+type InvoiceStatus = "OPEN" | "PAID" | "CANCELLED" | "OVERPAID" | "PARTIAL_LOSS" | "PARTIAL_PAID";
+
+type InvoiceSummary = {
   totalAmount: number;
   totalComplimentary: number;
   totalPaid: number;
   totalUnpaid: number;
-}> {
+  totalCancelled: number;
+  totalOverpaid: number;
+  totalPartialLoss: number;
+  totalPartialPaid: number;
+  countByStatus: Record<InvoiceStatus, number>;
+};
+
+async function getInvoiceSummary(
+  patientId: string,
+  paymentMethodFilter: string | null = null,
+): Promise<InvoiceSummary> {
+  const emptyResult: InvoiceSummary = {
+    totalAmount: 0,
+    totalComplimentary: 0,
+    totalPaid: 0,
+    totalUnpaid: 0,
+    totalCancelled: 0,
+    totalOverpaid: 0,
+    totalPartialLoss: 0,
+    totalPartialPaid: 0,
+    countByStatus: {
+      OPEN: 0,
+      PAID: 0,
+      CANCELLED: 0,
+      OVERPAID: 0,
+      PARTIAL_LOSS: 0,
+      PARTIAL_PAID: 0,
+    },
+  };
+
   try {
     const { data, error } = await supabaseClient
       .from("consultations")
       .select(
-        "content, record_type, is_archived, payment_method, invoice_total_amount, invoice_is_complimentary, invoice_is_paid",
+        "content, record_type, is_archived, payment_method, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount",
       )
       .eq("patient_id", patientId)
       .eq("record_type", "invoice");
 
     if (error || !data) {
-      return {
-        totalAmount: 0,
-        totalComplimentary: 0,
-        totalPaid: 0,
-        totalUnpaid: 0,
-      };
+      return emptyResult;
     }
 
     let totalAmountNonComplimentary = 0;
     let totalComplimentary = 0;
     let totalPaid = 0;
     let totalUnpaid = 0;
+    let totalCancelled = 0;
+    let totalOverpaid = 0;
+    let totalPartialLoss = 0;
+    let totalPartialPaid = 0;
+    const countByStatus: Record<InvoiceStatus, number> = {
+      OPEN: 0,
+      PAID: 0,
+      CANCELLED: 0,
+      OVERPAID: 0,
+      PARTIAL_LOSS: 0,
+      PARTIAL_PAID: 0,
+    };
 
     for (const row of data as any[]) {
       if ((row as any).is_archived) continue;
@@ -149,46 +184,77 @@ async function getInvoiceSummary(
 
       if (amount <= 0) continue;
 
-      const invoiceIsComplimentaryRaw = (row as any)
-        .invoice_is_complimentary;
+      const invoiceIsComplimentaryRaw = (row as any).invoice_is_complimentary;
       const isComplimentary =
         ((typeof invoiceIsComplimentaryRaw === "boolean"
           ? invoiceIsComplimentaryRaw
           : false) || parsed.isComplimentary);
-
-      const invoiceIsPaidRaw = (row as any).invoice_is_paid;
-      const isPaid =
-        typeof invoiceIsPaidRaw === "boolean" ? invoiceIsPaidRaw : false;
 
       if (isComplimentary) {
         totalComplimentary += amount;
         continue;
       }
 
+      // Get invoice status - default to OPEN if not set, or derive from invoice_is_paid
+      const invoiceStatusRaw = (row as any).invoice_status as InvoiceStatus | null;
+      const invoiceIsPaidRaw = (row as any).invoice_is_paid;
+      const isPaid = typeof invoiceIsPaidRaw === "boolean" ? invoiceIsPaidRaw : false;
+      const paidAmount = Number((row as any).invoice_paid_amount) || 0;
+
+      // Determine effective status
+      let effectiveStatus: InvoiceStatus;
+      if (invoiceStatusRaw && ["OPEN", "PAID", "CANCELLED", "OVERPAID", "PARTIAL_LOSS", "PARTIAL_PAID"].includes(invoiceStatusRaw)) {
+        effectiveStatus = invoiceStatusRaw;
+      } else if (isPaid) {
+        effectiveStatus = "PAID";
+      } else {
+        effectiveStatus = "OPEN";
+      }
+
+      // Count by status
+      countByStatus[effectiveStatus]++;
+
+      // Calculate totals based on status
       totalAmountNonComplimentary += amount;
 
-      if (isPaid) {
-        totalPaid += amount;
-      } else {
-        totalUnpaid += amount;
+      switch (effectiveStatus) {
+        case "PAID":
+          totalPaid += amount;
+          break;
+        case "OPEN":
+          totalUnpaid += amount;
+          break;
+        case "CANCELLED":
+          totalCancelled += amount;
+          break;
+        case "OVERPAID":
+          totalOverpaid += paidAmount > 0 ? paidAmount - amount : amount;
+          totalPaid += amount;
+          break;
+        case "PARTIAL_LOSS":
+          totalPartialLoss += paidAmount > 0 ? amount - paidAmount : amount;
+          totalPaid += paidAmount > 0 ? paidAmount : 0;
+          break;
+        case "PARTIAL_PAID":
+          totalPartialPaid += paidAmount > 0 ? paidAmount : 0;
+          totalUnpaid += paidAmount > 0 ? amount - paidAmount : amount;
+          break;
       }
     }
 
     return {
-      totalAmount:
-        totalAmountNonComplimentary > 0 ? totalAmountNonComplimentary : 0,
-      totalComplimentary:
-        totalComplimentary > 0 ? totalComplimentary : 0,
+      totalAmount: totalAmountNonComplimentary > 0 ? totalAmountNonComplimentary : 0,
+      totalComplimentary: totalComplimentary > 0 ? totalComplimentary : 0,
       totalPaid: totalPaid > 0 ? totalPaid : 0,
       totalUnpaid: totalUnpaid > 0 ? totalUnpaid : 0,
+      totalCancelled: totalCancelled > 0 ? totalCancelled : 0,
+      totalOverpaid: totalOverpaid > 0 ? totalOverpaid : 0,
+      totalPartialLoss: totalPartialLoss > 0 ? totalPartialLoss : 0,
+      totalPartialPaid: totalPartialPaid > 0 ? totalPartialPaid : 0,
+      countByStatus,
     };
   } catch {
-    return {
-      totalAmount: 0,
-      totalComplimentary: 0,
-      totalPaid: 0,
-      totalUnpaid: 0,
-    };
+    return emptyResult;
   }
 }
 
@@ -504,19 +570,19 @@ export default async function PatientPage({
                       {invoiceSummary.totalAmount.toFixed(2)} CHF
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                    <p className="text-[11px] font-medium text-slate-500">
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 p-3">
+                    <p className="text-[11px] font-medium text-emerald-600">
                       Total Paid
                     </p>
-                    <p className="mt-1 text-base font-semibold text-slate-900">
+                    <p className="mt-1 text-base font-semibold text-emerald-700">
                       {invoiceSummary.totalPaid.toFixed(2)} CHF
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                    <p className="text-[11px] font-medium text-slate-500">
-                      Total Unpaid
+                  <div className="rounded-lg border border-amber-100 bg-amber-50/80 p-3">
+                    <p className="text-[11px] font-medium text-amber-600">
+                      Total Open
                     </p>
-                    <p className="mt-1 text-base font-semibold text-slate-900">
+                    <p className="mt-1 text-base font-semibold text-amber-700">
                       {invoiceSummary.totalUnpaid.toFixed(2)} CHF
                     </p>
                   </div>
@@ -526,6 +592,41 @@ export default async function PatientPage({
                     </p>
                     <p className="mt-1 text-base font-semibold text-slate-900">
                       {invoiceSummary.totalComplimentary.toFixed(2)} CHF
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-3">
+                    <p className="text-[11px] font-medium text-blue-600">
+                      Overpaid
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-blue-700">
+                      {invoiceSummary.totalOverpaid.toFixed(2)} CHF
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-100/80 p-3">
+                    <p className="text-[11px] font-medium text-slate-500">
+                      Cancelled
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-slate-600">
+                      {invoiceSummary.totalCancelled.toFixed(2)} CHF
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-red-100 bg-red-50/80 p-3">
+                    <p className="text-[11px] font-medium text-red-600">
+                      Partial Loss
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-red-700">
+                      {invoiceSummary.totalPartialLoss.toFixed(2)} CHF
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-cyan-100 bg-cyan-50/80 p-3">
+                    <p className="text-[11px] font-medium text-cyan-600">
+                      Partial Paid
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-cyan-700">
+                      {invoiceSummary.totalPartialPaid.toFixed(2)} CHF
                     </p>
                   </div>
                 </div>
