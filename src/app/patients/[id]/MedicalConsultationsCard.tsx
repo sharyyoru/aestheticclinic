@@ -2830,7 +2830,7 @@ export default function MedicalConsultationsCard({
         ) : null}
 
         {/* Axenita PDF Documents Section */}
-        {axenitaPdfDocs.length > 0 && !recordTypeFilter && (
+        {axenitaPdfDocs.length > 0 && (!recordTypeFilter || recordTypeFilter === "notes") && (
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
               <h4 className="text-[11px] font-semibold text-slate-700">Axenita Medical Records</h4>
@@ -2867,14 +2867,14 @@ export default function MedicalConsultationsCard({
           </div>
         )}
 
-        {axenitaPdfLoading && !recordTypeFilter && (
+        {axenitaPdfLoading && (!recordTypeFilter || recordTypeFilter === "notes") && (
           <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
             Loading Axenita medical records...
           </div>
         )}
 
         {/* Show message when no Axenita documents found (after loading) */}
-        {!axenitaPdfLoading && !axenitaPdfError && axenitaPdfDocs.length === 0 && !recordTypeFilter && patientFirstName && patientLastName && (
+        {!axenitaPdfLoading && !axenitaPdfError && axenitaPdfDocs.length === 0 && (!recordTypeFilter || recordTypeFilter === "notes") && patientFirstName && patientLastName && (
           <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2 text-[11px] text-slate-500">
             <div className="flex items-center gap-2">
               <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2885,7 +2885,7 @@ export default function MedicalConsultationsCard({
           </div>
         )}
 
-        {axenitaPdfError && !recordTypeFilter && (
+        {axenitaPdfError && (!recordTypeFilter || recordTypeFilter === "notes") && (
           <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
             <div className="flex items-center gap-2">
               <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
