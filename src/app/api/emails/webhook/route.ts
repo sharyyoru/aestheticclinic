@@ -38,13 +38,37 @@ export async function POST(request: Request) {
     const timestamp = formData.get("timestamp")?.toString() || "";
     const inReplyTo = formData.get("In-Reply-To")?.toString() || "";
     const references = formData.get("References")?.toString() || "";
+    const messageId = formData.get("Message-Id")?.toString() || formData.get("message-id")?.toString() || "";
     
     // Log key email details
     console.log("INBOUND EMAIL DETAILS:");
     console.log("  From:", from);
     console.log("  To:", to);
     console.log("  Subject:", subject);
+    console.log("  Message-Id:", messageId);
     console.log("  Body length:", (bodyPlain || bodyHtml).length);
+    
+    // Initialize Supabase client early for deduplication check
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // DEDUPLICATION: Check if we've already processed this email by message-id
+    if (messageId) {
+      const { data: existingEmail } = await supabase
+        .from("emails")
+        .select("id")
+        .eq("message_id", messageId)
+        .maybeSingle();
+      
+      if (existingEmail) {
+        console.log("Skipping duplicate email - already processed message-id:", messageId);
+        return NextResponse.json({ 
+          ok: true, 
+          message: "Skipped duplicate email",
+          reason: "duplicate_message_id",
+          existingEmailId: existingEmail.id
+        });
+      }
+    }
     
     // Get custom variables we set when sending
     const emailId = formData.get("email-id")?.toString() || "";
@@ -90,9 +114,6 @@ export async function POST(request: Request) {
         console.error("Error reading generic attachment:", err);
       }
     }
-    
-    // Initialize Supabase client with service role key
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     let targetPatientId = patientId;
     let targetEmailId = emailId;
@@ -223,6 +244,7 @@ export async function POST(request: Request) {
             body: cleanedBody || rawBody,
             status: "sent",
             direction: "outbound",
+            message_id: messageId || null,
             sent_at: timestamp ? new Date(parseInt(timestamp) * 1000).toISOString() : new Date().toISOString(),
             created_at: new Date().toISOString(),
           })
@@ -247,11 +269,9 @@ export async function POST(request: Request) {
               forwardFormData.append("html", cleanedBody || rawBody);
               
               // Set Reply-To with tracking so patient replies come back to our system
+              // NOTE: Do NOT CC the tracking address - it causes an infinite loop!
               const replyToAddress = `reply+${insertedOutbound?.id}+${targetPatientId}@${mailgunDomain}`;
               forwardFormData.append("h:Reply-To", replyToAddress);
-              
-              // Also CC the tracking address so we capture replies
-              forwardFormData.append("cc", replyToAddress);
               
               // Add tracking metadata
               if (insertedOutbound?.id) {
@@ -354,6 +374,7 @@ export async function POST(request: Request) {
         body: cleanedBody || rawBody,
         status: "sent", // Use 'sent' for now until 'received' enum value is added
         direction: "inbound",
+        message_id: messageId || null,
         sent_at: timestamp ? new Date(parseInt(timestamp) * 1000).toISOString() : new Date().toISOString(),
         created_at: new Date().toISOString(),
       })
