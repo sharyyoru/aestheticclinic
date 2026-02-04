@@ -472,114 +472,128 @@ export async function POST(request: Request) {
     
     console.log("Email reply logged successfully for patient:", targetPatientId);
     
-    // Create notification for email reply - notify the user who sent the original email
-    // BUT only if this is actually from a patient (not a CC'd copy of our own outbound email)
-    if (targetEmailId && targetPatientId && senderEmail) {
+    // Create notification and forward patient reply to clinic user
+    // This handles both cases:
+    // 1. When we have targetEmailId (from tracking address) - use that specific email's sender
+    // 2. When we only have targetPatientId - find the most recent outbound email to that patient
+    if (targetPatientId && senderEmail) {
       try {
-        // First, check if the sender is a clinic user - if so, skip notification
-        // (This handles CC'd copies of outbound emails that Mailgun routes back to us)
-        const { data: senderIsUser } = await supabase
-          .from("users")
-          .select("id")
-          .eq("email", senderEmail.toLowerCase())
-          .single();
+        let originalEmailData: { id: string; from_address: string; subject: string | null } | null = null;
         
-        if (senderIsUser) {
-          console.log("Skipping notification - sender is a clinic user:", senderEmail);
-        } else {
-          // Sender is NOT a clinic user, so this is a real patient reply
-          // Get the original email to find who sent it
-          const { data: originalEmail } = await supabase
+        // Method 1: If we have a specific email ID, use that
+        if (targetEmailId) {
+          const { data } = await supabase
             .from("emails")
             .select("id, from_address, subject")
             .eq("id", targetEmailId)
             .single();
+          originalEmailData = data;
+        }
+        
+        // Method 2: If no specific email, find the most recent outbound email to this patient
+        if (!originalEmailData) {
+          console.log("No specific email ID, finding most recent outbound email to patient:", targetPatientId);
+          const { data } = await supabase
+            .from("emails")
+            .select("id, from_address, subject")
+            .eq("patient_id", targetPatientId)
+            .eq("direction", "outbound")
+            .order("sent_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          originalEmailData = data;
+          if (data) {
+            console.log("Found most recent outbound email:", data.id, "from:", data.from_address);
+          }
+        }
+        
+        if (originalEmailData && originalEmailData.from_address) {
+          // Find the user who sent the original email (case-insensitive)
+          const { data: originalSenderUser } = await supabase
+            .from("users")
+            .select("id")
+            .ilike("email", originalEmailData.from_address)
+            .maybeSingle();
           
-          if (originalEmail && originalEmail.from_address) {
-            // Find the user who sent the original email (case-insensitive)
-            const { data: originalSenderUser } = await supabase
-              .from("users")
-              .select("id")
-              .ilike("email", originalEmail.from_address)
-              .maybeSingle();
+          if (originalSenderUser) {
+            // Create email reply notification
+            await supabase
+              .from("email_reply_notifications")
+              .insert({
+                user_id: originalSenderUser.id,
+                patient_id: targetPatientId,
+                original_email_id: originalEmailData.id,
+                reply_email_id: newEmailId,
+                read_at: null,
+              });
+            console.log("Email reply notification created for user:", originalSenderUser.id);
             
-            if (originalSenderUser) {
-              // Create email reply notification
-              await supabase
-                .from("email_reply_notifications")
-                .insert({
-                  user_id: originalSenderUser.id,
-                  patient_id: targetPatientId,
-                  original_email_id: targetEmailId,
-                  reply_email_id: newEmailId,
-                  read_at: null,
-                });
-              console.log("Email reply notification created for user:", originalSenderUser.id);
-              
-              // Forward the patient reply to the original sender's work email
-              // This allows them to see it in their inbox and reply directly
-              if (mailgunApiKey && mailgunDomain && originalEmail.from_address) {
-                try {
-                  const forwardFormData = new FormData();
-                  
-                  // Send from our domain but set Reply-To as patient's email
-                  // so replies go back through our system
-                  forwardFormData.append("from", `Patient Reply <noreply@${mailgunDomain}>`);
-                  forwardFormData.append("to", originalEmail.from_address);
-                  forwardFormData.append("subject", subject || `Re: ${originalEmail.subject || 'No Subject'}`);
-                  
-                  // Format the forwarded email body
-                  const patientName = senderEmail.split('@')[0];
-                  const forwardedBody = `
-                    <div style="font-family: Arial, sans-serif; max-width: 600px;">
-                      <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px 16px; margin-bottom: 16px;">
-                        <strong style="color: #166534;">📧 Patient Reply Received</strong>
-                        <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;">From: ${senderEmail}</p>
-                      </div>
-                      <div style="padding: 16px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;">
-                        ${cleanedBody || rawBody}
-                      </div>
-                      <div style="margin-top: 16px; padding: 12px; background: #fefce8; border: 1px solid #fef08a; border-radius: 8px;">
-                        <p style="margin: 0; color: #854d0e; font-size: 12px;">
-                          <strong>💡 Tip:</strong> Reply to this email to respond to the patient. Your reply will be automatically recorded in the CRM.
-                        </p>
-                      </div>
+            // Forward the patient reply to the original sender's work email
+            // This allows them to see it in their inbox and reply directly
+            if (mailgunApiKey && mailgunDomain) {
+              try {
+                const forwardFormData = new FormData();
+                
+                // Send from our domain but set Reply-To with tracking
+                // so replies go back through our system
+                forwardFormData.append("from", `Patient Reply <noreply@${mailgunDomain}>`);
+                forwardFormData.append("to", originalEmailData.from_address);
+                forwardFormData.append("subject", subject || `Re: ${originalEmailData.subject || 'No Subject'}`);
+                
+                // Format the forwarded email body
+                const forwardedBody = `
+                  <div style="font-family: Arial, sans-serif; max-width: 600px;">
+                    <div style="background: #f0fdf4; border-left: 4px solid #22c55e; padding: 12px 16px; margin-bottom: 16px;">
+                      <strong style="color: #166534;">📧 Patient Reply Received</strong>
+                      <p style="margin: 8px 0 0 0; color: #374151; font-size: 14px;">From: ${senderEmail}</p>
                     </div>
-                  `;
-                  forwardFormData.append("html", forwardedBody);
-                  
-                  // Set Reply-To with tracking so replies come back to our system
-                  const replyToAddress = `reply+${newEmailId}+${targetPatientId}@${mailgunDomain}`;
-                  forwardFormData.append("h:Reply-To", replyToAddress);
-                  
-                  // Add custom headers to track the thread
-                  forwardFormData.append("v:email-id", newEmailId);
-                  forwardFormData.append("v:patient-id", targetPatientId);
-                  forwardFormData.append("v:forwarded-reply", "true");
-                  
-                  const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
-                  
-                  const forwardResponse = await fetch(`${mailgunApiBaseUrl}/v3/${mailgunDomain}/messages`, {
-                    method: "POST",
-                    headers: {
-                      Authorization: `Basic ${auth}`,
-                    },
-                    body: forwardFormData,
-                  });
-                  
-                  if (forwardResponse.ok) {
-                    console.log("Patient reply forwarded to:", originalEmail.from_address);
-                  } else {
-                    const errorText = await forwardResponse.text();
-                    console.error("Failed to forward reply:", forwardResponse.status, errorText);
-                  }
-                } catch (forwardError) {
-                  console.error("Error forwarding patient reply:", forwardError);
-                  // Don't fail the request if forwarding fails
+                    <div style="padding: 16px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px;">
+                      ${cleanedBody || rawBody}
+                    </div>
+                    <div style="margin-top: 16px; padding: 12px; background: #fefce8; border: 1px solid #fef08a; border-radius: 8px;">
+                      <p style="margin: 0; color: #854d0e; font-size: 12px;">
+                        <strong>💡 Tip:</strong> Reply to this email to respond to the patient. Your reply will be automatically recorded in the CRM.
+                      </p>
+                    </div>
+                  </div>
+                `;
+                forwardFormData.append("html", forwardedBody);
+                
+                // Set Reply-To with tracking so replies come back to our system
+                const replyToAddress = `reply+${newEmailId}+${targetPatientId}@${mailgunDomain}`;
+                forwardFormData.append("h:Reply-To", replyToAddress);
+                
+                // Add custom headers to track the thread
+                forwardFormData.append("v:email-id", newEmailId);
+                forwardFormData.append("v:patient-id", targetPatientId);
+                forwardFormData.append("v:forwarded-reply", "true");
+                
+                const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
+                
+                const forwardResponse = await fetch(`${mailgunApiBaseUrl}/v3/${mailgunDomain}/messages`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Basic ${auth}`,
+                  },
+                  body: forwardFormData,
+                });
+                
+                if (forwardResponse.ok) {
+                  console.log("Patient reply forwarded to:", originalEmailData.from_address);
+                } else {
+                  const errorText = await forwardResponse.text();
+                  console.error("Failed to forward reply:", forwardResponse.status, errorText);
                 }
+              } catch (forwardError) {
+                console.error("Error forwarding patient reply:", forwardError);
+                // Don't fail the request if forwarding fails
               }
             }
+          } else {
+            console.log("Original sender is not a clinic user, skipping forward:", originalEmailData.from_address);
           }
+        } else {
+          console.log("No outbound email found for patient, cannot forward reply");
         }
       } catch (notifError) {
         console.error("Failed to create email reply notification:", notifError);
