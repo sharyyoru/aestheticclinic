@@ -102,6 +102,9 @@ export async function POST(request: Request) {
     // Get custom variables we set when sending
     const emailId = formData.get("email-id")?.toString() || "";
     const patientId = formData.get("patient-id")?.toString() || "";
+    const sentByEmail = formData.get("sent-by")?.toString() || "";
+    
+    console.log("  Custom vars - emailId:", emailId, "patientId:", patientId, "sentBy:", sentByEmail);
     
     // Mailgun sends attachment count and individual attachments
     const attachmentCountStr = formData.get("attachment-count")?.toString() || "0";
@@ -473,14 +476,22 @@ export async function POST(request: Request) {
     console.log("Email reply logged successfully for patient:", targetPatientId);
     
     // Create notification and forward patient reply to clinic user
-    // This handles both cases:
-    // 1. When we have targetEmailId (from tracking address) - use that specific email's sender
-    // 2. When we only have targetPatientId - find the most recent outbound email to that patient
+    // Priority order for finding original sender:
+    // 1. sentByEmail (v:sent-by custom variable from original email)
+    // 2. from_address from the specific email (if targetEmailId exists)
+    // 3. from_address from most recent outbound email to this patient
     if (targetPatientId && senderEmail) {
       try {
-        let originalEmailData: { id: string; from_address: string; subject: string | null } | null = null;
+        let originalEmailData: { id: string; from_address: string | null; subject: string | null } | null = null;
+        let forwardToEmail: string | null = null;
         
-        // Method 1: If we have a specific email ID, use that
+        // Priority 1: Use sentByEmail from custom variable (most reliable)
+        if (sentByEmail) {
+          console.log("Using sent-by custom variable for forwarding:", sentByEmail);
+          forwardToEmail = sentByEmail;
+        }
+        
+        // Get the original email data for notification and subject
         if (targetEmailId) {
           const { data } = await supabase
             .from("emails")
@@ -488,11 +499,16 @@ export async function POST(request: Request) {
             .eq("id", targetEmailId)
             .single();
           originalEmailData = data;
+          // Priority 2: Use from_address from specific email if no sentByEmail
+          if (!forwardToEmail && data?.from_address) {
+            forwardToEmail = data.from_address;
+            console.log("Using from_address from targetEmailId:", forwardToEmail);
+          }
         }
         
-        // Method 2: If no specific email, find the most recent outbound email to this patient
-        if (!originalEmailData) {
-          console.log("No specific email ID, finding most recent outbound email to patient:", targetPatientId);
+        // Priority 3: Find most recent outbound email to this patient
+        if (!originalEmailData || !forwardToEmail) {
+          console.log("Finding most recent outbound email to patient:", targetPatientId);
           const { data } = await supabase
             .from("emails")
             .select("id, from_address, subject")
@@ -501,35 +517,48 @@ export async function POST(request: Request) {
             .order("sent_at", { ascending: false })
             .limit(1)
             .maybeSingle();
-          originalEmailData = data;
+          
           if (data) {
-            console.log("Found most recent outbound email:", data.id, "from:", data.from_address);
+            if (!originalEmailData) originalEmailData = data;
+            if (!forwardToEmail && data.from_address) {
+              forwardToEmail = data.from_address;
+              console.log("Using from_address from most recent outbound:", forwardToEmail);
+            }
           }
         }
         
-        if (originalEmailData && originalEmailData.from_address) {
-          // Find the user who sent the original email (case-insensitive)
+        console.log("Forward decision - forwardToEmail:", forwardToEmail, "originalEmailId:", originalEmailData?.id);
+        
+        if (forwardToEmail) {
+          // Find the user who should receive this reply (case-insensitive)
           const { data: originalSenderUser } = await supabase
             .from("users")
-            .select("id")
-            .ilike("email", originalEmailData.from_address)
+            .select("id, email")
+            .ilike("email", forwardToEmail)
             .maybeSingle();
+          
+          console.log("User lookup result for", forwardToEmail, ":", originalSenderUser ? `found user ${originalSenderUser.id}` : "not found");
           
           if (originalSenderUser) {
             // Create email reply notification
-            await supabase
-              .from("email_reply_notifications")
-              .insert({
-                user_id: originalSenderUser.id,
-                patient_id: targetPatientId,
-                original_email_id: originalEmailData.id,
-                reply_email_id: newEmailId,
-                read_at: null,
-              });
-            console.log("Email reply notification created for user:", originalSenderUser.id);
+            if (originalEmailData) {
+              await supabase
+                .from("email_reply_notifications")
+                .insert({
+                  user_id: originalSenderUser.id,
+                  patient_id: targetPatientId,
+                  original_email_id: originalEmailData.id,
+                  reply_email_id: newEmailId,
+                  read_at: null,
+                });
+              console.log("Email reply notification created for user:", originalSenderUser.id);
+            }
             
             // Forward the patient reply to the original sender's work email
-            // This allows them to see it in their inbox and reply directly
+            // Use the user's email from the users table (most accurate)
+            const userEmail = originalSenderUser.email || forwardToEmail;
+            console.log("Forwarding patient reply to:", userEmail);
+            
             if (mailgunApiKey && mailgunDomain) {
               try {
                 const forwardFormData = new FormData();
@@ -537,8 +566,8 @@ export async function POST(request: Request) {
                 // Send from our domain but set Reply-To with tracking
                 // so replies go back through our system
                 forwardFormData.append("from", `Patient Reply <noreply@${mailgunDomain}>`);
-                forwardFormData.append("to", originalEmailData.from_address);
-                forwardFormData.append("subject", subject || `Re: ${originalEmailData.subject || 'No Subject'}`);
+                forwardFormData.append("to", userEmail);
+                forwardFormData.append("subject", subject || `Re: ${originalEmailData?.subject || 'No Subject'}`);
                 
                 // Format the forwarded email body
                 const forwardedBody = `
@@ -579,7 +608,7 @@ export async function POST(request: Request) {
                 });
                 
                 if (forwardResponse.ok) {
-                  console.log("Patient reply forwarded to:", originalEmailData.from_address);
+                  console.log("Patient reply forwarded to:", userEmail);
                 } else {
                   const errorText = await forwardResponse.text();
                   console.error("Failed to forward reply:", forwardResponse.status, errorText);
@@ -590,7 +619,7 @@ export async function POST(request: Request) {
               }
             }
           } else {
-            console.log("Original sender is not a clinic user, skipping forward:", originalEmailData.from_address);
+            console.log("Original sender is not a clinic user, skipping forward:", forwardToEmail);
           }
         } else {
           console.log("No outbound email found for patient, cannot forward reply");

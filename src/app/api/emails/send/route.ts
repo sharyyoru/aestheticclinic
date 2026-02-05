@@ -144,8 +144,8 @@ export async function POST(request: Request) {
     }
     formData.append("h:Reply-To", replyToAddress);
     
-    // Also CC the tracking address so we always get a copy
-    formData.append("cc", replyToAddress);
+    // NOTE: Do NOT CC the tracking address - it causes an infinite loop in the webhook!
+    // The Reply-To header is sufficient for capturing patient replies.
     
     // Add custom headers for reply tracking and metadata
     if (emailId) {
