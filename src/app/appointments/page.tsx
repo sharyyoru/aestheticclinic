@@ -799,6 +799,8 @@ export default function CalendarPage() {
   const [editDate, setEditDate] = useState("");
   const [editTime, setEditTime] = useState("");
   const [editConsultationDuration, setEditConsultationDuration] = useState(15);
+  const [editDurationSearch, setEditDurationSearch] = useState("");
+  const [editDurationDropdownOpen, setEditDurationDropdownOpen] = useState(false);
   const [editBookingStatus, setEditBookingStatus] = useState("");
   const [editBookingStatusSearch, setEditBookingStatusSearch] = useState("");
   const [editBookingStatusDropdownOpen, setEditBookingStatusDropdownOpen] = useState(false);
@@ -1340,6 +1342,12 @@ export default function CalendarPage() {
     return CONSULTATION_DURATION_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(search));
   }, [durationSearch]);
 
+  const filteredEditDurationOptions = useMemo(() => {
+    const search = editDurationSearch.trim().toLowerCase();
+    if (!search) return CONSULTATION_DURATION_OPTIONS;
+    return CONSULTATION_DURATION_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(search));
+  }, [editDurationSearch]);
+
   // Generate all time options from 8am to 8pm in 15-minute increments
   const allTimeOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
@@ -1832,13 +1840,15 @@ export default function CalendarPage() {
 
     let durationMinutes = DAY_VIEW_SLOT_MINUTES;
     if (!Number.isNaN(start.getTime()) && end && !Number.isNaN(end.getTime())) {
-      const diffMinutes = Math.max(
-        (end.getTime() - start.getTime()) / (60 * 1000),
+      durationMinutes = Math.max(
+        Math.round((end.getTime() - start.getTime()) / (60 * 1000)),
         DAY_VIEW_SLOT_MINUTES,
       );
-      durationMinutes = diffMinutes >= 45 ? 45 : 15;
     }
     setEditConsultationDuration(durationMinutes);
+    // Set duration search label
+    const durationOption = CONSULTATION_DURATION_OPTIONS.find(opt => opt.value === durationMinutes);
+    setEditDurationSearch(durationOption ? durationOption.label : `${durationMinutes} minutes`);
 
     setEditLocation(appt.location ?? "");
 
@@ -2751,7 +2761,9 @@ export default function CalendarPage() {
                             const overlapInfo = overlapMap.get(appt.id);
                             const colIndex = overlapInfo?.columnIndex ?? 0;
                             const totalCols = overlapInfo?.totalColumns ?? 1;
-                            const widthPercent = 100 / totalCols;
+                            // Limit max width to 80% to leave 20% space for drag-to-create
+                            const maxWidthPercent = 80;
+                            const widthPercent = maxWidthPercent / totalCols;
                             const leftPercent = colIndex * widthPercent;
                             
                             // Minimum height to show at least patient name and time
@@ -3075,22 +3087,46 @@ export default function CalendarPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Consultation duration</p>
-                  <select
-                    value={editConsultationDuration}
-                    onChange={(event) =>
-                      setEditConsultationDuration(
-                        Number(event.target.value) || DAY_VIEW_SLOT_MINUTES,
-                      )
-                    }
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value={15}>15 minutes</option>
-                    <option value={30}>30 minutes</option>
-                    <option value={45}>45 minutes</option>
-                    <option value={60}>60 minutes</option>
-                    <option value={90}>90 minutes</option>
-                    <option value={120}>120 minutes</option>
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={editDurationSearch}
+                      onChange={(e) => {
+                        setEditDurationSearch(e.target.value);
+                        setEditDurationDropdownOpen(true);
+                      }}
+                      onFocus={() => setEditDurationDropdownOpen(true)}
+                      placeholder="Search duration..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                    {editConsultationDuration > 0 && editDurationSearch && (
+                      <button
+                        type="button"
+                        onClick={() => { setEditConsultationDuration(15); setEditDurationSearch(""); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    )}
+                    {editDurationDropdownOpen && filteredEditDurationOptions.length > 0 && (
+                      <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                        {filteredEditDurationOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              setEditConsultationDuration(opt.value);
+                              setEditDurationSearch(opt.label);
+                              setEditDurationDropdownOpen(false);
+                            }}
+                            className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${editConsultationDuration === opt.value ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Location</p>
@@ -3228,7 +3264,6 @@ export default function CalendarPage() {
                         setShowCreatePatientSuggestions(true);
                         setCreatePatientId(null);
                         setCreatePatientName("");
-                        setConsultationDuration(15);
                       }}
                       onFocus={() => setShowCreatePatientSuggestions(true)}
                       placeholder="Select patient"
@@ -3260,7 +3295,6 @@ export default function CalendarPage() {
                                   setCreatePatientName(name);
                                   setCreatePatientSearch(name);
                                   setShowCreatePatientSuggestions(false);
-                                  setConsultationDuration(15);
                                   setDraftTitle(`Consultation for ${name}`);
                                 }}
                               >
