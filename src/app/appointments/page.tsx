@@ -716,7 +716,7 @@ export default function CalendarPage() {
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
   const [view, setView] = useState<CalendarView>("day");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
   const [isDraggingRange, setIsDraggingRange] = useState(false);
   
