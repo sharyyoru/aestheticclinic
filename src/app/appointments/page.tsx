@@ -584,11 +584,7 @@ async function sendAppointmentConfirmationEmail(
 
     const { serviceLabel } = getServiceAndStatusFromReason(appointment.reason);
 
-    const origin =
-      typeof window !== "undefined" ? window.location.origin : "";
-    const preConsultationUrl = origin
-      ? `${origin}/pre-consultation`
-      : "/pre-consultation";
+    const preConsultationUrl = "https://aestheticclinic.vercel.app/intake";
 
     const subject = `Appointment confirmation - ${dateLabel} ${timeLabel}`;
 
@@ -1777,6 +1773,7 @@ export default function CalendarPage() {
         .from("appointments")
         .insert({
           patient_id: createPatientId,
+          provider_id: createDoctorCalendarId || null,
           start_time: startIso,
           end_time: endIso,
           reason,
