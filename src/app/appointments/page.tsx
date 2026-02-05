@@ -2825,6 +2825,12 @@ export default function CalendarPage() {
                                       : null;
                                     const durationLabel = durationMins ? `${String(Math.floor(durationMins / 60)).padStart(2, "0")}:${String(durationMins % 60).padStart(2, "0")}h` : "";
 
+                                    // Determine if tooltip should appear on left (for right-side items)
+                                    const isRightSide = colIdx >= doctorColumns.length / 2;
+                                    const tooltipPositionClass = isRightSide 
+                                      ? "right-full mr-2" 
+                                      : "left-full ml-2";
+
                                     return (
                                       <div
                                         key={`${ymd}-${doctorCol?.id ?? "all"}-${appt.id}`}
@@ -2849,8 +2855,8 @@ export default function CalendarPage() {
                                             {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
                                           </div>
                                         </button>
-                                        {/* Hover tooltip - outside button to avoid overflow clip */}
-                                        <div className="pointer-events-none absolute left-full top-0 z-[100] ml-2 hidden min-w-[280px] rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-xl group-hover:block">
+                                        {/* Hover tooltip - position based on column location */}
+                                        <div className={`pointer-events-none absolute top-0 z-[100] hidden min-w-[280px] rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-xl group-hover:block ${tooltipPositionClass}`}>
                                           <div className="font-semibold text-slate-800 mb-1">
                                             {formatYmd(date)} {timeLabel} {durationLabel && `(${durationLabel})`}
                                           </div>
