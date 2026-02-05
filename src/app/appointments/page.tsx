@@ -229,9 +229,13 @@ const CONSULTATION_DURATION_OPTIONS = [
   { value: 15, label: "15 minutes" },
   { value: 30, label: "30 minutes" },
   { value: 45, label: "45 minutes" },
-  { value: 60, label: "60 minutes" },
-  { value: 90, label: "90 minutes" },
-  { value: 120, label: "120 minutes" },
+  { value: 60, label: "1 hour" },
+  { value: 90, label: "1.5 hours" },
+  { value: 120, label: "2 hours" },
+  { value: 150, label: "2.5 hours" },
+  { value: 180, label: "3 hours" },
+  { value: 210, label: "3.5 hours" },
+  { value: 240, label: "4 hours" },
 ];
 
 const APPOINTMENT_CATEGORY_OPTIONS = [
@@ -292,7 +296,7 @@ type CalendarAppointment = {
 type CalendarView = "month" | "day" | "range";
 
 const DAY_VIEW_START_MINUTES = 8 * 60;
-const DAY_VIEW_END_MINUTES = 22 * 60;
+const DAY_VIEW_END_MINUTES = 20 * 60; // 8 PM
 const DAY_VIEW_SLOT_MINUTES = 15;
 const DAY_VIEW_SLOT_HEIGHT = 28;
 
@@ -719,6 +723,13 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
   const [isDraggingRange, setIsDraggingRange] = useState(false);
+  
+  // Drag-to-create appointment state
+  const [isDraggingCreate, setIsDraggingCreate] = useState(false);
+  const [dragStartMinutes, setDragStartMinutes] = useState<number | null>(null);
+  const [dragEndMinutes, setDragEndMinutes] = useState<number | null>(null);
+  const [dragDate, setDragDate] = useState<Date | null>(null);
+  
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDate, setDraftDate] = useState("");
@@ -1411,9 +1422,74 @@ export default function CalendarPage() {
     setNewCalendarProviderId("");
   }
 
+  // Handle drag-to-create appointment
+  function handleDragCreateStart(date: Date, totalMinutes: number) {
+    setIsDraggingCreate(true);
+    setDragDate(date);
+    setDragStartMinutes(totalMinutes);
+    setDragEndMinutes(totalMinutes + DAY_VIEW_SLOT_MINUTES);
+  }
+
+  function handleDragCreateMove(totalMinutes: number) {
+    if (!isDraggingCreate || dragStartMinutes === null) return;
+    setDragEndMinutes(totalMinutes + DAY_VIEW_SLOT_MINUTES);
+  }
+
+  function handleDragCreateEnd() {
+    if (!isDraggingCreate || dragStartMinutes === null || dragEndMinutes === null || !dragDate) {
+      setIsDraggingCreate(false);
+      setDragStartMinutes(null);
+      setDragEndMinutes(null);
+      setDragDate(null);
+      return;
+    }
+
+    const startMin = Math.min(dragStartMinutes, dragEndMinutes);
+    const endMin = Math.max(dragStartMinutes, dragEndMinutes);
+    const durationMinutes = endMin - startMin;
+
+    const year = dragDate.getFullYear();
+    const month = `${dragDate.getMonth() + 1}`.padStart(2, "0");
+    const day = `${dragDate.getDate()}`.padStart(2, "0");
+    const hours = Math.floor(startMin / 60);
+    const minutes = startMin % 60;
+    const timeValue = `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+
+    setDraftDate(`${year}-${month}-${day}`);
+    setDraftTime(timeValue);
+    setDraftTitle("");
+    setCreatePatientSearch("");
+    setCreatePatientId(null);
+    setCreatePatientName("");
+    setConsultationDuration(durationMinutes);
+    setSelectedServiceId("");
+    setServiceSearch("");
+    setBookingStatus("");
+    setStatusSearch("");
+    setAppointmentCategory("");
+    setCategorySearch("");
+    setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
+    setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
+    
+    // Find matching duration label or use custom
+    const durationOption = CONSULTATION_DURATION_OPTIONS.find(opt => opt.value === durationMinutes);
+    setDurationSearch(durationOption ? durationOption.label : `${durationMinutes} minutes`);
+    
+    setDraftDescription("");
+    const defaultCalendar = doctorCalendars.find((calendar) => calendar.selected) || doctorCalendars[0] || null;
+    setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
+    setCreateModalOpen(true);
+
+    // Reset drag state
+    setIsDraggingCreate(false);
+    setDragStartMinutes(null);
+    setDragEndMinutes(null);
+    setDragDate(null);
+  }
+
   function formatTimeLabel(totalMinutes: number): string {
     if (totalMinutes === DAY_VIEW_END_MINUTES - DAY_VIEW_SLOT_MINUTES) {
-      return "10:00 PM";
+      return "8:00 PM";
     }
 
     const minutes = totalMinutes % 60;
@@ -2563,51 +2639,44 @@ export default function CalendarPage() {
                       return (
                         <div
                           key={ymd}
-                          className="relative flex-1 border-r border-slate-100 last:border-r-0"
+                          className="relative flex-1 border-r border-slate-100 last:border-r-0 select-none"
+                          onMouseLeave={() => {
+                            if (isDraggingCreate) handleDragCreateEnd();
+                          }}
+                          onMouseUp={() => {
+                            if (isDraggingCreate) handleDragCreateEnd();
+                          }}
                         >
-                          {/* Horizontal slot lines / clickable empty timeslots */}
-                          {timeSlots.map((totalMinutes) => (
-                            <button
-                              key={totalMinutes}
-                              type="button"
-                              onClick={() => {
-                                const year = date.getFullYear();
-                                const month = `${date.getMonth() + 1}`.padStart(2, "0");
-                                const day = `${date.getDate()}`.padStart(2, "0");
-                                const hours = Math.floor(totalMinutes / 60);
-                                const minutes = totalMinutes % 60;
-                                const timeValue = `${hours.toString().padStart(2, "0")}:${minutes
-                                  .toString()
-                                  .padStart(2, "0")}`;
+                          {/* Horizontal slot lines / draggable empty timeslots */}
+                          {timeSlots.map((totalMinutes) => {
+                            // Check if this slot is in the drag selection range
+                            const isInDragRange = isDraggingCreate && 
+                              dragDate && 
+                              formatYmd(dragDate) === ymd &&
+                              dragStartMinutes !== null && 
+                              dragEndMinutes !== null &&
+                              totalMinutes >= Math.min(dragStartMinutes, dragEndMinutes) &&
+                              totalMinutes < Math.max(dragStartMinutes, dragEndMinutes);
 
-                                setDraftDate(`${year}-${month}-${day}`);
-                                setDraftTime(timeValue);
-                                setDraftTitle("");
-                                setCreatePatientSearch("");
-                                setCreatePatientId(null);
-                                setCreatePatientName("");
-                                setConsultationDuration(15);
-                                setSelectedServiceId("");
-                                setServiceSearch("");
-                                setBookingStatus("");
-                                setStatusSearch("");
-                                setAppointmentCategory("");
-                                setCategorySearch("");
-                                setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
-                                setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
-                                setDurationSearch("15 minutes");
-                                setDraftDescription("");
-                                const defaultCalendar =
-                                  doctorCalendars.find((calendar) => calendar.selected) ||
-                                  doctorCalendars[0] ||
-                                  null;
-                                setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
-                                setCreateModalOpen(true);
-                              }}
-                              className="block w-full border-t border-slate-100 text-left focus:outline-none"
-                              style={{ height: DAY_VIEW_SLOT_HEIGHT, background: "transparent" }}
-                            />
-                          ))}
+                            return (
+                              <div
+                                key={totalMinutes}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleDragCreateStart(date, totalMinutes);
+                                }}
+                                onMouseEnter={() => {
+                                  if (isDraggingCreate && dragDate && formatYmd(dragDate) === ymd) {
+                                    handleDragCreateMove(totalMinutes);
+                                  }
+                                }}
+                                className={`block w-full border-t border-slate-100 cursor-pointer hover:bg-sky-50 transition-colors ${
+                                  isInDragRange ? "bg-sky-100" : ""
+                                }`}
+                                style={{ height: DAY_VIEW_SLOT_HEIGHT }}
+                              />
+                            );
+                          })}
 
                           {(() => {
                             const overlapMap = calculateOverlapPositions(dayAppointments);
