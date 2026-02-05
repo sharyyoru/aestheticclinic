@@ -245,16 +245,36 @@ export async function POST(request: Request) {
     const emailMatch = from.match(/<([^>]+)>/) || [null, from];
     const senderEmail = emailMatch[1]?.trim() || from.trim();
     
-    // Check if sender is a clinic user
-    const { data: senderIsClinicUser } = await supabase
-      .from("users")
-      .select("id, email")
-      .ilike("email", senderEmail)
-      .maybeSingle();
+    // IMPORTANT: First check if the sender is the patient we're communicating with
+    // This prevents the case where a patient's email is also registered as a clinic user
+    let senderIsThePatient = false;
+    if (targetPatientId) {
+      const { data: targetPatient } = await supabase
+        .from("patients")
+        .select("id, email")
+        .eq("id", targetPatientId)
+        .single();
+      
+      if (targetPatient?.email && targetPatient.email.toLowerCase() === senderEmail.toLowerCase()) {
+        senderIsThePatient = true;
+        console.log("Sender IS the patient we're communicating with:", senderEmail);
+      }
+    }
     
-    // If sender is a clinic user AND this is a reply to a patient thread,
+    // Check if sender is a clinic user (only relevant if sender is NOT the patient)
+    let senderIsClinicUser = null;
+    if (!senderIsThePatient) {
+      const { data } = await supabase
+        .from("users")
+        .select("id, email")
+        .ilike("email", senderEmail)
+        .maybeSingle();
+      senderIsClinicUser = data;
+    }
+    
+    // If sender is a clinic user (and NOT the patient) AND this is a reply to a patient thread,
     // treat it as an outbound reply from the clinic user to the patient
-    if (senderIsClinicUser && targetEmailId && targetPatientId) {
+    if (senderIsClinicUser && !senderIsThePatient && targetEmailId && targetPatientId) {
       console.log("Clinic user reply detected - processing as outbound to patient");
       
       // Get the patient's email to forward the reply
@@ -344,7 +364,8 @@ export async function POST(request: Request) {
     
     // If sender is a clinic user but NOT replying to a patient thread,
     // this is likely a CC'd copy of an outbound email - skip it
-    if (senderIsClinicUser) {
+    // BUT only if the sender is NOT the patient (patient emails can also be clinic user emails)
+    if (senderIsClinicUser && !senderIsThePatient) {
       console.log("Skipping CC'd copy - sender is a clinic user:", senderEmail);
       return NextResponse.json({ 
         ok: true, 
