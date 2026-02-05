@@ -778,6 +778,8 @@ export default function CalendarPage() {
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const [durationSearch, setDurationSearch] = useState("");
   const [durationDropdownOpen, setDurationDropdownOpen] = useState(false);
+  const [timeSearch, setTimeSearch] = useState("");
+  const [timeDropdownOpen, setTimeDropdownOpen] = useState(false);
   const [createDoctorCalendarId, setCreateDoctorCalendarId] = useState("");
 
   const closeAllCreateDropdowns = (except?: string) => {
@@ -786,6 +788,7 @@ export default function CalendarPage() {
     if (except !== "category") setCategoryDropdownOpen(false);
     if (except !== "location") setLocationDropdownOpen(false);
     if (except !== "duration") setDurationDropdownOpen(false);
+    if (except !== "time") setTimeDropdownOpen(false);
   };
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] =
@@ -1337,6 +1340,31 @@ export default function CalendarPage() {
     return CONSULTATION_DURATION_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(search));
   }, [durationSearch]);
 
+  // Generate all time options from 8am to 8pm in 15-minute increments
+  const allTimeOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    for (let minutes = DAY_VIEW_START_MINUTES; minutes < DAY_VIEW_END_MINUTES; minutes += DAY_VIEW_SLOT_MINUTES) {
+      const hours24 = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      const value = `${hours24.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`;
+      options.push({
+        value,
+        label: formatTimeOptionLabel(minutes),
+      });
+    }
+    return options;
+  }, []);
+
+  // Filtered time options based on search
+  const filteredTimeOptions = useMemo(() => {
+    const search = timeSearch.trim().toLowerCase();
+    if (!search) return allTimeOptions;
+    return allTimeOptions.filter((opt) => 
+      opt.label.toLowerCase().includes(search) || 
+      opt.value.includes(search)
+    );
+  }, [timeSearch, allTimeOptions]);
+
   function handleSelectDayView() {
     const base = selectedDate ?? new Date();
     const day = new Date(
@@ -1457,6 +1485,8 @@ export default function CalendarPage() {
 
     setDraftDate(`${year}-${month}-${day}`);
     setDraftTime(timeValue);
+    // Set time search to display label
+    setTimeSearch(formatTimeOptionLabel(startMin));
     setDraftTitle("");
     setCreatePatientSearch("");
     setCreatePatientId(null);
@@ -1753,6 +1783,7 @@ export default function CalendarPage() {
       setDraftTitle("");
       setDraftDate("");
       setDraftTime("");
+      setTimeSearch("");
       setDraftLocation("");
       setDraftDescription("");
       setCreatePatientSearch("");
@@ -2018,6 +2049,7 @@ export default function CalendarPage() {
               const day = `${baseDate.getDate()}`.padStart(2, "0");
               setDraftDate(`${year}-${month}-${day}`);
               setDraftTime("");
+              setTimeSearch("");
               setDraftTitle("");
               setCreatePatientSearch("");
               setCreatePatientId(null);
@@ -3288,29 +3320,55 @@ export default function CalendarPage() {
                       onChange={(event) => {
                         setDraftDate(event.target.value);
                         setDraftTime("");
+                        setTimeSearch("");
                       }}
                       min={isSystemUser ? undefined : new Date().toISOString().split('T')[0]}
                       className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
-                    <select
-                      value={draftTime}
-                      onChange={(event) => setDraftTime(event.target.value)}
-                      disabled={!draftDate || availableTimeOptions.length === 0}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed disabled:bg-slate-50"
-                    >
-                      <option value="">
-                        {!draftDate
-                          ? "Select a date first"
-                          : availableTimeOptions.length === 0
-                            ? "No available times"
-                            : "Select time"}
-                      </option>
-                      {availableTimeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={timeSearch}
+                        onChange={(e) => {
+                          setTimeSearch(e.target.value);
+                          setTimeDropdownOpen(true);
+                          if (!e.target.value.trim()) {
+                            setDraftTime("");
+                          }
+                        }}
+                        onFocus={() => { closeAllCreateDropdowns("time"); setTimeDropdownOpen(true); }}
+                        placeholder={!draftDate ? "Select date first" : "Search time..."}
+                        disabled={!draftDate}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed disabled:bg-slate-100"
+                      />
+                      {draftTime && (
+                        <button
+                          type="button"
+                          onClick={() => { setDraftTime(""); setTimeSearch(""); }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      )}
+                      {timeDropdownOpen && draftDate && filteredTimeOptions.length > 0 && (
+                        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                          {filteredTimeOptions.map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => {
+                                setDraftTime(opt.value);
+                                setTimeSearch(opt.label);
+                                setTimeDropdownOpen(false);
+                              }}
+                              className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${draftTime === opt.value ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-1">
