@@ -1267,6 +1267,7 @@ export default function PatientDocumentsTab({
           patientId={patientId}
           images={beforeAfterImages}
           onError={(message) => setError(message)}
+          onExportSuccess={() => setRefreshKey((k) => k + 1)}
         />
       ) : null}
       {showPdfEditor && selectedFile && isPdf && selectedFilePreviewUrl ? (

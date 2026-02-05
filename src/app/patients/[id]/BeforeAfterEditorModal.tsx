@@ -18,6 +18,7 @@ interface BeforeAfterEditorModalProps {
   patientId: string;
   images: BeforeAfterImage[];
   onError?: (message: string) => void;
+  onExportSuccess?: () => void;
 }
 
 export default function BeforeAfterEditorModal({
@@ -26,6 +27,7 @@ export default function BeforeAfterEditorModal({
   patientId,
   images,
   onError,
+  onExportSuccess,
 }: BeforeAfterEditorModalProps) {
   const [activeSide, setActiveSide] = useState<"before" | "after">("before");
   const [beforeImage, setBeforeImage] = useState<BeforeAfterImage | null>(null);
@@ -34,6 +36,7 @@ export default function BeforeAfterEditorModal({
   const [afterZoom, setAfterZoom] = useState(1);
   const [exporting, setExporting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null);
 
   // Pan/drag state for viewport panning (camera focus)
   // Position represents the offset of the image from center (0,0 = centered)
@@ -166,6 +169,24 @@ export default function BeforeAfterEditorModal({
 
   function handleGalleryClick(image: BeforeAfterImage) {
     handleAssignImage(activeSide, image);
+  }
+
+  // Navigate to previous/next image for a given side
+  function handleNavigateImage(side: "before" | "after", direction: "prev" | "next") {
+    const currentImage = side === "before" ? beforeImage : afterImage;
+    if (!currentImage || sortedImages.length === 0) return;
+    
+    const currentIndex = sortedImages.findIndex(img => img.url === currentImage.url);
+    if (currentIndex === -1) return;
+    
+    let newIndex: number;
+    if (direction === "prev") {
+      newIndex = currentIndex <= 0 ? sortedImages.length - 1 : currentIndex - 1;
+    } else {
+      newIndex = currentIndex >= sortedImages.length - 1 ? 0 : currentIndex + 1;
+    }
+    
+    handleAssignImage(side, sortedImages[newIndex]);
   }
 
   function handleGalleryDragStart(
@@ -323,13 +344,13 @@ export default function BeforeAfterEditorModal({
       document.body.removeChild(link);
       URL.revokeObjectURL(downloadUrl);
 
-      onClose();
-      setBeforeImage(null);
-      setAfterImage(null);
-      setBeforeZoom(1);
-      setAfterZoom(1);
-      setBeforePosition({ x: 0, y: 0 });
-      setAfterPosition({ x: 0, y: 0 });
+      // Show success message and notify parent to refresh file list
+      setExportSuccess(`Image saved and downloaded: ${fileName}`);
+      if (onExportSuccess) {
+        onExportSuccess();
+      }
+      // Auto-hide success message after 4 seconds
+      setTimeout(() => setExportSuccess(null), 4000);
     } catch (err: any) {
       const message = err?.message ?? "Failed to export before and after image.";
       setLocalError(message);
@@ -387,6 +408,11 @@ export default function BeforeAfterEditorModal({
           {localError ? (
             <div className="rounded-lg border border-red-500/80 bg-red-500/10 px-3 py-2 text-[11px] text-red-100">
               {localError}
+            </div>
+          ) : null}
+          {exportSuccess ? (
+            <div className="rounded-lg border border-emerald-500/80 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-100">
+              ✓ {exportSuccess}
             </div>
           ) : null}
 
@@ -546,6 +572,31 @@ export default function BeforeAfterEditorModal({
                         Drag an image here or select one from the gallery.
                       </div>
                     )}
+                    {/* Navigation paddles for Before */}
+                    {beforeImage && sortedImages.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleNavigateImage("before", "prev"); }}
+                          className="absolute left-1 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                          title="Previous image"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleNavigateImage("before", "next"); }}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                          title="Next image"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
                   </div>
                   <p className="mt-1 text-[9px] text-slate-500 text-center">Drag to pan the camera focus</p>
                   <input
@@ -620,6 +671,31 @@ export default function BeforeAfterEditorModal({
                       <div className="flex h-full items-center justify-center px-3 text-center text-[11px] text-slate-500">
                         Drag an image here or select one from the gallery.
                       </div>
+                    )}
+                    {/* Navigation paddles for After */}
+                    {afterImage && sortedImages.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleNavigateImage("after", "prev"); }}
+                          className="absolute left-1 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                          title="Previous image"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleNavigateImage("after", "next"); }}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+                          title="Next image"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </>
                     )}
                   </div>
                   <p className="mt-1 text-[9px] text-slate-500 text-center">Drag to pan the camera focus</p>
