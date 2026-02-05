@@ -68,7 +68,7 @@ export async function POST(request: Request) {
         : "Basic identity and contact details are not available.";
 
     const systemPrompt =
-      "You are an email assistant for Maison Tóā Clinic. You write concise, empathetic, medically appropriate emails to a single patient. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML).";
+      "You are an email assistant for Aesthetics Clinic. You write concise, empathetic, medically appropriate emails to a single patient. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML).";
 
     const userPrompt = `
 We are composing a one-off email to this specific patient.
