@@ -729,6 +729,7 @@ export default function CalendarPage() {
   const [dragStartMinutes, setDragStartMinutes] = useState<number | null>(null);
   const [dragEndMinutes, setDragEndMinutes] = useState<number | null>(null);
   const [dragDate, setDragDate] = useState<Date | null>(null);
+  const [dragDoctorCalendarId, setDragDoctorCalendarId] = useState<string | null>(null);
   
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -1459,11 +1460,12 @@ export default function CalendarPage() {
   }
 
   // Handle drag-to-create appointment
-  function handleDragCreateStart(date: Date, totalMinutes: number) {
+  function handleDragCreateStart(date: Date, totalMinutes: number, doctorCalendarId?: string | null) {
     setIsDraggingCreate(true);
     setDragDate(date);
     setDragStartMinutes(totalMinutes);
     setDragEndMinutes(totalMinutes + DAY_VIEW_SLOT_MINUTES);
+    setDragDoctorCalendarId(doctorCalendarId ?? null);
   }
 
   function handleDragCreateMove(totalMinutes: number) {
@@ -1514,8 +1516,13 @@ export default function CalendarPage() {
     setDurationSearch(durationOption ? durationOption.label : `${durationMinutes} minutes`);
     
     setDraftDescription("");
-    const defaultCalendar = doctorCalendars.find((calendar) => calendar.selected) || doctorCalendars[0] || null;
-    setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
+    // Use the doctor from the dragged column if available, otherwise default
+    if (dragDoctorCalendarId) {
+      setCreateDoctorCalendarId(dragDoctorCalendarId);
+    } else {
+      const defaultCalendar = doctorCalendars.find((calendar) => calendar.selected) || doctorCalendars[0] || null;
+      setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
+    }
     setCreateModalOpen(true);
 
     // Reset drag state
@@ -1523,6 +1530,7 @@ export default function CalendarPage() {
     setDragStartMinutes(null);
     setDragEndMinutes(null);
     setDragDate(null);
+    setDragDoctorCalendarId(null);
   }
 
   function formatTimeLabel(totalMinutes: number): string {
@@ -2722,7 +2730,7 @@ export default function CalendarPage() {
                                       key={totalMinutes}
                                       onMouseDown={(e) => {
                                         e.preventDefault();
-                                        handleDragCreateStart(date, totalMinutes);
+                                        handleDragCreateStart(date, totalMinutes, doctorCol?.id);
                                       }}
                                       onMouseEnter={() => {
                                         if (isDraggingCreate && dragDate && formatYmd(dragDate) === ymd) {
