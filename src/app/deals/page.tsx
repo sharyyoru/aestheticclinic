@@ -374,16 +374,38 @@ export default function DealsPage() {
   const boardContentRef = useRef<HTMLDivElement | null>(null);
   const [boardContentWidth, setBoardContentWidth] = useState<number>(0);
 
-  // Sync top scroller width with actual board content width
+  // Sync top scroller width with actual board content width using ResizeObserver
   useEffect(() => {
     const updateWidth = () => {
       if (boardContentRef.current) {
-        setBoardContentWidth(boardContentRef.current.scrollWidth);
+        const width = boardContentRef.current.scrollWidth;
+        setBoardContentWidth(width);
       }
     };
+    
     updateWidth();
+    
+    // Use ResizeObserver to detect content size changes
+    let resizeObserver: ResizeObserver | null = null;
+    if (boardContentRef.current && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        updateWidth();
+      });
+      resizeObserver.observe(boardContentRef.current);
+    }
+    
     window.addEventListener('resize', updateWidth);
-    return () => window.removeEventListener('resize', updateWidth);
+    
+    // Also update after a short delay to ensure content is rendered
+    const timeoutId = setTimeout(updateWidth, 100);
+    
+    return () => {
+      window.removeEventListener('resize', updateWidth);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      clearTimeout(timeoutId);
+    };
   }, [dealStages, boardDeals]);
 
   function handleBoardDragOver(event: any) {
