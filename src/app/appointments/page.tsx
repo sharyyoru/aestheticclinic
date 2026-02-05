@@ -1756,6 +1756,8 @@ export default function CalendarPage() {
         (calendar) => calendar.id === createDoctorCalendarId,
       );
       const doctorName = selectedCalendar?.name?.trim() || "";
+      // Use providerId (actual provider table ID), not calendar id
+      const actualProviderId = selectedCalendar?.providerId || null;
       const doctorTag = doctorName ? ` [Doctor: ${doctorName}]` : "";
       const categoryTag = appointmentCategory && appointmentCategory !== "No selection" 
         ? ` [Category: ${appointmentCategory}]` 
@@ -1773,7 +1775,7 @@ export default function CalendarPage() {
         .from("appointments")
         .insert({
           patient_id: createPatientId,
-          provider_id: createDoctorCalendarId || null,
+          provider_id: actualProviderId,
           start_time: startIso,
           end_time: endIso,
           reason,
