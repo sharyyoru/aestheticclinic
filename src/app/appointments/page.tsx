@@ -714,7 +714,7 @@ export default function CalendarPage() {
   const [activeDoctorTabId, setActiveDoctorTabId] = useState<string | null>(null);
   const [isCreatingCalendar, setIsCreatingCalendar] = useState(false);
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
-  const [view, setView] = useState<CalendarView>("month");
+  const [view, setView] = useState<CalendarView>("day");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
@@ -983,6 +983,15 @@ export default function CalendarPage() {
           .trim();
       }
 
+      // Load saved calendar selections from localStorage
+      let savedSelectedIds: string[] | null = null;
+      try {
+        const saved = localStorage.getItem("appointments_selected_calendars");
+        if (saved) {
+          savedSelectedIds = JSON.parse(saved) as string[];
+        }
+      } catch {}
+
       // Deduplicate providers by normalized name
       const seenNormalizedNames = new Map<string, typeof providers[0]>();
       const uniqueProviders = providers.filter((provider) => {
@@ -1000,9 +1009,14 @@ export default function CalendarPage() {
         const rawName = provider.name ?? "Unnamed doctor";
         const trimmedName = rawName.trim() || "Unnamed doctor";
 
-        let selected = true;
-        if (currentUserId) {
+        // Use saved selection if available, otherwise fall back to default logic
+        let selected: boolean;
+        if (savedSelectedIds !== null) {
+          selected = savedSelectedIds.includes(provider.id);
+        } else if (currentUserId) {
           selected = provider.id === currentUserId;
+        } else {
+          selected = true;
         }
 
         return {
@@ -1014,7 +1028,8 @@ export default function CalendarPage() {
         };
       });
 
-      if (currentUserId) {
+      // Only apply fallback logic if no saved selections exist
+      if (savedSelectedIds === null && currentUserId) {
         const anySelected = baseCalendars.some((calendar) => calendar.selected);
         if (!anySelected && baseCalendars.length > 0) {
           baseCalendars[0] = {
@@ -1441,13 +1456,19 @@ export default function CalendarPage() {
   }
 
   function handleToggleCalendarSelected(calendarId: string) {
-    setDoctorCalendars((prev) =>
-      prev.map((calendar) =>
+    setDoctorCalendars((prev) => {
+      const updated = prev.map((calendar) =>
         calendar.id === calendarId
           ? { ...calendar, selected: !calendar.selected }
           : calendar,
-      ),
-    );
+      );
+      // Save selections to localStorage
+      try {
+        const selectedIds = updated.filter((c) => c.selected).map((c) => c.id);
+        localStorage.setItem("appointments_selected_calendars", JSON.stringify(selectedIds));
+      } catch {}
+      return updated;
+    });
   }
 
   function handleConfirmNewCalendar() {
