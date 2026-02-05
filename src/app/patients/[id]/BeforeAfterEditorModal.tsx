@@ -323,7 +323,7 @@ export default function BeforeAfterEditorModal({
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const fileName = `before-after-${timestamp}.jpg`;
-      const storagePath = [patientId, "before-after", fileName].join("/");
+      const storagePath = `${patientId}/${fileName}`;
 
       const { error } = await supabaseClient.storage.from(BUCKET_NAME).upload(storagePath, blob, {
         cacheControl: "3600",
