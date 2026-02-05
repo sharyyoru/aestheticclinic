@@ -971,7 +971,36 @@ export default function CalendarPage() {
     setDoctorCalendars((prev) => {
       if (prev.length > 0) return prev;
 
-      const baseCalendars: DoctorCalendar[] = providers.map((provider, index) => {
+      // Normalize name for deduplication - remove prefixes, normalize spelling
+      function normalizeName(name: string): string {
+        return name
+          .toLowerCase()
+          .replace(/^(mme|mr|mrs|ms|dr|prof)\.?\s*/i, "") // Remove common prefixes
+          .replace(/[éèêë]/g, "e")
+          .replace(/[àâä]/g, "a")
+          .replace(/[ùûü]/g, "u")
+          .replace(/[îï]/g, "i")
+          .replace(/[ôö]/g, "o")
+          .replace(/[ç]/g, "c")
+          .replace(/z/g, "s") // Cesar/Cezar normalization
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      // Deduplicate providers by normalized name
+      const seenNormalizedNames = new Map<string, typeof providers[0]>();
+      const uniqueProviders = providers.filter((provider) => {
+        const rawName = provider.name ?? "Unnamed doctor";
+        const normalized = normalizeName(rawName);
+        
+        if (seenNormalizedNames.has(normalized)) {
+          return false; // Skip duplicate
+        }
+        seenNormalizedNames.set(normalized, provider);
+        return true;
+      });
+
+      const baseCalendars: DoctorCalendar[] = uniqueProviders.map((provider, index) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const trimmedName = rawName.trim() || "Unnamed doctor";
 
