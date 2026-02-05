@@ -2598,55 +2598,39 @@ export default function CalendarPage() {
         ) : (
           <div className="flex-1 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
             <div className="flex flex-col h-full">
-              {/* Doctor tabs when multiple selected */}
-              {selectedDoctorCalendars.length > 1 && (
-                <div className="flex items-center gap-1 border-b border-slate-100 bg-slate-50/80 px-3 py-2 overflow-x-auto">
-                  <button
-                    type="button"
-                    onClick={() => setActiveDoctorTabId(null)}
-                    className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${
-                      activeDoctorTabId === null
-                        ? "bg-sky-600 text-white"
-                        : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                  >
-                    All ({selectedDoctorCalendars.length})
-                  </button>
-                  {selectedDoctorCalendars.map((calendar) => (
-                    <button
-                      key={calendar.id}
-                      type="button"
-                      onClick={() => setActiveDoctorTabId(calendar.id)}
-                      className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-medium transition-colors ${
-                        activeDoctorTabId === calendar.id
-                          ? "bg-sky-600 text-white"
-                          : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
-                      }`}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        <span className={`h-2 w-2 rounded-sm ${calendar.color}`} />
-                        {calendar.name.split(" ")[0]}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {/* Sticky header row */}
+              {/* Sticky header row with doctor columns when multiple selected */}
               <div className="flex border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium text-slate-500 sticky top-0 z-10">
                 {/* Empty cell for time axis column */}
                 <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0" />
-                {/* Day headers */}
+                {/* Day headers - show doctor sub-columns when multiple selected */}
                 {activeRangeDates.map((date) => (
                   <div
                     key={formatYmd(date)}
-                    className="flex-1 px-2 py-2 text-center border-r border-slate-100 last:border-r-0"
+                    className="flex-1 border-r border-slate-100 last:border-r-0"
                   >
-                    <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                      {date.toLocaleDateString(undefined, { weekday: "short" })}
+                    {/* Date header */}
+                    <div className="px-2 py-1 text-center border-b border-slate-100">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                        {date.toLocaleDateString(undefined, { weekday: "short" })}
+                      </div>
+                      <div className="text-sm font-semibold text-slate-800">
+                        {date.getDate()}
+                      </div>
                     </div>
-                    <div className="text-sm font-semibold text-slate-800">
-                      {date.getDate()}
-                    </div>
+                    {/* Doctor column headers - only show when multiple doctors selected */}
+                    {selectedDoctorCalendars.length > 1 && (
+                      <div className="flex">
+                        {selectedDoctorCalendars.map((calendar, idx) => (
+                          <div
+                            key={calendar.id}
+                            className={`flex-1 px-1 py-1.5 text-center text-[10px] font-semibold text-white truncate ${calendar.color || "bg-slate-500"} ${idx < selectedDoctorCalendars.length - 1 ? "border-r border-white/30" : ""}`}
+                            title={calendar.name}
+                          >
+                            {calendar.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 3)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2665,7 +2649,7 @@ export default function CalendarPage() {
                       </div>
                     ))}
                   </div>
-                  {/* Day columns with appointments */}
+                  {/* Day columns with appointments - side-by-side doctor columns when multiple selected */}
                   <div
                     className="flex flex-1 relative"
                     style={{
@@ -2677,182 +2661,180 @@ export default function CalendarPage() {
                     {activeRangeDates.map((date) => {
                       const ymd = formatYmd(date);
                       const dayAppointments = appointmentsByDay[ymd] ?? [];
+                      
+                      // Determine columns to render - either multiple doctors or single column
+                      const doctorColumns = selectedDoctorCalendars.length > 1 
+                        ? selectedDoctorCalendars 
+                        : [null]; // null means show all appointments in single column
 
                       return (
                         <div
                           key={ymd}
-                          className="relative flex-1 border-r border-slate-100 last:border-r-0 select-none"
-                          onMouseLeave={() => {
-                            if (isDraggingCreate) handleDragCreateEnd();
-                          }}
-                          onMouseUp={() => {
-                            if (isDraggingCreate) handleDragCreateEnd();
-                          }}
+                          className="relative flex-1 border-r border-slate-100 last:border-r-0 select-none flex"
                         >
-                          {/* Horizontal slot lines / draggable empty timeslots */}
-                          {timeSlots.map((totalMinutes) => {
-                            // Check if this slot is in the drag selection range
-                            const isInDragRange = isDraggingCreate && 
-                              dragDate && 
-                              formatYmd(dragDate) === ymd &&
-                              dragStartMinutes !== null && 
-                              dragEndMinutes !== null &&
-                              totalMinutes >= Math.min(dragStartMinutes, dragEndMinutes) &&
-                              totalMinutes < Math.max(dragStartMinutes, dragEndMinutes);
+                          {doctorColumns.map((doctorCol, colIdx) => {
+                            // Filter appointments for this doctor column
+                            const columnAppointments = doctorCol 
+                              ? dayAppointments.filter((appt) => {
+                                  const doctorFromReason = getDoctorNameFromReason(appt.reason);
+                                  const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
+                                  const reasonLower = (appt.reason ?? "").toLowerCase();
+                                  const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
+                                  const calName = doctorCol.name.trim().toLowerCase();
+                                  
+                                  // Match by provider_id first
+                                  if (appt.provider_id && doctorCol.providerId === appt.provider_id) return true;
+                                  
+                                  // Match by doctor key
+                                  if (doctorKey && (doctorKey.includes(calName) || calName.includes(doctorKey))) return true;
+                                  
+                                  // Match by reason text
+                                  const nameParts = calName.split(/\s+/);
+                                  if (nameParts.some((part) => part.length > 2 && reasonLower.includes(part))) return true;
+                                  
+                                  return false;
+                                })
+                              : dayAppointments;
 
                             return (
                               <div
-                                key={totalMinutes}
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  handleDragCreateStart(date, totalMinutes);
+                                key={doctorCol?.id ?? "all"}
+                                className={`relative flex-1 ${colIdx < doctorColumns.length - 1 ? "border-r border-slate-100" : ""}`}
+                                onMouseLeave={() => {
+                                  if (isDraggingCreate) handleDragCreateEnd();
                                 }}
-                                onMouseEnter={() => {
-                                  if (isDraggingCreate && dragDate && formatYmd(dragDate) === ymd) {
-                                    handleDragCreateMove(totalMinutes);
-                                  }
-                                }}
-                                className={`block w-full border-t border-slate-100 cursor-pointer hover:bg-sky-50 transition-colors ${
-                                  isInDragRange ? "bg-sky-100" : ""
-                                }`}
-                                style={{ height: DAY_VIEW_SLOT_HEIGHT }}
-                              />
-                            );
-                          })}
-
-                          {(() => {
-                            const overlapMap = calculateOverlapPositions(dayAppointments);
-                            return dayAppointments.map((appt) => {
-                            const start = new Date(appt.start_time);
-                            if (Number.isNaN(start.getTime())) return null;
-
-                            const rawStartMinutes =
-                              start.getHours() * 60 + start.getMinutes();
-                            const topMinutes = Math.max(
-                              rawStartMinutes - DAY_VIEW_START_MINUTES,
-                              0,
-                            );
-
-                            let end = appt.end_time ? new Date(appt.end_time) : null;
-                            let endMinutes =
-                              end && !Number.isNaN(end.getTime())
-                                ? end.getHours() * 60 + end.getMinutes()
-                                : rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
-
-                            // Handle appointments spanning midnight or with end time on different day
-                            if (end && !Number.isNaN(end.getTime()) && 
-                                (end.getDate() !== start.getDate() || endMinutes <= rawStartMinutes)) {
-                              endMinutes = DAY_VIEW_END_MINUTES;
-                            }
-
-                            endMinutes = Math.min(endMinutes, DAY_VIEW_END_MINUTES);
-                            const durationMinutes = Math.max(
-                              endMinutes - rawStartMinutes,
-                              DAY_VIEW_SLOT_MINUTES,
-                            );
-
-                            const top =
-                              (topMinutes / DAY_VIEW_SLOT_MINUTES) *
-                              DAY_VIEW_SLOT_HEIGHT;
-                            const calculatedHeight =
-                              (durationMinutes / DAY_VIEW_SLOT_MINUTES) *
-                              DAY_VIEW_SLOT_HEIGHT;
-                            
-                            const overlapInfo = overlapMap.get(appt.id);
-                            const colIndex = overlapInfo?.columnIndex ?? 0;
-                            const totalCols = overlapInfo?.totalColumns ?? 1;
-                            // Limit max width to 80% to leave 20% space for drag-to-create
-                            const maxWidthPercent = 80;
-                            const widthPercent = maxWidthPercent / totalCols;
-                            const leftPercent = colIndex * widthPercent;
-                            
-                            // Minimum height to show at least patient name and time
-                            const minHeight = totalCols > 1 ? 28 : 24;
-                            const height = Math.max(calculatedHeight, minHeight);
-
-                            const { serviceLabel } = getServiceAndStatusFromReason(
-                              appt.reason,
-                            );
-                            const timeLabel = formatTimeRangeLabel(
-                              start,
-                              end && !Number.isNaN(end.getTime()) ? end : null,
-                            );
-
-                            const doctorFromReason = getDoctorNameFromReason(appt.reason);
-                            const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
-                            const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
-                            const doctorCalendar = doctorCalendars.find(
-                              (calendar) => {
-                                const calName = calendar.name.trim().toLowerCase();
-                                return calName === doctorKey || calName.includes(doctorKey) || doctorKey.includes(calName);
-                              }
-                            );
-                            const doctorColor = doctorCalendar?.color ?? "";
-
-                            const patientName = `${appt.patient?.first_name ?? ""} ${
-                              appt.patient?.last_name ?? ""
-                            }`
-                              .trim()
-                              .replace(/\s+/g, " ");
-
-                            const category = getCategoryFromReason(appt.reason);
-                            const notes = getNotesFromReason(appt.reason);
-                            const { statusLabel: dayStatusLabel } = getServiceAndStatusFromReason(appt.reason);
-                            const dayStatusIcon = getStatusIcon(dayStatusLabel);
-
-                            const patientPhone = appt.patient?.phone ?? null;
-                            const patientEmail = appt.patient?.email ?? null;
-                            const durationMins = end && !Number.isNaN(end.getTime()) 
-                              ? Math.round((end.getTime() - start.getTime()) / 60000) 
-                              : null;
-                            const durationLabel = durationMins ? `${String(Math.floor(durationMins / 60)).padStart(2, "0")}:${String(durationMins % 60).padStart(2, "0")}h` : "";
-
-                            return (
-                              <button
-                                key={`${ymd}-${appt.id}`}
-                                type="button"
-                                onClick={() => openEditModalForAppointment(appt)}
-                                className={`group absolute rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(
-                                  appt.status,
-                                )} ${getCategoryColor(category)}`}
-                                style={{
-                                  top,
-                                  height,
-                                  left: `calc(${leftPercent}% + 2px)`,
-                                  width: `calc(${widthPercent}% - 4px)`,
+                                onMouseUp={() => {
+                                  if (isDraggingCreate) handleDragCreateEnd();
                                 }}
                               >
-                                <div className="flex items-center gap-1 truncate font-medium text-slate-800">
-                                  {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
-                                  <span className="truncate">{patientName || serviceLabel}</span>
-                                </div>
-                                <div className="truncate text-[9px] text-slate-600">
-                                  {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
-                                </div>
-                                {/* Hover tooltip */}
-                                <div className="pointer-events-none absolute left-full top-0 z-50 ml-2 hidden min-w-[280px] rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-lg group-hover:block">
-                                  <div className="font-semibold text-slate-800 mb-1">
-                                    {formatYmd(date)} {timeLabel} {durationLabel && `(${durationLabel})`}
-                                  </div>
-                                  <div className="text-slate-700 font-medium">{patientName || "No Patient"}</div>
-                                  {serviceLabel && <div className="text-slate-600 mt-1">{serviceLabel}</div>}
-                                  {category && <div className="text-slate-500">Catégorie: {category}</div>}
-                                  {patientPhone && (
-                                    <div className="text-slate-500 mt-1">
-                                      <span className="text-slate-400">privé:</span> {patientPhone}
-                                    </div>
-                                  )}
-                                  {patientEmail && (
-                                    <div className="text-slate-500">
-                                      <span className="text-slate-400">privé:</span> {patientEmail}
-                                    </div>
-                                  )}
-                                  {appt.location && <div className="text-slate-500 mt-1">📍 {appt.location}</div>}
-                                </div>
-                              </button>
+                                {/* Horizontal slot lines / draggable empty timeslots */}
+                                {timeSlots.map((totalMinutes) => {
+                                  const isInDragRange = isDraggingCreate && 
+                                    dragDate && 
+                                    formatYmd(dragDate) === ymd &&
+                                    dragStartMinutes !== null && 
+                                    dragEndMinutes !== null &&
+                                    totalMinutes >= Math.min(dragStartMinutes, dragEndMinutes) &&
+                                    totalMinutes < Math.max(dragStartMinutes, dragEndMinutes);
+
+                                  return (
+                                    <div
+                                      key={totalMinutes}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        handleDragCreateStart(date, totalMinutes);
+                                      }}
+                                      onMouseEnter={() => {
+                                        if (isDraggingCreate && dragDate && formatYmd(dragDate) === ymd) {
+                                          handleDragCreateMove(totalMinutes);
+                                        }
+                                      }}
+                                      className={`block w-full border-t border-slate-100 cursor-pointer hover:bg-sky-50 transition-colors ${
+                                        isInDragRange ? "bg-sky-100" : ""
+                                      }`}
+                                      style={{ height: DAY_VIEW_SLOT_HEIGHT }}
+                                    />
+                                  );
+                                })}
+
+                                {/* Appointments for this doctor column */}
+                                {(() => {
+                                  const overlapMap = calculateOverlapPositions(columnAppointments);
+                                  return columnAppointments.map((appt) => {
+                                    const start = new Date(appt.start_time);
+                                    if (Number.isNaN(start.getTime())) return null;
+
+                                    const rawStartMinutes = start.getHours() * 60 + start.getMinutes();
+                                    const topMinutes = Math.max(rawStartMinutes - DAY_VIEW_START_MINUTES, 0);
+
+                                    let end = appt.end_time ? new Date(appt.end_time) : null;
+                                    let endMinutes = end && !Number.isNaN(end.getTime())
+                                      ? end.getHours() * 60 + end.getMinutes()
+                                      : rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
+
+                                    if (end && !Number.isNaN(end.getTime()) && 
+                                        (end.getDate() !== start.getDate() || endMinutes <= rawStartMinutes)) {
+                                      endMinutes = DAY_VIEW_END_MINUTES;
+                                    }
+
+                                    endMinutes = Math.min(endMinutes, DAY_VIEW_END_MINUTES);
+                                    const durationMinutes = Math.max(endMinutes - rawStartMinutes, DAY_VIEW_SLOT_MINUTES);
+
+                                    const top = (topMinutes / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
+                                    const calculatedHeight = (durationMinutes / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
+                                    
+                                    const overlapInfo = overlapMap.get(appt.id);
+                                    const overlapColIndex = overlapInfo?.columnIndex ?? 0;
+                                    const totalCols = overlapInfo?.totalColumns ?? 1;
+                                    const maxWidthPercent = 80;
+                                    const widthPercent = maxWidthPercent / totalCols;
+                                    const leftPercent = overlapColIndex * widthPercent;
+                                    
+                                    const minHeight = totalCols > 1 ? 28 : 24;
+                                    const height = Math.max(calculatedHeight, minHeight);
+
+                                    const { serviceLabel } = getServiceAndStatusFromReason(appt.reason);
+                                    const timeLabel = formatTimeRangeLabel(start, end && !Number.isNaN(end.getTime()) ? end : null);
+
+                                    const category = getCategoryFromReason(appt.reason);
+                                    const { statusLabel: dayStatusLabel } = getServiceAndStatusFromReason(appt.reason);
+                                    const dayStatusIcon = getStatusIcon(dayStatusLabel);
+
+                                    const patientName = `${appt.patient?.first_name ?? ""} ${appt.patient?.last_name ?? ""}`.trim().replace(/\s+/g, " ");
+                                    const patientPhone = appt.patient?.phone ?? null;
+                                    const patientEmail = appt.patient?.email ?? null;
+                                    const durationMins = end && !Number.isNaN(end.getTime()) 
+                                      ? Math.round((end.getTime() - start.getTime()) / 60000) 
+                                      : null;
+                                    const durationLabel = durationMins ? `${String(Math.floor(durationMins / 60)).padStart(2, "0")}:${String(durationMins % 60).padStart(2, "0")}h` : "";
+
+                                    return (
+                                      <button
+                                        key={`${ymd}-${doctorCol?.id ?? "all"}-${appt.id}`}
+                                        type="button"
+                                        onClick={() => openEditModalForAppointment(appt)}
+                                        className={`group absolute rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)}`}
+                                        style={{
+                                          top,
+                                          height,
+                                          left: `calc(${leftPercent}% + 2px)`,
+                                          width: `calc(${widthPercent}% - 4px)`,
+                                        }}
+                                      >
+                                        <div className="flex items-center gap-1 truncate font-medium text-slate-800">
+                                          {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
+                                          <span className="truncate">{patientName || serviceLabel}</span>
+                                        </div>
+                                        <div className="truncate text-[9px] text-slate-600">
+                                          {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
+                                        </div>
+                                        {/* Hover tooltip */}
+                                        <div className="pointer-events-none absolute left-full top-0 z-50 ml-2 hidden min-w-[280px] rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-lg group-hover:block">
+                                          <div className="font-semibold text-slate-800 mb-1">
+                                            {formatYmd(date)} {timeLabel} {durationLabel && `(${durationLabel})`}
+                                          </div>
+                                          <div className="text-slate-700 font-medium">{patientName || "No Patient"}</div>
+                                          {serviceLabel && <div className="text-slate-600 mt-1">{serviceLabel}</div>}
+                                          {category && <div className="text-slate-500">Catégorie: {category}</div>}
+                                          {patientPhone && (
+                                            <div className="text-slate-500 mt-1">
+                                              <span className="text-slate-400">privé:</span> {patientPhone}
+                                            </div>
+                                          )}
+                                          {patientEmail && (
+                                            <div className="text-slate-500">
+                                              <span className="text-slate-400">privé:</span> {patientEmail}
+                                            </div>
+                                          )}
+                                          {appt.location && <div className="text-slate-500 mt-1">📍 {appt.location}</div>}
+                                        </div>
+                                      </button>
+                                    );
+                                  });
+                                })()}
+                              </div>
                             );
-                          });
-                          })()}
+                          })}
                         </div>
                       );
                     })}
