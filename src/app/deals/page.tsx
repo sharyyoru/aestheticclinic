@@ -372,41 +372,6 @@ export default function DealsPage() {
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const topScrollRef = useRef<HTMLDivElement | null>(null);
   const boardContentRef = useRef<HTMLDivElement | null>(null);
-  const [boardContentWidth, setBoardContentWidth] = useState<number>(0);
-
-  // Sync top scroller width with actual board content width using ResizeObserver
-  useEffect(() => {
-    const updateWidth = () => {
-      if (boardContentRef.current) {
-        const width = boardContentRef.current.scrollWidth;
-        setBoardContentWidth(width);
-      }
-    };
-    
-    updateWidth();
-    
-    // Use ResizeObserver to detect content size changes
-    let resizeObserver: ResizeObserver | null = null;
-    if (boardContentRef.current && typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        updateWidth();
-      });
-      resizeObserver.observe(boardContentRef.current);
-    }
-    
-    window.addEventListener('resize', updateWidth);
-    
-    // Also update after a short delay to ensure content is rendered
-    const timeoutId = setTimeout(updateWidth, 100);
-    
-    return () => {
-      window.removeEventListener('resize', updateWidth);
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
-      clearTimeout(timeoutId);
-    };
-  }, [dealStages, boardDeals]);
 
   function handleBoardDragOver(event: any) {
     if (!dragDealId) return;
@@ -988,26 +953,31 @@ export default function DealsPage() {
             </div>
           </div>
           <div className="mt-2 rounded-xl border border-slate-200/80 bg-white/90 text-xs shadow-sm">
-              {/* Top scrollbar - synced with main board */}
+              {/* Top scrollbar - identical to bottom, synced with main board */}
               <div
                 ref={topScrollRef}
-                className="kanban-scroll-top w-full max-w-full"
+                className="kanban-scroll w-full max-w-full"
+                style={{ height: '18px' }}
                 onScroll={(e) => {
                   if (boardScrollRef.current) {
                     boardScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
                   }
                 }}
               >
-                <div style={{ width: boardContentWidth || 'auto', height: '18px' }} />
+                {/* Mirror the same content width as bottom scroller */}
+                <div className="flex w-max gap-3 px-3 md:gap-4" style={{ visibility: 'hidden', height: '1px' }}>
+                  {dealStages.map((stage) => (
+                    <div key={stage.id} className="min-w-[260px] max-w-xs flex-shrink-0" />
+                  ))}
+                </div>
               </div>
               <div
                 className="kanban-scroll w-full max-w-full pb-2"
                 ref={boardScrollRef}
                 onDragOver={handleBoardDragOver}
                 onScroll={(e) => {
-                  const topScroller = e.currentTarget.previousElementSibling as HTMLElement;
-                  if (topScroller) {
-                    topScroller.scrollLeft = e.currentTarget.scrollLeft;
+                  if (topScrollRef.current) {
+                    topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
                   }
                 }}
               >
