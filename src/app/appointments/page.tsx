@@ -719,6 +719,7 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
   const [isDraggingRange, setIsDraggingRange] = useState(false);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
   
   // Drag-to-create appointment state
   const [isDraggingCreate, setIsDraggingCreate] = useState(false);
@@ -959,6 +960,14 @@ export default function CalendarPage() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  // Update current time every minute for the time indicator
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -2713,6 +2722,26 @@ export default function CalendarPage() {
                         (DAY_VIEW_SLOT_HEIGHT / DAY_VIEW_SLOT_MINUTES),
                     }}
                   >
+                    {/* Current time indicator line */}
+                    {(() => {
+                      const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+                      const isToday = selectedDate && formatYmd(selectedDate) === formatYmd(currentTime);
+                      const isInBounds = nowMinutes >= DAY_VIEW_START_MINUTES && nowMinutes <= DAY_VIEW_END_MINUTES;
+                      
+                      if (!isToday || !isInBounds) return null;
+                      
+                      const topPosition = ((nowMinutes - DAY_VIEW_START_MINUTES) / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
+                      
+                      return (
+                        <div
+                          className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
+                          style={{ top: topPosition }}
+                        >
+                          <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 shrink-0" />
+                          <div className="flex-1 h-0.5 bg-red-500" />
+                        </div>
+                      );
+                    })()}
                     {activeRangeDates.map((date) => {
                       const ymd = formatYmd(date);
                       const dayAppointments = appointmentsByDay[ymd] ?? [];
