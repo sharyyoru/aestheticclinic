@@ -89,70 +89,70 @@ const BOOKING_STATUS_OPTIONS = [
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  // French names (from Axenita)
-  "Aucune sélection": "bg-sky-100",
-  "Mésothérapie": "bg-purple-500",
-  "Mesotherapie": "bg-purple-500",
-  "Dermomask": "bg-lime-400",
-  "1ère consultation": "bg-yellow-300",
-  "1ere consultation": "bg-yellow-300",
-  "Administration": "bg-slate-400",
-  "Cavitation": "bg-green-500",
-  "CO2": "bg-pink-300",
-  "Contrôle": "bg-teal-600",
-  "Controle": "bg-teal-600",
-  "Crème Emla": "bg-teal-400",
-  "Creme Emla": "bg-teal-400",
-  "Cryothérapie": "bg-purple-700",
-  "Cryotherapie": "bg-purple-700",
-  "Discussion": "bg-sky-200",
-  "EMSCULPT": "bg-teal-500",
-  "Épilation laser Cutera": "bg-slate-400",
-  "Epilation laser Cutera": "bg-slate-400",
-  "Epilation laser Gentel": "bg-green-500",
-  "Épilation éléctrique": "bg-indigo-400",
-  "Epilation electrique": "bg-indigo-400",
-  "Epilation éléctrique": "bg-indigo-400",
-  "HIFU": "bg-pink-300",
-  "Injection (botox; Acide hyaluronic)": "bg-sky-300",
-  "Injection (botox; Aci": "bg-sky-300",
-  "Important": "bg-red-500 text-white",
-  "IPL": "bg-purple-200",
-  "Meso Anti-age": "bg-amber-700",
-  "Meso Anti-cellulite": "bg-amber-600",
-  "Meso Anti-tache": "bg-amber-700",
-  "Microdermabrasion": "bg-blue-500",
-  "MORPHEUS8": "bg-amber-800",
-  "Radio-fréquence": "bg-lime-200",
-  "Radio-frequence": "bg-lime-200",
-  "Radio frequency": "bg-lime-200",
-  "Réunion": "bg-pink-300",
-  "Reunion": "bg-pink-300",
-  "OP Chirurgie": "bg-green-500",
-  "Pauses/Changement de salle/lieu": "bg-purple-600",
-  "Pauses/Changeme": "bg-purple-600",
-  "PRP": "bg-orange-500",
-  "Tatoo removal": "bg-amber-700",
-  "TCA": "bg-purple-200",
-  "Traitement": "bg-purple-200",
-  "Traitement caviar": "bg-indigo-200",
-  "Vacances/Congés": "bg-lime-300",
-  "Vacances/Conges": "bg-lime-300",
-  "Visia": "bg-yellow-400",
+  // French names (from Axenita) - using lighter/opacity variants for readability
+  "Aucune sélection": "bg-sky-100/80",
+  "Mésothérapie": "bg-purple-300/70",
+  "Mesotherapie": "bg-purple-300/70",
+  "Dermomask": "bg-lime-300/70",
+  "1ère consultation": "bg-yellow-200/70",
+  "1ere consultation": "bg-yellow-200/70",
+  "Administration": "bg-slate-300/70",
+  "Cavitation": "bg-green-300/70",
+  "CO2": "bg-pink-200/70",
+  "Contrôle": "bg-teal-300/70",
+  "Controle": "bg-teal-300/70",
+  "Crème Emla": "bg-teal-200/70",
+  "Creme Emla": "bg-teal-200/70",
+  "Cryothérapie": "bg-purple-300/70",
+  "Cryotherapie": "bg-purple-300/70",
+  "Discussion": "bg-sky-200/70",
+  "EMSCULPT": "bg-teal-300/70",
+  "Épilation laser Cutera": "bg-slate-300/70",
+  "Epilation laser Cutera": "bg-slate-300/70",
+  "Epilation laser Gentel": "bg-green-300/70",
+  "Épilation éléctrique": "bg-indigo-300/70",
+  "Epilation electrique": "bg-indigo-300/70",
+  "Epilation éléctrique": "bg-indigo-300/70",
+  "HIFU": "bg-pink-200/70",
+  "Injection (botox; Acide hyaluronic)": "bg-sky-200/70",
+  "Injection (botox; Aci": "bg-sky-200/70",
+  "Important": "bg-red-300/70",
+  "IPL": "bg-purple-200/70",
+  "Meso Anti-age": "bg-amber-300/70",
+  "Meso Anti-cellulite": "bg-amber-300/70",
+  "Meso Anti-tache": "bg-amber-300/70",
+  "Microdermabrasion": "bg-blue-300/70",
+  "MORPHEUS8": "bg-amber-400/70",
+  "Radio-fréquence": "bg-lime-200/70",
+  "Radio-frequence": "bg-lime-200/70",
+  "Radio frequency": "bg-lime-200/70",
+  "Réunion": "bg-pink-200/70",
+  "Reunion": "bg-pink-200/70",
+  "OP Chirurgie": "bg-green-300/70",
+  "Pauses/Changement de salle/lieu": "bg-purple-300/70",
+  "Pauses/Changeme": "bg-purple-300/70",
+  "PRP": "bg-orange-300/70",
+  "Tatoo removal": "bg-amber-300/70",
+  "TCA": "bg-purple-200/70",
+  "Traitement": "bg-purple-200/70",
+  "Traitement caviar": "bg-indigo-200/70",
+  "Vacances/Congés": "bg-lime-200/70",
+  "Vacances/Conges": "bg-lime-200/70",
+  "Visia": "bg-yellow-200/70",
   // English fallbacks
-  "No selection": "bg-sky-100",
-  "Mesotherapy": "bg-purple-500",
-  "Control": "bg-teal-600",
-  "Emla Cream": "bg-teal-400",
-  "Cryotherapy": "bg-purple-700",
-  "Cutera laser hair removal": "bg-slate-400",
-  "Electrolysis hair removal": "bg-indigo-400",
-  "Meeting": "bg-pink-300",
-  "OP Surgery": "bg-green-500",
-  "Breaks/Change of Location": "bg-purple-600",
-  "Treatment": "bg-purple-200",
-  "Caviar treatment": "bg-indigo-200",
-  "Vacation/Leave": "bg-lime-300",
+  "No selection": "bg-sky-100/80",
+  "Mesotherapy": "bg-purple-300/70",
+  "Control": "bg-teal-300/70",
+  "Emla Cream": "bg-teal-200/70",
+  "Cryotherapy": "bg-purple-300/70",
+  "Cutera laser hair removal": "bg-slate-300/70",
+  "Electrolysis hair removal": "bg-indigo-300/70",
+  "Meeting": "bg-pink-200/70",
+  "OP Surgery": "bg-green-300/70",
+  "Breaks/Change of Location": "bg-purple-300/70",
+  "Treatment": "bg-purple-200/70",
+  "Caviar treatment": "bg-indigo-200/70",
+  "Vacation/Leave": "bg-lime-200/70",
 };
 
 const STATUS_ICONS: Record<string, string> = {
@@ -2826,11 +2826,9 @@ export default function CalendarPage() {
                                     const durationLabel = durationMins ? `${String(Math.floor(durationMins / 60)).padStart(2, "0")}:${String(durationMins % 60).padStart(2, "0")}h` : "";
 
                                     return (
-                                      <button
+                                      <div
                                         key={`${ymd}-${doctorCol?.id ?? "all"}-${appt.id}`}
-                                        type="button"
-                                        onClick={() => openEditModalForAppointment(appt)}
-                                        className={`group absolute rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)}`}
+                                        className="group absolute"
                                         style={{
                                           top,
                                           height,
@@ -2838,15 +2836,21 @@ export default function CalendarPage() {
                                           width: `calc(${widthPercent}% - 4px)`,
                                         }}
                                       >
-                                        <div className="flex items-center gap-1 truncate font-medium text-slate-800">
-                                          {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
-                                          <span className="truncate">{patientName || serviceLabel}</span>
-                                        </div>
-                                        <div className="truncate text-[9px] text-slate-600">
-                                          {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
-                                        </div>
-                                        {/* Hover tooltip */}
-                                        <div className="pointer-events-none absolute left-full top-0 z-50 ml-2 hidden min-w-[280px] rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-lg group-hover:block">
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditModalForAppointment(appt)}
+                                          className={`w-full h-full rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)}`}
+                                        >
+                                          <div className="flex items-center gap-1 truncate font-medium text-slate-800">
+                                            {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
+                                            <span className="truncate">{patientName || serviceLabel}</span>
+                                          </div>
+                                          <div className="truncate text-[9px] text-slate-600">
+                                            {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
+                                          </div>
+                                        </button>
+                                        {/* Hover tooltip - outside button to avoid overflow clip */}
+                                        <div className="pointer-events-none absolute left-full top-0 z-[100] ml-2 hidden min-w-[280px] rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-xl group-hover:block">
                                           <div className="font-semibold text-slate-800 mb-1">
                                             {formatYmd(date)} {timeLabel} {durationLabel && `(${durationLabel})`}
                                           </div>
@@ -2865,7 +2869,7 @@ export default function CalendarPage() {
                                           )}
                                           {appt.location && <div className="text-slate-500 mt-1">📍 {appt.location}</div>}
                                         </div>
-                                      </button>
+                                      </div>
                                     );
                                   });
                                 })()}
