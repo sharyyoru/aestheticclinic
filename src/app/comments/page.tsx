@@ -197,20 +197,33 @@ export default function CommentsPage() {
       setMarkingRead(true);
       const nowIso = new Date().toISOString();
 
+      let noteError = null;
+      let taskError = null;
+
       // Mark note mentions as read
       if (unreadNotes.length > 0) {
-        await supabaseClient
+        const { error } = await supabaseClient
           .from("patient_note_mentions")
           .update({ read_at: nowIso })
           .in("id", unreadNotes);
+        noteError = error;
       }
 
       // Mark task mentions as read
       if (unreadTasks.length > 0) {
-        await supabaseClient
+        const { error } = await supabaseClient
           .from("task_comment_mentions")
           .update({ read_at: nowIso })
           .in("id", unreadTasks);
+        taskError = error;
+      }
+
+      // Only update local state if database updates succeeded
+      if (noteError || taskError) {
+        console.error("Failed to mark comments as read:", noteError, taskError);
+        setToastMessage("Failed to mark comments as read. Please try again.");
+        setMarkingRead(false);
+        return;
       }
 
       setMentions((prev) =>
@@ -223,7 +236,9 @@ export default function CommentsPage() {
       setUnreadCountOptimistic((prev) => prev - unreadNotes.length - unreadTasks.length);
       setToastMessage("All comments marked as read.");
       setMarkingRead(false);
-    } catch {
+    } catch (err) {
+      console.error("Error marking comments as read:", err);
+      setToastMessage("Failed to mark comments as read. Please try again.");
       setMarkingRead(false);
     }
   }
@@ -251,22 +266,29 @@ export default function CommentsPage() {
     if (mention.read_at) return;
 
     const nowIso = new Date().toISOString();
-
-    setMentions((prev) =>
-      prev.map((m) => (m.id === mention.id ? { ...m, read_at: nowIso } : m)),
-    );
-
-    setUnreadCountOptimistic((prev) => prev - 1);
+    const tableName = mention.type === "task" 
+      ? "task_comment_mentions" 
+      : "patient_note_mentions";
 
     try {
-      const tableName = mention.type === "task" 
-        ? "task_comment_mentions" 
-        : "patient_note_mentions";
-      await supabaseClient
+      // Update database first, then update local state only if successful
+      const { error } = await supabaseClient
         .from(tableName)
         .update({ read_at: nowIso })
         .eq("id", mention.id);
-    } catch {
+
+      if (error) {
+        console.error("Failed to mark comment as read:", error);
+        return;
+      }
+
+      // Only update local state after successful database update
+      setMentions((prev) =>
+        prev.map((m) => (m.id === mention.id ? { ...m, read_at: nowIso } : m)),
+      );
+      setUnreadCountOptimistic((prev) => prev - 1);
+    } catch (err) {
+      console.error("Error marking comment as read:", err);
     }
   }
 
@@ -276,22 +298,33 @@ export default function CommentsPage() {
   }
 
   async function handleMarkTaskMentionAsRead() {
-    if (!selectedTaskMention) return;
+    if (!selectedTaskMention || selectedTaskMention.read_at) return;
     
     const nowIso = new Date().toISOString();
-    
-    setMentions((prev) =>
-      prev.map((m) => (m.id === selectedTaskMention.id ? { ...m, read_at: nowIso } : m)),
-    );
-    
-    setUnreadCountOptimistic((prev) => prev - 1);
+    const mentionId = selectedTaskMention.id;
     
     try {
-      await supabaseClient
+      // Update database first, then update local state only if successful
+      const { error } = await supabaseClient
         .from("task_comment_mentions")
         .update({ read_at: nowIso })
-        .eq("id", selectedTaskMention.id);
-    } catch {
+        .eq("id", mentionId);
+
+      if (error) {
+        console.error("Failed to mark task comment as read:", error);
+        return;
+      }
+
+      // Only update local state after successful database update
+      setMentions((prev) =>
+        prev.map((m) => (m.id === mentionId ? { ...m, read_at: nowIso } : m)),
+      );
+      setUnreadCountOptimistic((prev) => prev - 1);
+      
+      // Update the selected task mention as well
+      setSelectedTaskMention((prev) => prev ? { ...prev, read_at: nowIso } : null);
+    } catch (err) {
+      console.error("Error marking task comment as read:", err);
     }
   }
 
