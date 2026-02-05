@@ -103,8 +103,30 @@ export async function POST(request: Request) {
     const emailId = formData.get("email-id")?.toString() || "";
     const patientId = formData.get("patient-id")?.toString() || "";
     const sentByEmail = formData.get("sent-by")?.toString() || "";
+    const forwardedReply = formData.get("forwarded-reply")?.toString() || "";
     
-    console.log("  Custom vars - emailId:", emailId, "patientId:", patientId, "sentBy:", sentByEmail);
+    console.log("  Custom vars - emailId:", emailId, "patientId:", patientId, "sentBy:", sentByEmail, "forwardedReply:", forwardedReply);
+    
+    // DEDUPLICATION Method 3: If emailId is set, this is an email WE sent - it already exists in DB
+    // This catches the race condition where webhook receives the email before message_id is updated
+    if (emailId && !forwardedReply) {
+      // Check if this email ID exists in our DB
+      const { data: existingByEmailId } = await supabase
+        .from("emails")
+        .select("id")
+        .eq("id", emailId)
+        .maybeSingle();
+      
+      if (existingByEmailId) {
+        console.log("Skipping - this is our own outbound email, already in DB:", emailId);
+        return NextResponse.json({ 
+          ok: true, 
+          message: "Skipped own outbound email",
+          reason: "own_outbound_email",
+          existingEmailId: emailId
+        });
+      }
+    }
     
     // Mailgun sends attachment count and individual attachments
     const attachmentCountStr = formData.get("attachment-count")?.toString() || "0";
