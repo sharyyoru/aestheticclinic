@@ -65,7 +65,9 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
         if (subTab === "prescription") {
             return med.prescription_sheet_id !== null;
         } else if (subTab === "consumables") {
-            return med.product_type === null || med.product_type !== "MEDICATION";
+            // Consumables: no prescription sheet AND not medication type
+            return med.prescription_sheet_id === null &&
+                (med.product_type === null || med.product_type !== "MEDICATION");
         } else {
             // medicine
             return med.prescription_sheet_id === null && med.product_type === "MEDICATION";
@@ -188,18 +190,14 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
                             <div className="py-8 text-center text-sm text-slate-500">No medicine found</div>
                         )
                     ) : (
-                        // Consumables list view
-                        <>
-                            {filteredMedications.length > 0 ? (
-                                filteredMedications.map((med) => (
-                                    <MedicationRow key={med.journal_entry_id} medication={med} />
-                                ))
-                            ) : (
-                                <div className="py-8 text-center text-sm text-slate-500">
-                                    No consumables found
-                                </div>
-                            )}
-                        </>
+                        // Consumables table view
+                        filteredMedications.length > 0 ? (
+                            <MedicationTable medications={filteredMedications} />
+                        ) : (
+                            <div className="py-8 text-center text-sm text-slate-500">
+                                No consumables found
+                            </div>
+                        )
                     )}
                 </div>
             )}
