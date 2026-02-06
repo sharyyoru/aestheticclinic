@@ -289,7 +289,7 @@ export default function InvoicePaymentPage() {
                 </div>
                 <div>
                   <span className="block text-xs font-medium text-slate-600">IBAN:</span>
-                  <span className="block font-mono text-slate-900">CH09 3078 8000 0502 4628 9</span>
+                  <span className="block font-mono text-slate-900">CH09 3078 8000 0502 4928 9</span>
                 </div>
                 <div>
                   <span className="block text-xs font-medium text-slate-600">Bank:</span>

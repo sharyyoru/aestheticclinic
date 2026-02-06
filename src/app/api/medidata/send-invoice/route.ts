@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
           city: config.clinic_address_city || '',
           canton: (config.clinic_canton || 'GE') as SwissCanton,
         },
-        iban: 'CH09 3078 8000 0502 4628 9',
+        iban: 'CH09 3078 8000 0502 4928 9',
         vatNumber: null,
       },
       services,

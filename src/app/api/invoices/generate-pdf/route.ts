@@ -102,24 +102,14 @@ function parseInvoiceContent(content: string | null, canton: SwissCanton = DEFAU
         const quantity = parseInt(quantityMatch[1]);
         const unitPrice = parseFloat(priceMatch[1]);
         
-        // Try to find matching TARDOC code based on service name
-        const matchingTariff = TARDOC_TARIFF_ITEMS.find(
-          t => t.isActive && (
-            t.description.toLowerCase().includes(name.toLowerCase()) ||
-            t.descriptionFr.toLowerCase().includes(name.toLowerCase()) ||
-            name.toLowerCase().includes(t.description.toLowerCase())
-          )
-        );
-        
-        const tardocCode = matchingTariff?.code || null;
-        const taxPoints = matchingTariff?.taxPoints || 0;
-        
+        // Only try to find TARDOC code for actual TARDOC invoices
+        // For regular invoices (promotions, packages, etc.), just use the service name
         services.push({
-          code: tardocCode || "AA 00.0010", // Default to Sumex base consultation code
-          tardocCode,
+          code: "-", // No code for regular services
+          tardocCode: null,
           name,
           quantity,
-          taxPoints,
+          taxPoints: 0,
           unitPrice,
           total: quantity * unitPrice
         });
@@ -240,7 +230,7 @@ export async function POST(request: NextRequest) {
       isBankTransferQr = true;
       const swissReference = generateSwissReference(invoiceData.consultation_id);
       const qrBillData: SwissQrBillData = {
-        iban: "CH09 3078 8000 0502 4628 9",
+        iban: "CH09 3078 8000 0502 4928 9",
         creditorName: "Aesthetics Clinic XT SA",
         creditorAddressLine1: "Chemin Rieu 18",
         creditorAddressLine2: "1208 Genève",
@@ -372,7 +362,9 @@ export async function POST(request: NextRequest) {
       calculatedTotal = sumexResult.totalPrice;
     }
 
-    const finalServices = tardocServices.length > 0 ? tardocServices : services;
+    // Only use TARDOC services if explicitly a TARDOC invoice with duration
+    // Otherwise use the parsed services (regular invoices like promotions)
+    const finalServices = (isTarmedInvoice && tardocServices.length > 0) ? tardocServices : services;
 
     pdf.setFont("helvetica", "bold");
     pdf.text("Diagnostic", 20, yPos + 4);
@@ -419,7 +411,8 @@ export async function POST(request: NextRequest) {
     if (finalServices.length > 0) {
       finalServices.forEach((service) => {
         pdf.text(prestationDate, 17, yPos + 4);
-        pdf.text(service.code, 40, yPos + 4);
+        // Only show code for TARDOC invoices, otherwise show "-"
+        pdf.text(isTarmedInvoice ? service.code : "-", 40, yPos + 4);
         // Truncate long service names
         const maxNameLength = 30;
         const displayName = service.name.length > maxNameLength 
@@ -432,12 +425,14 @@ export async function POST(request: NextRequest) {
         yPos += 5;
       });
     } else {
+      // Fallback: use invoice title as service name
       pdf.text(prestationDate, 17, yPos + 4);
-      pdf.text("AA 00.0010", 40, yPos + 4);
-      pdf.text(invoiceData.title || "Baby Botox", 70, yPos + 4);
+      pdf.text("-", 40, yPos + 4);
+      pdf.text(invoiceData.title || "Service", 70, yPos + 4);
       pdf.text("1", 130, yPos + 4);
-      pdf.text("", 150, yPos + 4);
-      pdf.text("123,123", pageWidth - 20, yPos + 4, { align: "right" });
+      const fallbackTotal = invoiceData.invoice_total_amount || 0;
+      pdf.text(fallbackTotal.toFixed(2), 150, yPos + 4);
+      pdf.text(fallbackTotal.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
       yPos += 5;
     }
 
@@ -462,9 +457,9 @@ export async function POST(request: NextRequest) {
 
     pdf.setFont("helvetica", "normal");
     pdf.text("Compte / Payable à", 20, yPos);
-    pdf.text("CH09 3078 8000 0502 4628 9", 80, yPos);
+    pdf.text("CH09 3078 8000 0502 4928 9", 80, yPos);
     yPos += 4;
-    pdf.text("CH09 3078 8000 0502 4628 9", 20, yPos);
+    pdf.text("CH09 3078 8000 0502 4928 9", 20, yPos);
     pdf.text("Aesthetics Clinic XT SA", 80, yPos);
     pdf.text("Aesthetics Clinic XT SA", 140, yPos);
     yPos += 4;
