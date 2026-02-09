@@ -319,6 +319,12 @@ export default function MedicalConsultationsCard({
   const [insuranceBillingModalOpen, setInsuranceBillingModalOpen] = useState(false);
   const [insuranceBillingTarget, setInsuranceBillingTarget] = useState<ConsultationRow | null>(null);
 
+  const [editConsultationModalOpen, setEditConsultationModalOpen] = useState(false);
+  const [editConsultationTarget, setEditConsultationTarget] = useState<ConsultationRow | null>(null);
+  const [editConsultationTitle, setEditConsultationTitle] = useState("");
+  const [editConsultationContent, setEditConsultationContent] = useState("");
+  const [editConsultationSaving, setEditConsultationSaving] = useState(false);
+
   const [axenitaPdfDocs, setAxenitaPdfDocs] = useState<AxenitaPdfDocument[]>([]);
   const [axenitaPdfLoading, setAxenitaPdfLoading] = useState(false);
   const [axenitaPdfError, setAxenitaPdfError] = useState<string | null>(null);
@@ -745,6 +751,48 @@ export default function MedicalConsultationsCard({
       );
     } catch {
       setConsultationsError("Failed to delete consultation.");
+    }
+  }
+
+  function handleOpenEditConsultation(row: ConsultationRow) {
+    setEditConsultationTarget(row);
+    setEditConsultationTitle(row.title || "");
+    setEditConsultationContent(row.content || "");
+    setEditConsultationModalOpen(true);
+  }
+
+  async function handleSaveEditConsultation() {
+    if (!editConsultationTarget) return;
+
+    setEditConsultationSaving(true);
+    try {
+      const { error } = await supabaseClient
+        .from("consultations")
+        .update({
+          title: editConsultationTitle,
+          content: editConsultationContent,
+        })
+        .eq("id", editConsultationTarget.id);
+
+      if (error) {
+        setConsultationsError(error.message ?? "Failed to update consultation.");
+        return;
+      }
+
+      setConsultations((prev) =>
+        prev.map((row) =>
+          row.id === editConsultationTarget.id
+            ? { ...row, title: editConsultationTitle, content: editConsultationContent }
+            : row
+        )
+      );
+
+      setEditConsultationModalOpen(false);
+      setEditConsultationTarget(null);
+    } catch {
+      setConsultationsError("Failed to update consultation.");
+    } finally {
+      setEditConsultationSaving(false);
     }
   }
 
@@ -2070,6 +2118,7 @@ export default function MedicalConsultationsCard({
                       >
                         <option value="">Select payment method</option>
                         <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
                         <option value="Online Payment">Online Payment</option>
                         <option value="Bank transfer">Bank transfer</option>
                         <option value="Insurance">Insurance</option>
@@ -3213,15 +3262,24 @@ export default function MedicalConsultationsCard({
                           )
                         ) : null}
                         {!showArchived ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleArchiveConsultation(row.id);
-                            }}
-                            className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 shadow-sm hover:bg-slate-50"
-                          >
-                            Archive
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditConsultation(row)}
+                              className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700 shadow-sm hover:bg-sky-100"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleArchiveConsultation(row.id);
+                              }}
+                              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 shadow-sm hover:bg-slate-50"
+                            >
+                              Archive
+                            </button>
+                          </>
                         ) : (
                           <button
                             type="button"
@@ -3674,6 +3732,63 @@ export default function MedicalConsultationsCard({
                 className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Edit Consultation Modal */}
+      {editConsultationModalOpen && editConsultationTarget ? (
+        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm py-6 sm:py-8">
+          <div className="w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h3 className="text-sm font-semibold text-slate-900">Edit Consultation</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                {editConsultationTarget.record_type.toUpperCase()} • {editConsultationTarget.consultation_id}
+              </p>
+            </div>
+            <div className="space-y-4 px-6 py-6">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-medium text-slate-700">Title</label>
+                <input
+                  type="text"
+                  value={editConsultationTitle}
+                  onChange={(e) => setEditConsultationTitle(e.target.value)}
+                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  placeholder="Consultation title"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[11px] font-medium text-slate-700">Content / Notes</label>
+                <textarea
+                  value={editConsultationContent}
+                  onChange={(e) => setEditConsultationContent(e.target.value)}
+                  rows={8}
+                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  placeholder="Enter consultation notes..."
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditConsultationModalOpen(false);
+                  setEditConsultationTarget(null);
+                }}
+                disabled={editConsultationSaving}
+                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveEditConsultation()}
+                disabled={editConsultationSaving}
+                className="inline-flex items-center rounded-full bg-sky-600 px-4 py-2 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {editConsultationSaving ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>

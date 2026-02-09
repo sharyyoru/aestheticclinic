@@ -95,6 +95,19 @@ function getMimeType(name: string, metadata?: { mimetype?: string } | null): str
   return "";
 }
 
+function sanitizeFilename(filename: string): string {
+  const ext = getExtension(filename);
+  const nameWithoutExt = filename.substring(0, filename.length - ext.length - (ext ? 1 : 0));
+  const sanitized = nameWithoutExt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
+    .substring(0, 100);
+  return ext ? `${sanitized}.${ext}` : sanitized;
+}
+
 export default function PatientDocumentsTab({
   patientId,
   patientName = "Patient",
@@ -403,9 +416,10 @@ export default function PatientDocumentsTab({
           });
         }, 200);
 
+        const safeName = sanitizeFilename(file.name);
         const storagePath = [
           patientId,
-          currentPrefix ? `${currentPrefix}${file.name}` : file.name,
+          currentPrefix ? `${currentPrefix}${safeName}` : safeName,
         ]
           .filter(Boolean)
           .join("/");
