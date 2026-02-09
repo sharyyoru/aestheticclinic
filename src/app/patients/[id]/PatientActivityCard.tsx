@@ -1022,7 +1022,8 @@ export default function PatientActivityCard({
         setEmailAttachmentsError(null);
         setUseSignature(true);
         setComposeFromQueryHandled(false);
-        router.replace(`/patients/${patientId}`);
+        // Remove composeEmail query param to prevent modal from reopening
+        router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
       }
     }
 
@@ -4891,7 +4892,8 @@ export default function PatientActivityCard({
               setEmailAttachmentsError(null);
               setUseSignature(true);
               setComposeFromQueryHandled(false);
-              router.replace(`/patients/${patientId}`);
+              // Remove composeEmail query param to prevent modal from reopening
+              router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
             }
           }}
         >
@@ -4933,6 +4935,8 @@ export default function PatientActivityCard({
                     setEmailAttachmentsError(null);
                     setUseSignature(true);
                     setComposeFromQueryHandled(false);
+                    // Remove composeEmail query param to prevent modal from reopening
+                    router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
                   }}
                   className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                   title="Close"
@@ -5252,6 +5256,8 @@ export default function PatientActivityCard({
                     setEmailAttachmentsError(null);
                     setUseSignature(true);
                     setComposeFromQueryHandled(false);
+                    // Remove composeEmail query param to prevent modal from reopening
+                    router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
                   }}
                   className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
                 >
