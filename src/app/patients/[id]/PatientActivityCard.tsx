@@ -365,6 +365,12 @@ export default function PatientActivityCard({
   const [allUserDeals, setAllUserDeals] = useState<(Deal & { patient_name?: string })[]>([]);
   const [allUserDealsLoading, setAllUserDealsLoading] = useState(false);
 
+  // Task navigation state - all tasks assigned to current user across patients
+  type TaskDateFilter = "today" | "past" | "future" | "all";
+  const [allUserTasks, setAllUserTasks] = useState<(Task & { patient_name?: string })[]>([]);
+  const [allUserTasksLoading, setAllUserTasksLoading] = useState(false);
+  const [taskNavDateFilter, setTaskNavDateFilter] = useState<TaskDateFilter>("today");
+
   // Appointment modal state
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const [appointmentDeal, setAppointmentDeal] = useState<Deal | null>(null);
@@ -746,6 +752,58 @@ export default function PatientActivityCard({
     }
 
     loadAllUserDeals();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId]);
+
+  // Load all tasks assigned to the current user for navigation with date filter
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAllUserTasks() {
+      if (!currentUserId) return;
+
+      try {
+        setAllUserTasksLoading(true);
+
+        // Fetch all tasks where the current user is assigned
+        const { data: userTasksData, error: userTasksError } = await supabaseClient
+          .from("tasks")
+          .select(`
+            id, patient_id, name, content, status, priority, type, activity_date, created_by_user_id, created_by_name, assigned_user_id, assigned_user_name, created_at, updated_at,
+            patients:patient_id (first_name, last_name)
+          `)
+          .eq("assigned_user_id", currentUserId)
+          .order("activity_date", { ascending: true });
+
+        if (!isMounted) return;
+
+        if (userTasksError || !userTasksData) {
+          setAllUserTasks([]);
+          setAllUserTasksLoading(false);
+          return;
+        }
+
+        // Map tasks with patient names
+        const tasksWithPatientNames = userTasksData.map((task: any) => ({
+          ...task,
+          patient_name: task.patients 
+            ? `${task.patients.first_name || ""} ${task.patients.last_name || ""}`.trim() 
+            : "Unknown Patient",
+        }));
+
+        setAllUserTasks(tasksWithPatientNames);
+        setAllUserTasksLoading(false);
+      } catch {
+        if (!isMounted) return;
+        setAllUserTasks([]);
+        setAllUserTasksLoading(false);
+      }
+    }
+
+    loadAllUserTasks();
 
     return () => {
       isMounted = false;
@@ -1858,6 +1916,57 @@ export default function PatientActivityCard({
     if (currentIndex < 0 || currentIndex >= allUserDeals.length - 1) return;
     const nextDeal = allUserDeals[currentIndex + 1];
     if (nextDeal) handleNavigateToDeal(nextDeal);
+  }
+
+  // Task navigation - filter tasks by date and navigate
+  function getFilteredUserTasks(): (Task & { patient_name?: string })[] {
+    if (taskNavDateFilter === "all") return allUserTasks;
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    return allUserTasks.filter((task) => {
+      const taskDate = task.activity_date ? new Date(task.activity_date) : null;
+      if (!taskDate) return false; // Tasks without dates excluded from filtered views
+
+      if (taskNavDateFilter === "today") {
+        return taskDate >= todayStart && taskDate <= todayEnd;
+      } else if (taskNavDateFilter === "past") {
+        return taskDate < todayStart;
+      } else if (taskNavDateFilter === "future") {
+        return taskDate > todayEnd;
+      }
+      return true;
+    });
+  }
+
+  function getCurrentTaskIndex(taskId: string): number {
+    const filtered = getFilteredUserTasks();
+    return filtered.findIndex((t) => t.id === taskId);
+  }
+
+  function handleNavigateToTask(targetTask: Task & { patient_name?: string }) {
+    if (!targetTask.patient_id) return;
+    // Navigate to the patient page with the tasks tab open and highlight the task
+    const url = `/patients/${targetTask.patient_id}?m_tab=crm&crm_sub=tasks&highlight_task=${targetTask.id}`;
+    router.push(url);
+  }
+
+  function handlePreviousTask(currentTaskId: string) {
+    const filtered = getFilteredUserTasks();
+    const currentIndex = filtered.findIndex((t) => t.id === currentTaskId);
+    if (currentIndex <= 0) return;
+    const prevTask = filtered[currentIndex - 1];
+    if (prevTask) handleNavigateToTask(prevTask);
+  }
+
+  function handleNextTask(currentTaskId: string) {
+    const filtered = getFilteredUserTasks();
+    const currentIndex = filtered.findIndex((t) => t.id === currentTaskId);
+    if (currentIndex < 0 || currentIndex >= filtered.length - 1) return;
+    const nextTask = filtered[currentIndex + 1];
+    if (nextTask) handleNavigateToTask(nextTask);
   }
 
   async function handleDealSubmit(event: FormEvent<HTMLFormElement>) {
@@ -3624,6 +3733,46 @@ export default function PatientActivityCard({
                             </p>
                           </div>
                           <div className="flex flex-col items-end gap-1 text-[11px]">
+                            {/* Task navigation arrows - only show if user is assigned to this task */}
+                            {task.assigned_user_id === currentUserId && getFilteredUserTasks().length > 1 && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <select
+                                  value={taskNavDateFilter}
+                                  onChange={(e) => setTaskNavDateFilter(e.target.value as "today" | "past" | "future" | "all")}
+                                  className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] text-slate-600 focus:border-sky-500 focus:outline-none"
+                                >
+                                  <option value="today">Today</option>
+                                  <option value="past">Past</option>
+                                  <option value="future">Future</option>
+                                  <option value="all">All</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePreviousTask(task.id)}
+                                  disabled={getCurrentTaskIndex(task.id) <= 0}
+                                  title="Previous task"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                                  </svg>
+                                </button>
+                                <span className="text-[9px] text-slate-400 min-w-[32px] text-center">
+                                  {getCurrentTaskIndex(task.id) >= 0 ? getCurrentTaskIndex(task.id) + 1 : "-"}/{getFilteredUserTasks().length}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleNextTask(task.id)}
+                                  disabled={getCurrentTaskIndex(task.id) >= getFilteredUserTasks().length - 1}
+                                  title="Next task"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
                             <div className="flex gap-1">
                               <button
                                 type="button"
