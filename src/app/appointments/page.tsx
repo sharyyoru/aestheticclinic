@@ -2863,6 +2863,7 @@ export default function CalendarPage() {
                                     const timeLabel = formatTimeRangeLabel(start, end && !Number.isNaN(end.getTime()) ? end : null);
 
                                     const category = getCategoryFromReason(appt.reason);
+                                    const notes = getNotesFromReason(appt.reason);
                                     const { statusLabel: dayStatusLabel } = getServiceAndStatusFromReason(appt.reason);
                                     const dayStatusIcon = getStatusIcon(dayStatusLabel);
 
@@ -2903,6 +2904,11 @@ export default function CalendarPage() {
                                           <div className="truncate text-[9px] text-slate-600">
                                             {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
                                           </div>
+                                          {notes && (
+                                            <div className="truncate text-[9px] text-slate-500 italic">
+                                              {notes}
+                                            </div>
+                                          )}
                                         </button>
                                         {/* Hover tooltip - position based on column location */}
                                         <div className={`pointer-events-none absolute top-0 z-[100] hidden min-w-[280px] rounded-lg border border-slate-200 bg-white p-3 text-[11px] shadow-xl group-hover:block ${tooltipPositionClass}`}>
@@ -2923,6 +2929,7 @@ export default function CalendarPage() {
                                             </div>
                                           )}
                                           {appt.location && <div className="text-slate-500 mt-1">📍 {appt.location}</div>}
+                                          {notes && <div className="text-slate-600 mt-1 italic border-t border-slate-100 pt-1">📝 {notes}</div>}
                                         </div>
                                       </div>
                                     );
