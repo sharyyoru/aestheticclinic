@@ -361,6 +361,10 @@ export default function PatientActivityCard({
   const [dealModalOpen, setDealModalOpen] = useState(false);
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
 
+  // Deal navigation state - all deals assigned to current user across patients
+  const [allUserDeals, setAllUserDeals] = useState<(Deal & { patient_name?: string })[]>([]);
+  const [allUserDealsLoading, setAllUserDealsLoading] = useState(false);
+
   // Appointment modal state
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const [appointmentDeal, setAppointmentDeal] = useState<Deal | null>(null);
@@ -695,6 +699,58 @@ export default function PatientActivityCard({
       isMounted = false;
     };
   }, [patientId]);
+
+  // Load all deals assigned to the current user for navigation
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAllUserDeals() {
+      if (!currentUserId) return;
+
+      try {
+        setAllUserDealsLoading(true);
+
+        // Fetch all deals where the current user is the owner
+        const { data: userDealsData, error: userDealsError } = await supabaseClient
+          .from("deals")
+          .select(`
+            id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, owner_id, owner_name, created_at, updated_at,
+            patients:patient_id (first_name, last_name)
+          `)
+          .eq("owner_id", currentUserId)
+          .order("updated_at", { ascending: false });
+
+        if (!isMounted) return;
+
+        if (userDealsError || !userDealsData) {
+          setAllUserDeals([]);
+          setAllUserDealsLoading(false);
+          return;
+        }
+
+        // Map deals with patient names
+        const dealsWithPatientNames = userDealsData.map((deal: any) => ({
+          ...deal,
+          patient_name: deal.patients 
+            ? `${deal.patients.first_name || ""} ${deal.patients.last_name || ""}`.trim() 
+            : "Unknown Patient",
+        }));
+
+        setAllUserDeals(dealsWithPatientNames);
+        setAllUserDealsLoading(false);
+      } catch {
+        if (!isMounted) return;
+        setAllUserDeals([]);
+        setAllUserDealsLoading(false);
+      }
+    }
+
+    loadAllUserDeals();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1776,6 +1832,32 @@ export default function PatientActivityCard({
     setDealOwnerId("");
     setDealOwnerSearch("");
     setDealOwnerDropdownOpen(false);
+  }
+
+  // Deal navigation - get current deal index and navigate to prev/next
+  function getCurrentDealIndex(dealId: string): number {
+    return allUserDeals.findIndex((d) => d.id === dealId);
+  }
+
+  function handleNavigateToDeal(targetDeal: Deal & { patient_name?: string }) {
+    if (!targetDeal.patient_id) return;
+    // Navigate to the patient page with the deals tab open and highlight the deal
+    const url = `/patients/${targetDeal.patient_id}?m_tab=crm&crm_sub=deals&highlight_deal=${targetDeal.id}`;
+    router.push(url);
+  }
+
+  function handlePreviousDeal(currentDealId: string) {
+    const currentIndex = getCurrentDealIndex(currentDealId);
+    if (currentIndex <= 0) return;
+    const prevDeal = allUserDeals[currentIndex - 1];
+    if (prevDeal) handleNavigateToDeal(prevDeal);
+  }
+
+  function handleNextDeal(currentDealId: string) {
+    const currentIndex = getCurrentDealIndex(currentDealId);
+    if (currentIndex < 0 || currentIndex >= allUserDeals.length - 1) return;
+    const nextDeal = allUserDeals[currentIndex + 1];
+    if (nextDeal) handleNavigateToDeal(nextDeal);
   }
 
   async function handleDealSubmit(event: FormEvent<HTMLFormElement>) {
@@ -3851,6 +3933,38 @@ export default function PatientActivityCard({
                         )}
                       </div>
                       <div className="flex items-center gap-2 self-end sm:self-start">
+                        {/* Deal navigation arrows - only show if user owns this deal */}
+                        {deal.owner_id === currentUserId && allUserDeals.length > 1 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handlePreviousDeal(deal.id)}
+                              disabled={getCurrentDealIndex(deal.id) <= 0}
+                              title="Previous deal"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <span className="sr-only">Previous deal</span>
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                              </svg>
+                            </button>
+                            <span className="text-[9px] text-slate-400 min-w-[40px] text-center">
+                              {getCurrentDealIndex(deal.id) + 1}/{allUserDeals.length}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleNextDeal(deal.id)}
+                              disabled={getCurrentDealIndex(deal.id) >= allUserDeals.length - 1}
+                              title="Next deal"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-500 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <span className="sr-only">Next deal</span>
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          </>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleOpenEditDeal(deal)}
