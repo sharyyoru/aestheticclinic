@@ -1993,11 +1993,14 @@ export default function CalendarPage() {
       return;
     }
 
-    // Check if the selected date is a weekend
-    const dayOfWeek = startLocal.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      setEditError("Weekend bookings are not available. Please select a weekday (Monday-Friday).");
-      return;
+    // Check if the selected date is a weekend (skip for system users or when cancelling)
+    const nextStatus = workflowToAppointmentStatus(editWorkflowStatus);
+    if (!isSystemUser && nextStatus !== "cancelled") {
+      const dayOfWeek = startLocal.getDay();
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        setEditError("Weekend bookings are not available. Please select a weekday (Monday-Friday).");
+        return;
+      }
     }
 
     const durationMinutes = editConsultationDuration || DAY_VIEW_SLOT_MINUTES;
@@ -2007,7 +2010,6 @@ export default function CalendarPage() {
 
     const startIso = startLocal.toISOString();
     const endIso = endLocal.toISOString();
-    const nextStatus = workflowToAppointmentStatus(editWorkflowStatus);
 
     try {
       setSavingEdit(true);
