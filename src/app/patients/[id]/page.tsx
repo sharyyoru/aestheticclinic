@@ -18,6 +18,7 @@ import PatientRendezvousTab from "./PatientRendezvousTab";
 import PatientCrmSection from "./PatientCrmSection";
 import CrmTabDropdown from "./CrmTabDropdown";
 import MedicationCard from "./MedicationCard";
+import AgeBadge from "./AgeBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -385,12 +386,7 @@ export default async function PatientPage({
                     : genderRaw}
                 </span>
               ) : null}
-              {age !== null ? (
-                <span className="inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-medium text-slate-50">
-                  <span className="opacity-80">Age</span>
-                  <span className="ml-1 font-semibold">{age}</span>
-                </span>
-              ) : null}
+              <AgeBadge patientId={patient.id} dob={rawDob || null} age={age} />
             </div>
           </div>
           <div className="flex items-center gap-2">
