@@ -340,7 +340,7 @@ export default function EmailRepliesNotificationsPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               if (patient?.id) {
-                                router.push(`/patients/${patient.id}`);
+                                router.push(`/patients/${patient.id}?m_tab=crm&crm_sub=emails`);
                               }
                             }}
                             className="font-medium text-sky-700 hover:text-sky-800 hover:underline"
@@ -406,7 +406,7 @@ export default function EmailRepliesNotificationsPage() {
                           type="button"
                           onClick={() => {
                             if (patient?.id) {
-                              router.push(`/patients/${patient.id}?tab=emails`);
+                              router.push(`/patients/${patient.id}?m_tab=crm&crm_sub=emails`);
                             }
                           }}
                           className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"

@@ -110,7 +110,7 @@ export default function HeaderNotificationsButton() {
                       void markAsRead(notification.id);
                     }
                     setDropdownOpen(false);
-                    router.push(`/patients/${notification.patient_id}?mode=crm&tab=email`);
+                    router.push(`/patients/${notification.patient_id}?m_tab=crm&crm_sub=emails`);
                   }}
                   className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
                     !notification.read_at ? "bg-sky-50/50" : ""

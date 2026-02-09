@@ -244,10 +244,8 @@ export default function CommentsPage() {
   }
 
   function buildPatientHref(id: string) {
-    if (priorityMode === "medical") {
-      return `/patients/${id}?mode=medical`;
-    }
-    return `/patients/${id}`;
+    // Always redirect to the CRM notes tab for patient note mentions
+    return `/patients/${id}?m_tab=crm&crm_sub=notes`;
   }
 
   useEffect(() => {
@@ -497,7 +495,7 @@ export default function CommentsPage() {
                               <span
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  router.push(`/patients/${patientId}`);
+                                  router.push(`/patients/${patientId}?m_tab=crm&crm_sub=tasks`);
                                 }}
                                 className="font-medium text-purple-700 hover:text-purple-800 hover:underline cursor-pointer"
                               >

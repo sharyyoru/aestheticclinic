@@ -434,7 +434,7 @@ export default function NotificationsPage() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                router.push(`/patients/${patientId}`);
+                                router.push(`/patients/${patientId}?m_tab=crm&crm_sub=tasks`);
                               }}
                               className="font-medium text-sky-700 hover:text-sky-800 hover:underline"
                             >
