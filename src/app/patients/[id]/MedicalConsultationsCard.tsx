@@ -34,7 +34,7 @@ type ConsultationRecordType =
 
 type SortOrder = "desc" | "asc";
 
-type InvoiceStatus = 
+type InvoiceStatus =
   | "OPEN"
   | "PAID"
   | "CANCELLED"
@@ -101,6 +101,7 @@ type InvoiceServiceLine = {
 type InvoiceService = {
   id: string;
   name: string;
+  code: string | null;
   base_price: number | null;
   category_id: string | null;
 };
@@ -536,7 +537,7 @@ export default function MedicalConsultationsCard({
             .order("name", { ascending: true }),
           supabaseClient
             .from("services")
-            .select("id, name, base_price, category_id")
+            .select("id, name, code, base_price, category_id")
             .order("name", { ascending: true }),
           supabaseClient
             .from("service_categories")
@@ -559,6 +560,7 @@ export default function MedicalConsultationsCard({
           const normalized = (serviceData as any[]).map((row) => ({
             id: row.id as string,
             name: row.name as string,
+            code: (row.code as string | null) ?? null,
             base_price:
               row.base_price !== null && row.base_price !== undefined
                 ? Number(row.base_price)
@@ -962,8 +964,8 @@ export default function MedicalConsultationsCard({
 
       setConsultations(prev =>
         prev.map(c =>
-          c.id === consultationId ? { 
-            ...c, 
+          c.id === consultationId ? {
+            ...c,
             invoice_is_paid: status === "PAID" || status === "OVERPAID" || status === "PARTIAL_PAID",
           } : c
         )
@@ -1482,6 +1484,7 @@ export default function MedicalConsultationsCard({
 
                           return {
                             label: service?.name ?? "Service",
+                            code: (service as any)?.code ?? null,
                             quantity,
                             unitPrice: resolvedUnitPrice,
                           };
@@ -1491,7 +1494,7 @@ export default function MedicalConsultationsCard({
 
                       const itemsHtml = invoiceLines
                         .map((line, index) => {
-                          const code = (index + 1).toString().padStart(4, "0");
+                          const code = line.code || (index + 1).toString().padStart(4, "0");
                           const qtyLabel = line.quantity.toString();
                           const unitLabel = `CHF ${line.unitPrice.toFixed(2)}`;
                           const lineTotal = line.unitPrice * line.quantity;
@@ -2160,7 +2163,7 @@ export default function MedicalConsultationsCard({
                                     )
                                     .map((service) => (
                                       <option key={service.id} value={service.id}>
-                                        {service.name}
+                                        {service.code ? `${service.code} - ` : ""}{service.name}
                                       </option>
                                     ))}
                                 </select>
@@ -2634,6 +2637,12 @@ export default function MedicalConsultationsCard({
                                       Item
                                     </span>
                                     <div className="truncate text-[11px] text-slate-800">
+                                      {service?.code && (
+                                        <>
+                                          <span className="font-bold text-[10px] mr-1">{service.code}</span>
+                                          <span className="text-slate-400 mr-1">-</span>
+                                        </>
+                                      )}
                                       {label}
                                     </div>
                                     {metaBits.length > 0 ? (
@@ -2835,18 +2844,17 @@ export default function MedicalConsultationsCard({
                 className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs"
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                    doc.fileType === "ap" 
-                      ? "bg-purple-100 text-purple-700" 
-                      : doc.fileType === "af"
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${doc.fileType === "ap"
+                    ? "bg-purple-100 text-purple-700"
+                    : doc.fileType === "af"
                       ? "bg-indigo-100 text-indigo-700"
                       : doc.fileType === "notes"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-blue-100 text-blue-700"
-                  }`}>
-                    {doc.fileType === "ap" ? "Medical Notes (AP)" : 
-                     doc.fileType === "af" ? "Medical Notes (AF)" :
-                     doc.fileType === "notes" ? "Notes" : "Consultation"}
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-blue-100 text-blue-700"
+                    }`}>
+                    {doc.fileType === "ap" ? "Medical Notes (AP)" :
+                      doc.fileType === "af" ? "Medical Notes (AF)" :
+                        doc.fileType === "notes" ? "Notes" : "Consultation"}
                   </span>
                   <span className="text-[10px] text-slate-400">
                     {doc.fileName}
@@ -3579,11 +3587,10 @@ export default function MedicalConsultationsCard({
                             handleMarkInvoicePaid(paymentStatusTarget.id, status, status === "PAID" ? paymentStatusTarget.invoice_total_amount ?? undefined : undefined);
                           }
                         }}
-                        className={`inline-flex items-center justify-center gap-1 rounded-lg border px-3 py-2 text-[11px] font-medium transition-all ${
-                          isCurrentStatus 
-                            ? `${config.bgColor} ${config.color} ${config.borderColor} ring-2 ring-offset-1 ring-slate-300`
-                            : `border-slate-200 bg-white text-slate-700 hover:${config.bgColor} hover:${config.color}`
-                        } disabled:opacity-50`}
+                        className={`inline-flex items-center justify-center gap-1 rounded-lg border px-3 py-2 text-[11px] font-medium transition-all ${isCurrentStatus
+                          ? `${config.bgColor} ${config.color} ${config.borderColor} ring-2 ring-offset-1 ring-slate-300`
+                          : `border-slate-200 bg-white text-slate-700 hover:${config.bgColor} hover:${config.color}`
+                          } disabled:opacity-50`}
                       >
                         {config.label}
                       </button>

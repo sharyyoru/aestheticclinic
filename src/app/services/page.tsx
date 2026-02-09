@@ -14,6 +14,7 @@ type Service = {
   id: string;
   category_id: string;
   name: string;
+  code: string | null;
   description: string | null;
   is_active: boolean;
   base_price: number | null;
@@ -143,7 +144,7 @@ export default function ServicesPage() {
         const { data: serviceData, error: serviceError } = await supabaseClient
           .from("services")
           .select(
-            "id, category_id, name, description, is_active, base_price",
+            "id, category_id, name, code, description, is_active, base_price",
           )
           .order("created_at", { ascending: true });
 
@@ -160,6 +161,7 @@ export default function ServicesPage() {
           id: row.id as string,
           category_id: row.category_id as string,
           name: row.name as string,
+          code: (row.code as string | null) ?? null,
           description: (row.description as string | null) ?? null,
           is_active: (row.is_active as boolean) ?? true,
           base_price:
@@ -303,7 +305,7 @@ export default function ServicesPage() {
           base_price: priceValue,
           is_active: true,
         })
-        .select("id, category_id, name, description, is_active, base_price")
+        .select("id, category_id, name, code, description, is_active, base_price")
         .single();
 
       if (error || !data) {
@@ -316,6 +318,7 @@ export default function ServicesPage() {
         id: created.id as string,
         category_id: created.category_id as string,
         name: created.name as string,
+        code: (created.code as string | null) ?? null,
         description: (created.description as string | null) ?? null,
         is_active: (created.is_active as boolean) ?? true,
         base_price:
@@ -611,7 +614,7 @@ export default function ServicesPage() {
           base_price: priceValue,
         })
         .eq("id", serviceId)
-        .select("id, category_id, name, description, is_active, base_price")
+        .select("id, category_id, name, code, description, is_active, base_price")
         .single();
 
       if (error || !data) {
@@ -624,6 +627,7 @@ export default function ServicesPage() {
         id: updated.id as string,
         category_id: updated.category_id as string,
         name: updated.name as string,
+        code: (updated.code as string | null) ?? null,
         description: (updated.description as string | null) ?? null,
         is_active: (updated.is_active as boolean) ?? true,
         base_price:
@@ -827,9 +831,8 @@ export default function ServicesPage() {
                   .filter((category) => {
                     const term = categorySearch.trim().toLowerCase();
                     if (!term) return true;
-                    const haystack = `${category.name} ${
-                      category.description ?? ""
-                    }`.toLowerCase();
+                    const haystack = `${category.name} ${category.description ?? ""
+                      }`.toLowerCase();
                     return haystack.includes(term);
                   })
                   .map((category) => {
@@ -980,82 +983,82 @@ export default function ServicesPage() {
 
           {showCreateService && (
             <form onSubmit={handleCreateService} className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-medium text-slate-700">
-                  Category
-                </label>
-                <select
-                  value={selectedCategoryId}
-                  onChange={(event) => setSelectedCategoryId(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                >
-                  {categories.length === 0 ? (
-                    <option value="">No categories yet</option>
-                  ) : (
-                    categories
-                      .slice()
-                      .sort((a, b) => a.sort_order - b.sort_order)
-                      .map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700">
-                  Service name
-                </label>
-                <input
-                  type="text"
-                  value={newServiceName}
-                  onChange={(event) => setNewServiceName(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  placeholder="Liposuction"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-              <div>
-                <label className="block text-xs font-medium text-slate-700">
-                  Description (optional)
-                </label>
-                <textarea
-                  value={newServiceDescription}
-                  onChange={(event) =>
-                    setNewServiceDescription(event.target.value)
-                  }
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  rows={2}
-                  placeholder="Short description of the service"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700">
-                  Price (CHF)
-                </label>
-                <div className="mt-1 flex rounded-lg border border-slate-200 bg-white text-xs text-slate-900 shadow-sm focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400">
-                  <span className="inline-flex items-center px-2 text-[11px] text-slate-500">
-                    CHF
-                  </span>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Category
+                  </label>
+                  <select
+                    value={selectedCategoryId}
+                    onChange={(event) => setSelectedCategoryId(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  >
+                    {categories.length === 0 ? (
+                      <option value="">No categories yet</option>
+                    ) : (
+                      categories
+                        .slice()
+                        .sort((a, b) => a.sort_order - b.sort_order)
+                        .map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Service name
+                  </label>
                   <input
-                    type="number"
-                    min="0"
-                    step="0.05"
-                    value={newServicePrice}
-                    onChange={(event) => setNewServicePrice(event.target.value)}
-                    className="flex-1 rounded-r-lg border-0 bg-transparent px-2 py-1.5 text-right outline-none"
-                    placeholder="0.00"
+                    type="text"
+                    value={newServiceName}
+                    onChange={(event) => setNewServiceName(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    placeholder="Liposuction"
                   />
                 </div>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Leave blank if price is variable or defined elsewhere.
-                </p>
               </div>
-            </div>
+
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Description (optional)
+                  </label>
+                  <textarea
+                    value={newServiceDescription}
+                    onChange={(event) =>
+                      setNewServiceDescription(event.target.value)
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    rows={2}
+                    placeholder="Short description of the service"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Price (CHF)
+                  </label>
+                  <div className="mt-1 flex rounded-lg border border-slate-200 bg-white text-xs text-slate-900 shadow-sm focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400">
+                    <span className="inline-flex items-center px-2 text-[11px] text-slate-500">
+                      CHF
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.05"
+                      value={newServicePrice}
+                      onChange={(event) => setNewServicePrice(event.target.value)}
+                      className="flex-1 rounded-r-lg border-0 bg-transparent px-2 py-1.5 text-right outline-none"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Leave blank if price is variable or defined elsewhere.
+                  </p>
+                </div>
+              </div>
 
               {serviceMessage ? (
                 <p className="text-xs text-slate-500">{serviceMessage}</p>
@@ -1162,231 +1165,235 @@ export default function ServicesPage() {
             ) : services.length === 0 ? (
               <p className="mt-2 text-xs text-slate-500">No services yet.</p>
             ) : (() => {
-                const filteredServices = services
-                  .filter((service) => {
-                    // Category filter
-                    if (categoryFilter !== "all" && service.category_id !== categoryFilter) {
-                      return false;
-                    }
-                    // Search filter
-                    const term = serviceSearch.trim().toLowerCase();
-                    if (!term) return true;
-                    const category = categoriesById.get(service.category_id);
-                    const haystack = `${service.name} ${
-                      service.description ?? ""
+              const filteredServices = services
+                .filter((service) => {
+                  // Category filter
+                  if (categoryFilter !== "all" && service.category_id !== categoryFilter) {
+                    return false;
+                  }
+                  // Search filter
+                  const term = serviceSearch.trim().toLowerCase();
+                  if (!term) return true;
+                  const category = categoriesById.get(service.category_id);
+                  const haystack = `${service.name} ${service.description ?? ""
                     } ${category ? category.name : ""}`.toLowerCase();
-                    return haystack.includes(term);
-                  });
+                  return haystack.includes(term);
+                });
 
-                const totalPages = Math.ceil(filteredServices.length / ITEMS_PER_PAGE);
-                const startIndex = (servicesPage - 1) * ITEMS_PER_PAGE;
-                const endIndex = startIndex + ITEMS_PER_PAGE;
-                const paginatedServices = filteredServices.slice(startIndex, endIndex);
+              const totalPages = Math.ceil(filteredServices.length / ITEMS_PER_PAGE);
+              const startIndex = (servicesPage - 1) * ITEMS_PER_PAGE;
+              const endIndex = startIndex + ITEMS_PER_PAGE;
+              const paginatedServices = filteredServices.slice(startIndex, endIndex);
 
-                return (
-                  <>
-                    <div className="mt-2 space-y-1 text-xs">
-                      {paginatedServices.map((service) => {
-                    const category = categoriesById.get(service.category_id);
-                    const isEditing = editingServiceId === service.id;
-                    const isSaving = savingServiceId === service.id;
-                    const isDeleting = deletingServiceId === service.id;
+              return (
+                <>
+                  <div className="mt-2 space-y-1 text-xs">
+                    {paginatedServices.map((service) => {
+                      const category = categoriesById.get(service.category_id);
+                      const isEditing = editingServiceId === service.id;
+                      const isSaving = savingServiceId === service.id;
+                      const isDeleting = deletingServiceId === service.id;
 
-                    if (isEditing) {
+                      if (isEditing) {
+                        return (
+                          <div
+                            key={service.id}
+                            className="space-y-2 rounded-md bg-slate-50/70 px-2 py-2"
+                          >
+                            <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                              <div className="space-y-1">
+                                <input
+                                  type="text"
+                                  value={editServiceName}
+                                  onChange={(event) =>
+                                    setEditServiceName(event.target.value)
+                                  }
+                                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                />
+                                <select
+                                  value={editServiceCategoryId}
+                                  onChange={(event) =>
+                                    setEditServiceCategoryId(event.target.value)
+                                  }
+                                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                >
+                                  {categories
+                                    .slice()
+                                    .sort((a, b) => a.sort_order - b.sort_order)
+                                    .map((category) => (
+                                      <option key={category.id} value={category.id}>
+                                        {category.name}
+                                      </option>
+                                    ))}
+                                </select>
+                                <textarea
+                                  value={editServiceDescription}
+                                  onChange={(event) =>
+                                    setEditServiceDescription(event.target.value)
+                                  }
+                                  rows={2}
+                                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                />
+                              </div>
+                              <div className="flex flex-col items-end gap-1 text-[11px]">
+                                <span className="text-slate-500">
+                                  {category ? category.name : "Unknown category"}
+                                </span>
+                                <div className="mt-1 flex w-full rounded-lg border border-slate-200 bg-white text-xs text-slate-900 shadow-sm focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400">
+                                  <span className="inline-flex items-center px-2 text-[11px] text-slate-500">
+                                    CHF
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.05"
+                                    value={editServicePrice}
+                                    onChange={(event) =>
+                                      setEditServicePrice(event.target.value)
+                                    }
+                                    className="flex-1 rounded-r-lg border-0 bg-transparent px-2 py-1.5 text-right outline-none"
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                <div className="flex gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleSaveService(service.id)}
+                                    disabled={isSaving}
+                                    className="inline-flex items-center rounded-full bg-emerald-500 px-3 py-0.5 font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {isSaving ? "Saving..." : "Save"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEditService}
+                                    disabled={isSaving}
+                                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-0.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteService(service.id)}
+                                  disabled={isDeleting || isSaving}
+                                  className="mt-1 inline-flex items-center text-[11px] font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {isDeleting ? "Deleting..." : "Delete"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div
                           key={service.id}
-                          className="space-y-2 rounded-md bg-slate-50/70 px-2 py-2"
+                          className="flex items-center justify-between rounded-md bg-slate-50/70 px-2 py-1"
                         >
-                          <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                            <div className="space-y-1">
-                              <input
-                                type="text"
-                                value={editServiceName}
-                                onChange={(event) =>
-                                  setEditServiceName(event.target.value)
-                                }
-                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                              />
-                              <select
-                                value={editServiceCategoryId}
-                                onChange={(event) =>
-                                  setEditServiceCategoryId(event.target.value)
-                                }
-                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                              >
-                                {categories
-                                  .slice()
-                                  .sort((a, b) => a.sort_order - b.sort_order)
-                                  .map((category) => (
-                                    <option key={category.id} value={category.id}>
-                                      {category.name}
-                                    </option>
-                                  ))}
-                              </select>
-                              <textarea
-                                value={editServiceDescription}
-                                onChange={(event) =>
-                                  setEditServiceDescription(event.target.value)
-                                }
-                                rows={2}
-                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                              />
+                          <div>
+                            <div className="font-medium text-slate-900">
+                              {service.code && (
+                                <>
+                                  <span className="font-bold text-[10px] mr-1">{service.code}</span>
+                                  <span className="text-slate-400 mr-1">-</span>
+                                </>
+                              )}
+                              {service.name}
                             </div>
-                            <div className="flex flex-col items-end gap-1 text-[11px]">
-                              <span className="text-slate-500">
-                                {category ? category.name : "Unknown category"}
-                              </span>
-                              <div className="mt-1 flex w-full rounded-lg border border-slate-200 bg-white text-xs text-slate-900 shadow-sm focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400">
-                                <span className="inline-flex items-center px-2 text-[11px] text-slate-500">
-                                  CHF
-                                </span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.05"
-                                  value={editServicePrice}
-                                  onChange={(event) =>
-                                    setEditServicePrice(event.target.value)
-                                  }
-                                  className="flex-1 rounded-r-lg border-0 bg-transparent px-2 py-1.5 text-right outline-none"
-                                  placeholder="0.00"
-                                />
-                              </div>
-                              <div className="flex gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSaveService(service.id)}
-                                  disabled={isSaving}
-                                  className="inline-flex items-center rounded-full bg-emerald-500 px-3 py-0.5 font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  {isSaving ? "Saving..." : "Save"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleCancelEditService}
-                                  disabled={isSaving}
-                                  className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-0.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                            <div className="text-[11px] text-slate-500">
+                              {category ? category.name : "Unknown category"}
+                              {service.description
+                                ? ` · ${service.description}`
+                                : ""}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 text-[11px] text-slate-700">
+                            {service.base_price !== null ? (
+                              <span>CHF {service.base_price.toFixed(2)}</span>
+                            ) : (
+                              <span className="text-slate-400">CHF —</span>
+                            )}
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditService(service)}
+                                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                              >
+                                Edit
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => void handleDeleteService(service.id)}
-                                disabled={isDeleting || isSaving}
-                                className="mt-1 inline-flex items-center text-[11px] font-medium text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={deletingServiceId === service.id}
+                                className="inline-flex items-center rounded-full border border-red-100 bg-red-50 px-2 py-0.5 font-medium text-red-600 shadow-sm hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                {isDeleting ? "Deleting..." : "Delete"}
+                                {deletingServiceId === service.id
+                                  ? "Deleting..."
+                                  : "Delete"}
                               </button>
                             </div>
                           </div>
                         </div>
                       );
-                    }
+                    })}
+                  </div>
 
-                    return (
-                      <div
-                        key={service.id}
-                        className="flex items-center justify-between rounded-md bg-slate-50/70 px-2 py-1"
-                      >
-                        <div>
-                          <div className="font-medium text-slate-900">
-                            {service.name}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {category ? category.name : "Unknown category"}
-                            {service.description
-                              ? ` · ${service.description}`
-                              : ""}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 text-[11px] text-slate-700">
-                          {service.base_price !== null ? (
-                            <span>CHF {service.base_price.toFixed(2)}</span>
-                          ) : (
-                            <span className="text-slate-400">CHF —</span>
-                          )}
-                          <div className="flex gap-1">
+                  {/* Pagination controls */}
+                  {totalPages > 1 && (
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <p className="text-[11px] text-slate-500">
+                        Showing {startIndex + 1} to {Math.min(endIndex, filteredServices.length)} of {filteredServices.length} services
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setServicesPage((p) => Math.max(1, p - 1))}
+                          disabled={servicesPage === 1}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          ←
+                        </button>
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum: number;
+                          if (totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (servicesPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (servicesPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i;
+                          } else {
+                            pageNum = servicesPage - 2 + i;
+                          }
+                          return (
                             <button
+                              key={pageNum}
                               type="button"
-                              onClick={() => handleStartEditService(service)}
-                              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteService(service.id)}
-                              disabled={deletingServiceId === service.id}
-                              className="inline-flex items-center rounded-full border border-red-100 bg-red-50 px-2 py-0.5 font-medium text-red-600 shadow-sm hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {deletingServiceId === service.id
-                                ? "Deleting..."
-                                : "Delete"}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Pagination controls */}
-                    {totalPages > 1 && (
-                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                        <p className="text-[11px] text-slate-500">
-                          Showing {startIndex + 1} to {Math.min(endIndex, filteredServices.length)} of {filteredServices.length} services
-                        </p>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setServicesPage((p) => Math.max(1, p - 1))}
-                            disabled={servicesPage === 1}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            ←
-                          </button>
-                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                            let pageNum: number;
-                            if (totalPages <= 5) {
-                              pageNum = i + 1;
-                            } else if (servicesPage <= 3) {
-                              pageNum = i + 1;
-                            } else if (servicesPage >= totalPages - 2) {
-                              pageNum = totalPages - 4 + i;
-                            } else {
-                              pageNum = servicesPage - 2 + i;
-                            }
-                            return (
-                              <button
-                                key={pageNum}
-                                type="button"
-                                onClick={() => setServicesPage(pageNum)}
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] ${
-                                  servicesPage === pageNum
-                                    ? "border-emerald-500 bg-emerald-500 text-white"
-                                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                              onClick={() => setServicesPage(pageNum)}
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] ${servicesPage === pageNum
+                                ? "border-emerald-500 bg-emerald-500 text-white"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                                 }`}
-                              >
-                                {pageNum}
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            onClick={() => setServicesPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={servicesPage === totalPages}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            →
-                          </button>
-                        </div>
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setServicesPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={servicesPage === totalPages}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          →
+                        </button>
                       </div>
-                    )}
-                  </>
-                );
-              })()}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {error ? (
               <p className="mt-2 text-xs text-red-600">{error}</p>
@@ -1408,179 +1415,178 @@ export default function ServicesPage() {
                 </div>
               </div>
               <form onSubmit={handleCreateGroup} className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-700">
-                  Group name
-                </label>
-                <input
-                  type="text"
-                  value={newGroupName}
-                  onChange={(event) => setNewGroupName(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  placeholder="Pre-op bundle"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700">
-                  Description (optional)
-                </label>
-                <textarea
-                  value={newGroupDescription}
-                  onChange={(event) => setNewGroupDescription(event.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  rows={2}
-                  placeholder="Example: Common services for a standard pre-op visit"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700">
-                  Group discount (%)
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.5"
-                    value={newGroupDiscountPercent}
-                    onChange={(event) =>
-                      setNewGroupDiscountPercent(event.target.value)
-                    }
-                    className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                    placeholder="0"
-                  />
-                  <span className="text-[11px] text-slate-500">
-                    Applied to all services in the group that do not have an
-                    item-specific discount.
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700">
-                  Services in this group
-                </label>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Select one or more services to bundle. You can update groups later in the
-                  database if needed.
-                </p>
-                <div className="mt-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Group name
+                  </label>
                   <input
                     type="text"
-                    value={groupServiceSearch}
-                    onChange={(event) => setGroupServiceSearch(event.target.value)}
-                    placeholder="Search services by name or category..."
-                    className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    value={newGroupName}
+                    onChange={(event) => setNewGroupName(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    placeholder="Pre-op bundle"
                   />
                 </div>
-                <div className="mt-2 max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/70 p-2">
-                  {services.length === 0 ? (
-                    <p className="text-[11px] text-slate-500">
-                      No services available yet.
-                    </p>
-                  ) : (
-                    services
-                      .filter((service) => {
-                        const term = groupServiceSearch.trim().toLowerCase();
-                        if (!term) return true;
-                        const category = categoriesById.get(service.category_id);
-                        const haystack = `${service.name} ${
-                          service.description ?? ""
-                          } ${category ? category.name : ""}`.toLowerCase();
-                        return haystack.includes(term);
-                      })
-                      .map((service) => {
-                        const category = categoriesById.get(service.category_id);
-                        const checked = selectedGroupServiceIds.includes(service.id);
-                        const discountInput =
-                          groupServiceDiscountInputs[service.id] ?? "";
-                        const quantityInput =
-                          groupServiceQuantityInputs[service.id] ?? "";
-                        return (
-                          <label
-                            key={service.id}
-                            className="flex cursor-pointer items-center justify-between rounded-md bg-white px-2 py-1 text-[11px] text-slate-700 shadow-sm hover:bg-slate-50"
-                          >
-                            <span className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(event) => {
-                                  const isChecked = event.target.checked;
-                                  setSelectedGroupServiceIds((prev) =>
-                                    isChecked
-                                      ? [...prev, service.id]
-                                      : prev.filter((id) => id !== service.id),
-                                  );
-                                  setGroupServiceQuantityInputs((prev) => {
-                                    if (isChecked) {
-                                      const existing =
-                                        (prev[service.id] ?? "").trim();
-                                      return {
-                                        ...prev,
-                                        [service.id]: existing || "1",
-                                      };
-                                    }
-                                    const { [service.id]: _removed, ...rest } = prev;
-                                    return rest;
-                                  });
-                                }}
-                                className="h-3 w-3 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400"
-                              />
-                              <span>
-                                <span className="font-medium text-slate-900">
-                                  {service.name}
-                                </span>
-                                <span className="ml-1 text-[10px] text-slate-500">
-                                  {category ? `(${category.name})` : ""}
-                                </span>
-                              </span>
-                            </span>
-                            <span className="flex items-center gap-2 text-[10px] text-slate-600">
-                              <span>
-                                {service.base_price !== null
-                                  ? `CHF ${service.base_price.toFixed(2)}`
-                                  : "CHF —"}
-                              </span>
-                              <input
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={quantityInput}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setGroupServiceQuantityInputs((prev) => ({
-                                    ...prev,
-                                    [service.id]: value,
-                                  }));
-                                }}
-                                className="w-12 rounded border border-slate-200 bg-white px-1 py-0.5 text-right text-[10px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                                placeholder="Qty"
-                              />
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.5"
-                                value={discountInput}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setGroupServiceDiscountInputs((prev) => ({
-                                    ...prev,
-                                    [service.id]: value,
-                                  }));
-                                }}
-                                className="w-14 rounded border border-slate-200 bg-white px-1 py-0.5 text-right text-[10px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                                placeholder="%"
-                              />
-                            </span>
-                          </label>
-                        );
-                      })
-                  )}
+                <div>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Description (optional)
+                  </label>
+                  <textarea
+                    value={newGroupDescription}
+                    onChange={(event) => setNewGroupDescription(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    rows={2}
+                    placeholder="Example: Common services for a standard pre-op visit"
+                  />
                 </div>
-              </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Group discount (%)
+                  </label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      value={newGroupDiscountPercent}
+                      onChange={(event) =>
+                        setNewGroupDiscountPercent(event.target.value)
+                      }
+                      className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      placeholder="0"
+                    />
+                    <span className="text-[11px] text-slate-500">
+                      Applied to all services in the group that do not have an
+                      item-specific discount.
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700">
+                    Services in this group
+                  </label>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Select one or more services to bundle. You can update groups later in the
+                    database if needed.
+                  </p>
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      value={groupServiceSearch}
+                      onChange={(event) => setGroupServiceSearch(event.target.value)}
+                      placeholder="Search services by name or category..."
+                      className="w-full rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    />
+                  </div>
+                  <div className="mt-2 max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/70 p-2">
+                    {services.length === 0 ? (
+                      <p className="text-[11px] text-slate-500">
+                        No services available yet.
+                      </p>
+                    ) : (
+                      services
+                        .filter((service) => {
+                          const term = groupServiceSearch.trim().toLowerCase();
+                          if (!term) return true;
+                          const category = categoriesById.get(service.category_id);
+                          const haystack = `${service.name} ${service.description ?? ""
+                            } ${category ? category.name : ""}`.toLowerCase();
+                          return haystack.includes(term);
+                        })
+                        .map((service) => {
+                          const category = categoriesById.get(service.category_id);
+                          const checked = selectedGroupServiceIds.includes(service.id);
+                          const discountInput =
+                            groupServiceDiscountInputs[service.id] ?? "";
+                          const quantityInput =
+                            groupServiceQuantityInputs[service.id] ?? "";
+                          return (
+                            <label
+                              key={service.id}
+                              className="flex cursor-pointer items-center justify-between rounded-md bg-white px-2 py-1 text-[11px] text-slate-700 shadow-sm hover:bg-slate-50"
+                            >
+                              <span className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) => {
+                                    const isChecked = event.target.checked;
+                                    setSelectedGroupServiceIds((prev) =>
+                                      isChecked
+                                        ? [...prev, service.id]
+                                        : prev.filter((id) => id !== service.id),
+                                    );
+                                    setGroupServiceQuantityInputs((prev) => {
+                                      if (isChecked) {
+                                        const existing =
+                                          (prev[service.id] ?? "").trim();
+                                        return {
+                                          ...prev,
+                                          [service.id]: existing || "1",
+                                        };
+                                      }
+                                      const { [service.id]: _removed, ...rest } = prev;
+                                      return rest;
+                                    });
+                                  }}
+                                  className="h-3 w-3 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400"
+                                />
+                                <span>
+                                  <span className="font-medium text-slate-900">
+                                    {service.name}
+                                  </span>
+                                  <span className="ml-1 text-[10px] text-slate-500">
+                                    {category ? `(${category.name})` : ""}
+                                  </span>
+                                </span>
+                              </span>
+                              <span className="flex items-center gap-2 text-[10px] text-slate-600">
+                                <span>
+                                  {service.base_price !== null
+                                    ? `CHF ${service.base_price.toFixed(2)}`
+                                    : "CHF —"}
+                                </span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={quantityInput}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setGroupServiceQuantityInputs((prev) => ({
+                                      ...prev,
+                                      [service.id]: value,
+                                    }));
+                                  }}
+                                  className="w-12 rounded border border-slate-200 bg-white px-1 py-0.5 text-right text-[10px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                  placeholder="Qty"
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.5"
+                                  value={discountInput}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    setGroupServiceDiscountInputs((prev) => ({
+                                      ...prev,
+                                      [service.id]: value,
+                                    }));
+                                  }}
+                                  className="w-14 rounded border border-slate-200 bg-white px-1 py-0.5 text-right text-[10px] text-slate-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                  placeholder="%"
+                                />
+                              </span>
+                            </label>
+                          );
+                        })
+                    )}
+                  </div>
+                </div>
 
                 {groupMessage ? (
                   <p className="text-xs text-slate-500">{groupMessage}</p>
@@ -1658,231 +1664,229 @@ export default function ServicesPage() {
             ) : serviceGroups.length === 0 ? (
               <p className="mt-2 text-xs text-slate-500">No groups yet.</p>
             ) : (() => {
-                const filteredGroups = serviceGroups
-                  .slice()
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .filter((group) => {
-                    const term = groupSearch.trim().toLowerCase();
-                    if (!term) return true;
-                    const haystack = `${group.name} ${
-                      group.description ?? ""
+              const filteredGroups = serviceGroups
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .filter((group) => {
+                  const term = groupSearch.trim().toLowerCase();
+                  if (!term) return true;
+                  const haystack = `${group.name} ${group.description ?? ""
                     }`.toLowerCase();
-                    return haystack.includes(term);
-                  });
+                  return haystack.includes(term);
+                });
 
-                const totalPages = Math.ceil(filteredGroups.length / ITEMS_PER_PAGE);
-                const startIndex = (groupsPage - 1) * ITEMS_PER_PAGE;
-                const endIndex = startIndex + ITEMS_PER_PAGE;
-                const paginatedGroups = filteredGroups.slice(startIndex, endIndex);
+              const totalPages = Math.ceil(filteredGroups.length / ITEMS_PER_PAGE);
+              const startIndex = (groupsPage - 1) * ITEMS_PER_PAGE;
+              const endIndex = startIndex + ITEMS_PER_PAGE;
+              const paginatedGroups = filteredGroups.slice(startIndex, endIndex);
 
-                return (
-                  <>
-                    <ul className="mt-3 space-y-1 text-xs text-slate-700">
-                      {paginatedGroups.map((group) => {
-                    const links = groupServices.filter(
-                      (link) => link.group_id === group.id,
-                    );
-                    const linkedServices = links
-                      .map((link) => servicesById.get(link.service_id))
-                      .filter((s): s is Service => Boolean(s));
+              return (
+                <>
+                  <ul className="mt-3 space-y-1 text-xs text-slate-700">
+                    {paginatedGroups.map((group) => {
+                      const links = groupServices.filter(
+                        (link) => link.group_id === group.id,
+                      );
+                      const linkedServices = links
+                        .map((link) => servicesById.get(link.service_id))
+                        .filter((s): s is Service => Boolean(s));
 
-                    const linkByServiceId = new Map(
-                      links.map((link) => [link.service_id, link] as const),
-                    );
-                    const groupDiscountPercent = group.discount_percent ?? 0;
+                      const linkByServiceId = new Map(
+                        links.map((link) => [link.service_id, link] as const),
+                      );
+                      const groupDiscountPercent = group.discount_percent ?? 0;
 
-                    const totalQuantity = links.reduce((sum, link) => {
-                      const rawQuantity = link.quantity;
-                      const quantity =
-                        typeof rawQuantity === "number" &&
-                        Number.isFinite(rawQuantity) &&
-                        rawQuantity > 0
-                          ? rawQuantity
-                          : 1;
-                      return sum + quantity;
-                    }, 0);
+                      const totalQuantity = links.reduce((sum, link) => {
+                        const rawQuantity = link.quantity;
+                        const quantity =
+                          typeof rawQuantity === "number" &&
+                            Number.isFinite(rawQuantity) &&
+                            rawQuantity > 0
+                            ? rawQuantity
+                            : 1;
+                        return sum + quantity;
+                      }, 0);
 
-                    const originalTotal = linkedServices.reduce((sum, service) => {
-                      const price = service.base_price ?? 0;
-                      const link = linkByServiceId.get(service.id);
-                      const rawQuantity = link?.quantity;
-                      const quantity =
-                        typeof rawQuantity === "number" &&
-                        Number.isFinite(rawQuantity) &&
-                        rawQuantity > 0
-                          ? rawQuantity
-                          : 1;
-                      return sum + price * quantity;
-                    }, 0);
+                      const originalTotal = linkedServices.reduce((sum, service) => {
+                        const price = service.base_price ?? 0;
+                        const link = linkByServiceId.get(service.id);
+                        const rawQuantity = link?.quantity;
+                        const quantity =
+                          typeof rawQuantity === "number" &&
+                            Number.isFinite(rawQuantity) &&
+                            rawQuantity > 0
+                            ? rawQuantity
+                            : 1;
+                        return sum + price * quantity;
+                      }, 0);
 
-                    const groupTotal = linkedServices.reduce((sum, service) => {
-                      const price = service.base_price ?? 0;
-                      const link = linkByServiceId.get(service.id);
-                      const rawQuantity = link?.quantity;
-                      const quantity =
-                        typeof rawQuantity === "number" &&
-                        Number.isFinite(rawQuantity) &&
-                        rawQuantity > 0
-                          ? rawQuantity
-                          : 1;
-                      let discountPercent =
-                        link && link.discount_percent !== null
-                          ? link.discount_percent
-                          : groupDiscountPercent;
-                      if (!Number.isFinite(discountPercent) || discountPercent < 0) {
-                        discountPercent = 0;
-                      }
-                      if (discountPercent > 100) discountPercent = 100;
-                      const discountedUnitPrice =
-                        price * (1 - (discountPercent as number) / 100);
-                      return sum + discountedUnitPrice * quantity;
-                    }, 0);
+                      const groupTotal = linkedServices.reduce((sum, service) => {
+                        const price = service.base_price ?? 0;
+                        const link = linkByServiceId.get(service.id);
+                        const rawQuantity = link?.quantity;
+                        const quantity =
+                          typeof rawQuantity === "number" &&
+                            Number.isFinite(rawQuantity) &&
+                            rawQuantity > 0
+                            ? rawQuantity
+                            : 1;
+                        let discountPercent =
+                          link && link.discount_percent !== null
+                            ? link.discount_percent
+                            : groupDiscountPercent;
+                        if (!Number.isFinite(discountPercent) || discountPercent < 0) {
+                          discountPercent = 0;
+                        }
+                        if (discountPercent > 100) discountPercent = 100;
+                        const discountedUnitPrice =
+                          price * (1 - (discountPercent as number) / 100);
+                        return sum + discountedUnitPrice * quantity;
+                      }, 0);
 
-                    const hasDiscount =
-                      originalTotal > 0 && groupTotal < originalTotal - 0.005;
+                      const hasDiscount =
+                        originalTotal > 0 && groupTotal < originalTotal - 0.005;
 
-                    return (
-                      <li
-                        key={group.id}
-                        className="space-y-1 rounded-md bg-slate-50/70 px-2 py-2"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="font-medium text-slate-900">
-                              {group.name}
-                            </div>
-                            {group.description ? (
-                              <div className="text-[11px] text-slate-500">
-                                {group.description}
+                      return (
+                        <li
+                          key={group.id}
+                          className="space-y-1 rounded-md bg-slate-50/70 px-2 py-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="font-medium text-slate-900">
+                                {group.name}
                               </div>
-                            ) : null}
-                            <div className="mt-1 text-[11px] text-slate-500">
-                              {totalQuantity} service
-                              {totalQuantity === 1 ? "" : "s"}
-                              {originalTotal > 0 ? (
-                                hasDiscount ? (
-                                  <span className="ml-1 text-slate-400">
-                                    · CHF {originalTotal.toFixed(2)} → CHF {groupTotal.toFixed(2)}
-                                  </span>
-                                ) : (
-                                  <span className="ml-1 text-slate-400">
-                                    · Total CHF {groupTotal.toFixed(2)}
-                                  </span>
-                                )
+                              {group.description ? (
+                                <div className="text-[11px] text-slate-500">
+                                  {group.description}
+                                </div>
                               ) : null}
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                {totalQuantity} service
+                                {totalQuantity === 1 ? "" : "s"}
+                                {originalTotal > 0 ? (
+                                  hasDiscount ? (
+                                    <span className="ml-1 text-slate-400">
+                                      · CHF {originalTotal.toFixed(2)} → CHF {groupTotal.toFixed(2)}
+                                    </span>
+                                  ) : (
+                                    <span className="ml-1 text-slate-400">
+                                      · Total CHF {groupTotal.toFixed(2)}
+                                    </span>
+                                  )
+                                ) : null}
+                              </div>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteGroup(group.id)}
+                              disabled={deletingGroupId === group.id}
+                              className="inline-flex items-center rounded-full border border-red-100 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600 shadow-sm hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingGroupId === group.id ? "Deleting..." : "Delete"}
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteGroup(group.id)}
-                            disabled={deletingGroupId === group.id}
-                            className="inline-flex items-center rounded-full border border-red-100 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600 shadow-sm hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {deletingGroupId === group.id ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
-                        {linkedServices.length > 0 ? (
-                          <ul className="mt-1 space-y-0.5 text-[11px] text-slate-600">
-                            {linkedServices.map((service) => {
-                              const category = categoriesById.get(
-                                service.category_id,
-                              );
-                              const link = linkByServiceId.get(service.id);
-                              const rawQuantity = link?.quantity;
-                              const quantity =
-                                typeof rawQuantity === "number" &&
-                                Number.isFinite(rawQuantity) &&
-                                rawQuantity > 0
-                                  ? rawQuantity
-                                  : 1;
-                              const unitPrice = service.base_price ?? 0;
-                              const lineTotal =
-                                service.base_price !== null ? unitPrice * quantity : null;
-                              return (
-                                <li key={service.id} className="flex justify-between">
-                                  <span>
-                                    {service.name}
-                                    {quantity > 1 ? (
-                                      <span className="ml-1 text-[10px] text-slate-400">
-                                        ×{quantity}
-                                      </span>
-                                    ) : null}
-                                    {category ? (
-                                      <span className="ml-1 text-[10px] text-slate-400">
-                                        ({category.name})
-                                      </span>
-                                    ) : null}
-                                  </span>
-                                  <span className="text-[10px] text-slate-500">
-                                    {lineTotal !== null
-                                      ? `CHF ${lineTotal.toFixed(2)}`
-                                      : "CHF —"}
-                                  </span>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        ) : null}
-                      </li>
-                        );
-                      })}
-                    </ul>
+                          {linkedServices.length > 0 ? (
+                            <ul className="mt-1 space-y-0.5 text-[11px] text-slate-600">
+                              {linkedServices.map((service) => {
+                                const category = categoriesById.get(
+                                  service.category_id,
+                                );
+                                const link = linkByServiceId.get(service.id);
+                                const rawQuantity = link?.quantity;
+                                const quantity =
+                                  typeof rawQuantity === "number" &&
+                                    Number.isFinite(rawQuantity) &&
+                                    rawQuantity > 0
+                                    ? rawQuantity
+                                    : 1;
+                                const unitPrice = service.base_price ?? 0;
+                                const lineTotal =
+                                  service.base_price !== null ? unitPrice * quantity : null;
+                                return (
+                                  <li key={service.id} className="flex justify-between">
+                                    <span>
+                                      {service.name}
+                                      {quantity > 1 ? (
+                                        <span className="ml-1 text-[10px] text-slate-400">
+                                          ×{quantity}
+                                        </span>
+                                      ) : null}
+                                      {category ? (
+                                        <span className="ml-1 text-[10px] text-slate-400">
+                                          ({category.name})
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500">
+                                      {lineTotal !== null
+                                        ? `CHF ${lineTotal.toFixed(2)}`
+                                        : "CHF —"}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
 
-                    {/* Pagination controls */}
-                    {totalPages > 1 && (
-                      <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
-                        <p className="text-[11px] text-slate-500">
-                          Showing {startIndex + 1} to {Math.min(endIndex, filteredGroups.length)} of {filteredGroups.length} groups
-                        </p>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setGroupsPage((p) => Math.max(1, p - 1))}
-                            disabled={groupsPage === 1}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            ←
-                          </button>
-                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                            let pageNum: number;
-                            if (totalPages <= 5) {
-                              pageNum = i + 1;
-                            } else if (groupsPage <= 3) {
-                              pageNum = i + 1;
-                            } else if (groupsPage >= totalPages - 2) {
-                              pageNum = totalPages - 4 + i;
-                            } else {
-                              pageNum = groupsPage - 2 + i;
-                            }
-                            return (
-                              <button
-                                key={pageNum}
-                                type="button"
-                                onClick={() => setGroupsPage(pageNum)}
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] ${
-                                  groupsPage === pageNum
-                                    ? "border-emerald-500 bg-emerald-500 text-white"
-                                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  {/* Pagination controls */}
+                  {totalPages > 1 && (
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <p className="text-[11px] text-slate-500">
+                        Showing {startIndex + 1} to {Math.min(endIndex, filteredGroups.length)} of {filteredGroups.length} groups
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setGroupsPage((p) => Math.max(1, p - 1))}
+                          disabled={groupsPage === 1}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          ←
+                        </button>
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum: number;
+                          if (totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (groupsPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (groupsPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i;
+                          } else {
+                            pageNum = groupsPage - 2 + i;
+                          }
+                          return (
+                            <button
+                              key={pageNum}
+                              type="button"
+                              onClick={() => setGroupsPage(pageNum)}
+                              className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border text-[11px] ${groupsPage === pageNum
+                                ? "border-emerald-500 bg-emerald-500 text-white"
+                                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                                 }`}
-                              >
-                                {pageNum}
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            onClick={() => setGroupsPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={groupsPage === totalPages}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            →
-                          </button>
-                        </div>
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => setGroupsPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={groupsPage === totalPages}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-[11px] text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          →
+                        </button>
                       </div>
-                    )}
-                  </>
-                );
-              })()}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       ) : null}
