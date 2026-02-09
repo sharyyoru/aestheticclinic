@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import CollapseSidebarOnMount from "@/components/CollapseSidebarOnMount";
 
 import EditPatientDetailsButton from "./EditPatientDetailsButton";
@@ -43,7 +43,7 @@ type MedicalTab =
   | "medication";
 
 async function getPatientWithDetails(id: string) {
-  const { data: patient, error } = await supabaseClient
+  const { data: patient, error } = await supabaseAdmin
     .from("patients")
     .select(
       "id, first_name, last_name, email, phone, gender, dob, marital_status, nationality, street_address, postal_code, town, profession, current_employer, source, notes, avatar_url, language_preference, clinic_preference, lifecycle_stage, contact_owner_name, contact_owner_email, created_by, created_at, updated_at",
@@ -55,7 +55,7 @@ async function getPatientWithDetails(id: string) {
     return { patient: null, insurance: [] } as const;
   }
 
-  const { data: insurance } = await supabaseClient
+  const { data: insurance } = await supabaseAdmin
     .from("patient_insurances")
     .select("id, provider_name, card_number, insurance_type, created_at")
     .eq("patient_id", id)
@@ -130,7 +130,7 @@ async function getInvoiceSummary(
   };
 
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await supabaseAdmin
       .from("consultations")
       .select(
         "content, record_type, is_archived, payment_method, invoice_total_amount, invoice_is_complimentary, invoice_is_paid",

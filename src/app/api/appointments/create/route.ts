@@ -24,15 +24,18 @@ type CreateAppointmentPayload = {
   scheduleReminder?: boolean;
 };
 
+// Mailgun only allows scheduling emails up to 24 hours in advance
+const MAILGUN_MAX_SCHEDULE_HOURS = 24;
+
 async function sendEmail(
   to: string,
   subject: string,
   html: string,
   scheduledFor?: Date | null
-) {
+): Promise<{ sent: boolean; scheduled: boolean; reason?: string }> {
   if (!mailgunApiKey || !mailgunDomain) {
     console.log("Mailgun not configured, skipping email send");
-    return;
+    return { sent: false, scheduled: false, reason: "Mailgun not configured" };
   }
 
   const domain = mailgunDomain as string;
@@ -44,8 +47,19 @@ async function sendEmail(
   formData.append("subject", subject);
   formData.append("html", html);
 
-  if (scheduledFor && scheduledFor.getTime() > Date.now()) {
-    formData.append("o:deliverytime", scheduledFor.toUTCString());
+  // Check if we can use Mailgun's scheduled delivery (must be within 24 hours)
+  const now = Date.now();
+  const maxScheduleTime = now + MAILGUN_MAX_SCHEDULE_HOURS * 60 * 60 * 1000;
+  
+  if (scheduledFor && scheduledFor.getTime() > now) {
+    if (scheduledFor.getTime() <= maxScheduleTime) {
+      // Within 24 hours - use Mailgun's scheduled delivery
+      formData.append("o:deliverytime", scheduledFor.toUTCString());
+    } else {
+      // Beyond 24 hours - don't send now, will be handled by cron job from scheduled_emails table
+      console.log(`Email scheduled for ${scheduledFor.toISOString()} is beyond Mailgun's 24-hour limit. Will be sent by cron job.`);
+      return { sent: false, scheduled: true, reason: "Beyond 24-hour limit, stored for cron job" };
+    }
   }
 
   const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
@@ -63,6 +77,8 @@ async function sendEmail(
     console.error("Error sending email via Mailgun", response.status, text);
     throw new Error(`Failed to send email: ${response.status}`);
   }
+  
+  return { sent: true, scheduled: !!scheduledFor };
 }
 
 function formatAppointmentDate(date: Date): string {
@@ -349,124 +365,174 @@ export async function POST(request: Request) {
 
     const appointmentId = appointment.id;
 
+    // Send confirmation emails in parallel (non-blocking for faster response)
+    const confirmationEmailPromises: Promise<void>[] = [];
+
     // Send confirmation email to patient
     if (sendPatientEmail && patientEmail) {
-      try {
-        const patientEmailHtml = generatePatientEmailHtml(
-          patientName,
-          appointmentDateObj,
-          location || null,
-          notes || null
-        );
-        await sendEmail(
-          patientEmail,
-          `Appointment Confirmed - ${formatAppointmentDate(appointmentDateObj)}`,
-          patientEmailHtml
-        );
-        console.log("Patient confirmation email sent to:", patientEmail);
-      } catch (err) {
-        console.error("Error sending patient email:", err);
-      }
+      confirmationEmailPromises.push((async () => {
+        try {
+          const patientEmailHtml = generatePatientEmailHtml(
+            patientName,
+            appointmentDateObj,
+            location || null,
+            notes || null
+          );
+          await sendEmail(
+            patientEmail,
+            `Appointment Confirmed - ${formatAppointmentDate(appointmentDateObj)}`,
+            patientEmailHtml
+          );
+          console.log("Patient confirmation email sent to:", patientEmail);
+        } catch (err) {
+          console.error("Error sending patient email:", err);
+        }
+      })());
     }
 
     // Send notification email to provider/staff
     if (sendUserEmail && assignedUserEmail) {
-      try {
-        const userEmailHtml = generateUserEmailHtml(
-          assignedUserName,
-          patientName,
-          patientEmail || "Not provided",
-          appointmentDateObj,
-          location || null,
-          notes || null
-        );
-        await sendEmail(
-          assignedUserEmail,
-          `New Appointment: ${patientName} - ${formatAppointmentDate(appointmentDateObj)}`,
-          userEmailHtml
-        );
-        console.log("Provider notification email sent to:", assignedUserEmail);
-      } catch (err) {
-        console.error("Error sending provider email:", err);
-      }
+      confirmationEmailPromises.push((async () => {
+        try {
+          const userEmailHtml = generateUserEmailHtml(
+            assignedUserName,
+            patientName,
+            patientEmail || "Not provided",
+            appointmentDateObj,
+            location || null,
+            notes || null
+          );
+          await sendEmail(
+            assignedUserEmail,
+            `New Appointment: ${patientName} - ${formatAppointmentDate(appointmentDateObj)}`,
+            userEmailHtml
+          );
+          console.log("Provider notification email sent to:", assignedUserEmail);
+        } catch (err) {
+          console.error("Error sending provider email:", err);
+        }
+      })());
     }
 
-    // Schedule reminder emails for 1 day before
+    // Wait for confirmation emails (these are important, so we wait)
+    // But they run in parallel, so it's faster than sequential
+    await Promise.allSettled(confirmationEmailPromises);
+
+    // Schedule reminder emails for 1 day before (non-blocking)
     if (scheduleReminder) {
       const reminderDate = new Date(appointmentDateObj);
       reminderDate.setDate(reminderDate.getDate() - 1);
 
       // Only schedule if reminder date is in the future
       if (reminderDate.getTime() > Date.now()) {
-        // Schedule patient reminder
-        if (patientEmail) {
-          try {
-            const patientReminderHtml = generateReminderEmailHtml(
-              patientName,
-              true,
-              patientName,
-              appointmentDateObj,
-              location || null
-            );
+        // Run reminder scheduling in background (don't await to prevent blocking)
+        const scheduleReminders = async () => {
+          const reminderPromises: Promise<void>[] = [];
 
-            // Store in scheduled_emails table
-            await supabase.from("scheduled_emails").insert({
-              patient_id: patientId,
-              appointment_id: appointmentId,
-              recipient_type: "patient",
-              recipient_email: patientEmail,
-              subject: `Reminder: Appointment Tomorrow - ${formatAppointmentDate(appointmentDateObj)}`,
-              body: patientReminderHtml,
-              scheduled_for: reminderDate.toISOString(),
-              status: "pending",
-            });
+          // Schedule patient reminder
+          if (patientEmail) {
+            reminderPromises.push((async () => {
+              try {
+                const patientReminderHtml = generateReminderEmailHtml(
+                  patientName,
+                  true,
+                  patientName,
+                  appointmentDateObj,
+                  location || null
+                );
 
-            // Send via Mailgun with scheduled delivery
-            await sendEmail(
-              patientEmail,
-              `Reminder: Appointment Tomorrow - ${formatAppointmentDate(appointmentDateObj)}`,
-              patientReminderHtml,
-              reminderDate
-            );
-            console.log("Patient reminder scheduled for:", reminderDate.toISOString());
-          } catch (err) {
-            console.error("Error scheduling patient reminder:", err);
+                // Always store in scheduled_emails table for cron job backup
+                await supabase.from("scheduled_emails").insert({
+                  patient_id: patientId,
+                  appointment_id: appointmentId,
+                  recipient_type: "patient",
+                  recipient_email: patientEmail,
+                  subject: `Reminder: Appointment Tomorrow - ${formatAppointmentDate(appointmentDateObj)}`,
+                  body: patientReminderHtml,
+                  scheduled_for: reminderDate.toISOString(),
+                  status: "pending",
+                });
+
+                // Try to send via Mailgun (will skip if beyond 24-hour limit)
+                const result = await sendEmail(
+                  patientEmail,
+                  `Reminder: Appointment Tomorrow - ${formatAppointmentDate(appointmentDateObj)}`,
+                  patientReminderHtml,
+                  reminderDate
+                );
+                
+                // If Mailgun sent/scheduled it, mark as sent in DB
+                if (result.sent) {
+                  await supabase.from("scheduled_emails")
+                    .update({ status: "sent" })
+                    .eq("appointment_id", appointmentId)
+                    .eq("recipient_type", "patient");
+                }
+                
+                console.log("Patient reminder scheduled for:", reminderDate.toISOString(), result);
+              } catch (err) {
+                console.error("Error scheduling patient reminder:", err);
+                // Don't throw - this is a non-critical operation
+              }
+            })());
           }
-        }
 
-        // Schedule provider reminder
-        if (assignedUserEmail) {
-          try {
-            const providerReminderHtml = generateReminderEmailHtml(
-              assignedUserName,
-              false,
-              patientName,
-              appointmentDateObj,
-              location || null
-            );
+          // Schedule provider reminder
+          if (assignedUserEmail) {
+            reminderPromises.push((async () => {
+              try {
+                const providerReminderHtml = generateReminderEmailHtml(
+                  assignedUserName,
+                  false,
+                  patientName,
+                  appointmentDateObj,
+                  location || null
+                );
 
-            await supabase.from("scheduled_emails").insert({
-              patient_id: patientId,
-              appointment_id: appointmentId,
-              recipient_type: "provider",
-              recipient_email: assignedUserEmail,
-              subject: `Reminder: Appointment with ${patientName} Tomorrow`,
-              body: providerReminderHtml,
-              scheduled_for: reminderDate.toISOString(),
-              status: "pending",
-            });
+                // Always store in scheduled_emails table for cron job backup
+                await supabase.from("scheduled_emails").insert({
+                  patient_id: patientId,
+                  appointment_id: appointmentId,
+                  recipient_type: "provider",
+                  recipient_email: assignedUserEmail,
+                  subject: `Reminder: Appointment with ${patientName} Tomorrow`,
+                  body: providerReminderHtml,
+                  scheduled_for: reminderDate.toISOString(),
+                  status: "pending",
+                });
 
-            await sendEmail(
-              assignedUserEmail,
-              `Reminder: Appointment with ${patientName} Tomorrow`,
-              providerReminderHtml,
-              reminderDate
-            );
-            console.log("Provider reminder scheduled for:", reminderDate.toISOString());
-          } catch (err) {
-            console.error("Error scheduling provider reminder:", err);
+                // Try to send via Mailgun (will skip if beyond 24-hour limit)
+                const result = await sendEmail(
+                  assignedUserEmail,
+                  `Reminder: Appointment with ${patientName} Tomorrow`,
+                  providerReminderHtml,
+                  reminderDate
+                );
+                
+                // If Mailgun sent/scheduled it, mark as sent in DB
+                if (result.sent) {
+                  await supabase.from("scheduled_emails")
+                    .update({ status: "sent" })
+                    .eq("appointment_id", appointmentId)
+                    .eq("recipient_type", "provider");
+                }
+                
+                console.log("Provider reminder scheduled for:", reminderDate.toISOString(), result);
+              } catch (err) {
+                console.error("Error scheduling provider reminder:", err);
+                // Don't throw - this is a non-critical operation
+              }
+            })());
           }
-        }
+
+          // Run all reminder scheduling in parallel
+          await Promise.allSettled(reminderPromises);
+        };
+
+        // Fire and forget - don't block the response
+        scheduleReminders().catch(err => {
+          console.error("Error in reminder scheduling:", err);
+        });
       }
     }
 
