@@ -36,6 +36,8 @@ interface StorageItem {
 interface ListedItem extends StorageItem {
   kind: "file" | "folder";
   path: string;
+  source?: "patient-documents" | "patient-docs"; // Track which bucket the file came from
+  publicUrl?: string; // For patient-docs files
 }
 
 function formatFileSize(bytes: number | undefined): string {
@@ -154,6 +156,68 @@ export default function PatientDocumentsTab({
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
 
+  // State for files from patient-docs/5_Documents folder
+  const [legacyDocsItems, setLegacyDocsItems] = useState<ListedItem[]>([]);
+  const [legacyDocsLoading, setLegacyDocsLoading] = useState(false);
+
+  // Fetch files from patient-docs/5_Documents folder (legacy storage)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLegacyDocs() {
+      if (!patientName || patientName === "Patient") return;
+      
+      // Parse first and last name from patientName
+      const nameParts = patientName.trim().split(/\s+/);
+      if (nameParts.length < 2) return;
+      
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(" ");
+
+      setLegacyDocsLoading(true);
+
+      try {
+        const response = await fetch("/api/patient-docs/list-documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ firstName, lastName }),
+        });
+
+        if (cancelled) return;
+
+        if (!response.ok) {
+          setLegacyDocsLoading(false);
+          return;
+        }
+
+        const data = await response.json();
+        const files: ListedItem[] = (data.files || []).map((file: any) => ({
+          name: file.name,
+          id: file.path,
+          updated_at: file.updatedAt,
+          created_at: file.createdAt,
+          metadata: { size: file.size, mimetype: file.mimeType },
+          kind: "file" as const,
+          path: file.path,
+          source: "patient-docs" as const,
+          publicUrl: file.publicUrl,
+        }));
+
+        setLegacyDocsItems(files);
+      } catch (err) {
+        console.error("Error loading legacy docs:", err);
+      } finally {
+        if (!cancelled) setLegacyDocsLoading(false);
+      }
+    }
+
+    void loadLegacyDocs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [patientName, refreshKey]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -224,12 +288,21 @@ export default function PatientDocumentsTab({
           ...base,
           kind: "file",
           path: `${currentPrefix}${raw.name}`,
+          source: "patient-documents",
         });
       }
+
+      // Merge with legacy docs, avoiding duplicates
+      // A file is considered duplicate if it has the same name
+      const existingFileNames = new Set(files.map(f => f.name.toLowerCase()));
+      const uniqueLegacyDocs = currentPrefix === "" 
+        ? legacyDocsItems.filter(ld => !existingFileNames.has(ld.name.toLowerCase()))
+        : []; // Only show legacy docs at root level
 
       const combined: ListedItem[] = [
         ...Object.values(folders).sort((a, b) => a.name.localeCompare(b.name)),
         ...files,
+        ...uniqueLegacyDocs,
       ];
 
       // Sort files based on sortBy and sortOrder
@@ -266,7 +339,7 @@ export default function PatientDocumentsTab({
     return () => {
       cancelled = true;
     };
-  }, [patientId, currentPrefix, selectedFile, refreshKey]);
+  }, [patientId, currentPrefix, selectedFile, refreshKey, legacyDocsItems]);
 
   const breadcrumbSegments = useMemo(() => {
     const segments = currentPrefix.split("/").filter(Boolean);
@@ -375,6 +448,12 @@ export default function PatientDocumentsTab({
   const selectedFilePreviewUrl = useMemo(() => {
     if (!selectedFile || selectedFile.kind !== "file") return null;
 
+    // For patient-docs files, use the pre-fetched publicUrl
+    if (selectedFile.source === "patient-docs" && selectedFile.publicUrl) {
+      return selectedFile.publicUrl;
+    }
+
+    // For patient-documents bucket files
     const fullPath = [patientId, selectedFile.path]
       .filter(Boolean)
       .join("/");
@@ -1003,15 +1082,19 @@ export default function PatientDocumentsTab({
                       );
                     }
 
-                    const fullPath = [patientId, item.path]
-                      .filter(Boolean)
-                      .join("/");
-
-                    const { data } = supabaseClient.storage
-                      .from(BUCKET_NAME)
-                      .getPublicUrl(fullPath);
-
-                    const thumbUrl = data.publicUrl;
+                    // For patient-docs files, use the pre-fetched publicUrl
+                    let thumbUrl: string;
+                    if (item.source === "patient-docs" && item.publicUrl) {
+                      thumbUrl = item.publicUrl;
+                    } else {
+                      const fullPath = [patientId, item.path]
+                        .filter(Boolean)
+                        .join("/");
+                      const { data } = supabaseClient.storage
+                        .from(BUCKET_NAME)
+                        .getPublicUrl(fullPath);
+                      thumbUrl = data.publicUrl;
+                    }
                     const ext = getExtension(item.name);
                     const isImageThumb = [
                       "jpg",
@@ -1062,9 +1145,16 @@ export default function PatientDocumentsTab({
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-medium text-slate-800">
-                            {item.name}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="truncate text-[12px] font-medium text-slate-800">
+                              {item.name}
+                            </p>
+                            {item.source === "patient-docs" && (
+                              <span className="flex-shrink-0 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700" title="Imported from legacy storage">
+                                Legacy
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <p className="text-[10px] text-slate-500">
                               {formatFileSize((item.metadata as any)?.size)}
@@ -1100,35 +1190,37 @@ export default function PatientDocumentsTab({
                           </svg>
                           Preview
                         </button>
-                        {/* Action buttons - show on hover */}
-                        <div className="flex-shrink-0 hidden group-hover:flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartRename(item);
-                            }}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                            title="Rename"
-                          >
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteFile(item);
-                            }}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
-                            title="Delete"
-                          >
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
+                        {/* Action buttons - show on hover (only for patient-documents bucket files) */}
+                        {item.source !== "patient-docs" && (
+                          <div className="flex-shrink-0 hidden group-hover:flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartRename(item);
+                              }}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                              title="Rename"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteFile(item);
+                              }}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                              title="Delete"
+                            >
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
