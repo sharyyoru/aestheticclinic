@@ -84,33 +84,36 @@ async function fetchAllFolders(): Promise<{ name: string; id: string | null }[]>
 }
 
 // Helper to fetch all file names from patient-documents bucket recursively
-async function fetchAllPatientDocumentFileNames(patientId: string): Promise<Set<string>> {
-  const fileNames = new Set<string>();
-  
+async function fetchAllPatientDocumentKeys(patientId: string): Promise<Set<string>> {
+  const keys = new Set<string>();
+
   async function listRecursive(prefix: string) {
     const { data, error } = await supabaseAdmin.storage
       .from(PATIENT_DOCUMENTS_BUCKET)
       .list(prefix, { limit: 1000 });
-    
+
     if (error || !data) return;
-    
-    for (const item of data) {
+
+    for (const item of data as any[]) {
       if (item.name === ".keep") continue;
-      
-      // Check if it's a folder (id is null for folders in Supabase)
-      if (item.id === null) {
-        // It's a folder - recurse into it
+
+      // Folder detection: be safer than item.id === null
+      const isFolder = item.id == null && item.metadata == null;
+
+      if (isFolder) {
         const folderPath = prefix ? `${prefix}/${item.name}` : item.name;
         await listRecursive(folderPath);
-      } else {
-        // It's a file - add the filename (lowercased)
-        fileNames.add(item.name.toLowerCase());
+        continue;
       }
+
+      // ✅ Dedup key = normalized filename only
+      const normalizedName = normalizeForMatch(item.name);
+      keys.add(normalizedName);
     }
   }
-  
+
   await listRecursive(patientId);
-  return fileNames;
+  return keys;
 }
 
 export async function POST(request: NextRequest) {
@@ -123,12 +126,12 @@ export async function POST(request: NextRequest) {
     }
     
     // Fetch all file names from patient-documents bucket for deduplication
-    const existingFileNames = patientId 
-      ? await fetchAllPatientDocumentFileNames(patientId)
+    const existingKeys = patientId
+      ? await fetchAllPatientDocumentKeys(patientId)
       : new Set<string>();
-    
-    console.log("Existing file names in patient-documents:", Array.from(existingFileNames));
 
+    console.log("Existing keys in patient-documents:", Array.from(existingKeys));
+    
     const searchFirstNameLower = firstName.toLowerCase().trim();
     const searchLastNameLower = lastName.toLowerCase().trim();
 
@@ -177,31 +180,31 @@ export async function POST(request: NextRequest) {
 
       // Process each file in 5_Documents
       for (const file of files) {
-        // Skip placeholder files
         if (file.name === ".keep" || file.name === ".emptyFolderPlaceholder") continue;
-        
+
         const filePath = `${documentsPath}/${file.name}`;
-        
-        // Get signed URL (valid for 1 hour) since bucket is not public
+
         const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin.storage
           .from(BUCKET_NAME)
-          .createSignedUrl(filePath, 3600); // 1 hour expiry
+          .createSignedUrl(filePath, 3600);
 
-        if (signedUrlError || !signedUrlData?.signedUrl) {
-          console.error("Error creating signed URL for", filePath, signedUrlError);
-          continue;
-        }
+        if (signedUrlError || !signedUrlData?.signedUrl) continue;
 
-        // Skip if file already exists in patient-documents bucket (deduplication)
-        if (existingFileNames.has(file.name.toLowerCase())) {
-          console.log("Skipping duplicate file:", file.name);
+        const legacyDisplayName = file.name.replace(/_/g, "-");
+        const normalizedLegacyName = normalizeForMatch(legacyDisplayName);
+
+        const legacySize = (file as any).metadata?.size ?? null;
+
+        // ✅ Dedup by normalized filename only
+        if (existingKeys.has(normalizedLegacyName)) {
+          console.log("Skipping duplicate legacy file (name):", legacyDisplayName);
           continue;
         }
 
         documentFiles.push({
-          name: file.name,
-          path: filePath,
-          size: (file as any).metadata?.size || null,
+          name: legacyDisplayName,          // ✅ UI shows '-' instead of '_'
+          path: filePath,                   // ✅ still points to the real storage object
+          size: legacySize,
           mimeType: (file as any).metadata?.mimetype || null,
           createdAt: (file as any).created_at || null,
           updatedAt: (file as any).updated_at || null,
@@ -216,4 +219,11 @@ export async function POST(request: NextRequest) {
     console.error("Error in list-documents POST:", error);
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
+}
+
+function normalizeForMatch(fileName: string): string {
+  return fileName
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
 }
