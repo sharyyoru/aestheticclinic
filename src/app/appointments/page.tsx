@@ -781,6 +781,7 @@ export default function CalendarPage() {
   const [createDoctorCalendarId, setCreateDoctorCalendarId] = useState("");
 
   const closeAllCreateDropdowns = (except?: string) => {
+    if (except !== "patient") setShowCreatePatientSuggestions(false);
     if (except !== "service") setServiceDropdownOpen(false);
     if (except !== "status") setStatusDropdownOpen(false);
     if (except !== "category") setCategoryDropdownOpen(false);
@@ -3281,7 +3282,19 @@ export default function CalendarPage() {
               }
             }}
           >
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]" style={{ touchAction: 'auto' } as React.CSSProperties}>
+            <div 
+              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]" 
+              style={{ touchAction: 'auto' } as React.CSSProperties}
+              onClick={(e) => {
+                // Close dropdowns only if clicking on the modal background, not on inputs
+                if ((e.target as HTMLElement).tagName !== 'INPUT' && 
+                    (e.target as HTMLElement).tagName !== 'TEXTAREA' &&
+                    (e.target as HTMLElement).tagName !== 'SELECT' &&
+                    (e.target as HTMLElement).tagName !== 'BUTTON') {
+                  closeAllCreateDropdowns();
+                }
+              }}
+            >
               <div className="flex items-start justify-between gap-2">
                 <h2 className="text-sm font-semibold text-slate-900">Add appointment</h2>
                 <button
@@ -3350,7 +3363,7 @@ export default function CalendarPage() {
                         setCreatePatientId(null);
                         setCreatePatientName("");
                       }}
-                      onFocus={() => setShowCreatePatientSuggestions(true)}
+                      onFocus={() => { closeAllCreateDropdowns("patient"); setShowCreatePatientSuggestions(true); }}
                       placeholder="Select patient"
                       className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
