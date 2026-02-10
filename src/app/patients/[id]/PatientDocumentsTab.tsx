@@ -159,53 +159,9 @@ export default function PatientDocumentsTab({
   // State for files from patient-docs/5_Documents folder
   const [legacyDocsItems, setLegacyDocsItems] = useState<ListedItem[]>([]);
   const [legacyDocsLoading, setLegacyDocsLoading] = useState(false);
-  // State for all file names in patient-documents bucket (for deduplication)
-  const [allPatientDocFileNames, setAllPatientDocFileNames] = useState<Set<string>>(new Set());
-
-  // Fetch ALL file names from patient-documents bucket recursively (for deduplication)
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchAllFileNames() {
-      const fileNames = new Set<string>();
-      
-      async function listRecursive(prefix: string) {
-        const listPath = prefix || undefined;
-        const { data, error } = await supabaseClient.storage
-          .from(BUCKET_NAME)
-          .list(listPath, { limit: 1000 });
-        
-        if (error || !data) return;
-        
-        for (const item of data) {
-          if (item.name === ".keep") continue;
-          
-          // Check if it's a folder (has nested items or no metadata)
-          if (item.id === null || item.name.includes("/")) {
-            // It's a folder - recurse into it
-            const folderPath = prefix ? `${prefix}/${item.name}` : item.name;
-            await listRecursive(folderPath);
-          } else {
-            // It's a file - add the filename (lowercased)
-            fileNames.add(item.name.toLowerCase());
-          }
-        }
-      }
-      
-      await listRecursive(patientId);
-      if (!cancelled) {
-        setAllPatientDocFileNames(fileNames);
-      }
-    }
-
-    void fetchAllFileNames();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [patientId, refreshKey]);
 
   // Fetch files from patient-docs/5_Documents folder (legacy storage)
+  // Deduplication is done server-side by passing patientId
   useEffect(() => {
     let cancelled = false;
 
@@ -225,7 +181,7 @@ export default function PatientDocumentsTab({
         const response = await fetch("/api/patient-docs/list-documents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ firstName, lastName }),
+          body: JSON.stringify({ firstName, lastName, patientId }),
         });
 
         if (cancelled) return;
@@ -237,9 +193,8 @@ export default function PatientDocumentsTab({
 
         const data = await response.json();
         
-        // Filter out files that already exist in patient-documents bucket
+        // Files are already deduplicated server-side
         const files: ListedItem[] = (data.files || [])
-          .filter((file: any) => !allPatientDocFileNames.has(file.name.toLowerCase()))
           .map((file: any) => ({
             name: file.name,
             id: file.path,
@@ -265,7 +220,7 @@ export default function PatientDocumentsTab({
     return () => {
       cancelled = true;
     };
-  }, [patientName, refreshKey, allPatientDocFileNames]);
+  }, [patientName, patientId, refreshKey]);
 
   useEffect(() => {
     let cancelled = false;

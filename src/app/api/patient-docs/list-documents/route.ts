@@ -10,6 +10,7 @@ const supabaseAdmin = createClient(
 );
 
 const BUCKET_NAME = "patient-docs";
+const PATIENT_DOCUMENTS_BUCKET = "patient-documents";
 
 type DocumentFile = {
   name: string;
@@ -82,14 +83,51 @@ async function fetchAllFolders(): Promise<{ name: string; id: string | null }[]>
   return allFolders;
 }
 
+// Helper to fetch all file names from patient-documents bucket recursively
+async function fetchAllPatientDocumentFileNames(patientId: string): Promise<Set<string>> {
+  const fileNames = new Set<string>();
+  
+  async function listRecursive(prefix: string) {
+    const { data, error } = await supabaseAdmin.storage
+      .from(PATIENT_DOCUMENTS_BUCKET)
+      .list(prefix, { limit: 1000 });
+    
+    if (error || !data) return;
+    
+    for (const item of data) {
+      if (item.name === ".keep") continue;
+      
+      // Check if it's a folder (id is null for folders in Supabase)
+      if (item.id === null) {
+        // It's a folder - recurse into it
+        const folderPath = prefix ? `${prefix}/${item.name}` : item.name;
+        await listRecursive(folderPath);
+      } else {
+        // It's a file - add the filename (lowercased)
+        fileNames.add(item.name.toLowerCase());
+      }
+    }
+  }
+  
+  await listRecursive(patientId);
+  return fileNames;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { firstName, lastName } = body;
+    const { firstName, lastName, patientId } = body;
 
     if (!firstName || !lastName) {
       return NextResponse.json({ error: "firstName and lastName are required" }, { status: 400 });
     }
+    
+    // Fetch all file names from patient-documents bucket for deduplication
+    const existingFileNames = patientId 
+      ? await fetchAllPatientDocumentFileNames(patientId)
+      : new Set<string>();
+    
+    console.log("Existing file names in patient-documents:", Array.from(existingFileNames));
 
     const searchFirstNameLower = firstName.toLowerCase().trim();
     const searchLastNameLower = lastName.toLowerCase().trim();
@@ -151,6 +189,12 @@ export async function POST(request: NextRequest) {
 
         if (signedUrlError || !signedUrlData?.signedUrl) {
           console.error("Error creating signed URL for", filePath, signedUrlError);
+          continue;
+        }
+
+        // Skip if file already exists in patient-documents bucket (deduplication)
+        if (existingFileNames.has(file.name.toLowerCase())) {
+          console.log("Skipping duplicate file:", file.name);
           continue;
         }
 
