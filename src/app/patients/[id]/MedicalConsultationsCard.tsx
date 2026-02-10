@@ -96,6 +96,7 @@ type InvoiceServiceLine = {
   unitPrice: number | null;
   groupId: string | null;
   discountPercent: number | null;
+  customName: string | null;
 };
 
 type InvoiceService = {
@@ -1547,7 +1548,7 @@ export default function MedicalConsultationsCard({
                           })();
 
                           return {
-                            label: service?.name ?? "Service",
+                            label: line.customName || service?.name || "Service",
                             code: (service as any)?.code ?? null,
                             quantity,
                             unitPrice: resolvedUnitPrice,
@@ -2259,6 +2260,7 @@ export default function MedicalConsultationsCard({
                                       unitPrice,
                                       groupId: null,
                                       discountPercent: null,
+                                      customName: null,
                                     },
                                   ]);
                                   setInvoiceSelectedServiceId("");
@@ -2351,6 +2353,7 @@ export default function MedicalConsultationsCard({
                                         unitPrice,
                                         groupId: invoiceGroupId,
                                         discountPercent,
+                                        customName: null,
                                       });
                                     }
                                     return next;
@@ -2419,6 +2422,7 @@ export default function MedicalConsultationsCard({
                                       unitPrice,
                                       groupId: null,
                                       discountPercent: null,
+                                      customName: null,
                                     },
                                   ]);
                                   setSelectedTardocCode("");
@@ -2664,7 +2668,8 @@ export default function MedicalConsultationsCard({
                               const service = invoiceServices.find(
                                 (s) => s.id === line.serviceId,
                               );
-                              const label = service?.name || "Service";
+                              const defaultLabel = service?.name || "Service";
+                              const label = line.customName || defaultLabel;
                               const group =
                                 line.groupId !== null
                                   ? invoiceServiceGroups.find(
@@ -2699,17 +2704,25 @@ export default function MedicalConsultationsCard({
                                 >
                                   <div className="space-y-0.5">
                                     <span className="block text-[10px] font-medium text-slate-600">
-                                      Item
+                                      Item {service?.code && <span className="font-bold">({service.code})</span>}
                                     </span>
-                                    <div className="truncate text-[11px] text-slate-800">
-                                      {service?.code && (
-                                        <>
-                                          <span className="font-bold text-[10px] mr-1">{service.code}</span>
-                                          <span className="text-slate-400 mr-1">-</span>
-                                        </>
-                                      )}
-                                      {label}
-                                    </div>
+                                    <input
+                                      type="text"
+                                      value={label}
+                                      placeholder={defaultLabel}
+                                      onChange={(event) => {
+                                        const value = event.target.value;
+                                        setInvoiceServiceLines((prev) => {
+                                          const next = [...prev];
+                                          next[index] = {
+                                            ...next[index],
+                                            customName: value === "" || value === defaultLabel ? null : value,
+                                          };
+                                          return next;
+                                        });
+                                      }}
+                                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                    />
                                     {metaBits.length > 0 ? (
                                       <div className="text-[10px] text-slate-500">
                                         {metaBits.join(" • ")}
