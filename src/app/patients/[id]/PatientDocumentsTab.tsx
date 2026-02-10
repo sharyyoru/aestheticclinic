@@ -159,6 +159,51 @@ export default function PatientDocumentsTab({
   // State for files from patient-docs/5_Documents folder
   const [legacyDocsItems, setLegacyDocsItems] = useState<ListedItem[]>([]);
   const [legacyDocsLoading, setLegacyDocsLoading] = useState(false);
+  // State for all file names in patient-documents bucket (for deduplication)
+  const [allPatientDocFileNames, setAllPatientDocFileNames] = useState<Set<string>>(new Set());
+
+  // Fetch ALL file names from patient-documents bucket recursively (for deduplication)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchAllFileNames() {
+      const fileNames = new Set<string>();
+      
+      async function listRecursive(prefix: string) {
+        const listPath = prefix || undefined;
+        const { data, error } = await supabaseClient.storage
+          .from(BUCKET_NAME)
+          .list(listPath, { limit: 1000 });
+        
+        if (error || !data) return;
+        
+        for (const item of data) {
+          if (item.name === ".keep") continue;
+          
+          // Check if it's a folder (has nested items or no metadata)
+          if (item.id === null || item.name.includes("/")) {
+            // It's a folder - recurse into it
+            const folderPath = prefix ? `${prefix}/${item.name}` : item.name;
+            await listRecursive(folderPath);
+          } else {
+            // It's a file - add the filename (lowercased)
+            fileNames.add(item.name.toLowerCase());
+          }
+        }
+      }
+      
+      await listRecursive(patientId);
+      if (!cancelled) {
+        setAllPatientDocFileNames(fileNames);
+      }
+    }
+
+    void fetchAllFileNames();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, refreshKey]);
 
   // Fetch files from patient-docs/5_Documents folder (legacy storage)
   useEffect(() => {
@@ -191,17 +236,21 @@ export default function PatientDocumentsTab({
         }
 
         const data = await response.json();
-        const files: ListedItem[] = (data.files || []).map((file: any) => ({
-          name: file.name,
-          id: file.path,
-          updated_at: file.updatedAt,
-          created_at: file.createdAt,
-          metadata: { size: file.size, mimetype: file.mimeType },
-          kind: "file" as const,
-          path: file.path,
-          source: "patient-docs" as const,
-          publicUrl: file.publicUrl,
-        }));
+        
+        // Filter out files that already exist in patient-documents bucket
+        const files: ListedItem[] = (data.files || [])
+          .filter((file: any) => !allPatientDocFileNames.has(file.name.toLowerCase()))
+          .map((file: any) => ({
+            name: file.name,
+            id: file.path,
+            updated_at: file.updatedAt,
+            created_at: file.createdAt,
+            metadata: { size: file.size, mimetype: file.mimeType },
+            kind: "file" as const,
+            path: file.path,
+            source: "patient-docs" as const,
+            publicUrl: file.publicUrl,
+          }));
 
         setLegacyDocsItems(files);
       } catch (err) {
@@ -216,7 +265,7 @@ export default function PatientDocumentsTab({
     return () => {
       cancelled = true;
     };
-  }, [patientName, refreshKey]);
+  }, [patientName, refreshKey, allPatientDocFileNames]);
 
   useEffect(() => {
     let cancelled = false;
@@ -292,17 +341,11 @@ export default function PatientDocumentsTab({
         });
       }
 
-      // Merge with legacy docs, avoiding duplicates
-      // A file is considered duplicate if it has the same name
-      const existingFileNames = new Set(files.map(f => f.name.toLowerCase()));
-      const uniqueLegacyDocs = currentPrefix === "" 
-        ? legacyDocsItems.filter(ld => !existingFileNames.has(ld.name.toLowerCase()))
-        : []; // Only show legacy docs at root level
-
+      // Only show legacy docs at root level (they're already deduplicated in the fetch)
       const combined: ListedItem[] = [
         ...Object.values(folders).sort((a, b) => a.name.localeCompare(b.name)),
         ...files,
-        ...uniqueLegacyDocs,
+        ...(currentPrefix === "" ? legacyDocsItems : []),
       ];
 
       // Sort files based on sortBy and sortOrder

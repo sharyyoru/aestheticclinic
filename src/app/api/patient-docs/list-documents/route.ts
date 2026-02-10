@@ -144,10 +144,15 @@ export async function POST(request: NextRequest) {
         
         const filePath = `${documentsPath}/${file.name}`;
         
-        // Get public URL
-        const { data: urlData } = supabaseAdmin.storage
+        // Get signed URL (valid for 1 hour) since bucket is not public
+        const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin.storage
           .from(BUCKET_NAME)
-          .getPublicUrl(filePath);
+          .createSignedUrl(filePath, 3600); // 1 hour expiry
+
+        if (signedUrlError || !signedUrlData?.signedUrl) {
+          console.error("Error creating signed URL for", filePath, signedUrlError);
+          continue;
+        }
 
         documentFiles.push({
           name: file.name,
@@ -156,7 +161,7 @@ export async function POST(request: NextRequest) {
           mimeType: (file as any).metadata?.mimetype || null,
           createdAt: (file as any).created_at || null,
           updatedAt: (file as any).updated_at || null,
-          publicUrl: urlData.publicUrl,
+          publicUrl: signedUrlData.signedUrl,
           source: "patient-docs",
         });
       }
