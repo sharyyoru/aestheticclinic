@@ -1149,7 +1149,7 @@ export default function PatientDocumentsTab({
                             </p>
                             {item.source === "patient-docs" && (
                               <span className="flex-shrink-0 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700" title="Imported from legacy storage">
-                                Legacy
+                                Axenita
                               </span>
                             )}
                           </div>
