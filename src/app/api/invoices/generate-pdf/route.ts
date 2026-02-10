@@ -16,6 +16,8 @@ import {
   type SwissCanton,
 } from "@/lib/tardoc";
 
+type InvoiceStatus = "OPEN" | "PAID" | "PARTIAL_PAID" | "OVERPAID" | "PARTIAL_LOSS" | "CANCELLED";
+
 type InvoiceData = {
   id: string;
   consultation_id: string;
@@ -28,6 +30,8 @@ type InvoiceData = {
   doctor_name: string | null;
   invoice_is_complimentary: boolean;
   invoice_is_paid: boolean;
+  invoice_status: InvoiceStatus | null;
+  invoice_paid_amount: number | null;
   payment_link_token: string | null;
   // Payrexx payment fields
   payrexx_payment_link: string | null;
@@ -436,16 +440,53 @@ export async function POST(request: NextRequest) {
       yPos += 5;
     }
 
-    const totalAmount = invoiceData.invoice_total_amount || 123123;
+    const totalAmount = invoiceData.invoice_total_amount || 0;
+    const paidAmount = invoiceData.invoice_paid_amount || 0;
+    const remainingAmount = Math.max(0, totalAmount - paidAmount);
+    const invoiceStatus = invoiceData.invoice_status || (invoiceData.invoice_is_paid ? "PAID" : "OPEN");
+    
     pdf.setFont("helvetica", "bold");
     pdf.text("Autres prestations", 70, yPos + 4);
     pdf.text(totalAmount.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
     yPos += 10;
 
     pdf.setFontSize(10);
-    pdf.text("Total de la facture à payer dès réception.", 20, yPos + 4);
-    pdf.text("Total à payer", 130, yPos + 4);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("Total de la facture", 20, yPos + 4);
+    pdf.text("Total facture", 130, yPos + 4);
     pdf.text(totalAmount.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
+    yPos += 6;
+    
+    // Show paid amount if any payment has been made
+    if (paidAmount > 0) {
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(0, 128, 0); // Green for paid amount
+      pdf.text("Montant payé", 20, yPos + 4);
+      pdf.text("Payé", 130, yPos + 4);
+      pdf.text(`-${paidAmount.toFixed(2)}`, pageWidth - 20, yPos + 4, { align: "right" });
+      yPos += 6;
+      pdf.setTextColor(0, 0, 0); // Reset to black
+    }
+    
+    // Show remaining balance
+    pdf.setFont("helvetica", "bold");
+    if (invoiceStatus === "PARTIAL_PAID" && remainingAmount > 0) {
+      pdf.setTextColor(200, 100, 0); // Orange for partial payment
+      pdf.text("Solde restant à payer", 20, yPos + 4);
+      pdf.text("Reste à payer", 130, yPos + 4);
+      pdf.text(remainingAmount.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
+      pdf.setTextColor(0, 0, 0);
+    } else if (invoiceStatus === "PAID" || remainingAmount <= 0) {
+      pdf.setTextColor(0, 128, 0); // Green for fully paid
+      pdf.text("PAYÉ EN TOTALITÉ", 20, yPos + 4);
+      pdf.text("Reste à payer", 130, yPos + 4);
+      pdf.text("0.00", pageWidth - 20, yPos + 4, { align: "right" });
+      pdf.setTextColor(0, 0, 0);
+    } else {
+      pdf.text("Total à payer dès réception", 20, yPos + 4);
+      pdf.text("Total à payer", 130, yPos + 4);
+      pdf.text(totalAmount.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
+    }
     yPos += 15;
 
     pdf.setFontSize(9);
