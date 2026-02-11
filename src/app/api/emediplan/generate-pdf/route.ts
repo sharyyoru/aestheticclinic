@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { randomUUID } from "crypto";
+import { gzipSync } from "zlib";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -190,15 +191,16 @@ function buildCHMED16AObject(
 
 async function generateQRCode(data: string): Promise<string> {
   try {
-    // Encode as CHMED16A1 format (base64 encoded JSON)
+    // CHMED16A1 format per spec: prefix + Base64(gzip(JSON))
     const chmedPrefix = "CHMED16A1";
-    const base64Data = Buffer.from(data).toString("base64");
+    const gzipped = gzipSync(Buffer.from(data, "utf-8"));
+    const base64Data = gzipped.toString("base64");
     const fullData = `${chmedPrefix}${base64Data}`;
     
     const qrDataUrl = await QRCode.toDataURL(fullData, {
       errorCorrectionLevel: "M",
       margin: 1,
-      width: 150,
+      width: 200,
     });
     return qrDataUrl;
   } catch (error) {
@@ -293,7 +295,7 @@ export async function POST(request: NextRequest) {
 
     // Generate PDF
     const pdf = new jsPDF({
-      orientation: "portrait",
+      orientation: "landscape",
       unit: "mm",
       format: "a4",
     });
@@ -309,7 +311,7 @@ export async function POST(request: NextRequest) {
     pdf.setDrawColor(0, 150, 200);
     
     // Draw eMediplan text/logo
-    pdf.setFontSize(18);
+    pdf.setFontSize(20);
     pdf.setTextColor(0, 150, 200);
     pdf.setFont("helvetica", "bold");
     pdf.text("eMediplan", margin, yPos + 8);
@@ -318,7 +320,7 @@ export async function POST(request: NextRequest) {
     pdf.setTextColor(0, 150, 200);
     pdf.text("Le plan de médication suisse", margin, yPos + 14);
 
-    // Patient info (center)
+    // Patient info (center-left)
     const patientName = `${patient.last_name?.toUpperCase() || ""} ${patient.first_name || ""}`.trim();
     const patientDob = patient.dob
       ? new Date(patient.dob).toLocaleDateString("fr-CH")
@@ -328,45 +330,45 @@ export async function POST(request: NextRequest) {
     pdf.setFontSize(14);
     pdf.setTextColor(0, 0, 0);
     pdf.setFont("helvetica", "bold");
-    pdf.text(patientName, 70, yPos + 5);
+    pdf.text(patientName, 85, yPos + 5);
 
     pdf.setFontSize(9);
     pdf.setFont("helvetica", "normal");
-    pdf.text(`${patientDob} ${patientGender}`, 70, yPos + 11);
+    pdf.text(`${patientDob} ${patientGender}`, 85, yPos + 11);
     
     if (patient.street_address || patient.town) {
       const address = [patient.street_address, patient.town].filter(Boolean).join(", ");
-      pdf.text(address, 70, yPos + 16);
+      pdf.text(address, 85, yPos + 16);
     }
 
-    // Provider info (right of center)
+    // Provider info (center-right)
     pdf.setFontSize(8);
     pdf.setTextColor(100, 100, 100);
-    pdf.text("Imprimé par :", 130, yPos + 2);
+    pdf.text("Imprimé par :", 170, yPos + 2);
     
     pdf.setTextColor(0, 0, 0);
     pdf.setFontSize(9);
     const doctorName = settings.doctor_name || "Docteur";
-    pdf.text(doctorName, 130, yPos + 7);
+    pdf.text(doctorName, 170, yPos + 7);
     
     if (settings.clinic_address) {
-      pdf.text(settings.clinic_address, 130, yPos + 12);
+      pdf.text(settings.clinic_address, 170, yPos + 12);
     }
     if (settings.clinic_postal_code || settings.clinic_city) {
-      pdf.text(`${settings.clinic_postal_code || ""} ${settings.clinic_city || ""}`.trim(), 130, yPos + 17);
+      pdf.text(`${settings.clinic_postal_code || ""} ${settings.clinic_city || ""}`.trim(), 170, yPos + 17);
     }
     if (settings.rcc_number) {
-      pdf.text(`No RCC: ${settings.rcc_number}`, 130, yPos + 22);
+      pdf.text(`No RCC: ${settings.rcc_number}`, 170, yPos + 22);
     }
     if (settings.clinic_phone) {
-      pdf.text(settings.clinic_phone, 130, yPos + 27);
+      pdf.text(settings.clinic_phone, 170, yPos + 27);
     }
 
-    // QR Code (far right)
-    const qrSize = 28;
+    // QR Code (far right) - larger size for better scanning
+    const qrSize = 35;
     pdf.addImage(qrCodeDataUrl, "PNG", pageWidth - margin - qrSize, yPos, qrSize, qrSize);
 
-    yPos += 40;
+    yPos += 42;
 
     // Date of emission
     const now = new Date();
@@ -387,17 +389,17 @@ export async function POST(request: NextRequest) {
 
     // Table header
     const colWidths = {
-      medicament: 55,
-      matin: 12,
-      midi: 12,
-      soir: 12,
-      nuit: 12,
-      unite: 12,
-      de: 20,
-      jusqua: 20,
-      instructions: 25,
-      raison: 20,
-      prescrit: 25,
+      medicament: 65,
+      matin: 14,
+      midi: 14,
+      soir: 14,
+      nuit: 14,
+      unite: 14,
+      de: 22,
+      jusqua: 22,
+      instructions: 35,
+      raison: 25,
+      prescrit: 28,
     };
 
     const tableStartX = margin;
@@ -407,7 +409,7 @@ export async function POST(request: NextRequest) {
     pdf.setFillColor(240, 240, 240);
     pdf.rect(margin, yPos, pageWidth - 2 * margin, 8, "F");
 
-    pdf.setFontSize(7);
+    pdf.setFontSize(7.5);
     pdf.setFont("helvetica", "bold");
     pdf.setTextColor(0, 0, 0);
 
@@ -452,20 +454,20 @@ export async function POST(request: NextRequest) {
 
     // Table rows
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7);
+    pdf.setFontSize(7.5);
 
     for (const med of mediplanMeds) {
       tableX = tableStartX;
 
       // Check if we need a new page
-      if (yPos > pageHeight - 30) {
+      if (yPos > pageHeight - 25) {
         pdf.addPage();
         yPos = margin;
       }
 
       // Medication name
       const productName = med.product_name || "Unknown";
-      pdf.text(productName.substring(0, 40), tableX + 2, yPos + 4);
+      pdf.text(productName.substring(0, 50), tableX + 2, yPos + 4);
       tableX += colWidths.medicament;
 
       // Dosage: morning, noon, evening, night
@@ -503,12 +505,12 @@ export async function POST(request: NextRequest) {
 
       // Instructions
       const instructions = med.intake_note || "-";
-      pdf.text(instructions.substring(0, 15), tableX + 1, yPos + 4);
+      pdf.text(instructions.substring(0, 25), tableX + 1, yPos + 4);
       tableX += colWidths.instructions;
 
       // Reason
       const reason = med.decision_summary || "-";
-      pdf.text(reason.substring(0, 12), tableX + 1, yPos + 4);
+      pdf.text(reason.substring(0, 18), tableX + 1, yPos + 4);
       tableX += colWidths.raison;
 
       // Prescribed by
@@ -522,7 +524,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Footer
-    yPos = pageHeight - 15;
+    yPos = pageHeight - 12;
     pdf.setFontSize(7);
     pdf.setTextColor(100, 100, 100);
     
