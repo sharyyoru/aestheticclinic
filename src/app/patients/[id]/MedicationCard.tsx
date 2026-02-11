@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
@@ -36,6 +36,7 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
     const searchParams = useSearchParams();
     const [medications, setMedications] = useState<PatientPrescription[]>([]);
     const [loading, setLoading] = useState(false);
+    const [generatingPdf, setGeneratingPdf] = useState(false);
 
     const rawSubTab = searchParams?.get("med_sub");
     const subTab: MedicationSubTab =
@@ -94,10 +95,47 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
         router.push(`?${params.toString()}`);
     }
 
+    async function handleGenerateEmediplanPdf() {
+        try {
+            setGeneratingPdf(true);
+
+            const response = await fetch("/api/emediplan/generate-pdf", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ patientId }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to generate eMediplan PDF");
+            }
+
+            // Download the PDF
+            const pdfBlob = new Blob(
+                [Uint8Array.from(atob(data.pdf), (c) => c.charCodeAt(0))],
+                { type: "application/pdf" }
+            );
+            const url = URL.createObjectURL(pdfBlob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = data.filename || "emediplan.pdf";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Error generating eMediplan PDF:", error);
+            alert(error instanceof Error ? error.message : "Failed to generate eMediplan PDF");
+        } finally {
+            setGeneratingPdf(false);
+        }
+    }
+
     return (
         <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
             {/* Sub-tab navigation */}
-            <div className="mb-4 border-b border-slate-200">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-200">
                 <nav className="-mb-px flex gap-4 text-xs font-medium">
                     <button
                         onClick={() => changeSubTab("medicine")}
@@ -133,6 +171,32 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
                         Consumables
                     </button>
                 </nav>
+                
+                {/* Generate eMediplan PDF Button */}
+                {subTab === "medicine" && filteredMedications.length > 0 && (
+                    <button
+                        onClick={handleGenerateEmediplanPdf}
+                        disabled={generatingPdf}
+                        className="mb-1 inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 shadow-sm transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {generatingPdf ? (
+                            <>
+                                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                eMediplan PDF
+                            </>
+                        )}
+                    </button>
+                )}
             </div>
 
             {/* Content */}
