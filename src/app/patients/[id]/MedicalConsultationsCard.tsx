@@ -30,7 +30,8 @@ type ConsultationRecordType =
   | "3d"
   | "patient_information"
   | "documents"
-  | "form_photos";
+  | "form_photos"
+  | "medication";
 
 type SortOrder = "desc" | "asc";
 
@@ -330,6 +331,21 @@ export default function MedicalConsultationsCard({
   const [axenitaPdfLoading, setAxenitaPdfLoading] = useState(false);
   const [axenitaPdfError, setAxenitaPdfError] = useState<string | null>(null);
 
+  // Medication form state
+  const [medProductName, setMedProductName] = useState("");
+  const [medProductType, setMedProductType] = useState<"MEDICATION" | "CONSUMABLE">("MEDICATION");
+  const [medIntakeKind, setMedIntakeKind] = useState<"ACUTE" | "FIXED">("FIXED");
+  const [medAmountMorning, setMedAmountMorning] = useState("");
+  const [medAmountNoon, setMedAmountNoon] = useState("");
+  const [medAmountEvening, setMedAmountEvening] = useState("");
+  const [medAmountNight, setMedAmountNight] = useState("");
+  const [medIntakeNote, setMedIntakeNote] = useState("");
+  const [medIntakeFromDate, setMedIntakeFromDate] = useState(formatLocalDateInputValue(new Date()));
+  const [medDecisionSummary, setMedDecisionSummary] = useState("");
+  const [medQuantity, setMedQuantity] = useState<number | "">(1);
+  const [medShowInMediplan, setMedShowInMediplan] = useState(true);
+  const [medIsPrescription, setMedIsPrescription] = useState(false);
+
   const consultationRecordTypeOptions: {
     value: ConsultationRecordType;
     label: string;
@@ -343,6 +359,7 @@ export default function MedicalConsultationsCard({
       { value: "patient_information", label: "Patient Information" },
       { value: "documents", label: "Documents" },
       { value: "form_photos", label: "Form Photos" },
+      { value: "medication", label: "Medication" },
     ];
 
   const filteredSortedConsultations = useMemo(() => {
@@ -1230,6 +1247,19 @@ export default function MedicalConsultationsCard({
                     setInvoiceServiceLines([]);
                     setInvoiceSelectedCategoryId("");
                     setInvoiceSelectedServiceId("");
+                    setMedProductName("");
+                    setMedProductType("MEDICATION");
+                    setMedIntakeKind("FIXED");
+                    setMedAmountMorning("");
+                    setMedAmountNoon("");
+                    setMedAmountEvening("");
+                    setMedAmountNight("");
+                    setMedIntakeNote("");
+                    setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
+                    setMedDecisionSummary("");
+                    setMedQuantity(1);
+                    setMedShowInMediplan(true);
+                    setMedIsPrescription(false);
                     if (currentUserId) {
                       setConsultationDoctorId(currentUserId);
                     }
@@ -1425,6 +1455,15 @@ export default function MedicalConsultationsCard({
                       );
                       return;
                     }
+                  }
+                }
+
+                if (consultationRecordType === "medication") {
+                  if (!medProductName.trim()) {
+                    setConsultationError(
+                      "Please enter a product name for the medication.",
+                    );
+                    return;
                   }
                 }
 
@@ -1656,6 +1695,62 @@ export default function MedicalConsultationsCard({
                         contentHtml += "</div>";
                       }
                     }
+                    // Handle medication record type separately - insert into patient_prescriptions
+                    if (consultationRecordType === "medication") {
+                      const medPayload: Record<string, unknown> = {
+                        patient_id: patientId,
+                        journal_entry_id: crypto.randomUUID(),
+                        mandator_id: consultationDoctorId || crypto.randomUUID(),
+                        therapy_id: crypto.randomUUID(),
+                        product_name: medProductName.trim(),
+                        product_type: medProductType,
+                        intake_kind: medIntakeKind,
+                        amount_morning: medAmountMorning.trim() || null,
+                        amount_noon: medAmountNoon.trim() || null,
+                        amount_evening: medAmountEvening.trim() || null,
+                        amount_night: medAmountNight.trim() || null,
+                        intake_note: medIntakeNote.trim() || null,
+                        intake_from_date: medIntakeFromDate || null,
+                        decision_summary: medDecisionSummary.trim() || null,
+                        quantity: typeof medQuantity === "number" ? medQuantity : 1,
+                        show_in_mediplan: medShowInMediplan,
+                        prescription_sheet_id: medIsPrescription ? crypto.randomUUID() : null,
+                        active: true,
+                      };
+
+                      const { error: medError } = await supabaseClient
+                        .from("patient_prescriptions")
+                        .insert(medPayload);
+
+                      if (medError) {
+                        setConsultationError(
+                          medError.message ?? "Failed to create medication.",
+                        );
+                        setConsultationSaving(false);
+                        return;
+                      }
+
+                      // Reset medication form state
+                      setMedProductName("");
+                      setMedProductType("MEDICATION");
+                      setMedIntakeKind("FIXED");
+                      setMedAmountMorning("");
+                      setMedAmountNoon("");
+                      setMedAmountEvening("");
+                      setMedAmountNight("");
+                      setMedIntakeNote("");
+                      setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
+                      setMedDecisionSummary("");
+                      setMedQuantity(1);
+                      setMedShowInMediplan(true);
+                      setMedIsPrescription(false);
+
+                      setConsultationSaving(false);
+                      setNewConsultationOpen(false);
+                      router.refresh();
+                      return;
+                    }
+
                     let paymentMethod: string | null = null;
                     if (consultationRecordType === "invoice") {
                       paymentMethod = invoicePaymentMethod.trim()
@@ -2818,6 +2913,168 @@ export default function MedicalConsultationsCard({
                         )}
                       </div>
                     </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {consultationRecordType === "medication" ? (
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <h4 className="text-[13px] font-semibold text-slate-900">
+                    New Medication
+                  </h4>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-medium text-slate-700">
+                        Product Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={medProductName}
+                        onChange={(e) => setMedProductName(e.target.value)}
+                        placeholder="e.g. Paracetamol 500mg"
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-medium text-slate-700">
+                        Product Type
+                      </label>
+                      <select
+                        value={medProductType}
+                        onChange={(e) => setMedProductType(e.target.value as "MEDICATION" | "CONSUMABLE")}
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      >
+                        <option value="MEDICATION">Medication</option>
+                        <option value="CONSUMABLE">Consumable</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-medium text-slate-700">
+                        Intake Kind
+                      </label>
+                      <select
+                        value={medIntakeKind}
+                        onChange={(e) => setMedIntakeKind(e.target.value as "ACUTE" | "FIXED")}
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      >
+                        <option value="FIXED">Fixed (F)</option>
+                        <option value="ACUTE">Acute (M)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-medium text-slate-700">
+                        Quantity
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={medQuantity}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setMedQuantity(v === "" ? "" : parseInt(v, 10) || 1);
+                        }}
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-medium text-slate-700">
+                      Dosage (Morning - Noon - Evening - Night)
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      <input
+                        type="text"
+                        value={medAmountMorning}
+                        onChange={(e) => setMedAmountMorning(e.target.value)}
+                        placeholder="Morning"
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                      <input
+                        type="text"
+                        value={medAmountNoon}
+                        onChange={(e) => setMedAmountNoon(e.target.value)}
+                        placeholder="Noon"
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                      <input
+                        type="text"
+                        value={medAmountEvening}
+                        onChange={(e) => setMedAmountEvening(e.target.value)}
+                        placeholder="Evening"
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                      <input
+                        type="text"
+                        value={medAmountNight}
+                        onChange={(e) => setMedAmountNight(e.target.value)}
+                        placeholder="Night"
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-medium text-slate-700">
+                      Intake From Date
+                    </label>
+                    <input
+                      type="date"
+                      value={medIntakeFromDate}
+                      onChange={(e) => setMedIntakeFromDate(e.target.value)}
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-medium text-slate-700">
+                      Intake Note / Instructions
+                    </label>
+                    <input
+                      type="text"
+                      value={medIntakeNote}
+                      onChange={(e) => setMedIntakeNote(e.target.value)}
+                      placeholder="e.g. Take with food"
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-medium text-slate-700">
+                      Decision Summary / Reason
+                    </label>
+                    <input
+                      type="text"
+                      value={medDecisionSummary}
+                      onChange={(e) => setMedDecisionSummary(e.target.value)}
+                      placeholder="e.g. Post-operative pain management"
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={medIsPrescription}
+                        onChange={(e) => setMedIsPrescription(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      />
+                      Save as Prescription
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={medShowInMediplan}
+                        onChange={(e) => setMedShowInMediplan(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      />
+                      Show in eMediplan
+                    </label>
                   </div>
                 </div>
               ) : null}
