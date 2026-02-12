@@ -10,6 +10,7 @@ type PatientResult = {
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  dob: string | null;
 };
 
 export default function GlobalPatientSearch() {
@@ -59,31 +60,73 @@ export default function GlobalPatientSearch() {
           }
         }
         
-        const { data, error } = await supabaseClient
+        // Run text search query
+        const textQuery = supabaseClient
           .from("patients")
-          .select("id, first_name, last_name, email, phone")
+          .select("id, first_name, last_name, email, phone, dob")
           .or(orConditions)
           .limit(20);
 
-        if (!error && data) {
+        // Run DOB query in parallel if search looks like a date pattern
+        const hasDigits = /\d/.test(trimmed);
+        let dobQuery = null;
+        if (hasDigits) {
+          // Try exact date match first (e.g. "1998-08-21")
+          const dateMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+          if (dateMatch) {
+            dobQuery = supabaseClient
+              .from("patients")
+              .select("id, first_name, last_name, email, phone, dob")
+              .eq("dob", trimmed)
+              .limit(10);
+          } else {
+            // Year-only search (e.g. "1998")
+            const yearMatch = trimmed.match(/^(\d{4})$/);
+            if (yearMatch) {
+              dobQuery = supabaseClient
+                .from("patients")
+                .select("id, first_name, last_name, email, phone, dob")
+                .gte("dob", `${yearMatch[1]}-01-01`)
+                .lte("dob", `${yearMatch[1]}-12-31`)
+                .limit(10);
+            }
+          }
+        }
+
+        const [textResult, dobResult] = await Promise.all([
+          textQuery,
+          dobQuery ?? Promise.resolve({ data: [] as PatientResult[], error: null }),
+        ]);
+
+        if (textResult.error) {
+          console.error("Search error:", textResult.error);
+          setResults([]);
+        } else {
+          let filtered = (textResult.data ?? []) as PatientResult[];
+
           // For multi-word searches, filter results to ensure ALL words match somewhere
-          let filtered = data as PatientResult[];
           if (words.length > 1) {
             filtered = filtered.filter(patient => {
               const fullName = `${patient.first_name ?? ""} ${patient.last_name ?? ""}`.toLowerCase();
               const email = (patient.email ?? "").toLowerCase();
               const phone = (patient.phone ?? "").toLowerCase();
-              const combined = `${fullName} ${email} ${phone}`;
-              
-              // Check if all search words appear somewhere in the patient data
+              const dob = (patient.dob ?? "").toLowerCase();
+              const combined = `${fullName} ${email} ${phone} ${dob}`;
               return words.every(word => combined.includes(word.toLowerCase()));
             });
           }
-          
+
+          // Merge DOB results (avoiding duplicates)
+          const dobData = (dobResult?.data ?? []) as PatientResult[];
+          for (const m of dobData) {
+            if (!filtered.some(f => f.id === m.id)) filtered.push(m);
+          }
+
           setResults(filtered.slice(0, 8));
           setIsOpen(filtered.length > 0);
         }
-      } catch {
+      } catch (err) {
+        console.error("Search catch error:", err);
         setResults([]);
       } finally {
         setLoading(false);
@@ -151,9 +194,16 @@ export default function GlobalPatientSearch() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-900 truncate">{name}</p>
-                  {patient.email && (
-                    <p className="text-xs text-slate-500 truncate">{patient.email}</p>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {patient.email && (
+                      <p className="text-xs text-slate-500 truncate">{patient.email}</p>
+                    )}
+                    {patient.dob && (
+                      <p className="text-xs text-slate-400">
+                        DOB: {new Date(patient.dob).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 {patient.phone && (
                   <span className="text-xs text-slate-400">{patient.phone}</span>

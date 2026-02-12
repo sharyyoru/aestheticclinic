@@ -13,6 +13,7 @@ type PatientRow = {
   phone: string | null;
   created_at: string | null;
   contact_owner_name: string | null;
+  dob: string | null;
 };
 
 type OwnerFilter = "all" | "owner";
@@ -52,7 +53,7 @@ export default function PatientsPage() {
           supabaseClient
             .from("patients")
             .select(
-              "id, first_name, last_name, email, phone, created_at, contact_owner_name",
+              "id, first_name, last_name, email, phone, created_at, contact_owner_name, dob",
             )
             .order("created_at", { ascending: false }),
           supabaseClient
@@ -168,9 +169,10 @@ export default function PatientsPage() {
         .toLowerCase();
       const email = (patient.email ?? "").toLowerCase();
       const phone = (patient.phone ?? "").toLowerCase();
+      const dob = (patient.dob ?? "").toLowerCase();
 
       if (search) {
-        const haystack = `${fullName} ${email} ${phone}`;
+        const haystack = `${fullName} ${email} ${phone} ${dob}`;
         if (!haystack.includes(search)) return false;
       }
 
@@ -379,6 +381,7 @@ export default function PatientsPage() {
                     />
                   </th>
                   <th className="py-2 pr-3 font-medium">Name</th>
+                  <th className="py-2 pr-3 font-medium">DOB</th>
                   <th className="py-2 pr-3 font-medium">Mobile Number</th>
                   <th className="py-2 pr-3 font-medium">Email</th>
                   <th className="py-2 pr-3 font-medium">Contact Owner</th>
@@ -411,6 +414,9 @@ export default function PatientsPage() {
                         >
                           {fullName || "Unnamed patient"}
                         </Link>
+                      </td>
+                      <td className="py-2 pr-3 align-top text-slate-700">
+                        {patient.dob ? new Date(patient.dob).toLocaleDateString() : "—"}
                       </td>
                       <td className="py-2 pr-3 align-top text-slate-700">
                         {patient.phone || "—"}
