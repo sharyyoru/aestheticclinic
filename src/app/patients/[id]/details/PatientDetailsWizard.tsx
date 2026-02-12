@@ -3,9 +3,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
-import InsurerSearchSelect from "@/components/InsurerSearchSelect";
-
-type InsuranceType = "private" | "semi_private" | "basic";
 
 type PatientRecord = {
   id: string;
@@ -25,18 +22,6 @@ type PatientRecord = {
   source: string | null;
 };
 
-type PatientInsuranceRecord = {
-  id: string;
-  provider_name: string;
-  card_number: string;
-  insurance_type: InsuranceType;
-  insurer_gln: string | null;
-};
-
-function classNames(...values: (string | false | null | undefined)[]) {
-  return values.filter(Boolean).join(" ");
-}
-
 export default function PatientDetailsWizard({
   patientId,
   initialStep = 2,
@@ -44,23 +29,16 @@ export default function PatientDetailsWizard({
   onClose,
 }: {
   patientId: string;
-  initialStep?: 1 | 2 | 3;
+  initialStep?: 1 | 2;
   mode?: "page" | "modal";
   onClose?: () => void;
 }) {
   const router = useRouter();
   const [patient, setPatient] = useState<PatientRecord | null>(null);
-  const [step, setStep] = useState<1 | 2 | 3>(initialStep);
+  const [step, setStep] = useState<1 | 2>(initialStep);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [insuranceType, setInsuranceType] = useState<InsuranceType | null>(
-    "private",
-  );
-  const [existingInsurance, setExistingInsurance] =
-    useState<PatientInsuranceRecord | null>(null);
-  const [insurerGln, setInsurerGln] = useState<string>("");
-  const [insurerName, setInsurerName] = useState<string>("");
 
   useEffect(() => {
     let isMounted = true;
@@ -84,27 +62,6 @@ export default function PatientDetailsWizard({
       }
 
       setPatient(data as PatientRecord);
-
-      const { data: insuranceRows } = await supabaseClient
-        .from("patient_insurances")
-        .select("id, provider_name, card_number, insurance_type, insurer_gln")
-        .eq("patient_id", patientId)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (!isMounted) return;
-
-      if (insuranceRows && insuranceRows.length > 0) {
-        const first = insuranceRows[0] as PatientInsuranceRecord;
-        setExistingInsurance(first);
-        setInsuranceType(first.insurance_type as InsuranceType);
-        if (first.insurer_gln) {
-          setInsurerGln(first.insurer_gln);
-        }
-      } else {
-        setExistingInsurance(null);
-      }
-
       setLoading(false);
     }
 
@@ -125,11 +82,6 @@ export default function PatientDetailsWizard({
     const lastName = (formData.get("last_name") as string | null)?.trim();
     const emailRaw = (formData.get("email") as string | null)?.trim() || null;
     const phone = (formData.get("phone") as string | null)?.trim() || null;
-    const gender =
-      (formData.get("gender") as string | null)?.trim().toLowerCase() || null;
-    const sourceRaw =
-      (formData.get("source") as string | null)?.trim().toLowerCase() || null;
-
     if (!firstName || !lastName || !emailRaw || !phone) {
       setError("First name, last name, email, and phone are required.");
       return;
@@ -143,14 +95,6 @@ export default function PatientDetailsWizard({
       email,
       phone,
     };
-
-    if (gender) {
-      updatePayload.gender = gender;
-    }
-
-    if (sourceRaw) {
-      updatePayload.source = sourceRaw;
-    }
 
     setSaving(true);
     setError(null);
@@ -188,8 +132,6 @@ export default function PatientDetailsWizard({
             last_name: lastName,
             email,
             phone,
-            gender,
-            source: sourceRaw ?? prev.source,
           }
         : prev,
     );
@@ -206,16 +148,14 @@ export default function PatientDetailsWizard({
 
     const formData = new FormData(event.currentTarget);
 
-    const dob = (formData.get("dob") as string | null) || null;
+    const gender =
+      (formData.get("gender") as string | null)?.trim().toLowerCase() || null;
+    const sourceRaw =
+      (formData.get("source") as string | null)?.trim().toLowerCase() || null;
     const maritalStatus =
       (formData.get("marital_status") as string | null)?.trim() || null;
     const nationality =
       (formData.get("nationality") as string | null)?.trim() || "";
-    const streetAddress =
-      (formData.get("street_address") as string | null)?.trim() || "";
-    const postalCode =
-      (formData.get("postal_code") as string | null)?.trim() || "";
-    const town = (formData.get("town") as string | null)?.trim() || "";
     const profession =
       (formData.get("profession") as string | null)?.trim() || "";
     const currentEmployer =
@@ -223,9 +163,6 @@ export default function PatientDetailsWizard({
 
     if (
       !nationality ||
-      !streetAddress ||
-      !postalCode ||
-      !town ||
       !profession ||
       !currentEmployer
     ) {
@@ -233,22 +170,21 @@ export default function PatientDetailsWizard({
       return;
     }
 
-    const country = (formData.get("country") as string | null)?.trim() || "";
-
     setSaving(true);
     setError(null);
 
     const updatePayload: Record<string, unknown> = {
       nationality,
-      street_address: streetAddress,
-      postal_code: postalCode,
-      town,
       profession,
       current_employer: currentEmployer,
     };
 
-    if (dob) {
-      updatePayload.dob = dob;
+    if (gender) {
+      updatePayload.gender = gender;
+    }
+
+    if (sourceRaw) {
+      updatePayload.source = sourceRaw;
     }
 
     if (maritalStatus) {
@@ -262,60 +198,6 @@ export default function PatientDetailsWizard({
 
     if (error) {
       setError(error.message);
-      setSaving(false);
-      return;
-    }
-
-    setSaving(false);
-    setStep(3);
-  }
-
-  async function handleInsuranceSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!patient) return;
-
-    const formData = new FormData(event.currentTarget);
-    const cardNumber =
-      (formData.get("insurance_card_number") as string | null)?.trim() || "";
-
-    if (!insurerGln || !cardNumber || !insuranceType) {
-      setError("Please fill in all required fields.");
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    let supabaseError: Error | null = null;
-
-    if (existingInsurance) {
-      const { error } = await supabaseClient
-        .from("patient_insurances")
-        .update({
-          provider_name: insurerName || null,
-          insurer_gln: insurerGln,
-          card_number: cardNumber,
-          insurance_type: insuranceType,
-        })
-        .eq("id", existingInsurance.id);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      supabaseError = error as any;
-    } else {
-      const { error } = await supabaseClient
-        .from("patient_insurances")
-        .insert({
-          patient_id: patient.id,
-          provider_name: insurerName || null,
-          insurer_gln: insurerGln,
-          card_number: cardNumber,
-          insurance_type: insuranceType,
-        });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      supabaseError = error as any;
-    }
-
-    if (supabaseError) {
-      setError(supabaseError.message);
       setSaving(false);
       return;
     }
@@ -345,21 +227,17 @@ export default function PatientDetailsWizard({
     );
   }
 
-  const totalSteps = 3;
+  const totalSteps = 2;
   let stepTitle = "";
   let stepDescription = "";
 
   if (step === 1) {
     stepTitle = "Contact details";
     stepDescription = "Edit primary contact information for this patient.";
-  } else if (step === 2) {
+  } else {
     stepTitle = "Secondary details";
     stepDescription =
-      "Complete the patient profile with address and background details.";
-  } else {
-    stepTitle = "Insurance information";
-    stepDescription =
-      "Add insurance information for billing and coverage.";
+      "Complete the patient profile with background details.";
   }
 
   return (
@@ -418,7 +296,7 @@ export default function PatientDetailsWizard({
                   name="first_name"
                   type="text"
                   defaultValue={patient.first_name}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
               <div className="space-y-1">
@@ -433,7 +311,7 @@ export default function PatientDetailsWizard({
                   name="last_name"
                   type="text"
                   defaultValue={patient.last_name}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
             </div>
@@ -451,7 +329,7 @@ export default function PatientDetailsWizard({
                   name="email"
                   type="email"
                   defaultValue={patient.email ?? ""}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
               <div className="space-y-1">
@@ -466,11 +344,23 @@ export default function PatientDetailsWizard({
                   name="phone"
                   type="tel"
                   defaultValue={patient.phone ?? ""}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
             </div>
 
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="inline-flex items-center rounded-full border border-sky-200/80 bg-sky-600 px-4 py-1.5 text-xs font-medium text-white shadow-[0_10px_25px_rgba(15,23,42,0.22)] backdrop-blur hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Next: Secondary details"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleSecondaryDetailsSubmit} className="space-y-3">
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1">
                 <label
@@ -512,34 +402,7 @@ export default function PatientDetailsWizard({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center rounded-full border border-sky-200/80 bg-sky-600 px-4 py-1.5 text-xs font-medium text-white shadow-[0_10px_25px_rgba(15,23,42,0.22)] backdrop-blur hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? "Saving..." : "Next: Secondary details"}
-              </button>
-            </div>
-          </form>
-        ) : step === 2 ? (
-          <form onSubmit={handleSecondaryDetailsSubmit} className="space-y-3">
             <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="dob"
-                  className="block text-xs font-medium text-slate-700"
-                >
-                  Date of birth
-                </label>
-                <input
-                  id="dob"
-                  name="dob"
-                  type="date"
-                  defaultValue={patient.dob ?? undefined}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
               <div className="space-y-1">
                 <label
                   htmlFor="marital_status"
@@ -573,75 +436,7 @@ export default function PatientDetailsWizard({
                   name="nationality"
                   type="text"
                   defaultValue={patient.nationality ?? ""}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label
-                htmlFor="street_address"
-                className="block text-xs font-medium text-slate-700"
-              >
-                Street address <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="street_address"
-                name="street_address"
-                type="text"
-                autoComplete="street-address"
-                defaultValue={patient.street_address ?? ""}
-                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="space-y-1">
-                <label
-                  htmlFor="postal_code"
-                  className="block text-xs font-medium text-slate-700"
-                >
-                  Postal code <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="postal_code"
-                  name="postal_code"
-                  type="text"
-                  autoComplete="postal-code"
-                  defaultValue={patient.postal_code ?? ""}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="town"
-                  className="block text-xs font-medium text-slate-700"
-                >
-                  Town <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="town"
-                  name="town"
-                  type="text"
-                  autoComplete="address-level2"
-                  defaultValue={patient.town ?? ""}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor="country"
-                  className="block text-xs font-medium text-slate-700"
-                >
-                  Country
-                </label>
-                <input
-                  id="country"
-                  name="country"
-                  type="text"
-                  autoComplete="country-name"
-                  defaultValue=""
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
             </div>
@@ -659,7 +454,7 @@ export default function PatientDetailsWizard({
                   name="profession"
                   type="text"
                   defaultValue={patient.profession ?? ""}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
               <div className="space-y-1">
@@ -674,94 +469,12 @@ export default function PatientDetailsWizard({
                   name="current_employer"
                   type="text"
                   defaultValue={patient.current_employer ?? ""}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center rounded-full border border-sky-200/80 bg-sky-600 px-4 py-1.5 text-xs font-medium text-white shadow-[0_10px_25px_rgba(15,23,42,0.22)] backdrop-blur hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? "Saving..." : "Next: Insurance"}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <form onSubmit={handleInsuranceSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <label
-                className="block text-xs font-medium text-slate-700"
-              >
-                Name of insurance provider <span className="text-red-500">*</span>
-              </label>
-              <InsurerSearchSelect
-                value={insurerGln}
-                onChange={(gln, name) => {
-                  setInsurerGln(gln);
-                  setInsurerName(name || "");
-                }}
-                placeholder="Search insurance provider..."
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label
-                htmlFor="insurance_card_number"
-                className="block text-xs font-medium text-slate-700"
-              >
-                Insurance card number <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="insurance_card_number"
-                name="insurance_card_number"
-                type="text"
-                autoComplete="one-time-code"
-                defaultValue={existingInsurance?.card_number ?? ""}
-                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-slate-700">
-                Type of insurance <span className="text-red-500">*</span>
-              </p>
-              <div className="grid gap-2 md:grid-cols-3">
-                {[
-                  { label: "PRIVATE", value: "private" as InsuranceType },
-                  {
-                    label: "SEMI-PRIVATE",
-                    value: "semi_private" as InsuranceType,
-                  },
-                  { label: "BASIC", value: "basic" as InsuranceType },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setInsuranceType(option.value)}
-                    className={classNames(
-                      "w-full rounded-full border px-3 py-2 text-xs font-medium shadow-sm transition",
-                      insuranceType === option.value
-                        ? "border-sky-500 bg-sky-600 text-white shadow-[0_10px_25px_rgba(15,23,42,0.22)]"
-                        : "border-slate-200 bg-white/80 text-slate-700 hover:border-sky-300 hover:bg-sky-50",
-                    )}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
-              >
-                Back to details
-              </button>
               <button
                 type="submit"
                 disabled={saving}

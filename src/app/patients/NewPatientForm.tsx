@@ -9,7 +9,7 @@ export default function NewPatientForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fillSecondaryDetails, setFillSecondaryDetails] = useState(false);
-
+  
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -42,6 +42,15 @@ export default function NewPatientForm() {
     const phone = rawPhone
       ? `${countryCode} ${rawPhone.replace(/^0+/, "")}`.trim()
       : null;
+
+    const dob = (formData.get("dob") as string | null)?.trim() || null;
+    const streetAddress = (formData.get("street_address") as string | null)?.trim() || null;
+    const postalCode = (formData.get("postal_code") as string | null)?.trim() || null;
+    const town = (formData.get("town") as string | null)?.trim() || null;
+
+    const insuranceProvider = (formData.get("insurance_provider") as string | null)?.trim() || null;
+    const insuranceCardNumber = (formData.get("insurance_card_number") as string | null)?.trim() || null;
+    const insuranceType = (formData.get("insurance_type") as string | null)?.trim() || null;
 
     const source =
       ((formData.get("source") as string | null)?.trim() || "manual").toLowerCase();
@@ -86,18 +95,24 @@ export default function NewPatientForm() {
       createdBy = fullName;
     }
 
+    const patientPayload: Record<string, unknown> = {
+      first_name: firstName,
+      last_name: lastName,
+      email: normalizedEmail,
+      phone,
+      gender: genderRaw,
+      source,
+      created_by_user_id: createdByUserId,
+      created_by: createdBy,
+    };
+    if (dob) patientPayload.dob = dob;
+    if (streetAddress) patientPayload.street_address = streetAddress;
+    if (postalCode) patientPayload.postal_code = postalCode;
+    if (town) patientPayload.town = town;
+
     const { data: newPatient, error: insertError } = await supabaseClient
       .from("patients")
-      .insert({
-        first_name: firstName,
-        last_name: lastName,
-        email: normalizedEmail,
-        phone,
-        gender: genderRaw,
-        source,
-        created_by_user_id: createdByUserId,
-        created_by: createdBy,
-      })
+      .insert(patientPayload)
       .select("id")
       .single();
 
@@ -105,6 +120,16 @@ export default function NewPatientForm() {
       setError(insertError?.message ?? "Failed to create patient.");
       setLoading(false);
       return;
+    }
+
+    if (insuranceProvider) {
+      const insurancePayload: Record<string, unknown> = {
+        patient_id: newPatient.id,
+        provider_name: insuranceProvider,
+        card_number: insuranceCardNumber || "",
+        insurance_type: insuranceType || "basic",
+      };
+      await supabaseClient.from("patient_insurances").insert(insurancePayload);
     }
 
     setLoading(false);
@@ -153,6 +178,20 @@ export default function NewPatientForm() {
       </div>
       <div className="space-y-1">
         <label
+          htmlFor="dob"
+          className="block text-sm font-medium text-slate-700"
+        >
+          Date of birth
+        </label>
+        <input
+          id="dob"
+          name="dob"
+          type="date"
+          className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        />
+      </div>
+      <div className="space-y-1">
+        <label
           htmlFor="email"
           className="block text-sm font-medium text-slate-700"
         >
@@ -193,45 +232,65 @@ export default function NewPatientForm() {
         </div>
       </div>
       <div className="space-y-1">
-        <label
-          htmlFor="gender"
-          className="block text-sm font-medium text-slate-700"
-        >
-          Gender
+        <label className="block text-sm font-medium text-slate-700">
+          Postal address
         </label>
-        <select
-          id="gender"
-          name="gender"
-          defaultValue=""
-          className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-        >
-          <option value="">Select</option>
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-          <option value="other">Other</option>
-        </select>
+        <input
+          id="street_address"
+          name="street_address"
+          type="text"
+          placeholder="Street address"
+          className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        />
+        <div className="flex gap-2">
+          <input
+            id="postal_code"
+            name="postal_code"
+            type="text"
+            placeholder="Postal code"
+            className="block w-1/3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
+          <input
+            id="town"
+            name="town"
+            type="text"
+            placeholder="City / Town"
+            className="block w-2/3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
+        </div>
       </div>
       <div className="space-y-1">
-        <label
-          htmlFor="source"
-          className="block text-sm font-medium text-slate-700"
-        >
-          Patient source
+        <label className="block text-sm font-medium text-slate-700">
+          Insurance
         </label>
-        <select
-          id="source"
-          name="source"
-          defaultValue="manual"
-          required
-          className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-        >
-          <option value="manual">Manual</option>
-          <option value="event">Event</option>
-          <option value="meta">Meta</option>
-          <option value="google">Google</option>
-        </select>
+        <input
+          id="insurance_provider"
+          name="insurance_provider"
+          type="text"
+          placeholder="Insurance provider"
+          className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        />
+        <div className="flex gap-2">
+          <input
+            id="insurance_card_number"
+            name="insurance_card_number"
+            type="text"
+            placeholder="Card number"
+            className="block w-1/2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
+          <select
+            id="insurance_type"
+            name="insurance_type"
+            defaultValue="basic"
+            className="block w-1/2 rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          >
+            <option value="basic">Basic</option>
+            <option value="semi_private">Semi-private</option>
+            <option value="private">Private</option>
+          </select>
+        </div>
       </div>
-      <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
         <div>
           <p className="font-medium text-slate-700">Fill Secondary Details</p>
           <p className="text-[11px] text-slate-500">
