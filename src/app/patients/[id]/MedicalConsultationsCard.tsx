@@ -3172,12 +3172,12 @@ export default function MedicalConsultationsCard({
                                     </span>
                                     <input
                                       type="number"
-                                      min={1}
+                                      min={0.01}
+                                      step="0.01"
                                       value={quantity}
                                       onChange={(event) => {
-                                        const value = Number.parseInt(
+                                        const value = Number.parseFloat(
                                           event.target.value || "1",
-                                          10,
                                         );
                                         setInvoiceServiceLines((prev) => {
                                           const next = [...prev];
@@ -3185,7 +3185,7 @@ export default function MedicalConsultationsCard({
                                             ...next[index],
                                             quantity: Number.isNaN(value)
                                               ? 1
-                                              : Math.max(1, value),
+                                              : Math.max(0.01, value),
                                           };
                                           return next;
                                         });
