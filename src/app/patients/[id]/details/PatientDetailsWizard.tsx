@@ -265,7 +265,7 @@ export default function PatientDetailsWizard({
         </button>
       </div>
 
-      <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div key={step} className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <div className="text-sm font-medium text-slate-900">
