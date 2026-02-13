@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 /**
  * Sync payment status - can be used to manually mark invoices as paid
- * or to sync status based on consultation_id
+ * or to sync status based on invoice_number (formerly consultation_id code)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -16,15 +16,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find the consultation by consultation_id (the code like CONS-MKNWEKTP)
-    const { data: consultation, error: consultationError } = await supabaseAdmin
-      .from("consultations")
-      .select("id, consultation_id, invoice_is_paid, payrexx_payment_status, payrexx_gateway_id")
-      .eq("consultation_id", consultationCode)
-      .eq("record_type", "invoice")
+    // Find the invoice by invoice_number (which matches the old consultation_id code)
+    const { data: invoice, error: invoiceError } = await supabaseAdmin
+      .from("invoices")
+      .select("id, invoice_number, status, total_amount, payrexx_payment_status, payrexx_gateway_id")
+      .eq("invoice_number", consultationCode)
       .single();
 
-    if (consultationError || !consultation) {
+    if (invoiceError || !invoice) {
       return NextResponse.json(
         { error: `Invoice not found for code: ${consultationCode}` },
         { status: 404 }
@@ -33,17 +32,21 @@ export async function POST(request: NextRequest) {
 
     // If markAsPaid is true, update the invoice
     if (markAsPaid) {
+      const paidAt = new Date().toISOString();
+
       const { error: updateError } = await supabaseAdmin
-        .from("consultations")
+        .from("invoices")
         .update({
-          invoice_is_paid: true,
+          status: "PAID",
+          paid_amount: invoice.total_amount,
+          paid_at: paidAt,
           payrexx_payment_status: "confirmed",
-          payrexx_paid_at: new Date().toISOString(),
+          payrexx_paid_at: paidAt,
         })
-        .eq("id", consultation.id);
+        .eq("id", invoice.id);
 
       if (updateError) {
-        console.error("Failed to update consultation:", updateError);
+        console.error("Failed to update invoice:", updateError);
         return NextResponse.json(
           { error: "Failed to update invoice status" },
           { status: 500 }
@@ -53,19 +56,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: "Invoice marked as paid",
-        consultationId: consultation.id,
-        consultationCode: consultation.consultation_id,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoice_number,
       });
     }
 
     // Return current status
     return NextResponse.json({
       success: true,
-      consultationId: consultation.id,
-      consultationCode: consultation.consultation_id,
-      isPaid: consultation.invoice_is_paid,
-      payrexxStatus: consultation.payrexx_payment_status,
-      payrexxGatewayId: consultation.payrexx_gateway_id,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      isPaid: invoice.status === "PAID" || invoice.status === "OVERPAID",
+      payrexxStatus: invoice.payrexx_payment_status,
+      payrexxGatewayId: invoice.payrexx_gateway_id,
     });
   } catch (error) {
     console.error("Error syncing payment status:", error);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import type { Invoice } from "@/lib/invoiceTypes";
 
 /**
  * Public API endpoint to fetch invoice data by payment token
@@ -19,11 +20,10 @@ export async function GET(request: NextRequest) {
 
     // Fetch invoice using admin client to bypass RLS
     const { data: invoice, error: invoiceError } = await supabaseAdmin
-      .from("consultations")
-      .select("*")
+      .from("invoices")
+      .select("id, patient_id, invoice_number, invoice_date, total_amount, payment_method, doctor_name, status, pdf_path, payment_link_expires_at, payrexx_payment_link")
       .eq("payment_link_token", token)
-      .eq("record_type", "invoice")
-      .single();
+      .single<Pick<Invoice, "id" | "patient_id" | "invoice_number" | "invoice_date" | "total_amount" | "payment_method" | "doctor_name" | "status" | "pdf_path" | "payment_link_expires_at" | "payrexx_payment_link">>();
 
     if (invoiceError || !invoice) {
       return NextResponse.json(
@@ -58,15 +58,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       invoice: {
         id: invoice.id,
-        consultation_id: invoice.consultation_id,
-        patient_id: invoice.patient_id,
-        title: invoice.title,
-        scheduled_at: invoice.scheduled_at,
-        invoice_total_amount: invoice.invoice_total_amount,
+        invoice_number: invoice.invoice_number,
+        invoice_date: invoice.invoice_date,
+        total_amount: invoice.total_amount,
         payment_method: invoice.payment_method,
         doctor_name: invoice.doctor_name,
-        invoice_is_paid: invoice.invoice_is_paid,
-        invoice_pdf_path: invoice.invoice_pdf_path,
+        status: invoice.status,
+        pdf_path: invoice.pdf_path,
         payment_link_expires_at: invoice.payment_link_expires_at,
         payrexx_payment_link: invoice.payrexx_payment_link,
       },

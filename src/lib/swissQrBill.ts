@@ -9,20 +9,24 @@ export type SwissQrBillData = {
   // Account information
   iban: string; // Swiss or Liechtenstein IBAN
   
-  // Creditor (payee) information
+  // Creditor (payee) information — structured address (S)
   creditorName: string;
-  creditorAddressLine1: string;
-  creditorAddressLine2: string;
-  creditorCountry: string; // ISO 3166-1 alpha-2 (e.g., "CH")
+  creditorStreet: string;          // Street name (without building number)
+  creditorBuildingNumber: string;  // Building/house number
+  creditorPostalCode: string;      // Postal code (NPA)
+  creditorTown: string;            // Town/city (locality)
+  creditorCountry: string;         // ISO 3166-1 alpha-2 (e.g., "CH")
   
   // Amount and currency
   amount?: number; // Optional, if not provided QR-bill is open for any amount
   currency: "CHF" | "EUR";
   
-  // Debtor (payer) information - optional
+  // Debtor (payer) information - optional, structured address (S)
   debtorName?: string;
-  debtorAddressLine1?: string;
-  debtorAddressLine2?: string;
+  debtorStreet?: string;
+  debtorBuildingNumber?: string;
+  debtorPostalCode?: string;
+  debtorTown?: string;
   debtorCountry?: string;
   
   // Reference
@@ -160,13 +164,13 @@ export function encodeSwissQrBill(data: SwissQrBillData): string {
     // IBAN
     iban,
     
-    // Creditor (CdtrInf)
-    "S",                                      // Address Type: S = Structured, K = Combined
-    data.creditorName.substring(0, 70),       // Max 70 chars
-    data.creditorAddressLine1.substring(0, 70), // Street or AddressLine1
-    data.creditorAddressLine2.substring(0, 16), // Building number or AddressLine2
-    "",                                       // Postal code (empty for structured address line format)
-    "",                                       // Town (empty for structured address line format)
+    // Creditor (CdtrInf) — Structured address type
+    "S",                                      // Address Type: S = Structured
+    data.creditorName.substring(0, 70),       // Name (max 70 chars)
+    data.creditorStreet.substring(0, 70),     // Street name
+    data.creditorBuildingNumber.substring(0, 16), // Building number
+    data.creditorPostalCode.substring(0, 16), // Postal code (NPA)
+    data.creditorTown.substring(0, 35),       // Town (locality)
     data.creditorCountry,                     // Country code
     
     // Ultimate Creditor (UltmtCdtr) - 7 fields, all empty for standard use
@@ -182,13 +186,13 @@ export function encodeSwissQrBill(data: SwissQrBillData): string {
     formatAmount(data.amount),
     data.currency,
     
-    // Ultimate Debtor (UltmtDbtr)
+    // Ultimate Debtor (UltmtDbtr) — Structured address type
     data.debtorName ? "S" : "",
     data.debtorName?.substring(0, 70) || "",
-    data.debtorAddressLine1?.substring(0, 70) || "",
-    data.debtorAddressLine2?.substring(0, 16) || "",
-    "",
-    "",
+    data.debtorStreet?.substring(0, 70) || "",
+    data.debtorBuildingNumber?.substring(0, 16) || "",
+    data.debtorPostalCode?.substring(0, 16) || "",
+    data.debtorTown?.substring(0, 35) || "",
     data.debtorCountry || "",
     
     // Reference

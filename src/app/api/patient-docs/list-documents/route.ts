@@ -10,7 +10,7 @@ const supabaseAdmin = createClient(
 );
 
 const BUCKET_NAME = "patient-docs";
-const PATIENT_DOCUMENTS_BUCKET = "patient-documents";
+const PATIENT_DOCUMENTS_BUCKET = "patient_document";
 
 type DocumentFile = {
   name: string;
@@ -20,7 +20,7 @@ type DocumentFile = {
   createdAt: string | null;
   updatedAt: string | null;
   publicUrl: string;
-  source: "patient-docs"; // To distinguish from patient-documents bucket
+  source: "patient-docs"; // To distinguish from patient_document bucket
 };
 
 // Parse folder name pattern to extract first/last name
@@ -83,7 +83,7 @@ async function fetchAllFolders(): Promise<{ name: string; id: string | null }[]>
   return allFolders;
 }
 
-// Helper to fetch all file names from patient-documents bucket recursively
+// Helper to fetch all file names from patient_document bucket recursively
 async function fetchAllPatientDocumentKeys(patientId: string): Promise<Set<string>> {
   const keys = new Set<string>();
 
@@ -125,12 +125,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "firstName and lastName are required" }, { status: 400 });
     }
     
-    // Fetch all file names from patient-documents bucket for deduplication
+    // Fetch all file names from patient_document bucket for deduplication
     const existingKeys = patientId
       ? await fetchAllPatientDocumentKeys(patientId)
       : new Set<string>();
 
-    console.log("Existing keys in patient-documents:", Array.from(existingKeys));
+    console.log("Existing keys in patient_document:", Array.from(existingKeys));
     
     const searchFirstNameLower = firstName.toLowerCase().trim();
     const searchLastNameLower = lastName.toLowerCase().trim();

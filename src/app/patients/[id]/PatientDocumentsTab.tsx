@@ -19,7 +19,7 @@ interface PatientDocumentsTabProps {
   patientName?: string;
 }
 
-const BUCKET_NAME = "patient-documents";
+const BUCKET_NAME = "patient_document";
 
 interface StorageItem {
   name: string;
@@ -36,7 +36,7 @@ interface StorageItem {
 interface ListedItem extends StorageItem {
   kind: "file" | "folder";
   path: string;
-  source?: "patient-documents" | "patient-docs"; // Track which bucket the file came from
+  source?: "patient_document" | "patient-docs"; // Track which bucket the file came from
   publicUrl?: string; // For patient-docs files
 }
 
@@ -243,6 +243,11 @@ export default function PatientDocumentsTab({
           sortBy: { column: "name", order: "asc" },
         });
 
+      console.log(`[PatientDocs] bucket=${BUCKET_NAME}, listPath=${listPath}, returned=${data?.length ?? 0} items, error=${listError?.message ?? 'none'}`);
+      if (data) {
+        console.log(`[PatientDocs] raw items:`, data.map(d => ({ name: d.name, id: (d as any).id, metadata: (d as any).metadata })));
+      }
+
       if (cancelled) return;
 
       if (listError) {
@@ -292,7 +297,7 @@ export default function PatientDocumentsTab({
           ...base,
           kind: "file",
           path: `${currentPrefix}${raw.name}`,
-          source: "patient-documents",
+          source: "patient_document",
         });
       }
 
@@ -451,7 +456,7 @@ export default function PatientDocumentsTab({
       return selectedFile.publicUrl;
     }
 
-    // For patient-documents bucket files
+    // For patient_document bucket files
     const fullPath = [patientId, selectedFile.path]
       .filter(Boolean)
       .join("/");
@@ -1188,7 +1193,7 @@ export default function PatientDocumentsTab({
                           </svg>
                           Preview
                         </button>
-                        {/* Action buttons - show on hover (only for patient-documents bucket files) */}
+                        {/* Action buttons - show on hover (only for patient_document bucket files) */}
                         {item.source !== "patient-docs" && (
                           <div className="flex-shrink-0 hidden group-hover:flex items-center gap-1">
                             <button

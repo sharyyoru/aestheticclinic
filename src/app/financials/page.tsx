@@ -6,19 +6,20 @@ import { supabaseClient } from "@/lib/supabaseClient";
 type InvoiceRow = {
   id: string;
   patient_id: string | null;
-  title: string | null;
-  content: string | null;
-  record_type: string | null;
+  invoice_number: string;
+  invoice_date: string | null;
   doctor_user_id: string | null;
   doctor_name: string | null;
-  scheduled_at: string | null;
+  provider_id: string | null;
+  provider_name: string | null;
   payment_method: string | null;
-  invoice_total_amount: number | null;
-  invoice_is_complimentary: boolean | null;
-  invoice_is_paid: boolean | null;
+  total_amount: number;
+  paid_amount: number | null;
+  status: string;
+  is_complimentary: boolean;
   created_by_user_id: string | null;
   created_by_name: string | null;
-  is_archived: boolean | null;
+  is_archived: boolean;
 };
 
 type PatientInfo = {
@@ -27,12 +28,17 @@ type PatientInfo = {
   last_name: string | null;
 };
 
+type ProviderInfo = {
+  id: string;
+  name: string | null;
+};
+
 type PatientsById = Record<string, PatientInfo>;
+type ProvidersById = Record<string, ProviderInfo>;
 
 type NormalizedInvoice = InvoiceRow & {
   amount: number;
-  isComplimentaryDerived: boolean;
-  isPaidDerived: boolean;
+  isPaid: boolean;
   patientName: string;
   ownerKey: string;
   ownerLabel: string;
@@ -67,34 +73,6 @@ type OwnerSummaryRow = {
   totalComplimentary: number;
 };
 
-function extractInvoiceInfoFromContent(content: string | null): {
-  total: number;
-  isComplimentary: boolean;
-} {
-  if (!content) {
-    return { total: 0, isComplimentary: false };
-  }
-
-  const html = content;
-
-  const isComplimentary =
-    html.includes("Extra option:</strong> Complimentary service") ||
-    html.includes("Extra option:</strong> Complimentary Service");
-
-  let total = 0;
-  const match = html.match(
-    /Estimated total:<\/strong>\s*CHF\s*([0-9]+(?:\.[0-9]{1,2})?)/,
-  );
-  if (match) {
-    const parsed = Number.parseFloat(match[1].replace(/[^0-9.]/g, ""));
-    if (Number.isFinite(parsed)) {
-      total = parsed;
-    }
-  }
-
-  return { total, isComplimentary };
-}
-
 function formatCurrency(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return "0.00 CHF";
   return `${amount.toFixed(2)} CHF`;
@@ -114,12 +92,16 @@ function formatShortDate(iso: string | null | undefined): string {
 export default function FinancialsPage() {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [patientsById, setPatientsById] = useState<PatientsById>({});
+  const [providersById, setProvidersById] = useState<ProvidersById>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [patientFilter, setPatientFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [showOnlyUnpaid, setShowOnlyUnpaid] = useState(false);
+  const [invoicePage, setInvoicePage] = useState(0);
+  const [patientPage, setPatientPage] = useState(0);
+  const ROWS_PER_PAGE = 50;
 
   useEffect(() => {
     let isMounted = true;
@@ -130,13 +112,12 @@ export default function FinancialsPage() {
         setError(null);
 
         const { data, error: invoicesError } = await supabaseClient
-          .from("consultations")
+          .from("invoices")
           .select(
-            "id, patient_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, created_by_user_id, created_by_name, is_archived",
+            "id, patient_id, invoice_number, invoice_date, doctor_user_id, doctor_name, provider_id, provider_name, payment_method, total_amount, paid_amount, status, is_complimentary, created_by_user_id, created_by_name, is_archived",
           )
-          .eq("record_type", "invoice")
           .eq("is_archived", false)
-          .order("scheduled_at", { ascending: false });
+          .order("invoice_date", { ascending: false });
 
         if (!isMounted) return;
 
@@ -159,31 +140,71 @@ export default function FinancialsPage() {
           ),
         );
 
+        // Fetch patients in batches of 50 to avoid URL length limits
         if (patientIds.length > 0) {
-          const { data: patientsData, error: patientsError } =
+          const BATCH_SIZE = 50;
+          const map: PatientsById = {};
+
+          for (let i = 0; i < patientIds.length; i += BATCH_SIZE) {
+            if (!isMounted) return;
+            const batch = patientIds.slice(i, i + BATCH_SIZE);
+            const { data: patientsData, error: patientsError } =
+              await supabaseClient
+                .from("patients")
+                .select("id, first_name, last_name")
+                .in("id", batch);
+
+            if (!patientsError && patientsData) {
+              for (const row of patientsData as any[]) {
+                const id = row.id as string;
+                map[id] = {
+                  id,
+                  first_name: (row.first_name as string | null) ?? null,
+                  last_name: (row.last_name as string | null) ?? null,
+                };
+              }
+            }
+          }
+
+          if (!isMounted) return;
+          setPatientsById(map);
+        } else {
+          setPatientsById({});
+        }
+
+        // Fetch providers for invoice owners
+        const providerIds = Array.from(
+          new Set(
+            rows
+              .map((row) => row.provider_id)
+              .filter((id): id is string => typeof id === "string" && !!id),
+          ),
+        );
+
+        if (providerIds.length > 0) {
+          const { data: providersData, error: providersError } =
             await supabaseClient
-              .from("patients")
-              .select("id, first_name, last_name")
-              .in("id", patientIds);
+              .from("providers")
+              .select("id, name")
+              .in("id", providerIds);
 
           if (!isMounted) return;
 
-          if (!patientsError && patientsData) {
-            const map: PatientsById = {};
-            for (const row of patientsData as any[]) {
+          if (!providersError && providersData) {
+            const provMap: ProvidersById = {};
+            for (const row of providersData as any[]) {
               const id = row.id as string;
-              map[id] = {
+              provMap[id] = {
                 id,
-                first_name: (row.first_name as string | null) ?? null,
-                last_name: (row.last_name as string | null) ?? null,
+                name: (row.name as string | null) ?? null,
               };
             }
-            setPatientsById(map);
+            setProvidersById(provMap);
           } else {
-            setPatientsById({});
+            setProvidersById({});
           }
         } else {
-          setPatientsById({});
+          setProvidersById({});
         }
 
         setLoading(false);
@@ -215,55 +236,42 @@ export default function FinancialsPage() {
       const patientName =
         nameParts.join(" ") || row.patient_id || "Unknown patient";
 
-      const { total: parsedTotal, isComplimentary: parsedComplimentary } =
-        extractInvoiceInfoFromContent(row.content ?? null);
+      const amount = Number(row.total_amount) || 0;
+      const isPaid = row.status === "PAID" || row.status === "OVERPAID";
 
-      let amount = 0;
-      const rawAmount = row.invoice_total_amount;
-      if (rawAmount !== null && rawAmount !== undefined) {
-        const numeric = Number(rawAmount);
-        if (Number.isFinite(numeric) && numeric > 0) {
-          amount = numeric;
-        }
-      } else if (parsedTotal > 0) {
-        amount = parsedTotal;
-      }
-
-      const isComplimentary =
-        ((typeof row.invoice_is_complimentary === "boolean"
-          ? row.invoice_is_complimentary
-          : false) || parsedComplimentary) && amount > 0;
-
-      const isPaid =
-        typeof row.invoice_is_paid === "boolean" ? row.invoice_is_paid : false;
-
+      // Owner: prefer provider (from providers table), then doctor, then creator
+      const provider = row.provider_id ? providersById[row.provider_id] : undefined;
       const ownerKey =
-        (row.doctor_user_id || row.created_by_user_id || "unknown") ??
-        "unknown";
+        row.provider_id || row.doctor_user_id || row.created_by_user_id || "unknown";
 
       const ownerLabel =
+        provider?.name ||
+        row.provider_name ||
         row.doctor_name ||
         row.created_by_name ||
         (ownerKey === "unknown" ? "Unassigned" : ownerKey);
 
-      const statusLabel = isComplimentary
+      const statusLabel = row.is_complimentary
         ? "Complimentary"
         : isPaid
         ? "Paid"
+        : row.status === "PARTIAL_PAID"
+        ? "Partial"
+        : row.status === "CANCELLED"
+        ? "Cancelled"
         : "Unpaid";
 
       return {
         ...row,
         amount,
-        isComplimentaryDerived: isComplimentary,
-        isPaidDerived: isPaid,
+        isPaid,
         patientName,
         ownerKey,
         ownerLabel,
         statusLabel,
       };
     });
-  }, [invoices, patientsById]);
+  }, [invoices, patientsById, providersById]);
 
   const patientOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -296,12 +304,24 @@ export default function FinancialsPage() {
         return false;
       }
       if (showOnlyUnpaid) {
-        if (row.isComplimentaryDerived) return false;
-        if (row.isPaidDerived) return false;
+        if (row.is_complimentary) return false;
+        if (row.isPaid) return false;
       }
       return true;
     });
   }, [normalizedInvoices, patientFilter, ownerFilter, showOnlyUnpaid]);
+
+  // Reset pages when filters change
+  useEffect(() => {
+    setInvoicePage(0);
+    setPatientPage(0);
+  }, [patientFilter, ownerFilter, showOnlyUnpaid]);
+
+  const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / ROWS_PER_PAGE));
+  const paginatedInvoices = useMemo(() => {
+    const start = invoicePage * ROWS_PER_PAGE;
+    return filteredInvoices.slice(start, start + ROWS_PER_PAGE);
+  }, [filteredInvoices, invoicePage, ROWS_PER_PAGE]);
 
   const summary: Summary = useMemo(() => {
     let totalAmount = 0;
@@ -316,14 +336,14 @@ export default function FinancialsPage() {
 
       invoiceCount += 1;
 
-      if (row.isComplimentaryDerived) {
+      if (row.is_complimentary) {
         totalComplimentary += amount;
         continue;
       }
 
       totalAmount += amount;
 
-      if (row.isPaidDerived) {
+      if (row.isPaid) {
         totalPaid += amount;
       } else {
         totalUnpaid += amount;
@@ -353,11 +373,11 @@ export default function FinancialsPage() {
       if (Number.isFinite(amount) && amount > 0) {
         existing.invoiceCount += 1;
 
-        if (row.isComplimentaryDerived) {
+        if (row.is_complimentary) {
           existing.totalComplimentary += amount;
         } else {
           existing.totalAmount += amount;
-          if (row.isPaidDerived) {
+          if (row.isPaid) {
             existing.totalPaid += amount;
           } else {
             existing.totalUnpaid += amount;
@@ -372,6 +392,12 @@ export default function FinancialsPage() {
       (a, b) => b.totalAmount - a.totalAmount,
     );
   }, [filteredInvoices]);
+
+  const totalPatientPages = Math.max(1, Math.ceil(patientSummaryRows.length / ROWS_PER_PAGE));
+  const paginatedPatientRows = useMemo(() => {
+    const start = patientPage * ROWS_PER_PAGE;
+    return patientSummaryRows.slice(start, start + ROWS_PER_PAGE);
+  }, [patientSummaryRows, patientPage, ROWS_PER_PAGE]);
 
   const ownerSummaryRows: OwnerSummaryRow[] = useMemo(() => {
     const byOwner = new Map<string, OwnerSummaryRow>();
@@ -397,11 +423,11 @@ export default function FinancialsPage() {
       if (Number.isFinite(amount) && amount > 0) {
         existing.invoiceCount += 1;
 
-        if (row.isComplimentaryDerived) {
+        if (row.is_complimentary) {
           existing.totalComplimentary += amount;
         } else {
           existing.totalAmount += amount;
-          if (row.isPaidDerived) {
+          if (row.isPaid) {
             existing.totalPaid += amount;
           } else {
             existing.totalUnpaid += amount;
@@ -527,7 +553,9 @@ export default function FinancialsPage() {
                     Patients
                   </h2>
                   <p className="text-[10px] text-slate-500">
-                    Financial summary per patient.
+                    {patientSummaryRows.length > 0
+                      ? `${patientPage * ROWS_PER_PAGE + 1}\u2013${Math.min((patientPage + 1) * ROWS_PER_PAGE, patientSummaryRows.length)} of ${patientSummaryRows.length} patients`
+                      : "Financial summary per patient."}
                   </p>
                 </div>
                 {patientSummaryRows.length === 0 ? (
@@ -535,40 +563,65 @@ export default function FinancialsPage() {
                     No invoices for the current filters.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-[11px]">
-                      <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
-                        <tr>
-                          <th className="py-1.5 pr-3 font-medium">Patient</th>
-                          <th className="py-1.5 pr-3 font-medium">Invoices</th>
-                          <th className="py-1.5 pr-3 font-medium">Billed</th>
-                          <th className="py-1.5 pr-3 font-medium">Paid</th>
-                          <th className="py-1.5 pr-0 font-medium">Unpaid</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {patientSummaryRows.map((row) => (
-                          <tr key={row.patientId} className="align-top">
-                            <td className="py-1.5 pr-3 text-slate-900">
-                              {row.patientName}
-                            </td>
-                            <td className="py-1.5 pr-3 text-slate-700">
-                              {row.invoiceCount}
-                            </td>
-                            <td className="py-1.5 pr-3 text-slate-700">
-                              {formatCurrency(row.totalAmount)}
-                            </td>
-                            <td className="py-1.5 pr-3 text-emerald-700">
-                              {formatCurrency(row.totalPaid)}
-                            </td>
-                            <td className="py-1.5 pr-0 text-amber-700">
-                              {formatCurrency(row.totalUnpaid)}
-                            </td>
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-left text-[11px]">
+                        <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="py-1.5 pr-3 font-medium">Patient</th>
+                            <th className="py-1.5 pr-3 font-medium">Invoices</th>
+                            <th className="py-1.5 pr-3 font-medium">Billed</th>
+                            <th className="py-1.5 pr-3 font-medium">Paid</th>
+                            <th className="py-1.5 pr-0 font-medium">Unpaid</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {paginatedPatientRows.map((row) => (
+                            <tr key={row.patientId} className="align-top">
+                              <td className="py-1.5 pr-3 text-slate-900">
+                                {row.patientName}
+                              </td>
+                              <td className="py-1.5 pr-3 text-slate-700">
+                                {row.invoiceCount}
+                              </td>
+                              <td className="py-1.5 pr-3 text-slate-700">
+                                {formatCurrency(row.totalAmount)}
+                              </td>
+                              <td className="py-1.5 pr-3 text-emerald-700">
+                                {formatCurrency(row.totalPaid)}
+                              </td>
+                              <td className="py-1.5 pr-0 text-amber-700">
+                                {formatCurrency(row.totalUnpaid)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {totalPatientPages > 1 && (
+                      <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                        <button
+                          type="button"
+                          disabled={patientPage === 0}
+                          onClick={() => setPatientPage((p) => Math.max(0, p - 1))}
+                          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Previous
+                        </button>
+                        <span className="text-[11px] text-slate-500">
+                          Page {patientPage + 1} of {totalPatientPages}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={patientPage >= totalPatientPages - 1}
+                          onClick={() => setPatientPage((p) => Math.min(totalPatientPages - 1, p + 1))}
+                          className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -632,9 +685,8 @@ export default function FinancialsPage() {
               <div className="mb-2 flex items-center justify-between gap-2">
                 <h2 className="text-xs font-semibold text-slate-900">Invoices</h2>
                 <p className="text-[10px] text-slate-500">
-                  Showing {filteredInvoices.length} of {normalizedInvoices.length}
-                  {" "}
-                  invoices.
+                  Showing {invoicePage * ROWS_PER_PAGE + 1}&ndash;{Math.min((invoicePage + 1) * ROWS_PER_PAGE, filteredInvoices.length)} of {filteredInvoices.length}
+                  {" "}invoices.
                 </p>
               </div>
               {filteredInvoices.length === 0 ? (
@@ -642,60 +694,85 @@ export default function FinancialsPage() {
                   No invoices match the current filters.
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-[11px]">
-                    <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
-                      <tr>
-                        <th className="py-1.5 pr-3 font-medium">Date</th>
-                        <th className="py-1.5 pr-3 font-medium">Patient</th>
-                        <th className="py-1.5 pr-3 font-medium">Owner</th>
-                        <th className="py-1.5 pr-3 font-medium">Title</th>
-                        <th className="py-1.5 pr-3 font-medium">Payment</th>
-                        <th className="py-1.5 pr-3 font-medium">Amount</th>
-                        <th className="py-1.5 pr-0 font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredInvoices.map((invoice) => (
-                        <tr key={invoice.id} className="align-top">
-                          <td className="py-1.5 pr-3 text-slate-700">
-                            {formatShortDate(invoice.scheduled_at)}
-                          </td>
-                          <td className="py-1.5 pr-3 text-slate-900">
-                            {invoice.patientName}
-                          </td>
-                          <td className="py-1.5 pr-3 text-slate-700">
-                            {invoice.ownerLabel}
-                          </td>
-                          <td className="py-1.5 pr-3 text-slate-700">
-                            {invoice.title || "Invoice"}
-                          </td>
-                          <td className="py-1.5 pr-3 text-slate-700">
-                            {invoice.payment_method || "-"}
-                          </td>
-                          <td className="py-1.5 pr-3 text-slate-900">
-                            {invoice.amount > 0
-                              ? formatCurrency(invoice.amount)
-                              : "-"}
-                          </td>
-                          <td className="py-1.5 pr-0">
-                            <span
-                              className={
-                                invoice.isComplimentaryDerived
-                                  ? "inline-flex rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-50"
-                                  : invoice.isPaidDerived
-                                  ? "inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
-                                  : "inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
-                              }
-                            >
-                              {invoice.statusLabel}
-                            </span>
-                          </td>
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-[11px]">
+                      <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="py-1.5 pr-3 font-medium">Date</th>
+                          <th className="py-1.5 pr-3 font-medium">Patient</th>
+                          <th className="py-1.5 pr-3 font-medium">Owner</th>
+                          <th className="py-1.5 pr-3 font-medium">Title</th>
+                          <th className="py-1.5 pr-3 font-medium">Payment</th>
+                          <th className="py-1.5 pr-3 font-medium">Amount</th>
+                          <th className="py-1.5 pr-0 font-medium">Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {paginatedInvoices.map((invoice) => (
+                          <tr key={invoice.id} className="align-top">
+                            <td className="py-1.5 pr-3 text-slate-700">
+                              {formatShortDate(invoice.invoice_date)}
+                            </td>
+                            <td className="py-1.5 pr-3 text-slate-900">
+                              {invoice.patientName}
+                            </td>
+                            <td className="py-1.5 pr-3 text-slate-700">
+                              {invoice.ownerLabel}
+                            </td>
+                            <td className="py-1.5 pr-3 text-slate-700">
+                              {invoice.invoice_number || "Invoice"}
+                            </td>
+                            <td className="py-1.5 pr-3 text-slate-700">
+                              {invoice.payment_method || "-"}
+                            </td>
+                            <td className="py-1.5 pr-3 text-slate-900">
+                              {invoice.amount > 0
+                                ? formatCurrency(invoice.amount)
+                                : "-"}
+                            </td>
+                            <td className="py-1.5 pr-0">
+                              <span
+                                className={
+                                  invoice.is_complimentary
+                                    ? "inline-flex rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-50"
+                                    : invoice.isPaid
+                                    ? "inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                                    : "inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                                }
+                              >
+                                {invoice.statusLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {totalInvoicePages > 1 && (
+                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        disabled={invoicePage === 0}
+                        onClick={() => setInvoicePage((p) => Math.max(0, p - 1))}
+                        className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-[11px] text-slate-500">
+                        Page {invoicePage + 1} of {totalInvoicePages}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={invoicePage >= totalInvoicePages - 1}
+                        onClick={() => setInvoicePage((p) => Math.min(totalInvoicePages - 1, p + 1))}
+                        className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </>

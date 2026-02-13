@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       invoiceReferenceId: transaction.invoice?.referenceId,
     });
 
-    // Find the consultation by reference ID (consultation_id)
+    // Find the invoice by reference ID (invoice_number)
     const referenceId = transaction.referenceId || transaction.invoice?.referenceId;
     
     if (!referenceId) {
@@ -138,20 +138,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No reference ID" }, { status: 400 });
     }
 
-    // Look up the consultation by consultation_id
-    const { data: consultation, error: consultationError } = await supabaseAdmin
-      .from("consultations")
-      .select("id, consultation_id, invoice_is_paid, payrexx_payment_status")
-      .eq("consultation_id", referenceId)
-      .eq("record_type", "invoice")
+    // Look up the invoice by invoice_number
+    const { data: invoice, error: invoiceError } = await supabaseAdmin
+      .from("invoices")
+      .select("id, invoice_number, status, total_amount, payrexx_payment_status")
+      .eq("invoice_number", referenceId)
       .single();
 
-    if (consultationError || !consultation) {
-      console.error("Consultation not found for reference ID:", referenceId);
+    if (invoiceError || !invoice) {
+      console.error("Invoice not found for reference ID:", referenceId);
       // Still return 200 to prevent Payrexx from retrying
       return NextResponse.json({ 
         received: true, 
-        message: "Consultation not found" 
+        message: "Invoice not found" 
       });
     }
 
@@ -159,41 +158,43 @@ export async function POST(request: NextRequest) {
     const isPaid = isTransactionPaid(transaction.status);
     const paidAt = isPaid ? new Date().toISOString() : null;
 
-    // Update the consultation with transaction details
+    // Update the invoice with transaction details
     const updateData: Record<string, unknown> = {
-      payrexx_transaction_id: transaction.id,
+      payrexx_transaction_id: String(transaction.id),
       payrexx_transaction_uuid: transaction.uuid,
       payrexx_payment_status: transaction.status,
     };
 
     // Mark as paid if transaction is confirmed
-    if (isPaid && !consultation.invoice_is_paid) {
-      updateData.invoice_is_paid = true;
+    if (isPaid && invoice.status !== "PAID") {
+      updateData.status = "PAID";
+      updateData.paid_amount = invoice.total_amount;
+      updateData.paid_at = paidAt;
       updateData.payrexx_paid_at = paidAt;
     }
 
     const { error: updateError } = await supabaseAdmin
-      .from("consultations")
+      .from("invoices")
       .update(updateData)
-      .eq("id", consultation.id);
+      .eq("id", invoice.id);
 
     if (updateError) {
-      console.error("Failed to update consultation:", updateError);
+      console.error("Failed to update invoice:", updateError);
       return NextResponse.json(
-        { error: "Failed to update consultation" },
+        { error: "Failed to update invoice" },
         { status: 500 }
       );
     }
 
-    console.log("Consultation updated successfully:", {
-      consultationId: consultation.id,
+    console.log("Invoice updated successfully:", {
+      invoiceId: invoice.id,
       newStatus: transaction.status,
       isPaid,
     });
 
     return NextResponse.json({
       received: true,
-      consultationId: consultation.id,
+      invoiceId: invoice.id,
       status: transaction.status,
       isPaid,
     });

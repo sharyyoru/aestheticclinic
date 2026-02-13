@@ -5,14 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 
 type InvoiceData = {
   id: string;
-  consultation_id: string;
-  title: string;
-  scheduled_at: string;
-  invoice_total_amount: number | null;
+  invoice_number: string;
+  invoice_date: string;
+  total_amount: number;
   payment_method: string | null;
   doctor_name: string | null;
-  invoice_is_paid: boolean;
-  invoice_pdf_path: string | null;
+  status: string;
+  pdf_path: string | null;
   payment_link_expires_at: string | null;
   payrexx_payment_link: string | null;
 };
@@ -80,10 +79,10 @@ export default function InvoicePaymentPage() {
   }
 
   function downloadPDF() {
-    if (!invoice?.invoice_pdf_path) return;
+    if (!invoice?.pdf_path) return;
     // Construct public URL directly (no auth needed for public buckets)
     const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-    const publicUrl = `${baseUrl}/storage/v1/object/public/invoice-pdfs/${invoice.invoice_pdf_path}`;
+    const publicUrl = `${baseUrl}/storage/v1/object/public/invoice-pdfs/${invoice.pdf_path}`;
     window.open(publicUrl, "_blank");
   }
 
@@ -114,7 +113,7 @@ export default function InvoicePaymentPage() {
     );
   }
 
-  if (invoice.invoice_is_paid) {
+  if (invoice.status === "PAID" || invoice.status === "OVERPAID") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
         <div className="w-full max-w-md rounded-2xl border border-emerald-200 bg-white p-8 text-center shadow-xl">
@@ -125,7 +124,7 @@ export default function InvoicePaymentPage() {
           </div>
           <h1 className="mb-2 text-xl font-semibold text-slate-900">Already Paid</h1>
           <p className="mb-6 text-sm text-slate-600">This invoice has already been paid.</p>
-          {invoice.invoice_pdf_path && (
+          {invoice.pdf_path && (
             <button
               onClick={downloadPDF}
               className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
@@ -144,7 +143,7 @@ export default function InvoicePaymentPage() {
   // If this is an Online Payment invoice with Payrexx link, redirect to Payrexx
   const hasPayrexxPayment = invoice.payment_method === "Online Payment" && invoice.payrexx_payment_link;
 
-  const totalAmount = invoice.invoice_total_amount || 0;
+  const totalAmount = invoice.total_amount || 0;
   const formattedAmount = totalAmount.toFixed(2);
 
   return (
@@ -183,7 +182,7 @@ export default function InvoicePaymentPage() {
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-slate-600">Invoice Number:</span>
-                <span className="font-medium text-slate-900">{invoice.consultation_id}</span>
+                <span className="font-medium text-slate-900">{invoice.invoice_number}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Patient:</span>
@@ -194,12 +193,12 @@ export default function InvoicePaymentPage() {
               <div className="flex justify-between">
                 <span className="text-slate-600">Date:</span>
                 <span className="font-medium text-slate-900">
-                  {new Date(invoice.scheduled_at).toLocaleDateString("fr-CH")}
+                  {new Date(invoice.invoice_date).toLocaleDateString("fr-CH")}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Service:</span>
-                <span className="font-medium text-slate-900">{invoice.title}</span>
+                <span className="font-medium text-slate-900">Medical Services</span>
               </div>
               {invoice.doctor_name && (
                 <div className="flex justify-between">
@@ -217,7 +216,7 @@ export default function InvoicePaymentPage() {
             </div>
           </div>
 
-          {invoice.invoice_pdf_path && (
+          {invoice.pdf_path && (
             <button
               onClick={downloadPDF}
               className="mb-6 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"

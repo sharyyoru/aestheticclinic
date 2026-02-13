@@ -64,6 +64,7 @@ type ConsultationRow = {
   scheduled_at: string;
   payment_method: string | null;
   duration_seconds: number | null;
+  invoice_id: string | null;
   invoice_total_amount: number | null;
   invoice_is_complimentary: boolean;
   invoice_is_paid: boolean | null;
@@ -84,6 +85,14 @@ type PlatformUser = {
   id: string;
   full_name: string | null;
   email: string | null;
+};
+
+type Provider = {
+  id: string;
+  name: string;
+  specialty: string | null;
+  email: string | null;
+  phone: string | null;
 };
 
 type PrescriptionLine = {
@@ -221,6 +230,7 @@ export default function MedicalConsultationsCard({
   const [taskSaving, setTaskSaving] = useState(false);
   const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
   const [userOptions, setUserOptions] = useState<PlatformUser[]>([]);
+  const [providerOptions, setProviderOptions] = useState<Provider[]>([]);
 
   const [newConsultationOpen, setNewConsultationOpen] = useState(false);
   const [consultationDate, setConsultationDate] = useState(
@@ -235,7 +245,7 @@ export default function MedicalConsultationsCard({
   );
   const [consultationTitle, setConsultationTitle] = useState("");
   const [consultationRecordType, setConsultationRecordType] =
-    useState<ConsultationRecordType>("notes");
+    useState<ConsultationRecordType>(recordTypeFilter === "invoice" ? "invoice" : "notes");
   const [consultationContentHtml, setConsultationContentHtml] = useState("");
   const [consultationMentionActive, setConsultationMentionActive] = useState(false);
   const [consultationMentionQuery, setConsultationMentionQuery] = useState("");
@@ -406,7 +416,19 @@ export default function MedicalConsultationsCard({
       }
     }
 
+    async function loadProviders() {
+      try {
+        const { data } = await supabaseClient
+          .from("providers")
+          .select("id, name, specialty, email, phone")
+          .order("name");
+        if (!isMounted) return;
+        if (data) setProviderOptions(data as Provider[]);
+      } catch {}
+    }
+
     void loadUsers();
+    void loadProviders();
 
     return () => {
       isMounted = false;
@@ -433,27 +455,144 @@ export default function MedicalConsultationsCard({
         setConsultationsLoading(true);
         setConsultationsError(null);
 
-        const { data, error } = await supabaseClient
+        // 1) Load non-invoice records from consultations table
+        const { data: consultData, error: consultError } = await supabaseClient
           .from("consultations")
           .select(
             "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
+          .neq("record_type", "invoice")
           .order("scheduled_at", { ascending: false });
 
         if (!isMounted) return;
 
-        if (error || !data) {
-          setConsultationsError(
-            error?.message ?? "Failed to load consultations.",
-          );
+        if (consultError) {
+          setConsultationsError(consultError.message ?? "Failed to load consultations.");
           setConsultations([]);
           setConsultationsLoading(false);
           return;
         }
 
-        setConsultations(data as ConsultationRow[]);
+        const nonInvoiceRows: ConsultationRow[] = (consultData ?? []).map((r: any) => ({
+          ...r,
+          invoice_id: null,
+        }));
+
+        // 2) Load invoice records directly from invoices table
+        const { data: invoiceData, error: invoiceError } = await supabaseClient
+          .from("invoices")
+          .select(
+            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived",
+          )
+          .eq("patient_id", patientId)
+          .eq("is_archived", showArchived ? true : false)
+          .order("invoice_date", { ascending: false });
+
+        if (!isMounted) return;
+
+        if (invoiceError) {
+          console.error("Failed to load invoices:", invoiceError);
+        }
+
+        // 3) For legacy invoices with consultation_id, fetch title/content from consultations
+        const linkedConsultationIds = (invoiceData ?? [])
+          .map((inv: any) => inv.consultation_id)
+          .filter(Boolean) as string[];
+
+        let consultContentMap = new Map<string, { title: string | null; content: string | null }>();
+        if (linkedConsultationIds.length > 0) {
+          const { data: linkedConsults } = await supabaseClient
+            .from("consultations")
+            .select("id, title, content")
+            .in("id", linkedConsultationIds);
+
+          if (linkedConsults) {
+            for (const c of linkedConsults) {
+              consultContentMap.set(c.id, { title: c.title, content: c.content });
+            }
+          }
+        }
+
+        // 4) Convert invoice rows to ConsultationRow shape
+        const invoiceRows: ConsultationRow[] = (invoiceData ?? []).map((inv: any) => {
+          const linked = inv.consultation_id ? consultContentMap.get(inv.consultation_id) : null;
+          return {
+            id: inv.id,
+            patient_id: inv.patient_id ?? patientId,
+            consultation_id: inv.invoice_number ?? inv.id,
+            title: linked?.title || `Invoice #${inv.invoice_number || inv.id}`,
+            content: linked?.content ?? null,
+            record_type: "invoice" as ConsultationRecordType,
+            doctor_user_id: inv.doctor_user_id ?? null,
+            doctor_name: inv.doctor_name ?? null,
+            scheduled_at: inv.treatment_date || inv.invoice_date || new Date().toISOString(),
+            payment_method: inv.payment_method ?? null,
+            duration_seconds: null,
+            invoice_id: inv.id,
+            invoice_total_amount: inv.total_amount ?? null,
+            invoice_is_complimentary: inv.is_complimentary ?? false,
+            invoice_is_paid: inv.status === "PAID" || inv.status === "OVERPAID" || inv.status === "PARTIAL_PAID",
+            invoice_status: (inv.status as InvoiceStatus) ?? null,
+            invoice_paid_amount: inv.paid_amount ?? null,
+            cash_receipt_path: inv.cash_receipt_path ?? null,
+            invoice_pdf_path: inv.pdf_path ?? null,
+            payment_link_token: inv.payment_link_token ?? null,
+            payrexx_payment_link: inv.payrexx_payment_link ?? null,
+            payrexx_payment_status: inv.payrexx_payment_status ?? null,
+            created_by_user_id: inv.created_by_user_id ?? null,
+            created_by_name: inv.created_by_name ?? null,
+            is_archived: inv.is_archived ?? false,
+            archived_at: null,
+          };
+        });
+
+        // 4b) For invoices without content, fetch line items and generate HTML
+        const invoicesWithoutContent = invoiceRows.filter((r) => !r.content && r.invoice_id);
+        if (invoicesWithoutContent.length > 0) {
+          const invoiceIds = invoicesWithoutContent.map((r) => r.invoice_id!);
+          const { data: allLineItems } = await supabaseClient
+            .from("invoice_line_items")
+            .select("invoice_id, name, code, quantity, unit_price, total_price")
+            .in("invoice_id", invoiceIds)
+            .order("sort_order", { ascending: true });
+
+          if (allLineItems && allLineItems.length > 0) {
+            const lineItemsByInvoice = new Map<string, typeof allLineItems>();
+            for (const li of allLineItems) {
+              const existing = lineItemsByInvoice.get(li.invoice_id) || [];
+              existing.push(li);
+              lineItemsByInvoice.set(li.invoice_id, existing);
+            }
+
+            for (const row of invoicesWithoutContent) {
+              const items = lineItemsByInvoice.get(row.invoice_id!);
+              if (!items || items.length === 0) continue;
+
+              let totalAmount = 0;
+              const itemsHtml = items
+                .map((item) => {
+                  const lineTotal = item.total_price || (item.unit_price || 0) * (item.quantity || 1);
+                  totalAmount += lineTotal;
+                  return `<tr class="border-b border-slate-100"><td class="px-2 py-1">${item.code || "-"}</td><td class="px-2 py-1">${item.name || "Service"}</td><td class="px-2 py-1 text-right">${item.quantity || 1}</td><td class="px-2 py-1 text-right">CHF ${(item.unit_price || 0).toFixed(2)}</td><td class="px-2 py-1 text-right">CHF ${lineTotal.toFixed(2)}</td></tr>`;
+                })
+                .join("");
+
+              row.content = `<div class="mt-1"><table class="w-full border-collapse text-[11px]"><thead><tr class="bg-slate-50 text-slate-600"><th class="px-2 py-1 text-left font-semibold">Code</th><th class="px-2 py-1 text-left font-semibold">Service</th><th class="px-2 py-1 text-right font-semibold">Qty</th><th class="px-2 py-1 text-right font-semibold">Unit Price</th><th class="px-2 py-1 text-right font-semibold">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><p class="mt-1 text-[11px] text-slate-700"><strong>Total:</strong> CHF ${totalAmount.toFixed(2)}</p></div>`;
+            }
+          }
+        }
+
+        // 5) Merge and sort by scheduled_at descending
+        const allRows = [...nonInvoiceRows, ...invoiceRows].sort((a, b) => {
+          const dateA = new Date(a.scheduled_at).getTime();
+          const dateB = new Date(b.scheduled_at).getTime();
+          return dateB - dateA;
+        });
+
+        if (!isMounted) return;
+        setConsultations(allRows);
         setConsultationsLoading(false);
       } catch {
         if (!isMounted) return;
@@ -705,57 +844,67 @@ export default function MedicalConsultationsCard({
     }
   }
 
-  async function handleArchiveConsultation(consultationId: string) {
-    if (!consultationId) return;
+  async function handleArchiveConsultation(rowId: string) {
+    if (!rowId) return;
 
     if (typeof window !== "undefined") {
       const confirmed = window.confirm(
-        "Archive this consultation? It will be moved to the archive and can be permanently deleted from there.",
+        "Archive this record? It will be moved to the archive and can be permanently deleted from there.",
       );
       if (!confirmed) return;
     }
 
     try {
       setConsultationsError(null);
+
+      // Determine if this is an invoice row or a consultation row
+      const target = consultations.find(c => c.id === rowId);
+      const table = target?.invoice_id ? "invoices" : "consultations";
+
       const { error } = await supabaseClient
-        .from("consultations")
+        .from(table)
         .update({
           is_archived: true,
           archived_at: new Date().toISOString(),
         })
-        .eq("id", consultationId);
+        .eq("id", rowId);
 
       if (error) {
         setConsultationsError(
-          error.message ?? "Failed to archive consultation.",
+          error.message ?? "Failed to archive record.",
         );
         return;
       }
 
       setConsultations((prev) =>
-        prev.filter((row) => row.id !== consultationId),
+        prev.filter((row) => row.id !== rowId),
       );
     } catch {
-      setConsultationsError("Failed to archive consultation.");
+      setConsultationsError("Failed to archive record.");
     }
   }
 
-  async function handleDeleteConsultation(consultationId: string) {
-    if (!consultationId) return;
+  async function handleDeleteConsultation(rowId: string) {
+    if (!rowId) return;
 
     if (typeof window !== "undefined") {
       const confirmed = window.confirm(
-        "Permanently delete this consultation? This cannot be undone.",
+        "Permanently delete this record? This cannot be undone.",
       );
       if (!confirmed) return;
     }
 
     try {
       setConsultationsError(null);
+
+      // Determine if this is an invoice row or a consultation row
+      const target = consultations.find(c => c.id === rowId);
+      const table = target?.invoice_id ? "invoices" : "consultations";
+
       const { error } = await supabaseClient
-        .from("consultations")
+        .from(table)
         .delete()
-        .eq("id", consultationId);
+        .eq("id", rowId);
 
       if (error) {
         setConsultationsError(
@@ -765,7 +914,7 @@ export default function MedicalConsultationsCard({
       }
 
       setConsultations((prev) =>
-        prev.filter((row) => row.id !== consultationId),
+        prev.filter((row) => row.id !== rowId),
       );
     } catch {
       setConsultationsError("Failed to delete consultation.");
@@ -815,19 +964,25 @@ export default function MedicalConsultationsCard({
   }
 
   async function handleToggleInvoicePaid(
-    consultationId: string,
+    invoiceId: string,
     currentPaid: boolean,
   ) {
-    if (!consultationId) return;
+    if (!invoiceId) return;
 
     try {
       setConsultationsError(null);
       const nextPaid = !currentPaid;
 
+      const newStatus = nextPaid ? "PAID" : "OPEN";
+      const target = consultations.find(c => c.id === invoiceId);
       const { error } = await supabaseClient
-        .from("consultations")
-        .update({ invoice_is_paid: nextPaid })
-        .eq("id", consultationId);
+        .from("invoices")
+        .update({
+          status: newStatus,
+          paid_amount: nextPaid ? (target?.invoice_total_amount || 0) : null,
+          paid_at: nextPaid ? new Date().toISOString() : null,
+        })
+        .eq("id", invoiceId);
 
       if (error) {
         setConsultationsError(
@@ -838,7 +993,7 @@ export default function MedicalConsultationsCard({
 
       setConsultations((prev) =>
         prev.map((row) =>
-          row.id === consultationId ? { ...row, invoice_is_paid: nextPaid } : row,
+          row.id === invoiceId ? { ...row, invoice_is_paid: nextPaid, invoice_status: newStatus as InvoiceStatus } : row,
         ),
       );
 
@@ -892,9 +1047,10 @@ export default function MedicalConsultationsCard({
       const paidAt = new Date().toISOString();
 
       const { error } = await supabaseClient
-        .from("consultations")
+        .from("invoices")
         .update({
-          invoice_is_paid: true,
+          status: "PAID",
+          paid_amount: cashReceiptTarget.invoice_total_amount || 0,
           cash_receipt_path: path,
           paid_at: paidAt,
           paid_by_user_id: userId,
@@ -942,15 +1098,15 @@ export default function MedicalConsultationsCard({
     }
   }
 
-  async function handleGenerateInvoicePdf(consultationId: string) {
+  async function handleGenerateInvoicePdf(invoiceId: string) {
     try {
-      setGeneratingPdf(consultationId);
+      setGeneratingPdf(invoiceId);
       setPdfError(null);
 
       const response = await fetch("/api/invoices/generate-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ consultationId }),
+        body: JSON.stringify({ invoiceId }),
       });
 
       const data = await response.json();
@@ -964,12 +1120,21 @@ export default function MedicalConsultationsCard({
       }
 
       if (data.paymentUrl) {
-        setGeneratedPaymentLink({ consultationId, url: data.paymentUrl });
+        setGeneratedPaymentLink({ consultationId: invoiceId, url: data.paymentUrl });
         setPaymentLinkCopied(false);
       }
 
-      // Refresh consultation data to get updated invoice_pdf_path
-      router.refresh();
+      // Update local state with the pdf path so buttons reflect immediately
+      if (data.pdfPath) {
+        setConsultations((prev) =>
+          prev.map((row) =>
+            row.id === invoiceId
+              ? { ...row, invoice_pdf_path: data.pdfPath }
+              : row,
+          ),
+        );
+      }
+
       setGeneratingPdf(null);
     } catch (error) {
       console.error("Error generating PDF:", error);
@@ -1004,7 +1169,7 @@ export default function MedicalConsultationsCard({
     setPaymentStatusModalOpen(true);
   }
 
-  async function handleMarkInvoicePaid(consultationId: string, status: InvoiceStatus = "PAID", paidAmount?: number) {
+  async function handleMarkInvoicePaid(invoiceId: string, status: InvoiceStatus = "PAID", paidAmount?: number) {
     try {
       setMarkingPaid(true);
 
@@ -1013,42 +1178,41 @@ export default function MedicalConsultationsCard({
       const userId = authData?.user?.id || null;
       const paidAt = new Date().toISOString();
 
-      // Update invoice with status and paid amount
-      const updateData: Record<string, unknown> = {
-        invoice_is_paid: status === "PAID" || status === "OVERPAID" || status === "PARTIAL_PAID",
-        invoice_status: status,
+      const invoiceUpdateData: Record<string, unknown> = {
+        status,
         paid_at: paidAt,
         paid_by_user_id: userId,
       };
 
-      // Set the paid amount if provided
+      // Set the paid amount
+      let resolvedPaidAmount: number | null = null;
       if (paidAmount !== undefined && paidAmount >= 0) {
-        updateData.invoice_paid_amount = paidAmount;
+        invoiceUpdateData.paid_amount = paidAmount;
+        resolvedPaidAmount = paidAmount;
       } else if (status === "PAID") {
-        // For full payment, get the total amount from the target consultation
-        const target = consultations.find(c => c.id === consultationId);
+        const target = consultations.find(c => c.id === invoiceId);
         if (target?.invoice_total_amount) {
-          updateData.invoice_paid_amount = target.invoice_total_amount;
+          invoiceUpdateData.paid_amount = target.invoice_total_amount;
+          resolvedPaidAmount = target.invoice_total_amount;
         }
       } else if (status === "OPEN" || status === "CANCELLED") {
-        // Reset paid amount for open or cancelled invoices
-        updateData.invoice_paid_amount = null;
+        invoiceUpdateData.paid_amount = null;
       }
 
       const { error } = await supabaseClient
-        .from("consultations")
-        .update(updateData)
-        .eq("id", consultationId);
+        .from("invoices")
+        .update(invoiceUpdateData)
+        .eq("id", invoiceId);
 
       if (error) throw error;
 
       setConsultations(prev =>
         prev.map(c =>
-          c.id === consultationId ? {
+          c.id === invoiceId ? {
             ...c,
             invoice_is_paid: status === "PAID" || status === "OVERPAID" || status === "PARTIAL_PAID",
             invoice_status: status,
-            invoice_paid_amount: updateData.invoice_paid_amount as number | null,
+            invoice_paid_amount: resolvedPaidAmount,
           } : c
         )
       );
@@ -1232,7 +1396,7 @@ export default function MedicalConsultationsCard({
                     setConsultationDoctorId("");
                     setConsultationError(null);
                     setConsultationTitle("");
-                    setConsultationRecordType("notes");
+                    setConsultationRecordType(recordTypeFilter || "notes");
                     setConsultationContentHtml("");
                     setConsultationDurationSeconds(0);
                     setConsultationStopwatchStartedAt(null);
@@ -1260,7 +1424,7 @@ export default function MedicalConsultationsCard({
                     setMedQuantity(1);
                     setMedShowInMediplan(true);
                     setMedIsPrescription(false);
-                    if (currentUserId) {
+                    if (currentUserId && recordTypeFilter !== "invoice") {
                       setConsultationDoctorId(currentUserId);
                     }
                     setNewConsultationOpen(true);
@@ -1501,12 +1665,27 @@ export default function MedicalConsultationsCard({
                     }
 
                     let doctorName: string | null = null;
-                    const doctor = userOptions.find(
-                      (user) => user.id === consultationDoctorId,
-                    );
-                    if (doctor) {
-                      doctorName =
-                        (doctor.full_name || doctor.email || "Doctor") as string;
+                    let selectedProviderId: string | null = null;
+                    let selectedProviderName: string | null = null;
+
+                    if (consultationRecordType === "invoice") {
+                      // For invoices, the dropdown is providers
+                      const provider = providerOptions.find(
+                        (p) => p.id === consultationDoctorId,
+                      );
+                      if (provider) {
+                        doctorName = provider.name;
+                        selectedProviderId = provider.id;
+                        selectedProviderName = provider.name;
+                      }
+                    } else {
+                      const doctor = userOptions.find(
+                        (user) => user.id === consultationDoctorId,
+                      );
+                      if (doctor) {
+                        doctorName =
+                          (doctor.full_name || doctor.email || "Doctor") as string;
+                      }
                     }
 
                     let durationSeconds = consultationDurationSeconds;
@@ -1758,69 +1937,176 @@ export default function MedicalConsultationsCard({
                         : null;
                     }
 
-                    const insertPayload: Record<string, unknown> = {
-                      patient_id: patientId,
-                      consultation_id: consultationId,
-                      title: effectiveTitle,
-                      content: contentHtml,
-                      record_type: consultationRecordType,
-                      doctor_user_id: consultationDoctorId,
-                      doctor_name: doctorName,
-                      scheduled_at: scheduledAtIso,
-                      payment_method: paymentMethod,
-                      duration_seconds: durationSeconds || 0,
-                      created_by_user_id: createdByUserId,
-                      created_by_name: createdByName,
-                      is_archived: false,
-                      archived_at: null,
-                    };
-
                     if (consultationRecordType === "invoice") {
-                      insertPayload.invoice_total_amount =
-                        invoiceTotalAmountForInsert;
-                      insertPayload.invoice_is_complimentary =
-                        invoiceIsComplimentaryForInsert;
-                      insertPayload.invoice_is_paid = invoiceIsPaidForInsert;
-                    }
-
-                    const { data, error } = await supabaseClient
-                      .from("consultations")
-                      .insert(insertPayload)
-                      .select(
-                        "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
-                      )
-                      .single();
-
-                    if (error || !data) {
-                      setConsultationError(
-                        error.message ?? "Failed to create consultation.",
-                      );
-                      setConsultationSaving(false);
-                      return;
-                    }
-
-                    const inserted = data as ConsultationRow;
-                    setConsultations((prev) => [inserted, ...prev]);
-
-                    if (inserted.record_type === "invoice") {
-                      // Create Payrexx payment gateway for invoices with payment methods containing 'cash' or 'online'
-                      const paymentMethod = inserted.payment_method?.toLowerCase() || "";
-                      if (paymentMethod.includes("cash") || paymentMethod.includes("online")) {
-                        try {
-                          const payrexxResponse = await fetch("/api/payments/create-payrexx-gateway", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ consultationId: inserted.id }),
+                      // ── Invoice: insert ONLY into invoices + invoice_line_items ──
+                      try {
+                        const invoiceLines = invoiceServiceLines
+                          .filter((line) => line.serviceId)
+                          .map((line) => {
+                            const service = invoiceServices.find((s) => s.id === line.serviceId);
+                            const quantity = line.quantity > 0 ? line.quantity : 1;
+                            const resolvedUnitPrice = (() => {
+                              if (line.unitPrice !== null && Number.isFinite(line.unitPrice)) return Math.max(0, line.unitPrice);
+                              const base = service?.base_price !== null && service?.base_price !== undefined ? Number(service.base_price) : 0;
+                              return Number.isFinite(base) && base > 0 ? base : 0;
+                            })();
+                            return {
+                              name: line.customName || service?.name || "Service",
+                              code: (service as any)?.code ?? null,
+                              service_id: line.serviceId,
+                              quantity,
+                              unit_price: resolvedUnitPrice,
+                              total_price: resolvedUnitPrice * quantity,
+                            };
                           });
 
-                          if (!payrexxResponse.ok) {
-                            console.error("Failed to create Payrexx payment gateway");
-                          }
-                        } catch (payrexxError) {
-                          console.error("Error creating Payrexx gateway:", payrexxError);
+                        const { data: invoiceRow, error: invoiceInsertError } = await supabaseClient
+                          .from("invoices")
+                          .insert({
+                            patient_id: patientId,
+                            invoice_number: consultationId,
+                            invoice_date: consultationDate,
+                            treatment_date: scheduledAtIso,
+                            doctor_user_id: null,
+                            doctor_name: doctorName,
+                            provider_id: selectedProviderId,
+                            provider_name: selectedProviderName,
+                            subtotal: invoiceTotalAmountForInsert || 0,
+                            vat_amount: 0,
+                            total_amount: invoiceTotalAmountForInsert || 0,
+                            status: "OPEN",
+                            is_complimentary: invoiceIsComplimentaryForInsert,
+                            payment_method: paymentMethod,
+                            created_by_user_id: createdByUserId,
+                            created_by_name: createdByName,
+                            is_archived: false,
+                            is_demo: false,
+                          })
+                          .select("id")
+                          .single();
+
+                        if (invoiceInsertError || !invoiceRow) {
+                          setConsultationError(
+                            invoiceInsertError?.message ?? "Failed to create invoice.",
+                          );
+                          setConsultationSaving(false);
+                          return;
                         }
+
+                        // Insert line items
+                        if (invoiceLines.length > 0) {
+                          const lineItemsPayload = invoiceLines.map((line, idx) => ({
+                            invoice_id: invoiceRow.id,
+                            sort_order: idx + 1,
+                            code: line.code,
+                            service_id: line.service_id,
+                            name: line.name,
+                            quantity: line.quantity,
+                            unit_price: line.unit_price,
+                            total_price: line.total_price,
+                          }));
+
+                          const { error: lineItemsError } = await supabaseClient
+                            .from("invoice_line_items")
+                            .insert(lineItemsPayload);
+
+                          if (lineItemsError) {
+                            console.error("Failed to insert invoice line items:", lineItemsError);
+                          }
+                        }
+
+                        // Create Payrexx payment gateway if applicable
+                        const pmLower = paymentMethod?.toLowerCase() || "";
+                        if (pmLower.includes("cash") || pmLower.includes("online")) {
+                          try {
+                            const payrexxResponse = await fetch("/api/payments/create-payrexx-gateway", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ invoiceId: invoiceRow.id }),
+                            });
+
+                            if (!payrexxResponse.ok) {
+                              console.error("Failed to create Payrexx payment gateway");
+                            }
+                          } catch (payrexxError) {
+                            console.error("Error creating Payrexx gateway:", payrexxError);
+                          }
+                        }
+
+                        // Build ConsultationRow from the invoice for local state
+                        const inserted: ConsultationRow = {
+                          id: invoiceRow.id,
+                          patient_id: patientId,
+                          consultation_id: consultationId,
+                          title: effectiveTitle,
+                          content: contentHtml,
+                          record_type: "invoice",
+                          doctor_user_id: consultationDoctorId || null,
+                          doctor_name: doctorName,
+                          scheduled_at: scheduledAtIso,
+                          payment_method: paymentMethod,
+                          duration_seconds: null,
+                          invoice_id: invoiceRow.id,
+                          invoice_total_amount: invoiceTotalAmountForInsert,
+                          invoice_is_complimentary: invoiceIsComplimentaryForInsert,
+                          invoice_is_paid: false,
+                          invoice_status: "OPEN",
+                          invoice_paid_amount: null,
+                          cash_receipt_path: null,
+                          invoice_pdf_path: null,
+                          payment_link_token: null,
+                          payrexx_payment_link: null,
+                          payrexx_payment_status: null,
+                          created_by_user_id: createdByUserId,
+                          created_by_name: createdByName,
+                          is_archived: false,
+                          archived_at: null,
+                        };
+
+                        setConsultations((prev) => [inserted, ...prev]);
+                      } catch (invoiceErr) {
+                        console.error("Error creating invoice:", invoiceErr);
+                        setConsultationError("Failed to create invoice.");
+                        setConsultationSaving(false);
+                        return;
                       }
-                      router.refresh();
+                    } else {
+                      // ── Non-invoice: insert into consultations table as before ──
+                      const insertPayload: Record<string, unknown> = {
+                        patient_id: patientId,
+                        consultation_id: consultationId,
+                        title: effectiveTitle,
+                        content: contentHtml,
+                        record_type: consultationRecordType,
+                        doctor_user_id: consultationDoctorId,
+                        doctor_name: doctorName,
+                        scheduled_at: scheduledAtIso,
+                        payment_method: paymentMethod,
+                        duration_seconds: durationSeconds || 0,
+                        created_by_user_id: createdByUserId,
+                        created_by_name: createdByName,
+                        is_archived: false,
+                        archived_at: null,
+                      };
+
+                      const { data, error } = await supabaseClient
+                        .from("consultations")
+                        .insert(insertPayload)
+                        .select(
+                          "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+                        )
+                        .single();
+
+                      if (error || !data) {
+                        setConsultationError(
+                          error?.message ?? "Failed to create consultation.",
+                        );
+                        setConsultationSaving(false);
+                        return;
+                      }
+
+                      const inserted: ConsultationRow = { ...(data as any), invoice_id: null };
+                      setConsultations((prev) => [inserted, ...prev]);
                     }
 
                     setConsultationSaving(false);
@@ -1891,24 +2177,39 @@ export default function MedicalConsultationsCard({
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-medium text-slate-700">
-                    Doctor
+                    {consultationRecordType === "invoice" ? "Provider" : "Doctor"}
                   </label>
-                  <select
-                    value={consultationDoctorId}
-                    onChange={(event) => setConsultationDoctorId(event.target.value)}
-                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="">Select doctor</option>
-                    {userOptions.map((user) => {
-                      const label =
-                        user.full_name || user.email || "Unnamed doctor";
-                      return (
-                        <option key={user.id} value={user.id}>
-                          {label}
+                  {consultationRecordType === "invoice" ? (
+                    <select
+                      value={consultationDoctorId}
+                      onChange={(event) => setConsultationDoctorId(event.target.value)}
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    >
+                      <option value="">Select provider</option>
+                      {providerOptions.map((prov) => (
+                        <option key={prov.id} value={prov.id}>
+                          {prov.name}{prov.specialty ? ` (${prov.specialty})` : ""}
                         </option>
-                      );
-                    })}
-                  </select>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      value={consultationDoctorId}
+                      onChange={(event) => setConsultationDoctorId(event.target.value)}
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    >
+                      <option value="">Select doctor</option>
+                      {userOptions.map((user) => {
+                        const label =
+                          user.full_name || user.email || "Unnamed doctor";
+                        return (
+                          <option key={user.id} value={user.id}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -1934,7 +2235,13 @@ export default function MedicalConsultationsCard({
                     onChange={(event) => {
                       const nextType =
                         event.target.value as ConsultationRecordType;
+                      const wasInvoice = consultationRecordType === "invoice";
+                      const isInvoice = nextType === "invoice";
                       setConsultationRecordType(nextType);
+                      // Clear doctor/provider selection when switching between invoice and non-invoice
+                      if (wasInvoice !== isInvoice) {
+                        setConsultationDoctorId("");
+                      }
                       if (nextType === "prescription") {
                         setPrescriptionLines((prev) =>
                           prev.length > 0 ? prev : [{ medicineId: "", dosageId: "" }],
@@ -3547,13 +3854,15 @@ export default function MedicalConsultationsCard({
                         ) : null}
                         {!showArchived ? (
                           <>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditConsultation(row)}
-                              className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700 shadow-sm hover:bg-sky-100"
-                            >
-                              Edit
-                            </button>
+                            {row.record_type !== "invoice" && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditConsultation(row)}
+                                className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700 shadow-sm hover:bg-sky-100"
+                              >
+                                Edit
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => {

@@ -4,24 +4,23 @@ import { createPayrexxGateway, generatePaymentQRCode } from "@/lib/payrexx";
 
 export async function POST(request: NextRequest) {
   try {
-    const { consultationId } = await request.json();
+    const { invoiceId } = await request.json();
 
-    if (!consultationId) {
+    if (!invoiceId) {
       return NextResponse.json(
-        { error: "Consultation ID is required" },
+        { error: "Invoice ID is required" },
         { status: 400 }
       );
     }
 
-    // Get the invoice/consultation
-    const { data: consultation, error: consultationError } = await supabaseAdmin
-      .from("consultations")
+    // Get the invoice
+    const { data: invoice, error: invoiceError } = await supabaseAdmin
+      .from("invoices")
       .select("*")
-      .eq("id", consultationId)
-      .eq("record_type", "invoice")
+      .eq("id", invoiceId)
       .single();
 
-    if (consultationError || !consultation) {
+    if (invoiceError || !invoice) {
       return NextResponse.json(
         { error: "Invoice not found" },
         { status: 404 }
@@ -29,18 +28,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if payment link already exists
-    if (consultation.payrexx_payment_link) {
+    if (invoice.payrexx_payment_link) {
       return NextResponse.json({
         success: true,
-        paymentLink: consultation.payrexx_payment_link,
-        gatewayId: consultation.payrexx_gateway_id,
-        gatewayHash: consultation.payrexx_gateway_hash,
+        paymentLink: invoice.payrexx_payment_link,
+        gatewayId: invoice.payrexx_gateway_id,
+        gatewayHash: invoice.payrexx_gateway_hash,
         alreadyExists: true,
       });
     }
 
     // Check if payment method contains 'cash' or 'online' (handles variations like 'mac cash', 'mac online')
-    const paymentMethod = consultation.payment_method?.toLowerCase() || "";
+    const paymentMethod = invoice.payment_method?.toLowerCase() || "";
     if (!paymentMethod.includes("cash") && !paymentMethod.includes("online")) {
       return NextResponse.json(
         { error: "Invoice payment method must contain 'cash' or 'online'" },
@@ -52,7 +51,7 @@ export async function POST(request: NextRequest) {
     const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
       .select("first_name, last_name, email, phone, street_address, postal_code, town")
-      .eq("id", consultation.patient_id)
+      .eq("id", invoice.patient_id)
       .single();
 
     if (patientError || !patient) {
@@ -63,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate amount in cents (Payrexx requires amount * 100)
-    const amount = Math.round((consultation.invoice_total_amount || 0) * 100);
+    const amount = Math.round((invoice.total_amount || 0) * 100);
 
     if (amount <= 0) {
       return NextResponse.json(
@@ -76,8 +75,8 @@ export async function POST(request: NextRequest) {
     const gatewayResponse = await createPayrexxGateway({
       amount,
       currency: "CHF",
-      referenceId: consultation.consultation_id,
-      purpose: `Invoice ${consultation.consultation_id} - ${consultation.title || "Medical Services"}`,
+      referenceId: invoice.invoice_number,
+      purpose: `Invoice ${invoice.invoice_number} - Medical Services`,
       forename: patient.first_name,
       surname: patient.last_name,
       email: patient.email || undefined,
@@ -123,16 +122,16 @@ export async function POST(request: NextRequest) {
     // Generate QR code for the payment link
     const qrCodeDataUrl = await generatePaymentQRCode(paymentLink);
 
-    // Update the consultation with Payrexx payment info
+    // Update the invoice with Payrexx payment info
     const { error: updateError } = await supabaseAdmin
-      .from("consultations")
+      .from("invoices")
       .update({
         payrexx_gateway_id: gatewayId,
         payrexx_gateway_hash: gatewayHash,
         payrexx_payment_link: paymentLink,
         payrexx_payment_status: "waiting",
       })
-      .eq("id", consultationId);
+      .eq("id", invoiceId);
 
     if (updateError) {
       console.error("Failed to update consultation with Payrexx data:", updateError);

@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-type InvoiceData = {
-  id: string;
-  consultation_id: string;
-  patient_id: string;
-  title: string;
-  scheduled_at: string;
-  invoice_total_amount: number | null;
-  payment_method: string | null;
-  doctor_name: string | null;
-  invoice_is_paid: boolean;
-  invoice_pdf_path: string | null;
-  payment_link_expires_at: string | null;
-  payrexx_payment_link: string | null;
-};
-
 type PatientData = {
   first_name: string;
   last_name: string;
@@ -39,10 +24,9 @@ export async function GET(
 
     // Fetch invoice by payment token using admin client (bypasses RLS)
     const { data: invoice, error: invoiceError } = await supabaseAdmin
-      .from("consultations")
-      .select("id, consultation_id, patient_id, title, scheduled_at, invoice_total_amount, payment_method, doctor_name, invoice_is_paid, invoice_pdf_path, payment_link_expires_at, payrexx_payment_link")
+      .from("invoices")
+      .select("id, invoice_number, patient_id, invoice_date, total_amount, payment_method, doctor_name, status, pdf_path, payment_link_expires_at, payrexx_payment_link")
       .eq("payment_link_token", token)
-      .eq("record_type", "invoice")
       .single();
 
     if (invoiceError || !invoice) {
@@ -52,11 +36,9 @@ export async function GET(
       );
     }
 
-    const invoiceData = invoice as InvoiceData;
-
     // Check if payment link has expired
-    if (invoiceData.payment_link_expires_at) {
-      const expiresAt = new Date(invoiceData.payment_link_expires_at);
+    if (invoice.payment_link_expires_at) {
+      const expiresAt = new Date(invoice.payment_link_expires_at);
       if (expiresAt < new Date()) {
         return NextResponse.json(
           { error: "This payment link has expired" },
@@ -69,7 +51,7 @@ export async function GET(
     const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
       .select("first_name, last_name, email, phone")
-      .eq("id", invoiceData.patient_id)
+      .eq("id", invoice.patient_id)
       .single();
 
     if (patientError || !patient) {
@@ -81,25 +63,25 @@ export async function GET(
 
     // Generate public URL for PDF if available
     let pdfPublicUrl: string | null = null;
-    if (invoiceData.invoice_pdf_path) {
+    if (invoice.pdf_path) {
       const { data: urlData } = supabaseAdmin.storage
         .from("invoice-pdfs")
-        .getPublicUrl(invoiceData.invoice_pdf_path);
+        .getPublicUrl(invoice.pdf_path);
       pdfPublicUrl = urlData?.publicUrl || null;
     }
 
     return NextResponse.json({
       invoice: {
-        id: invoiceData.id,
-        consultation_id: invoiceData.consultation_id,
-        title: invoiceData.title,
-        scheduled_at: invoiceData.scheduled_at,
-        invoice_total_amount: invoiceData.invoice_total_amount,
-        payment_method: invoiceData.payment_method,
-        doctor_name: invoiceData.doctor_name,
-        invoice_is_paid: invoiceData.invoice_is_paid,
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        invoice_date: invoice.invoice_date,
+        total_amount: invoice.total_amount,
+        payment_method: invoice.payment_method,
+        doctor_name: invoice.doctor_name,
+        is_paid: invoice.status === "PAID" || invoice.status === "OVERPAID",
+        status: invoice.status,
         pdf_url: pdfPublicUrl,
-        payrexx_payment_link: invoiceData.payrexx_payment_link,
+        payrexx_payment_link: invoice.payrexx_payment_link,
       },
       patient: patient as PatientData,
     });

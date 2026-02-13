@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     console.log("Uploading to path:", patientDocPath);
     
     const { error: uploadError } = await supabaseAdmin.storage
-      .from("patient-documents")
+      .from("patient_document")
       .upload(patientDocPath, templateBuffer, {
         contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         upsert: true,
