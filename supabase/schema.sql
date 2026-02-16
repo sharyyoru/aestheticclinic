@@ -905,3 +905,15 @@ create table if not exists patient_document_versions (
 );
 
 create index if not exists patient_document_versions_document_id_idx on patient_document_versions(document_id);
+
+-- External laboratories for settings
+create table if not exists external_labs (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  url text not null,
+  username text not null,
+  password text not null,
+  type text not null default 'medisupport_fr',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);

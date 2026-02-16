@@ -14,6 +14,7 @@ const APP_LINKS = [
   { href: "/users", label: "User Management" },
   { href: "/workflows", label: "Workflows" },
   { href: "/chat", label: "Chat" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export default function AppMenuLauncher() {

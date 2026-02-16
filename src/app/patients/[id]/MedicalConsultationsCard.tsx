@@ -341,6 +341,10 @@ export default function MedicalConsultationsCard({
   const [axenitaPdfLoading, setAxenitaPdfLoading] = useState(false);
   const [axenitaPdfError, setAxenitaPdfError] = useState<string | null>(null);
 
+  const [externalLabs, setExternalLabs] = useState<{ id: string; name: string; url: string; username: string; password: string; type: string }[]>([]);
+  const [labDropdownOpen, setLabDropdownOpen] = useState(false);
+  const [patientDetails, setPatientDetails] = useState<{ dob: string | null; gender: string | null; street_address: string | null; postal_code: string | null; town: string | null; nationality: string | null } | null>(null);
+
   // Medication form state
   const [medProductName, setMedProductName] = useState("");
   const [medProductType, setMedProductType] = useState<"MEDICATION" | "CONSUMABLE">("MEDICATION");
@@ -427,8 +431,31 @@ export default function MedicalConsultationsCard({
       } catch {}
     }
 
+    async function loadExternalLabs() {
+      try {
+        const res = await fetch("/api/settings/external-labs");
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setExternalLabs(data.labs || []);
+        }
+      } catch {}
+    }
+
+    async function loadPatientDetails() {
+      try {
+        const { data } = await supabaseClient
+          .from("patients")
+          .select("dob, gender, street_address, postal_code, town, nationality")
+          .eq("id", patientId)
+          .single();
+        if (isMounted && data) setPatientDetails(data);
+      } catch {}
+    }
+
     void loadUsers();
     void loadProviders();
+    void loadExternalLabs();
+    void loadPatientDetails();
 
     return () => {
       isMounted = false;
@@ -1375,6 +1402,80 @@ export default function MedicalConsultationsCard({
                     />
                   </svg>
                 </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setLabDropdownOpen((prev) => !prev)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-sky-200 bg-sky-50 text-sky-700 shadow-sm hover:bg-sky-100 hover:text-sky-800"
+                    title="External Labs"
+                  >
+                    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-4 w-4">
+                      <path d="M8 2v5l-3 7a1.5 1.5 0 0 0 1.4 2h7.2a1.5 1.5 0 0 0 1.4-2l-3-7V2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M6 2h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                      <path d="M6.5 12h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.5" />
+                    </svg>
+                  </button>
+                  {labDropdownOpen && (
+                    <div className="absolute right-0 top-10 z-30 w-56 rounded-xl border border-slate-200/80 bg-white py-1 text-xs shadow-lg">
+                      <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-100">
+                        External Laboratories
+                      </div>
+                      {externalLabs.length === 0 ? (
+                        <div className="px-3 py-3 text-center text-slate-400">No labs configured.</div>
+                      ) : (
+                        externalLabs.map((lab) => (
+                          <button
+                            key={lab.id}
+                            type="button"
+                            onClick={() => {
+                              setLabDropdownOpen(false);
+                              if (lab.type === "medisupport_fr") {
+                                const formatDob = (dob: string | null | undefined): string => {
+                                  if (!dob) return "";
+                                  const d = new Date(dob);
+                                  if (isNaN(d.getTime())) return "";
+                                  const y = d.getFullYear();
+                                  const m = String(d.getMonth() + 1).padStart(2, "0");
+                                  const day = String(d.getDate()).padStart(2, "0");
+                                  return `${y}${m}${day}`;
+                                };
+                                const genderCode = patientDetails?.gender?.toLowerCase() === "female" ? "F" : patientDetails?.gender?.toLowerCase() === "male" ? "M" : "";
+                                const params = new URLSearchParams({
+                                  Class: "Patient",
+                                  Method: "CreateOrder",
+                                  LoginName: lab.username,
+                                  Password: lab.password,
+                                  OnClose: "Login.jsp",
+                                  Application: "HTML_MED_PROD_SAISIEDEM",
+                                  treatmentCode: patientId,
+                                  PatLastName: patientLastName || "",
+                                  PatFirstName: patientFirstName || "",
+                                  PatBirthDate: formatDob(patientDetails?.dob),
+                                  PatSex: genderCode,
+                                  PatStreet: patientDetails?.street_address || "",
+                                  PatMunicipalityCode: patientDetails?.postal_code || "",
+                                  PatMunicipality: patientDetails?.town || "",
+                                  PatCountry: patientDetails?.nationality || "CH",
+                                });
+                                const baseUrl = lab.url.endsWith("/") ? lab.url : lab.url + "/";
+                                window.open(`${baseUrl}?${params.toString()}`, "_blank", "noopener,noreferrer");
+                              } else {
+                                window.open(lab.url, "_blank", "noopener,noreferrer");
+                              }
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-sky-50 hover:text-sky-700 transition-colors"
+                          >
+                            <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5 shrink-0 text-slate-400">
+                              <path d="M6.5 1.5v4l-2.5 6a1 1 0 0 0 .9 1.5h6.2a1 1 0 0 0 .9-1.5l-2.5-6v-4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M5 1.5h6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                            </svg>
+                            <span className="truncate">{lab.name}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
                 <span className="h-5 w-px bg-slate-200" />
                 <button
                   type="button"

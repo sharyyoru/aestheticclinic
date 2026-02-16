@@ -368,6 +368,29 @@ export default function RootLayout({
                     <span>Client Onboarding</span>
                   </Link>
                 </div>
+                <div className="border-b border-slate-100/80">
+                  <Link
+                    href="/settings"
+                    className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/70 text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.18)] backdrop-blur group-hover:bg-sky-500/90 group-hover:text-white">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                      </svg>
+                    </span>
+                    <span>Settings</span>
+                  </Link>
+                </div>
               </nav>
             </aside>
             </ShellSidebar>
