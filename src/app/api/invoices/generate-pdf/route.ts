@@ -422,9 +422,7 @@ export async function POST(request: NextRequest) {
     yPos += 4;
     pdf.setFont("helvetica", "normal");
     
-    const displayReference = isBankTransferQr 
-      ? formatSwissReferenceWithSpaces(generateSwissReference(invoiceData.invoice_number))
-      : "00 00000 00000 00000 05870 40016";
+    const displayReference = formatSwissReferenceWithSpaces(generateSwissReference(invoiceData.invoice_number));
     
     pdf.text(displayReference, 20, yPos);
     pdf.text(displayReference, 140, yPos);

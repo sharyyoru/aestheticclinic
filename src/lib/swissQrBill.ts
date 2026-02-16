@@ -240,11 +240,24 @@ export async function generateSwissQrBillDataUrl(data: SwissQrBillData): Promise
  * Converts invoice ID to a 26-digit QR reference
  */
 export function generateSwissReference(invoiceId: string): string {
-  // Extract numeric part from invoice ID (e.g., "INV-2024-001" -> "2024001")
-  const numericPart = invoiceId.replace(/\D/g, "");
+  // Convert invoice ID to a numeric hash for alphanumeric IDs
+  let numericPart = invoiceId.replace(/\D/g, "");
   
-  // Pad to 26 digits
-  const paddedReference = numericPart.padStart(26, "0");
+  // If no digits found (e.g., "CONS-MLOWNJTD"), create a hash from the string
+  if (numericPart.length === 0) {
+    // Simple hash: convert each character to its char code and concatenate
+    let hash = "";
+    for (let i = 0; i < invoiceId.length; i++) {
+      const charCode = invoiceId.charCodeAt(i);
+      hash += charCode.toString().padStart(3, "0");
+    }
+    numericPart = hash;
+  }
+  
+  // Take last 26 digits if hash is too long, or pad if too short
+  const paddedReference = numericPart.length > 26 
+    ? numericPart.slice(-26)
+    : numericPart.padStart(26, "0");
   
   // Add check digit
   const checkDigit = calculateQrReferenceCheckDigit(paddedReference);

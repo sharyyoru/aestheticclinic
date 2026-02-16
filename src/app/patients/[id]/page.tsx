@@ -64,34 +64,6 @@ async function getPatientWithDetails(id: string) {
   return { patient, insurance: insurance ?? [] } as const;
 }
 
-function extractInvoiceInfoFromContent(content: string | null): {
-  total: number;
-  isComplimentary: boolean;
-} {
-  if (!content) {
-    return { total: 0, isComplimentary: false };
-  }
-
-  const html = content;
-
-  const isComplimentary =
-    html.includes("Extra option:</strong> Complimentary service") ||
-    html.includes("Extra option:</strong> Complimentary Service");
-
-  let total = 0;
-  const match = html.match(
-    /Estimated total:<\/strong>\s*CHF\s*([0-9]+(?:\.[0-9]{1,2})?)/,
-  );
-  if (match) {
-    const parsed = Number.parseFloat(match[1].replace(/[^0-9.]/g, ""));
-    if (Number.isFinite(parsed)) {
-      total = parsed;
-    }
-  }
-
-  return { total, isComplimentary };
-}
-
 type InvoiceStatus = "OPEN" | "PAID" | "CANCELLED" | "OVERPAID" | "PARTIAL_LOSS" | "PARTIAL_PAID";
 
 type InvoiceSummary = {
@@ -131,12 +103,11 @@ async function getInvoiceSummary(
 
   try {
     const { data, error } = await supabaseAdmin
-      .from("consultations")
+      .from("invoices")
       .select(
-        "content, record_type, is_archived, payment_method, invoice_total_amount, invoice_is_complimentary, invoice_is_paid",
+        "total_amount, paid_amount, status, is_complimentary, is_archived, payment_method",
       )
-      .eq("patient_id", patientId)
-      .eq("record_type", "invoice");
+      .eq("patient_id", patientId);
 
     if (error || !data) {
       return emptyResult;
@@ -160,75 +131,63 @@ async function getInvoiceSummary(
     };
 
     for (const row of data as any[]) {
-      if ((row as any).is_archived) continue;
+      if (row.is_archived) continue;
 
-      const paymentMethod = (row as any).payment_method as
-        | string
-        | null
-        | undefined;
+      const paymentMethod = row.payment_method as string | null | undefined;
       if (paymentMethodFilter && paymentMethod !== paymentMethodFilter) {
         continue;
       }
 
-      const content =
-        ((row as any).content as string | null | undefined) ?? null;
-      const parsed = extractInvoiceInfoFromContent(content);
-
-      const rawAmount = (row as any).invoice_total_amount;
-      let amount = 0;
-      if (rawAmount !== null && rawAmount !== undefined) {
-        const numeric = Number(rawAmount);
-        if (Number.isFinite(numeric) && numeric > 0) {
-          amount = numeric;
-        }
-      } else if (parsed.total > 0) {
-        amount = parsed.total;
-      }
-
+      const amount = Number(row.total_amount) || 0;
       if (amount <= 0) continue;
 
-      const invoiceIsComplimentaryRaw = (row as any).invoice_is_complimentary;
-      const isComplimentary =
-        ((typeof invoiceIsComplimentaryRaw === "boolean"
-          ? invoiceIsComplimentaryRaw
-          : false) || parsed.isComplimentary);
-
-      if (isComplimentary) {
+      if (row.is_complimentary) {
         totalComplimentary += amount;
         continue;
       }
 
-      // Get invoice status - derive from invoice_is_paid since invoice_status column doesn't exist yet
-      const invoiceIsPaidRaw = (row as any).invoice_is_paid;
-      const isPaid = typeof invoiceIsPaidRaw === "boolean" ? invoiceIsPaidRaw : false;
+      const status: InvoiceStatus = row.status || "OPEN";
+      const paidAmount = Number(row.paid_amount) || 0;
 
-      // Determine effective status based on invoice_is_paid for now
-      // When invoice_status column is added, this can be updated to use it
-      const effectiveStatus: InvoiceStatus = isPaid ? "PAID" : "OPEN";
-
-      // Count by status
-      countByStatus[effectiveStatus]++;
-
-      // Calculate totals based on status
+      countByStatus[status] = (countByStatus[status] || 0) + 1;
       totalAmountNonComplimentary += amount;
 
-      // Simplified switch - only PAID/OPEN until invoice_status column is added
-      if (effectiveStatus === "PAID") {
-        totalPaid += amount;
-      } else {
-        totalUnpaid += amount;
+      switch (status) {
+        case "PAID":
+          totalPaid += amount;
+          break;
+        case "PARTIAL_PAID":
+          totalPartialPaid += paidAmount;
+          totalUnpaid += amount - paidAmount;
+          break;
+        case "PARTIAL_LOSS":
+          // Partial loss = original total - what was actually received (after fees/commissions)
+          totalPaid += paidAmount;
+          totalPartialLoss += amount - paidAmount;
+          break;
+        case "OVERPAID":
+          totalPaid += paidAmount;
+          totalOverpaid += paidAmount - amount;
+          break;
+        case "CANCELLED":
+          totalCancelled += amount;
+          break;
+        case "OPEN":
+        default:
+          totalUnpaid += amount;
+          break;
       }
     }
 
     return {
-      totalAmount: totalAmountNonComplimentary > 0 ? totalAmountNonComplimentary : 0,
-      totalComplimentary: totalComplimentary > 0 ? totalComplimentary : 0,
-      totalPaid: totalPaid > 0 ? totalPaid : 0,
-      totalUnpaid: totalUnpaid > 0 ? totalUnpaid : 0,
-      totalCancelled: totalCancelled > 0 ? totalCancelled : 0,
-      totalOverpaid: totalOverpaid > 0 ? totalOverpaid : 0,
-      totalPartialLoss: totalPartialLoss > 0 ? totalPartialLoss : 0,
-      totalPartialPaid: totalPartialPaid > 0 ? totalPartialPaid : 0,
+      totalAmount: Math.max(0, totalAmountNonComplimentary),
+      totalComplimentary: Math.max(0, totalComplimentary),
+      totalPaid: Math.max(0, totalPaid),
+      totalUnpaid: Math.max(0, totalUnpaid),
+      totalCancelled: Math.max(0, totalCancelled),
+      totalOverpaid: Math.max(0, totalOverpaid),
+      totalPartialLoss: Math.max(0, totalPartialLoss),
+      totalPartialPaid: Math.max(0, totalPartialPaid),
       countByStatus,
     };
   } catch {
@@ -734,7 +693,7 @@ export default async function PatientPage({
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
                 <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
                   <p className="text-[11px] font-medium text-slate-500">
                     Total Amount
@@ -743,25 +702,69 @@ export default async function PatientPage({
                     {invoiceSummary.totalAmount.toFixed(2)} CHF
                   </p>
                 </div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                  <p className="text-[11px] font-medium text-slate-500">
-                    Total Paid
-                  </p>
-                  <p className="mt-1 text-base font-semibold text-slate-900">
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-medium text-emerald-600">
+                      Total Paid
+                    </p>
+                    {invoiceSummary.countByStatus.PAID > 0 && (
+                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">
+                        {invoiceSummary.countByStatus.PAID}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-base font-semibold text-emerald-700">
                     {invoiceSummary.totalPaid.toFixed(2)} CHF
                   </p>
                 </div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                  <p className="text-[11px] font-medium text-slate-500">
-                    Total Unpaid
-                  </p>
-                  <p className="mt-1 text-base font-semibold text-slate-900">
+                <div className="rounded-lg border border-red-100 bg-red-50/80 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-medium text-red-600">
+                      Total Unpaid
+                    </p>
+                    {invoiceSummary.countByStatus.OPEN > 0 && (
+                      <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-semibold text-red-700">
+                        {invoiceSummary.countByStatus.OPEN}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-base font-semibold text-red-700">
                     {invoiceSummary.totalUnpaid.toFixed(2)} CHF
+                  </p>
+                </div>
+                <div className="rounded-lg border border-amber-100 bg-amber-50/80 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-medium text-amber-600">
+                      Partial Paid
+                    </p>
+                    {invoiceSummary.countByStatus.PARTIAL_PAID > 0 && (
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">
+                        {invoiceSummary.countByStatus.PARTIAL_PAID}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-base font-semibold text-amber-700">
+                    {invoiceSummary.totalPartialPaid.toFixed(2)} CHF
+                  </p>
+                </div>
+                <div className="rounded-lg border border-orange-100 bg-orange-50/80 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-medium text-orange-600">
+                      Partial Loss
+                    </p>
+                    {invoiceSummary.countByStatus.PARTIAL_LOSS > 0 && (
+                      <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-semibold text-orange-700">
+                        {invoiceSummary.countByStatus.PARTIAL_LOSS}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-base font-semibold text-orange-700">
+                    {invoiceSummary.totalPartialLoss.toFixed(2)} CHF
                   </p>
                 </div>
                 <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
                   <p className="text-[11px] font-medium text-slate-500">
-                    Total Complimentary
+                    Complimentary
                   </p>
                   <p className="mt-1 text-base font-semibold text-slate-900">
                     {invoiceSummary.totalComplimentary.toFixed(2)} CHF

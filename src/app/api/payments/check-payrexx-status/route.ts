@@ -62,16 +62,44 @@ export async function POST(request: NextRequest) {
     const isPaid = gatewayStatus === "confirmed";
 
     // Update invoice if payment is confirmed
-    if (isPaid && invoice.status !== "PAID") {
+    if (isPaid && invoice.status !== "PAID" && invoice.status !== "PARTIAL_LOSS") {
+      const invoiceTotal = Number(invoice.total_amount) || 0;
+      const now = new Date().toISOString();
+
+      // Try to extract the actual transaction amount from the gateway response
+      // Payrexx gateway invoices contain the amount in cents
+      const gatewayInvoices = (gatewayData as any)?.invoices;
+      let transactionAmount = invoiceTotal; // default to full amount
+      if (Array.isArray(gatewayInvoices) && gatewayInvoices.length > 0) {
+        const txAmountCents = gatewayInvoices[0]?.amount ?? 0;
+        if (txAmountCents > 0) {
+          transactionAmount = txAmountCents / 100;
+        }
+      }
+
+      // Detect partial loss (commission/fee deduction)
+      const isPartialLoss = transactionAmount > 0 && transactionAmount < invoiceTotal - 0.01;
+
+      const updatePayload: Record<string, unknown> = {
+        status: isPartialLoss ? "PARTIAL_LOSS" : "PAID",
+        paid_amount: isPartialLoss ? transactionAmount : invoiceTotal,
+        payrexx_payment_status: "confirmed",
+        payrexx_paid_at: now,
+        paid_at: now,
+      };
+
+      if (isPartialLoss) {
+        console.log("Payrexx partial loss detected (status check):", {
+          invoiceId: invoice.id,
+          invoiceTotal,
+          transactionAmount,
+          loss: invoiceTotal - transactionAmount,
+        });
+      }
+
       const { error: updateError } = await supabaseAdmin
         .from("invoices")
-        .update({
-          status: "PAID",
-          paid_amount: invoice.total_amount,
-          payrexx_payment_status: "confirmed",
-          payrexx_paid_at: new Date().toISOString(),
-          paid_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq("id", invoiceId);
 
       if (updateError) {
@@ -84,13 +112,15 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: "Invoice marked as paid",
+        message: isPartialLoss ? "Invoice marked as partial loss (fees deducted)" : "Invoice marked as paid",
         gatewayStatus,
         isPaid: true,
+        isPartialLoss,
+        paidAmount: updatePayload.paid_amount,
       });
     }
 
-    const alreadyPaid = invoice.status === "PAID" || invoice.status === "OVERPAID";
+    const alreadyPaid = invoice.status === "PAID" || invoice.status === "OVERPAID" || invoice.status === "PARTIAL_LOSS";
 
     return NextResponse.json({
       success: true,

@@ -484,7 +484,7 @@ export default function MedicalConsultationsCard({
         const { data: invoiceData, error: invoiceError } = await supabaseClient
           .from("invoices")
           .select(
-            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived",
+            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, provider_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -526,7 +526,7 @@ export default function MedicalConsultationsCard({
             content: linked?.content ?? null,
             record_type: "invoice" as ConsultationRecordType,
             doctor_user_id: inv.doctor_user_id ?? null,
-            doctor_name: inv.doctor_name ?? null,
+            doctor_name: inv.provider_name || inv.doctor_name || null,
             scheduled_at: inv.treatment_date || inv.invoice_date || new Date().toISOString(),
             payment_method: inv.payment_method ?? null,
             duration_seconds: null,
@@ -3669,188 +3669,30 @@ export default function MedicalConsultationsCard({
                           </button>
                         ) : null}
                         {isInvoice && !isComplimentaryInvoice ? (
-                          <>
-                            {/* Invoice Status Badge */}
-                            {(() => {
-                              const effectiveStatus: InvoiceStatus = row.invoice_status || (row.invoice_is_paid ? "PAID" : "OPEN");
-                              const statusConfig = INVOICE_STATUS_DISPLAY[effectiveStatus];
-                              return (
-                                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
-                                  {effectiveStatus === "PAID" && (
-                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
-                                  {effectiveStatus === "CANCELLED" && (
-                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                  )}
-                                  {statusConfig.label}
-                                </span>
-                              );
-                            })()}
-
-                            {/* View PDF Button */}
-                            {row.invoice_pdf_path ? (
-                              <button
-                                type="button"
-                                onClick={() => handleViewPdf(row.invoice_pdf_path!)}
-                                className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-800 shadow-sm hover:bg-indigo-100"
-                              >
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                                View PDF
-                              </button>
-                            ) : null}
-
-                            {/* Generate/Regenerate PDF Button */}
-                            <button
-                              type="button"
-                              onClick={() => handleGenerateInvoicePdf(row.id)}
-                              disabled={generatingPdf === row.id}
-                              className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-800 shadow-sm hover:bg-purple-100 disabled:opacity-50"
-                            >
-                              {generatingPdf === row.id ? "Generating..." : row.invoice_pdf_path ? "Regenerate PDF" : "Generate PDF"}
-                            </button>
-
-                            {/* Edit Invoice Button */}
-                            <button
-                              type="button"
-                              onClick={() => handleEditInvoice(row)}
-                              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                            >
-                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                              Edit
-                            </button>
-
-                            {/* Copy Payment Link Button (for payments with cash/online) */}
-                            {!row.invoice_is_paid && row.payment_method &&
-                              (row.payment_method.toLowerCase().includes("cash") ||
-                                row.payment_method.toLowerCase().includes("online")) && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    // Use Payrexx payment link if available, otherwise use internal payment page
-                                    let paymentLink = row.payrexx_payment_link;
-                                    if (!paymentLink && row.payment_link_token) {
-                                      const baseUrl = window.location.origin;
-                                      paymentLink = `${baseUrl}/invoice/pay/${row.payment_link_token}`;
-                                    }
-
-                                    if (!paymentLink) {
-                                      alert("Payment link not yet generated. Please generate the invoice PDF first or create a Payrexx payment link.");
-                                      return;
-                                    }
-
-                                    navigator.clipboard.writeText(paymentLink).then(() => {
-                                      alert("Payment link copied to clipboard!");
-                                    }).catch(err => {
-                                      console.error("Failed to copy:", err);
-                                      alert("Failed to copy link");
-                                    });
-                                  }}
-                                  className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-800 shadow-sm hover:bg-blue-100"
-                                >
-                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                                  </svg>
-                                  Copy Link
-                                </button>
-                              )}
-
-                            {/* Payment Status Button - always show to allow status changes */}
-                            <button
-                              type="button"
-                              onClick={() => handleManagePaymentStatus(row)}
-                              className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-800 shadow-sm hover:bg-sky-100"
-                            >
-                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                              </svg>
-                              {row.invoice_status === "PARTIAL_PAID" ? "Update Payment" : "Payment"}
-                            </button>
-
-                            {/* Check Payment Status Button (for Payrexx payments not yet paid) */}
-                            {!row.invoice_is_paid && row.payrexx_payment_link && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  try {
-                                    const response = await fetch("/api/payments/sync-payment-status", {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ consultationCode: row.consultation_id }),
-                                    });
-                                    const data = await response.json();
-                                    if (data.isPaid) {
-                                      alert("Payment confirmed! Refreshing...");
-                                      window.location.reload();
-                                    } else {
-                                      alert(`Payment status: ${data.payrexxStatus || "waiting"}`);
-                                    }
-                                  } catch {
-                                    alert("Failed to check payment status");
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 shadow-sm hover:bg-amber-100"
-                              >
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                                Check Payment
-                              </button>
-                            )}
-
-                            {/* Insurance Billing Button */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setInsuranceBillingTarget(row);
-                                setInsuranceBillingModalOpen(true);
-                              }}
-                              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 shadow-sm hover:bg-emerald-100"
-                            >
-                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                              Insurance
-                            </button>
-                          </>
-                        ) : null}
-                        {isCashInvoice && !isComplimentaryInvoice ? (
-                          row.invoice_is_paid ? (
-                            <>
-                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-800 shadow-sm">
-                                Paid
+                          (() => {
+                            const effectiveStatus: InvoiceStatus = row.invoice_status || (row.invoice_is_paid ? "PAID" : "OPEN");
+                            const statusConfig = INVOICE_STATUS_DISPLAY[effectiveStatus];
+                            return (
+                              <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
+                                {effectiveStatus === "PAID" && (
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                )}
+                                {effectiveStatus === "CANCELLED" && (
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                )}
+                                {statusConfig.label}
                               </span>
-                              {row.cash_receipt_path ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleViewCashReceipt(row.cash_receipt_path)
-                                  }
-                                  className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 shadow-sm hover:bg-slate-50"
-                                >
-                                  View receipt
-                                </button>
-                              ) : null}
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                openCashReceiptModal(row);
-                              }}
-                              className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 shadow-sm hover:bg-amber-100"
-                            >
-                              Upload receipt
-                            </button>
-                          )
+                            );
+                          })()
+                        ) : null}
+                        {isCashInvoice && !isComplimentaryInvoice && !row.invoice_is_paid ? (
+                          <button
+                            type="button"
+                            onClick={() => openCashReceiptModal(row)}
+                            className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-100"
+                          >
+                            Upload receipt
+                          </button>
                         ) : null}
                         {!showArchived ? (
                           <>
@@ -3930,6 +3772,174 @@ export default function MedicalConsultationsCard({
                         />
                       ) : null}
                     </div>
+
+                    {/* Invoice footer: amount summary + actions */}
+                    {isInvoice && !isComplimentaryInvoice ? (() => {
+                      const effectiveStatus: InvoiceStatus = row.invoice_status || (row.invoice_is_paid ? "PAID" : "OPEN");
+                      const totalAmt = row.invoice_total_amount ?? 0;
+                      const paidAmt = row.invoice_paid_amount ?? 0;
+                      const lossAmt = effectiveStatus === "PARTIAL_LOSS" ? totalAmt - paidAmt : 0;
+                      const remainingAmt = effectiveStatus === "PARTIAL_PAID" ? totalAmt - paidAmt : 0;
+                      const hasPaidInfo = paidAmt > 0 && (effectiveStatus === "PAID" || effectiveStatus === "PARTIAL_PAID" || effectiveStatus === "PARTIAL_LOSS" || effectiveStatus === "OVERPAID");
+                      return (
+                        <div className="mt-3 space-y-2">
+                          {/* Amount summary bar */}
+                          {totalAmt > 0 && (
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 text-[11px]">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-slate-500">Total</span>
+                                <span className="font-semibold text-slate-900">CHF {totalAmt.toFixed(2)}</span>
+                              </div>
+                              {hasPaidInfo && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-slate-500">Paid</span>
+                                  <span className="font-semibold text-emerald-700">CHF {paidAmt.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {lossAmt > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-slate-500">Loss</span>
+                                  <span className="font-semibold text-orange-600">CHF {lossAmt.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {remainingAmt > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-slate-500">Remaining</span>
+                                  <span className="font-semibold text-amber-600">CHF {remainingAmt.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {row.payment_method && (
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                  <span className="text-slate-400">via</span>
+                                  <span className="font-medium text-slate-600">{row.payment_method}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Action buttons toolbar */}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {/* Document group */}
+                            {row.invoice_pdf_path ? (
+                              <button
+                                type="button"
+                                onClick={() => handleViewPdf(row.invoice_pdf_path!)}
+                                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                View PDF
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateInvoicePdf(row.id)}
+                              disabled={generatingPdf === row.id}
+                              className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-medium text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                              {generatingPdf === row.id ? "Generating..." : row.invoice_pdf_path ? "Regenerate PDF" : "Generate PDF"}
+                            </button>
+
+                            <div className="h-4 w-px bg-slate-200" />
+
+                            {/* Edit */}
+                            <button
+                              type="button"
+                              onClick={() => handleEditInvoice(row)}
+                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                              Edit Invoice
+                            </button>
+
+                            <div className="h-4 w-px bg-slate-200" />
+
+                            {/* Payment group */}
+                            <button
+                              type="button"
+                              onClick={() => handleManagePaymentStatus(row)}
+                              className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                              {effectiveStatus === "PARTIAL_PAID" ? "Update Payment" : "Payment Status"}
+                            </button>
+
+                            {!row.invoice_is_paid && row.payment_method &&
+                              (row.payment_method.toLowerCase().includes("cash") || row.payment_method.toLowerCase().includes("online")) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  let paymentLink = row.payrexx_payment_link;
+                                  if (!paymentLink && row.payment_link_token) {
+                                    paymentLink = `${window.location.origin}/invoice/pay/${row.payment_link_token}`;
+                                  }
+                                  if (!paymentLink) {
+                                    alert("Payment link not yet generated. Please generate the invoice PDF first.");
+                                    return;
+                                  }
+                                  navigator.clipboard.writeText(paymentLink).then(() => alert("Payment link copied!")).catch(() => alert("Failed to copy link"));
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                Copy Link
+                              </button>
+                            )}
+
+                            {!row.invoice_is_paid && row.payrexx_payment_link && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const response = await fetch("/api/payments/sync-payment-status", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ consultationCode: row.consultation_id }),
+                                    });
+                                    const data = await response.json();
+                                    if (data.isPaid) {
+                                      alert("Payment confirmed! Refreshing...");
+                                      window.location.reload();
+                                    } else {
+                                      alert(`Payment status: ${data.payrexxStatus || "waiting"}`);
+                                    }
+                                  } catch {
+                                    alert("Failed to check payment status");
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-medium text-sky-700 hover:bg-sky-100 transition-colors"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                Sync Payment
+                              </button>
+                            )}
+
+                            {isCashInvoice && row.invoice_is_paid && row.cash_receipt_path && (
+                              <button
+                                type="button"
+                                onClick={() => handleViewCashReceipt(row.cash_receipt_path)}
+                                className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2v16z" /></svg>
+                                View Receipt
+                              </button>
+                            )}
+
+                            <div className="h-4 w-px bg-slate-200" />
+
+                            {/* Insurance */}
+                            <button
+                              type="button"
+                              onClick={() => { setInsuranceBillingTarget(row); setInsuranceBillingModalOpen(true); }}
+                              className="inline-flex items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-[10px] font-medium text-teal-700 hover:bg-teal-100 transition-colors"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                              Insurance
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })() : null}
                   </div>
                 );
               })}

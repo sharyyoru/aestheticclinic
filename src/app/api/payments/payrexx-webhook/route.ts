@@ -166,11 +166,35 @@ export async function POST(request: NextRequest) {
     };
 
     // Mark as paid if transaction is confirmed
-    if (isPaid && invoice.status !== "PAID") {
-      updateData.status = "PAID";
-      updateData.paid_amount = invoice.total_amount;
-      updateData.paid_at = paidAt;
-      updateData.payrexx_paid_at = paidAt;
+    if (isPaid && invoice.status !== "PAID" && invoice.status !== "PARTIAL_LOSS") {
+      const invoiceTotal = Number(invoice.total_amount) || 0;
+
+      // Payrexx invoice.amount is in cents (e.g. 10000 = CHF 100.00)
+      const transactionAmountCents = transaction.invoice?.amount ?? 0;
+      const transactionAmount = transactionAmountCents / 100;
+
+      // Compare transaction amount with invoice total to detect commission/fee deductions
+      // Allow a small tolerance (0.01 CHF) for rounding
+      if (transactionAmount > 0 && transactionAmount < invoiceTotal - 0.01) {
+        // Partial loss: platform fees/commissions were deducted
+        updateData.status = "PARTIAL_LOSS";
+        updateData.paid_amount = transactionAmount;
+        updateData.paid_at = paidAt;
+        updateData.payrexx_paid_at = paidAt;
+
+        console.log("Payrexx partial loss detected:", {
+          invoiceId: invoice.id,
+          invoiceTotal,
+          transactionAmount,
+          loss: invoiceTotal - transactionAmount,
+        });
+      } else {
+        // Full payment received
+        updateData.status = "PAID";
+        updateData.paid_amount = invoiceTotal;
+        updateData.paid_at = paidAt;
+        updateData.payrexx_paid_at = paidAt;
+      }
     }
 
     const { error: updateError } = await supabaseAdmin
@@ -188,8 +212,9 @@ export async function POST(request: NextRequest) {
 
     console.log("Invoice updated successfully:", {
       invoiceId: invoice.id,
-      newStatus: transaction.status,
+      newStatus: updateData.status || transaction.status,
       isPaid,
+      paidAmount: updateData.paid_amount,
     });
 
     return NextResponse.json({
