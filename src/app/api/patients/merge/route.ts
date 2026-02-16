@@ -57,157 +57,66 @@ export async function POST(request: Request) {
     }
 
     // 2. Merge all related data from other patients to primary patient
+    // List of all tables with patient_id foreign key based on database schema
+    const tablesToUpdate = [
+      "appointments",
+      "chat_conversations",
+      "consultations",
+      "crisalix_reconstructions",
+      "deals",
+      "documents",
+      "email_reply_notifications",
+      "emails",
+      "invoices",
+      "medidata_submissions",
+      "patient_consultation_data",
+      "patient_documents",
+      "patient_health_background",
+      "patient_insurances",
+      "patient_intake_photos",
+      "patient_intake_preferences",
+      "patient_intake_submissions",
+      "patient_measurements",
+      "patient_note_mentions",
+      "patient_notes",
+      "patient_prescriptions",
+      "patient_simulations",
+      "patient_treatment_areas",
+      "patient_treatment_preferences",
+      "scheduled_emails",
+    ];
+
+    // Tables where patient_id is the primary key (need to delete, not update)
+    const tablesToDeleteFrom = [
+      "patient_edit_locks",
+    ];
+
     for (const patientId of patientIdsToMerge) {
       console.log(`Merging data from patient ${patientId} to ${primaryPatientId}`);
 
-      // Update appointments
-      const { error: appointmentsError } = await supabase
-        .from("appointments")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
+      // Update all tables with patient_id foreign key
+      for (const tableName of tablesToUpdate) {
+        const { error } = await supabase
+          .from(tableName)
+          .update({ patient_id: primaryPatientId })
+          .eq("patient_id", patientId);
 
-      if (appointmentsError) {
-        console.error("Error merging appointments:", appointmentsError);
+        if (error) {
+          // Log but continue - table might not exist or have no records
+          console.log(`Note: Could not update ${tableName}:`, error.message);
+        }
       }
 
-      // Update deals
-      const { error: dealsError } = await supabase
-        .from("deals")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
+      // Delete from tables where patient_id is the primary key
+      for (const tableName of tablesToDeleteFrom) {
+        const { error } = await supabase
+          .from(tableName)
+          .delete()
+          .eq("patient_id", patientId);
 
-      if (dealsError) {
-        console.error("Error merging deals:", dealsError);
-      }
-
-      // Update patient documents
-      const { error: documentsError } = await supabase
-        .from("patient_documents")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (documentsError) {
-        console.error("Error merging documents:", documentsError);
-      }
-
-      // Update patient consultation data
-      const { error: consultationError } = await supabase
-        .from("patient_consultation_data")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (consultationError) {
-        console.error("Error merging consultation data:", consultationError);
-      }
-
-      // Update patient insurances
-      const { error: insuranceError } = await supabase
-        .from("patient_insurances")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (insuranceError) {
-        console.error("Error merging insurances:", insuranceError);
-      }
-
-      // Update invoices
-      const { error: invoicesError } = await supabase
-        .from("invoices")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (invoicesError) {
-        console.error("Error merging invoices:", invoicesError);
-      }
-
-      // Update tasks
-      const { error: tasksError } = await supabase
-        .from("tasks")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (tasksError) {
-        console.error("Error merging tasks:", tasksError);
-      }
-
-      // Update activities
-      const { error: activitiesError } = await supabase
-        .from("activities")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (activitiesError) {
-        console.error("Error merging activities:", activitiesError);
-      }
-
-      // Update notes
-      const { error: notesError } = await supabase
-        .from("notes")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (notesError) {
-        console.error("Error merging notes:", notesError);
-      }
-
-      // Update medical records
-      const { error: medicalRecordsError } = await supabase
-        .from("medical_records")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (medicalRecordsError) {
-        console.error("Error merging medical records:", medicalRecordsError);
-      }
-
-      // Update prescriptions
-      const { error: prescriptionsError } = await supabase
-        .from("prescriptions")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (prescriptionsError) {
-        console.error("Error merging prescriptions:", prescriptionsError);
-      }
-
-      // Update patient photos
-      const { error: photosError } = await supabase
-        .from("patient_photos")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (photosError) {
-        console.error("Error merging photos:", photosError);
-      }
-
-      // Update Crisalix simulations
-      const { error: crisalixError } = await supabase
-        .from("crisalix_simulations")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (crisalixError) {
-        console.error("Error merging Crisalix simulations:", crisalixError);
-      }
-
-      // Update consultations
-      const { error: consultationsError } = await supabase
-        .from("consultations")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (consultationsError) {
-        console.error("Error merging consultations:", consultationsError);
-      }
-
-      // Update scheduled_emails
-      const { error: scheduledEmailsError } = await supabase
-        .from("scheduled_emails")
-        .update({ patient_id: primaryPatientId })
-        .eq("patient_id", patientId);
-
-      if (scheduledEmailsError) {
-        console.error("Error merging scheduled emails:", scheduledEmailsError);
+        if (error) {
+          console.log(`Note: Could not delete from ${tableName}:`, error.message);
+        }
       }
     }
 
@@ -219,8 +128,12 @@ export async function POST(request: Request) {
 
     if (deleteError) {
       console.error("Error deleting merged patients:", deleteError);
+      // Provide more context about the error - likely a foreign key constraint
+      const errorMessage = deleteError.message?.includes("violates foreign key constraint")
+        ? `Failed to delete merged patients: A related record still references this patient. Details: ${deleteError.message}`
+        : `Failed to delete merged patients: ${deleteError.message || "Unknown error"}`;
       return NextResponse.json(
-        { error: "Failed to delete merged patients" },
+        { error: errorMessage, details: deleteError },
         { status: 500 }
       );
     }
