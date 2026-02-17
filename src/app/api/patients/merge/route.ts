@@ -85,6 +85,8 @@ export async function POST(request: Request) {
       "patient_treatment_preferences",
       "scheduled_emails",
       "tasks",
+      "whatsapp_conversations",
+      "whatsapp_messages",
     ];
 
     // Tables where patient_id is the primary key (need to delete, not update)
