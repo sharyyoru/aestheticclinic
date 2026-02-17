@@ -317,6 +317,12 @@ type ProviderOption = {
   name: string | null;
 };
 
+type DoctorSchedulingConfig = {
+  provider_id: string;
+  time_interval_minutes: number;
+  default_duration_minutes: number;
+};
+
 type DoctorCalendar = {
   id: string;
   providerId: string;
@@ -710,6 +716,7 @@ export default function CalendarPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isSystemUser, setIsSystemUser] = useState(false);
   const [doctorCalendars, setDoctorCalendars] = useState<DoctorCalendar[]>([]);
+  const [doctorSchedulingSettings, setDoctorSchedulingSettings] = useState<DoctorSchedulingConfig[]>([]);
   const [showAllDoctors, setShowAllDoctors] = useState(false);
   const [activeDoctorTabId, setActiveDoctorTabId] = useState<string | null>(null);
   const [isCreatingCalendar, setIsCreatingCalendar] = useState(false);
@@ -1107,6 +1114,31 @@ export default function CalendarPage() {
     };
   }, []);
 
+  // Load per-doctor scheduling settings
+  useEffect(() => {
+    let isMounted = true;
+    async function loadSchedulingSettings() {
+      try {
+        const res = await fetch("/api/settings/doctor-scheduling");
+        if (!isMounted) return;
+        if (res.ok) {
+          const data = await res.json();
+          setDoctorSchedulingSettings(
+            (data.settings || []).map((s: any) => ({
+              provider_id: s.provider_id,
+              time_interval_minutes: s.time_interval_minutes,
+              default_duration_minutes: s.default_duration_minutes,
+            }))
+          );
+        }
+      } catch {
+        if (!isMounted) return;
+      }
+    }
+    void loadSchedulingSettings();
+    return () => { isMounted = false; };
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -1297,20 +1329,28 @@ export default function CalendarPage() {
     return values;
   }, []);
 
+  // Get the scheduling config for the currently selected doctor in the create modal
+  const activeCreateDoctorConfig = useMemo(() => {
+    if (!createDoctorCalendarId) return null;
+    return doctorSchedulingSettings.find((s) => s.provider_id === createDoctorCalendarId) ?? null;
+  }, [createDoctorCalendarId, doctorSchedulingSettings]);
+
+  const createTimeInterval = activeCreateDoctorConfig?.time_interval_minutes ?? DAY_VIEW_SLOT_MINUTES;
+
   const availableTimeOptions = useMemo(() => {
     if (!draftDate) return [] as { value: string; label: string }[];
 
     const dayAppointments = appointmentsByDay[draftDate] ?? [];
     const windowStart = DAY_VIEW_START_MINUTES;
     const windowEnd = DAY_VIEW_END_MINUTES;
-    const desiredDuration = consultationDuration || DAY_VIEW_SLOT_MINUTES;
+    const desiredDuration = consultationDuration || createTimeInterval;
 
     const options: { value: string; label: string }[] = [];
 
     for (
       let minutes = windowStart;
       minutes <= windowEnd - desiredDuration;
-      minutes += DAY_VIEW_SLOT_MINUTES
+      minutes += createTimeInterval
     ) {
       const slotStart = minutes;
       const slotEnd = minutes + desiredDuration;
@@ -1360,7 +1400,7 @@ export default function CalendarPage() {
     }
 
     return options;
-  }, [draftDate, appointmentsByDay, consultationDuration]);
+  }, [draftDate, appointmentsByDay, consultationDuration, createTimeInterval]);
 
   // Filtered options for smart search dropdowns
   const filteredServiceOptions = useMemo(() => {
@@ -1387,22 +1427,52 @@ export default function CalendarPage() {
     return CLINIC_LOCATION_OPTIONS.filter((opt) => opt.toLowerCase().includes(search));
   }, [locationSearch]);
 
+  // Build duration options list, adding doctor's default duration if not in standard list
+  const createDurationOptions = useMemo(() => {
+    const base = [...CONSULTATION_DURATION_OPTIONS];
+    if (activeCreateDoctorConfig) {
+      const defaultDur = activeCreateDoctorConfig.default_duration_minutes;
+      if (!base.some((opt) => opt.value === defaultDur)) {
+        const label = defaultDur >= 60
+          ? defaultDur % 60 === 0 ? `${defaultDur / 60} hour${defaultDur > 60 ? "s" : ""}` : `${defaultDur} minutes`
+          : `${defaultDur} minutes`;
+        base.push({ value: defaultDur, label });
+        base.sort((a, b) => a.value - b.value);
+      }
+    }
+    return base;
+  }, [activeCreateDoctorConfig]);
+
   const filteredDurationOptions = useMemo(() => {
     const search = durationSearch.trim().toLowerCase();
-    if (!search) return CONSULTATION_DURATION_OPTIONS;
-    return CONSULTATION_DURATION_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(search));
-  }, [durationSearch]);
+    if (!search) return createDurationOptions;
+    return createDurationOptions.filter((opt) => opt.label.toLowerCase().includes(search));
+  }, [durationSearch, createDurationOptions]);
+
+  // Build edit duration options, adding the current edit duration if non-standard
+  const editDurationOptionsList = useMemo(() => {
+    const base = [...CONSULTATION_DURATION_OPTIONS];
+    if (editConsultationDuration > 0 && !base.some((opt) => opt.value === editConsultationDuration)) {
+      const dur = editConsultationDuration;
+      const label = dur >= 60
+        ? dur % 60 === 0 ? `${dur / 60} hour${dur > 60 ? "s" : ""}` : `${dur} minutes`
+        : `${dur} minutes`;
+      base.push({ value: dur, label });
+      base.sort((a, b) => a.value - b.value);
+    }
+    return base;
+  }, [editConsultationDuration]);
 
   const filteredEditDurationOptions = useMemo(() => {
     const search = editDurationSearch.trim().toLowerCase();
-    if (!search) return CONSULTATION_DURATION_OPTIONS;
-    return CONSULTATION_DURATION_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(search));
-  }, [editDurationSearch]);
+    if (!search) return editDurationOptionsList;
+    return editDurationOptionsList.filter((opt) => opt.label.toLowerCase().includes(search));
+  }, [editDurationSearch, editDurationOptionsList]);
 
-  // Generate all time options from 8am to 8pm in 15-minute increments
+  // Generate all time options using the selected doctor's interval (or default 15 min)
   const allTimeOptions = useMemo(() => {
     const options: { value: string; label: string }[] = [];
-    for (let minutes = DAY_VIEW_START_MINUTES; minutes < DAY_VIEW_END_MINUTES; minutes += DAY_VIEW_SLOT_MINUTES) {
+    for (let minutes = DAY_VIEW_START_MINUTES; minutes < DAY_VIEW_END_MINUTES; minutes += createTimeInterval) {
       const hours24 = Math.floor(minutes / 60);
       const mins = minutes % 60;
       const value = `${hours24.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`;
@@ -1412,7 +1482,7 @@ export default function CalendarPage() {
       });
     }
     return options;
-  }, []);
+  }, [createTimeInterval]);
 
   // Filtered time options based on search
   const filteredTimeOptions = useMemo(() => {
@@ -2131,7 +2201,6 @@ export default function CalendarPage() {
               setCreatePatientSearch("");
               setCreatePatientId(null);
               setCreatePatientName("");
-              setConsultationDuration(15);
               setSelectedServiceId("");
               setServiceSearch("");
               setBookingStatus("");
@@ -2140,14 +2209,23 @@ export default function CalendarPage() {
               setCategorySearch("");
               setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
               setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
-              setConsultationDuration(15);
-              setDurationSearch("15 minutes");
               setDraftDescription("");
               const defaultCalendar =
                 doctorCalendars.find((calendar) => calendar.selected) ||
                 doctorCalendars[0] ||
                 null;
-              setCreateDoctorCalendarId(defaultCalendar?.id ?? "");
+              const defaultCalId = defaultCalendar?.id ?? "";
+              setCreateDoctorCalendarId(defaultCalId);
+              // Apply doctor-specific scheduling defaults
+              const docConfig = doctorSchedulingSettings.find((s) => s.provider_id === defaultCalId);
+              if (docConfig) {
+                setConsultationDuration(docConfig.default_duration_minutes);
+                const durOpt = CONSULTATION_DURATION_OPTIONS.find((o) => o.value === docConfig.default_duration_minutes);
+                setDurationSearch(durOpt ? durOpt.label : `${docConfig.default_duration_minutes} minutes`);
+              } else {
+                setConsultationDuration(15);
+                setDurationSearch("15 minutes");
+              }
               setCreateModalOpen(true);
             }}
             className="inline-flex w-full items-center justify-center rounded-full bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700"
@@ -3428,7 +3506,23 @@ export default function CalendarPage() {
                   <p className="text-[11px] font-medium text-slate-600">Doctor calendar</p>
                   <select
                     value={createDoctorCalendarId}
-                    onChange={(event) => setCreateDoctorCalendarId(event.target.value)}
+                    onChange={(event) => {
+                      const newId = event.target.value;
+                      setCreateDoctorCalendarId(newId);
+                      // Apply doctor-specific scheduling defaults
+                      const config = doctorSchedulingSettings.find((s) => s.provider_id === newId);
+                      if (config) {
+                        setConsultationDuration(config.default_duration_minutes);
+                        const durOpt = CONSULTATION_DURATION_OPTIONS.find((o) => o.value === config.default_duration_minutes);
+                        setDurationSearch(durOpt ? durOpt.label : `${config.default_duration_minutes} minutes`);
+                      } else {
+                        setConsultationDuration(15);
+                        setDurationSearch("15 minutes");
+                      }
+                      // Reset time selection since interval may have changed
+                      setDraftTime("");
+                      setTimeSearch("");
+                    }}
                     className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   >
                     <option value="">

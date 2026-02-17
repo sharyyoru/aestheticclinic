@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 
 const TABS = [
   { id: "external-labs", label: "External Labs" },
+  { id: "doctor-scheduling", label: "Doctor Scheduling" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -62,6 +63,332 @@ export default function SettingsPage() {
       {/* Tab content */}
       <div className="mt-6">
         {activeTab === "external-labs" && <ExternalLabsTab />}
+        {activeTab === "doctor-scheduling" && <DoctorSchedulingTab />}
+      </div>
+    </div>
+  );
+}
+
+interface DoctorSchedulingSetting {
+  id: string;
+  provider_id: string;
+  time_interval_minutes: number;
+  default_duration_minutes: number;
+  providers?: { name: string } | null;
+}
+
+interface ProviderOption {
+  id: string;
+  name: string | null;
+  full_name?: string | null;
+}
+
+const TIME_INTERVAL_OPTIONS = [
+  { value: 5, label: "5 minutes" },
+  { value: 10, label: "10 minutes" },
+  { value: 15, label: "15 minutes" },
+  { value: 20, label: "20 minutes" },
+  { value: 30, label: "30 minutes" },
+];
+
+const DEFAULT_DURATION_OPTIONS = [
+  { value: 5, label: "5 minutes" },
+  { value: 10, label: "10 minutes" },
+  { value: 15, label: "15 minutes" },
+  { value: 20, label: "20 minutes" },
+  { value: 25, label: "25 minutes" },
+  { value: 30, label: "30 minutes" },
+  { value: 45, label: "45 minutes" },
+  { value: 60, label: "1 hour" },
+  { value: 90, label: "1.5 hours" },
+  { value: 120, label: "2 hours" },
+];
+
+function DoctorSchedulingTab() {
+  const [settings, setSettings] = useState<DoctorSchedulingSetting[]>([]);
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [formProviderId, setFormProviderId] = useState("");
+  const [formInterval, setFormInterval] = useState(15);
+  const [formDuration, setFormDuration] = useState(15);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const selectedSetting = settings.find((s) => s.id === selectedId) ?? null;
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [settingsRes, providersRes] = await Promise.all([
+          fetch("/api/settings/doctor-scheduling"),
+          fetch("/api/users/list"),
+        ]);
+        if (settingsRes.ok) {
+          const data = await settingsRes.json();
+          setSettings(data.settings || []);
+        }
+        if (providersRes.ok) {
+          const data = await providersRes.json();
+          setProviders(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error("Failed to load doctor scheduling settings:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  function handleSelect(setting: DoctorSchedulingSetting) {
+    setSelectedId(setting.id);
+    setFormProviderId(setting.provider_id);
+    setFormInterval(setting.time_interval_minutes);
+    setFormDuration(setting.default_duration_minutes);
+    setFormError(null);
+  }
+
+  function handleAddNew() {
+    setSelectedId("__new__");
+    setFormProviderId("");
+    setFormInterval(5);
+    setFormDuration(20);
+    setFormError(null);
+  }
+
+  async function handleSave() {
+    if (!formProviderId) {
+      setFormError("Please select a doctor.");
+      return;
+    }
+
+    setFormError(null);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/doctor-scheduling", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider_id: formProviderId,
+          time_interval_minutes: formInterval,
+          default_duration_minutes: formDuration,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setFormError(err.error || "Failed to save.");
+        return;
+      }
+      const data = await res.json();
+      const saved = data.setting as DoctorSchedulingSetting;
+      setSettings((prev) => {
+        const existing = prev.findIndex((s) => s.provider_id === saved.provider_id);
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = saved;
+          return updated;
+        }
+        return [...prev, saved];
+      });
+      setSelectedId(saved.id);
+    } catch (err) {
+      setFormError("Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!selectedId || selectedId === "__new__") return;
+    setSaving(true);
+    try {
+      await fetch(`/api/settings/doctor-scheduling?id=${selectedId}`, { method: "DELETE" });
+      setSettings((prev) => prev.filter((s) => s.id !== selectedId));
+      setSelectedId(null);
+      setFormProviderId("");
+      setFormInterval(15);
+      setFormDuration(15);
+    } catch (err) {
+      console.error("Failed to delete:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const usedProviderIds = new Set(settings.map((s) => s.provider_id));
+  const availableProviders = providers.filter(
+    (p) => !usedProviderIds.has(p.id) || p.id === selectedSetting?.provider_id
+  );
+
+  function getProviderName(providerId: string): string {
+    const provider = providers.find((p) => p.id === providerId);
+    return provider?.full_name || provider?.name || "Unknown";
+  }
+
+  return (
+    <div className="flex gap-6 min-h-[420px]">
+      {/* Left panel – settings list */}
+      <div className="w-80 shrink-0 rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Doctor Scheduling
+          </h2>
+          <button
+            type="button"
+            onClick={handleAddNew}
+            className="flex h-6 w-6 items-center justify-center rounded-lg text-sky-500 hover:bg-sky-50 transition-colors"
+            title="Add doctor scheduling setting"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="border-b border-slate-100 px-4 py-2 grid grid-cols-3 gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Doctor</span>
+          <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Interval</span>
+          <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Duration</span>
+        </div>
+
+        <div className="max-h-[340px] overflow-y-auto">
+          {loading && (
+            <div className="px-4 py-8 text-center text-xs text-slate-400">
+              Loading…
+            </div>
+          )}
+          {!loading && settings.length === 0 && (
+            <div className="px-4 py-8 text-center text-xs text-slate-400">
+              No custom scheduling settings. All doctors use 15-minute intervals.
+            </div>
+          )}
+          {settings.map((setting) => (
+            <div
+              key={setting.id}
+              className={`grid grid-cols-3 gap-2 border-b border-slate-100/60 px-4 py-2.5 text-sm cursor-pointer transition-colors ${
+                selectedId === setting.id
+                  ? "bg-sky-50/60 text-sky-700"
+                  : "text-slate-700 hover:bg-slate-50/80"
+              }`}
+              onClick={() => handleSelect(setting)}
+            >
+              <span className="truncate text-xs">
+                {(setting.providers as any)?.name || getProviderName(setting.provider_id)}
+              </span>
+              <span className="text-xs">{setting.time_interval_minutes} min</span>
+              <span className="text-xs">{setting.default_duration_minutes} min</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Right panel – form */}
+      <div className="flex-1 rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm">
+        {!selectedId ? (
+          <div className="flex h-full items-center justify-center text-sm text-slate-400">
+            Select a setting or add a new one. Doctors without a custom setting use the default 15-minute intervals.
+          </div>
+        ) : (
+          <div className="flex h-full flex-col">
+            <div className="border-b border-slate-200/80 px-6 py-4">
+              <h2 className="text-sm font-semibold text-slate-800">
+                {selectedId === "__new__" ? "Add Doctor Scheduling Setting" : "Edit Doctor Scheduling Setting"}
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Configure custom time slot intervals and default appointment duration for this doctor.
+              </p>
+            </div>
+
+            <div className="flex-1 px-6 py-5 space-y-5">
+              <div>
+                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                  Doctor
+                </label>
+                <select
+                  value={formProviderId}
+                  onChange={(e) => setFormProviderId(e.target.value)}
+                  disabled={selectedId !== "__new__" && !!selectedSetting}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-sky-400 focus:ring-1 focus:ring-sky-400/30 disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  <option value="">Select doctor…</option>
+                  {(selectedId === "__new__" ? availableProviders : providers).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {(p as any).full_name || p.name || "Unnamed"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    Time Slot Interval
+                  </label>
+                  <select
+                    value={formInterval}
+                    onChange={(e) => setFormInterval(Number(e.target.value))}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-sky-400 focus:ring-1 focus:ring-sky-400/30"
+                  >
+                    {TIME_INTERVAL_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Appointments can start every {formInterval} minutes (e.g. 9:00, 9:{formInterval.toString().padStart(2, "0")}…)
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    Default Duration
+                  </label>
+                  <select
+                    value={formDuration}
+                    onChange={(e) => setFormDuration(Number(e.target.value))}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-colors focus:border-sky-400 focus:ring-1 focus:ring-sky-400/30"
+                  >
+                    {DEFAULT_DURATION_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Pre-selected duration when this doctor is chosen.
+                  </p>
+                </div>
+              </div>
+
+              {formError && <p className="text-[11px] text-red-500">{formError}</p>}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200/80 px-6 py-3">
+              <button
+                type="button"
+                onClick={() => { setSelectedId(null); setFormError(null); }}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              {selectedId !== "__new__" && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={saving}
+                  className="rounded-lg border border-red-200 bg-white px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  Delete
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-lg bg-sky-500 px-4 py-1.5 text-xs font-medium text-white hover:bg-sky-600 transition-colors disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

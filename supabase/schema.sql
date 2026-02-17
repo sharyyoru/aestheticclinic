@@ -917,3 +917,15 @@ create table if not exists external_labs (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Per-doctor scheduling settings (time slot interval & default duration)
+create table if not exists doctor_scheduling_settings (
+  id uuid primary key default gen_random_uuid(),
+  provider_id uuid not null unique,
+  time_interval_minutes integer not null default 15,
+  default_duration_minutes integer not null default 15,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists doctor_scheduling_settings_provider_id_idx on doctor_scheduling_settings(provider_id);
