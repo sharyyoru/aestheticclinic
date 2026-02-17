@@ -90,6 +90,19 @@ export interface Invoice {
   medical_case_number: string | null;
   medidata_submission_id: string | null;
 
+  // Treatment context (for XML)
+  treatment_canton: string | null;
+  treatment_reason: string | null; // 'disease' | 'accident' | 'maternity' | 'prevention'
+  treatment_date_end: string | null;
+  diagnosis_codes: { code: string; type: string }[] | null;
+
+  // Insurance details
+  insurance_gln: string | null;
+  insurance_name: string | null;
+  patient_ssn: string | null;
+  patient_card_number: string | null;
+  copy_to_guarantor: boolean;
+
   // Insurance payment tracking
   insurance_payment_status: string | null;
   insurance_paid_amount: number | null;
@@ -142,8 +155,21 @@ export interface InvoiceLineItem {
   tp_tl_value: number;
   tp_al_scale_factor: number;
   tp_tl_scale_factor: number;
+  external_factor_mt: number;
+  external_factor_tt: number;
   price_al: number;
   price_tl: number;
+
+  // Service_ex XML fields
+  date_begin: string | null;
+  provider_gln: string | null;
+  responsible_gln: string | null;
+  billing_role: string | null; // 'both' | 'mt' | 'tt'
+  record_id: number | null;
+  ref_code: string | null;
+  section_code: string | null;
+  session_number: number;
+  service_attributes: number;
 
   // Catalog metadata
   catalog_name: string | null;

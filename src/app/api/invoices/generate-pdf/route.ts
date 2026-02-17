@@ -4,6 +4,7 @@ import jsPDF from "jspdf";
 import QRCode from "qrcode";
 import { generateSwissQrBillDataUrl, generateSwissReference, formatSwissReferenceWithSpaces, type SwissQrBillData } from "@/lib/swissQrBill";
 import type { Invoice, InvoiceLineItem } from "@/lib/invoiceTypes";
+import { generateTiersPayantPdf, type TiersPayantPatient, type TiersPayantProvider, type TiersPayantInsurer } from "@/lib/generateTiersPayantPdf";
 
 type PatientData = {
   first_name: string;
@@ -36,6 +37,7 @@ type ProviderData = {
 export async function POST(request: NextRequest) {
   try {
     const { invoiceId } = await request.json();
+    console.log("PDF generation request received for invoice ID:", invoiceId);
 
     if (!invoiceId) {
       return NextResponse.json(
@@ -51,9 +53,12 @@ export async function POST(request: NextRequest) {
       .eq("id", invoiceId)
       .single();
 
+    console.log("Invoice query result:", { invoice, invoiceError });
+
     if (invoiceError || !invoice) {
+      console.log("Invoice not found, error:", invoiceError);
       return NextResponse.json(
-        { error: "Invoice not found" },
+        { error: "Invoice not found", details: invoiceError },
         { status: 404 }
       );
     }
@@ -83,9 +88,12 @@ export async function POST(request: NextRequest) {
       .eq("id", invoiceData.patient_id)
       .single();
 
+    console.log("Patient query result:", { patientId: invoiceData.patient_id, patient, patientError });
+
     if (patientError || !patient) {
+      console.log("Patient not found, error:", patientError);
       return NextResponse.json(
-        { error: "Patient not found" },
+        { error: "Patient not found", details: patientError },
         { status: 404 }
       );
     }
@@ -101,6 +109,80 @@ export async function POST(request: NextRequest) {
         .eq("id", invoiceData.provider_id)
         .single();
       if (providerRow) providerData = providerRow as ProviderData;
+    }
+
+    // ── Detect insurance (Tiers Payant) invoice and generate specialized PDF ──
+    const isInsuranceInvoice = invoiceData.billing_type === "TP" || invoiceData.payment_method === "Insurance";
+    if (isInsuranceInvoice) {
+      // Fetch insurer data if available
+      let insurerData: TiersPayantInsurer | null = null;
+      if (invoiceData.insurer_id) {
+        const { data: insurerRow } = await supabaseAdmin
+          .from("swiss_insurers")
+          .select("name, gln, street, zip_code, city, pobox")
+          .eq("id", invoiceData.insurer_id)
+          .single();
+        if (insurerRow) insurerData = insurerRow as TiersPayantInsurer;
+      }
+
+      const tpPatient: TiersPayantPatient = {
+        ...patientData,
+        avs_number: invoiceData.patient_ssn || null,
+      };
+
+      const tpProvider: TiersPayantProvider = {
+        name: providerData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA",
+        gln: providerData?.gln || invoiceData.provider_gln || null,
+        zsr: providerData?.zsr || invoiceData.provider_zsr || null,
+        street: providerData?.street || null,
+        street_no: providerData?.street_no || null,
+        zip_code: providerData?.zip_code || null,
+        city: providerData?.city || null,
+        canton: providerData?.canton || invoiceData.treatment_canton || null,
+        phone: providerData?.phone || null,
+        iban: providerData?.iban || null,
+        salutation: providerData?.salutation || null,
+        title: providerData?.title || null,
+      };
+
+      const pdfBuffer = await generateTiersPayantPdf(
+        invoiceData,
+        lineItems,
+        tpPatient,
+        tpProvider,
+        insurerData,
+      );
+
+      const fileName = `invoice-tp-${invoiceData.invoice_number}-${Date.now()}.pdf`;
+      const filePath = `${invoiceData.patient_id}/${fileName}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("invoice-pdfs")
+        .upload(filePath, pdfBuffer, {
+          contentType: "application/pdf",
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        return NextResponse.json({ error: "Failed to upload PDF" }, { status: 500 });
+      }
+
+      await supabaseAdmin
+        .from("invoices")
+        .update({ pdf_path: filePath, pdf_generated_at: new Date().toISOString() })
+        .eq("id", invoiceId);
+
+      const { data: publicUrlData } = supabaseAdmin.storage
+        .from("invoice-pdfs")
+        .getPublicUrl(filePath);
+
+      return NextResponse.json({
+        success: true,
+        pdfUrl: publicUrlData.publicUrl,
+        pdfPath: filePath,
+        qrCodeType: "tiers-payant",
+      });
     }
 
     // Resolve provider details: prefer live provider data, fall back to invoice snapshot, then defaults

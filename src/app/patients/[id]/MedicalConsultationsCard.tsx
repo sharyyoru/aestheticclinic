@@ -15,6 +15,7 @@ import {
 } from "@/lib/tardoc";
 import InsuranceBillingModal from "@/components/InsuranceBillingModal";
 import InvoiceStatusBadge from "@/components/InvoiceStatusBadge";
+import TardocAccordionTree from "@/components/TardocAccordionTree";
 import { type MediDataInvoiceStatus } from "@/lib/medidata";
 
 type TaskPriority = "low" | "medium" | "high";
@@ -93,6 +94,9 @@ type Provider = {
   specialty: string | null;
   email: string | null;
   phone: string | null;
+  gln: string | null;
+  zsr: string | null;
+  canton: string | null;
 };
 
 type PrescriptionLine = {
@@ -254,11 +258,18 @@ export default function MedicalConsultationsCard({
     [],
   );
   const [invoicePaymentMethod, setInvoicePaymentMethod] = useState("");
+  const [invoiceProviderId, setInvoiceProviderId] = useState<string>("");
   const [invoiceMode, setInvoiceMode] = useState<"group" | "individual" | "tardoc">(
     "individual", // default to Individual Services
   );
   const [selectedTardocCode, setSelectedTardocCode] = useState("");
   const [invoiceCanton, setInvoiceCanton] = useState<SwissCanton>(DEFAULT_CANTON);
+  const [tardocSearchQuery, setTardocSearchQuery] = useState("");
+  const [tardocSearchResults, setTardocSearchResults] = useState<any[]>([]);
+  const [tardocSearchLoading, setTardocSearchLoading] = useState(false);
+  const [tardocChapters, setTardocChapters] = useState<{code:string;name:string}[]>([]);
+  const [tardocSelectedChapter, setTardocSelectedChapter] = useState("");
+  const [tardocDbInfo, setTardocDbInfo] = useState<{dbVersion:string;dbVersionDate:string}|null>(null);
   const [invoiceGroupId, setInvoiceGroupId] = useState("");
   const [invoicePaymentTerm, setInvoicePaymentTerm] =
     useState<InvoicePaymentTerm>("full");
@@ -424,7 +435,7 @@ export default function MedicalConsultationsCard({
       try {
         const { data } = await supabaseClient
           .from("providers")
-          .select("id, name, specialty, email, phone")
+          .select("id, name, specialty, email, phone, gln, zsr, canton")
           .order("name");
         if (!isMounted) return;
         if (data) setProviderOptions(data as Provider[]);
@@ -1127,6 +1138,7 @@ export default function MedicalConsultationsCard({
 
   async function handleGenerateInvoicePdf(invoiceId: string) {
     try {
+      console.log("Generating PDF for invoice ID:", invoiceId);
       setGeneratingPdf(invoiceId);
       setPdfError(null);
 
@@ -1768,24 +1780,30 @@ export default function MedicalConsultationsCard({
                     let doctorName: string | null = null;
                     let selectedProviderId: string | null = null;
                     let selectedProviderName: string | null = null;
+                    let selectedProviderGln: string | null = null;
+                    let selectedProviderZsr: string | null = null;
+                    let selectedProviderCanton: string | null = null;
+
+                    // Doctor is always from the users dropdown
+                    const doctor = userOptions.find(
+                      (user) => user.id === consultationDoctorId,
+                    );
+                    if (doctor) {
+                      doctorName =
+                        (doctor.full_name || doctor.email || "Doctor") as string;
+                    }
 
                     if (consultationRecordType === "invoice") {
-                      // For invoices, the dropdown is providers
+                      // Provider (billing entity) is from the providers dropdown
                       const provider = providerOptions.find(
-                        (p) => p.id === consultationDoctorId,
+                        (p) => p.id === invoiceProviderId,
                       );
                       if (provider) {
-                        doctorName = provider.name;
                         selectedProviderId = provider.id;
                         selectedProviderName = provider.name;
-                      }
-                    } else {
-                      const doctor = userOptions.find(
-                        (user) => user.id === consultationDoctorId,
-                      );
-                      if (doctor) {
-                        doctorName =
-                          (doctor.full_name || doctor.email || "Doctor") as string;
+                        selectedProviderGln = provider.gln ?? null;
+                        selectedProviderZsr = provider.zsr ?? null;
+                        selectedProviderCanton = provider.canton ?? null;
                       }
                     }
 
@@ -2041,37 +2059,85 @@ export default function MedicalConsultationsCard({
                     if (consultationRecordType === "invoice") {
                       // ── Invoice: insert ONLY into invoices + invoice_line_items ──
                       try {
+                        const isTardocInvoice = invoiceMode === "tardoc";
+                        const taxPointValue = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+
                         const invoiceLines = invoiceServiceLines
                           .filter((line) => line.serviceId)
                           .map((line) => {
-                            const service = invoiceServices.find((s) => s.id === line.serviceId);
+                            const isTardocLine = line.serviceId.startsWith("tardoc-");
+                            const tardocCode = isTardocLine ? line.serviceId.replace("tardoc-", "") : null;
+                            const service = isTardocLine ? null : invoiceServices.find((s) => s.id === line.serviceId);
                             const quantity = line.quantity > 0 ? line.quantity : 1;
                             const resolvedUnitPrice = (() => {
                               if (line.unitPrice !== null && Number.isFinite(line.unitPrice)) return Math.max(0, line.unitPrice);
                               const base = service?.base_price !== null && service?.base_price !== undefined ? Number(service.base_price) : 0;
                               return Number.isFinite(base) && base > 0 ? base : 0;
                             })();
+
+                            // Find matching search result for TARDOC lines to get tax point breakdown
+                            const tardocResult = isTardocLine
+                              ? tardocSearchResults.find((r: any) => r.code === tardocCode)
+                              : null;
+
                             return {
-                              name: line.customName || service?.name || "Service",
-                              code: (service as any)?.code ?? null,
-                              service_id: line.serviceId,
+                              name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : "Service"),
+                              code: tardocCode || (service as any)?.code || null,
+                              service_id: isTardocLine ? null : line.serviceId,
                               quantity,
                               unit_price: resolvedUnitPrice,
                               total_price: resolvedUnitPrice * quantity,
+                              // TARDOC-specific fields
+                              tariff_code: isTardocLine ? 7 : null,
+                              tardoc_code: tardocCode,
+                              tp_al: tardocResult?.tpMT ?? 0,
+                              tp_tl: tardocResult?.tpTT ?? 0,
+                              tp_al_value: isTardocLine ? taxPointValue : 1,
+                              tp_tl_value: isTardocLine ? taxPointValue : 1,
+                              tp_al_scale_factor: 1,
+                              tp_tl_scale_factor: 1,
+                              external_factor_mt: 1,
+                              external_factor_tt: 1,
+                              price_al: isTardocLine ? Math.round((tardocResult?.tpMT ?? 0) * taxPointValue * 100) / 100 : 0,
+                              price_tl: isTardocLine ? Math.round((tardocResult?.tpTT ?? 0) * taxPointValue * 100) / 100 : 0,
+                              provider_gln: isTardocLine ? selectedProviderGln : null,
+                              responsible_gln: isTardocLine ? selectedProviderGln : null,
+                              billing_role: isTardocLine ? "both" : null,
+                              record_id: tardocResult?.recordId ?? null,
+                              ref_code: null as string | null,
+                              section_code: tardocResult?.section ?? null,
+                              session_number: 1,
+                              service_attributes: 0,
+                              date_begin: scheduledAtIso || null,
+                              catalog_name: isTardocLine ? "TARDOC" : null,
+                              catalog_nature: isTardocLine ? "TARIFF_CATALOG" : null,
                             };
                           });
 
-                        const { data: invoiceRow, error: invoiceInsertError } = await supabaseClient
-                          .from("invoices")
-                          .insert({
+                        // For TARDOC: set ref_code on additional services (services where code != first service code)
+                        if (isTardocInvoice && invoiceLines.length > 1) {
+                          const mainCode = invoiceLines[0]?.tardoc_code;
+                          if (mainCode) {
+                            for (let i = 1; i < invoiceLines.length; i++) {
+                              if (invoiceLines[i].tardoc_code && invoiceLines[i].tardoc_code !== mainCode) {
+                                invoiceLines[i].ref_code = mainCode;
+                              }
+                            }
+                          }
+                        }
+
+                        // Build invoice insert payload
+                        const invoiceInsertPayload: Record<string, unknown> = {
                             patient_id: patientId,
                             invoice_number: consultationId,
                             invoice_date: consultationDate,
                             treatment_date: scheduledAtIso,
-                            doctor_user_id: null,
+                            doctor_user_id: consultationDoctorId || null,
                             doctor_name: doctorName,
                             provider_id: selectedProviderId,
                             provider_name: selectedProviderName,
+                            provider_gln: selectedProviderGln,
+                            provider_zsr: selectedProviderZsr,
                             subtotal: invoiceTotalAmountForInsert || 0,
                             vat_amount: 0,
                             total_amount: invoiceTotalAmountForInsert || 0,
@@ -2082,7 +2148,24 @@ export default function MedicalConsultationsCard({
                             created_by_name: createdByName,
                             is_archived: false,
                             is_demo: false,
-                          })
+                        };
+
+                        // Add TARDOC-specific invoice fields
+                        if (isTardocInvoice) {
+                          invoiceInsertPayload.treatment_canton = invoiceCanton;
+                          invoiceInsertPayload.treatment_reason = "disease";
+                          invoiceInsertPayload.treatment_date_end = scheduledAtIso;
+                          invoiceInsertPayload.billing_type = "TP";
+                          invoiceInsertPayload.health_insurance_law = "KVG";
+                          invoiceInsertPayload.diagnosis_codes = [
+                            { code: "U", type: "cantonal" },
+                            { code: "Z", type: "ICD" },
+                          ];
+                        }
+
+                        const { data: invoiceRow, error: invoiceInsertError } = await supabaseClient
+                          .from("invoices")
+                          .insert(invoiceInsertPayload)
                           .select("id")
                           .single();
 
@@ -2105,6 +2188,29 @@ export default function MedicalConsultationsCard({
                             quantity: line.quantity,
                             unit_price: line.unit_price,
                             total_price: line.total_price,
+                            tariff_code: line.tariff_code,
+                            tardoc_code: line.tardoc_code,
+                            tp_al: line.tp_al,
+                            tp_tl: line.tp_tl,
+                            tp_al_value: line.tp_al_value,
+                            tp_tl_value: line.tp_tl_value,
+                            tp_al_scale_factor: line.tp_al_scale_factor,
+                            tp_tl_scale_factor: line.tp_tl_scale_factor,
+                            external_factor_mt: line.external_factor_mt,
+                            external_factor_tt: line.external_factor_tt,
+                            price_al: line.price_al,
+                            price_tl: line.price_tl,
+                            provider_gln: line.provider_gln,
+                            responsible_gln: line.responsible_gln,
+                            billing_role: line.billing_role,
+                            record_id: line.record_id,
+                            ref_code: line.ref_code,
+                            section_code: line.section_code,
+                            session_number: line.session_number,
+                            service_attributes: line.service_attributes,
+                            date_begin: line.date_begin,
+                            catalog_name: line.catalog_name,
+                            catalog_nature: line.catalog_nature,
                           }));
 
                           const { error: lineItemsError } = await supabaseClient
@@ -2216,6 +2322,7 @@ export default function MedicalConsultationsCard({
                     setConsultationStopwatchStartedAt(null);
                     setConsultationStopwatchNow(Date.now());
                     setInvoicePaymentMethod("");
+                    setInvoiceProviderId("");
                     setInvoiceMode("individual");
                     setInvoiceGroupId("");
                     setInvoicePaymentTerm("full");
@@ -2278,41 +2385,60 @@ export default function MedicalConsultationsCard({
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-medium text-slate-700">
-                    {consultationRecordType === "invoice" ? "Provider" : "Doctor"}
+                    Doctor
                   </label>
-                  {consultationRecordType === "invoice" ? (
-                    <select
-                      value={consultationDoctorId}
-                      onChange={(event) => setConsultationDoctorId(event.target.value)}
-                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    >
-                      <option value="">Select provider</option>
-                      {providerOptions.map((prov) => (
-                        <option key={prov.id} value={prov.id}>
-                          {prov.name}{prov.specialty ? ` (${prov.specialty})` : ""}
+                  <select
+                    value={consultationDoctorId}
+                    onChange={(event) => setConsultationDoctorId(event.target.value)}
+                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  >
+                    <option value="">Select doctor</option>
+                    {userOptions.map((user) => {
+                      const label =
+                        user.full_name || user.email || "Unnamed doctor";
+                      return (
+                        <option key={user.id} value={user.id}>
+                          {label}
                         </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <select
-                      value={consultationDoctorId}
-                      onChange={(event) => setConsultationDoctorId(event.target.value)}
-                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    >
-                      <option value="">Select doctor</option>
-                      {userOptions.map((user) => {
-                        const label =
-                          user.full_name || user.email || "Unnamed doctor";
-                        return (
-                          <option key={user.id} value={user.id}>
-                            {label}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  )}
+                      );
+                    })}
+                  </select>
                 </div>
               </div>
+
+              {consultationRecordType === "invoice" && (
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-medium text-slate-700">
+                    Provider (Billing Entity)
+                  </label>
+                  <select
+                    value={invoiceProviderId}
+                    onChange={(event) => setInvoiceProviderId(event.target.value)}
+                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  >
+                    <option value="">Select provider</option>
+                    {providerOptions.map((prov) => (
+                      <option key={prov.id} value={prov.id}>
+                        {prov.name}{prov.gln ? ` (GLN: ${prov.gln})` : ""}{prov.zsr ? ` ZSR: ${prov.zsr}` : ""}{!prov.gln && prov.specialty ? ` (${prov.specialty})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {invoiceProviderId && (() => {
+                    const selProv = providerOptions.find(p => p.id === invoiceProviderId);
+                    if (!selProv) return null;
+                    const missing: string[] = [];
+                    if (!selProv.gln) missing.push("GLN");
+                    if (!selProv.zsr) missing.push("ZSR");
+                    if (!selProv.canton) missing.push("Canton");
+                    if (missing.length === 0) return null;
+                    return (
+                      <p className="text-[10px] text-amber-600">
+                        Missing: {missing.join(", ")} — required for TARDOC/insurance billing
+                      </p>
+                    );
+                  })()}
+                </div>
+              )}
 
               <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)] gap-2">
                 <div className="space-y-1">
@@ -2874,6 +3000,7 @@ export default function MedicalConsultationsCard({
                             </div>
                           ) : invoiceMode === "tardoc" ? (
                             <div className="space-y-2 px-3 py-3">
+                              {/* Canton selector */}
                               <div className="space-y-1">
                                 <span className="block text-[10px] font-medium text-slate-600">
                                   Canton (Tax Point Value)
@@ -2891,56 +3018,150 @@ export default function MedicalConsultationsCard({
                                 </select>
                               </div>
 
+                              {/* Code search */}
                               <div className="space-y-1">
                                 <span className="block text-[10px] font-medium text-slate-600">
-                                  TARDOC Tariff
+                                  Search by Code / Name
                                 </span>
-                                <select
-                                  value={selectedTardocCode}
-                                  onChange={(e) => setSelectedTardocCode(e.target.value)}
-                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                                >
-                                  <option value="">Select TARDOC tariff</option>
-                                  {TARDOC_TARIFF_ITEMS.filter(t => t.isActive).map((tariff) => (
-                                    <option key={tariff.code} value={tariff.code}>
-                                      {tariff.code} - {tariff.description} ({formatChf(calculateTardocPrice(tariff.taxPoints, invoiceCanton))})
-                                    </option>
-                                  ))}
-                                </select>
+                                <div className="flex gap-1">
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. AA.00 or consultation"
+                                    value={tardocSearchQuery}
+                                    onChange={(e) => setTardocSearchQuery(e.target.value)}
+                                    onKeyDown={async (e) => {
+                                      if (e.key !== "Enter" || !tardocSearchQuery.trim()) return;
+                                      setTardocSearchLoading(true);
+                                      try {
+                                        const res = await fetch(`/api/tardoc/sumex?action=searchCode&code=${encodeURIComponent(tardocSearchQuery.trim())}&canton=${invoiceCanton}`);
+                                        const json = await res.json();
+                                        if (json.success) setTardocSearchResults(json.data || []);
+                                      } catch { /* ignore */ }
+                                      setTardocSearchLoading(false);
+                                    }}
+                                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!tardocSearchQuery.trim()) return;
+                                      setTardocSearchLoading(true);
+                                      try {
+                                        const res = await fetch(`/api/tardoc/sumex?action=searchCode&code=${encodeURIComponent(tardocSearchQuery.trim())}&canton=${invoiceCanton}`);
+                                        const json = await res.json();
+                                        if (json.success) setTardocSearchResults(json.data || []);
+                                      } catch { /* ignore */ }
+                                      setTardocSearchLoading(false);
+                                    }}
+                                    className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-sm hover:bg-slate-50"
+                                  >
+                                    Search
+                                  </button>
+                                </div>
                               </div>
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!selectedTardocCode) return;
-                                  const tariff = TARDOC_TARIFF_ITEMS.find(t => t.code === selectedTardocCode);
-                                  if (!tariff) return;
-                                  const unitPrice = calculateTardocPrice(tariff.taxPoints, invoiceCanton);
+                              {/* Search results */}
+                              {tardocSearchLoading && (
+                                <div className="py-3 text-center text-[10px] text-slate-400">Loading...</div>
+                              )}
+                              {!tardocSearchLoading && tardocSearchResults.length > 0 && (
+                                <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/50">
+                                  {/* Table header */}
+                                  <div className="sticky top-0 z-10 grid grid-cols-[20px_minmax(0,1fr)_52px_52px_28px] items-center gap-0.5 border-b border-slate-200 bg-slate-100 px-1.5 py-1 text-[9px] font-semibold text-slate-500">
+                                    <span />
+                                    <span>CODE / DESCRIPTION</span>
+                                    <span className="text-right">PT PM</span>
+                                    <span className="text-right">PT PT</span>
+                                    <span />
+                                  </div>
+                                  {tardocSearchResults.map((svc: any) => {
+                                    const tpv = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                                    const price = svc.priceCHF ?? Math.round((svc.tpMT + svc.tpTT) * tpv * 100) / 100;
+                                    return (
+                                      <div
+                                        key={svc.code || svc.recordId}
+                                        className="grid grid-cols-[20px_minmax(0,1fr)_52px_52px_28px] items-center gap-0.5 border-b border-slate-100 px-1.5 py-1 text-[10px] hover:bg-sky-50/50"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setInvoiceServiceLines((prev) => [
+                                              ...prev,
+                                              {
+                                                serviceId: `tardoc-${svc.code}`,
+                                                quantity: svc.unitQuantity || 1,
+                                                unitPrice: price,
+                                                groupId: null,
+                                                discountPercent: null,
+                                                customName: `${svc.code} - ${(svc.name || "").substring(0, 80)}`,
+                                              },
+                                            ]);
+                                          }}
+                                          className="flex h-4 w-4 items-center justify-center rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                                          title="Add to invoice"
+                                        >
+                                          <span className="text-[10px] font-bold leading-none">+</span>
+                                        </button>
+                                        <div className="min-w-0">
+                                          <span className="font-mono text-[9px] font-semibold text-slate-700">{svc.code}</span>
+                                          <span className="ml-1 text-[9px] text-slate-500 line-clamp-1">{svc.name}</span>
+                                        </div>
+                                        <span className="text-right font-mono text-[9px] text-slate-600">{svc.tpMT?.toFixed(2)}</span>
+                                        <span className="text-right font-mono text-[9px] text-slate-600">{svc.tpTT?.toFixed(2)}</span>
+                                        <span className="text-right font-mono text-[9px] font-semibold text-slate-800">{price.toFixed(0)}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {!tardocSearchLoading && tardocSearchResults.length === 0 && tardocSearchQuery && (
+                                <div className="py-2 text-center text-[10px] text-slate-400">No results found.</div>
+                              )}
 
-                                  setInvoiceServiceLines((prev) => [
-                                    ...prev,
-                                    {
-                                      serviceId: `tardoc-${tariff.code}`,
-                                      quantity: 1,
-                                      unitPrice,
-                                      groupId: null,
-                                      discountPercent: null,
-                                      customName: null,
-                                    },
-                                  ]);
-                                  setSelectedTardocCode("");
-                                }}
-                                disabled={!selectedTardocCode}
-                                className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 shadow-sm hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                + Add TARDOC tariff
-                              </button>
-                              <p className="text-[10px] text-slate-500">
-                                Swiss medical tariff (TARDOC) with canton-specific pricing.
-                                <a href="/tardoc" target="_blank" className="ml-1 text-sky-600 hover:underline">
-                                  View all tariffs →
-                                </a>
-                              </p>
+                              {/* Multi-level accordion tree */}
+                              <div className="space-y-1">
+                                <span className="block text-[10px] font-medium text-slate-600">
+                                  Browse TARDOC Catalog
+                                </span>
+                                <TardocAccordionTree
+                                  canton={invoiceCanton}
+                                  onAddService={(svc: any) => {
+                                    const tpv = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                                    const price = svc.priceCHF ?? Math.round(((svc.tpMT || 0) + (svc.tpTT || 0)) * tpv * 100) / 100;
+                                    setInvoiceServiceLines((prev) => [
+                                      ...prev,
+                                      {
+                                        serviceId: `tardoc-${svc.code}`,
+                                        quantity: svc.unitQuantity || 1,
+                                        unitPrice: price,
+                                        groupId: null,
+                                        discountPercent: null,
+                                        customName: `${svc.code} - ${(svc.name || "").substring(0, 80)}`,
+                                      },
+                                    ]);
+                                  }}
+                                />
+                              </div>
+
+                              {/* DB info */}
+                              <div className="flex items-center justify-between">
+                                <p className="text-[9px] text-slate-400">
+                                  Sumex1 TARDOC live catalog{tardocDbInfo ? ` (v${tardocDbInfo.dbVersion})` : ""}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      const res = await fetch("/api/tardoc/sumex?action=info");
+                                      const json = await res.json();
+                                      if (json.success) setTardocDbInfo(json.data);
+                                    } catch { /* ignore */ }
+                                  }}
+                                  className="text-[9px] text-sky-500 hover:text-sky-700 hover:underline"
+                                >
+                                  Check version
+                                </button>
+                              </div>
                             </div>
                           ) : null}
                         </div>
@@ -3168,10 +3389,12 @@ export default function MedicalConsultationsCard({
                         ) : (
                           <div className="space-y-2">
                             {invoiceServiceLines.map((line, index) => {
-                              const service = invoiceServices.find(
+                              const isTardocLine = line.serviceId.startsWith("tardoc-");
+                              const tardocCode = isTardocLine ? line.serviceId.replace("tardoc-", "") : null;
+                              const service = isTardocLine ? null : invoiceServices.find(
                                 (s) => s.id === line.serviceId,
                               );
-                              const defaultLabel = service?.name || "Service";
+                              const defaultLabel = service?.name || (tardocCode ? `TARDOC ${tardocCode}` : "Service");
                               const label = line.customName || defaultLabel;
                               const group =
                                 line.groupId !== null
@@ -3180,6 +3403,7 @@ export default function MedicalConsultationsCard({
                                   )
                                   : null;
                               const metaBits: string[] = [];
+                              if (tardocCode) metaBits.push("TARDOC");
                               if (group) metaBits.push(group.name);
                               if (
                                 line.discountPercent !== null &&
@@ -3207,7 +3431,7 @@ export default function MedicalConsultationsCard({
                                 >
                                   <div className="space-y-0.5">
                                     <span className="block text-[10px] font-medium text-slate-600">
-                                      Item {service?.code && <span className="font-bold">({service.code})</span>}
+                                      Item {(tardocCode || service?.code) && <span className="font-bold">({tardocCode || service?.code})</span>}
                                     </span>
                                     <input
                                       type="text"
