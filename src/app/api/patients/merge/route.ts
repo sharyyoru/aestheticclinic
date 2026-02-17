@@ -84,6 +84,7 @@ export async function POST(request: Request) {
       "patient_treatment_areas",
       "patient_treatment_preferences",
       "scheduled_emails",
+      "tasks",
     ];
 
     // Tables where patient_id is the primary key (need to delete, not update)
