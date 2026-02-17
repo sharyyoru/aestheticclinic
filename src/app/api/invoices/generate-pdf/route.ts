@@ -100,15 +100,43 @@ export async function POST(request: NextRequest) {
 
     const patientData = patient as PatientData;
 
-    // Fetch provider data if available
-    let providerData: ProviderData | null = null;
+    // Fetch billing entity (clinic) data
+    let billingEntityData: ProviderData | null = null;
     if (invoiceData.provider_id) {
       const { data: providerRow } = await supabaseAdmin
         .from("providers")
-        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title")
+        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, role")
         .eq("id", invoiceData.provider_id)
         .single();
-      if (providerRow) providerData = providerRow as ProviderData;
+      if (providerRow) billingEntityData = providerRow as ProviderData;
+    }
+
+    // Fetch medical staff (doctor/nurse) data from providers table
+    let staffData: ProviderData | null = null;
+    if (invoiceData.doctor_user_id) {
+      const { data: staffRow } = await supabaseAdmin
+        .from("providers")
+        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, role")
+        .eq("id", invoiceData.doctor_user_id)
+        .single();
+      if (staffRow) staffData = staffRow as ProviderData;
+    }
+
+    // FALLBACK for old invoices: If no doctor_user_id, provider_id was the doctor
+    // In old system, the doctor record contained BOTH doctor info AND billing entity info
+    if (!invoiceData.doctor_user_id && billingEntityData) {
+      // Old invoice: provider_id was the doctor who had everything
+      staffData = {
+        ...billingEntityData,
+        // Use snapshot data from invoice if available (more accurate for old invoices)
+        name: invoiceData.provider_name || billingEntityData.name,
+        gln: invoiceData.provider_gln || billingEntityData.gln,
+        zsr: invoiceData.provider_zsr || billingEntityData.zsr,
+      };
+      
+      // For old invoices, the doctor record IS also the billing entity
+      // So billingEntityData already has the IBAN and address we need
+      // No need to fetch a separate billing entity
     }
 
     // ── Detect insurance (Tiers Payant) invoice and generate specialized PDF ──
@@ -130,19 +158,20 @@ export async function POST(request: NextRequest) {
         avs_number: invoiceData.patient_ssn || null,
       };
 
+      // Billing entity (clinic) - used in <billers> section
       const tpProvider: TiersPayantProvider = {
-        name: providerData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA",
-        gln: providerData?.gln || invoiceData.provider_gln || null,
-        zsr: providerData?.zsr || invoiceData.provider_zsr || null,
-        street: providerData?.street || null,
-        street_no: providerData?.street_no || null,
-        zip_code: providerData?.zip_code || null,
-        city: providerData?.city || null,
-        canton: providerData?.canton || invoiceData.treatment_canton || null,
-        phone: providerData?.phone || null,
-        iban: providerData?.iban || null,
-        salutation: providerData?.salutation || null,
-        title: providerData?.title || null,
+        name: billingEntityData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA",
+        gln: billingEntityData?.gln || invoiceData.provider_gln || null,
+        zsr: billingEntityData?.zsr || invoiceData.provider_zsr || null,
+        street: billingEntityData?.street || null,
+        street_no: billingEntityData?.street_no || null,
+        zip_code: billingEntityData?.zip_code || null,
+        city: billingEntityData?.city || null,
+        canton: billingEntityData?.canton || invoiceData.treatment_canton || null,
+        phone: billingEntityData?.phone || null,
+        iban: billingEntityData?.iban || invoiceData.provider_iban || null,
+        salutation: billingEntityData?.salutation || null,
+        title: billingEntityData?.title || null,
       };
 
       const pdfBuffer = await generateTiersPayantPdf(
@@ -185,19 +214,25 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Resolve provider details: prefer live provider data, fall back to invoice snapshot, then defaults
-    const provName = providerData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA";
-    const provTitle = providerData?.title || "Chirurgie Plastique, Esthétique et Reconstructrice";
-    const provStreet = providerData?.street || "chemin Rieu";
-    const provBuildingNumber = providerData?.street_no || "18";
-    const provPostalCode = providerData?.zip_code || "1208";
-    const provTown = providerData?.city || "Genève";
+    // For cash/online invoices: Header shows DOCTOR name, but QR bill uses CLINIC IBAN
+    // Use doctor/staff data for header (who performed the service)
+    const headerName = staffData?.name || invoiceData.doctor_name || invoiceData.provider_name || "Aesthetics Clinic XT SA";
+    const headerTitle = staffData?.title || staffData?.specialty || "Chirurgie Plastique, Esthétique et Reconstructrice";
+    const headerRcc = staffData?.zsr || invoiceData.doctor_zsr || invoiceData.provider_zsr || "";
+    
+    // Use billing entity data for address and contact (clinic info)
+    const provStreet = billingEntityData?.street || "chemin Rieu";
+    const provBuildingNumber = billingEntityData?.street_no || "18";
+    const provPostalCode = billingEntityData?.zip_code || "1208";
+    const provTown = billingEntityData?.city || "Genève";
     const provCountry = "CH";
-    const provIban = providerData?.iban || "CH0930788000050249289";
+    const provPhone = billingEntityData?.phone || "022 732 22 23";
+    const provClinicName = billingEntityData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA";
+    
+    // IBAN fallback chain: invoice.provider_iban (new) -> live provider.iban -> hardcoded default
+    // Always use CLINIC IBAN for QR bill payment (not doctor's personal account)
+    const provIban = invoiceData.provider_iban || billingEntityData?.iban || "CH0930788000050249289";
     const provIbanFormatted = provIban.replace(/(.{4})/g, "$1 ").trim();
-    const provRcc = providerData?.zsr || invoiceData.provider_zsr || "";
-    const provPhone = providerData?.phone || "022 732 22 23";
-    const provClinicName = "Aesthetics Clinic XT SA";
 
     // Ensure payment link token exists
     let paymentLinkToken = invoiceData.payment_link_token;
@@ -301,16 +336,16 @@ export async function POST(request: NextRequest) {
     pdf.setFontSize(11);
     pdf.setFont("helvetica", "bold");
     pdf.setTextColor(0, 0, 0);
-    pdf.text(provName, 15, 15);
+    pdf.text(headerName, 15, 15);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
-    pdf.text(provTitle, 15, 20);
+    pdf.text(headerTitle, 15, 20);
     pdf.text(provClinicName, 15, 25);
     pdf.text(`${provStreet} ${provBuildingNumber}`, 15, 30);
     pdf.text(`${provPostalCode} ${provTown}`, 15, 35);
 
     pdf.setFontSize(9);
-    if (provRcc) pdf.text(`RCC ${provRcc}`, pageWidth - 15, 15, { align: "right" });
+    if (headerRcc) pdf.text(`RCC ${headerRcc}`, pageWidth - 15, 15, { align: "right" });
     pdf.text(`Tél. ${provPhone}`, pageWidth - 15, 20, { align: "right" });
 
     pdf.setFontSize(14);

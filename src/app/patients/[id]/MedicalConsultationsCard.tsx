@@ -235,6 +235,8 @@ export default function MedicalConsultationsCard({
   const [taskSaveError, setTaskSaveError] = useState<string | null>(null);
   const [userOptions, setUserOptions] = useState<PlatformUser[]>([]);
   const [providerOptions, setProviderOptions] = useState<Provider[]>([]);
+  const [billingEntityOptions, setBillingEntityOptions] = useState<Provider[]>([]);
+  const [medicalStaffOptions, setMedicalStaffOptions] = useState<Provider[]>([]);
 
   const [newConsultationOpen, setNewConsultationOpen] = useState(false);
   const [consultationDate, setConsultationDate] = useState(
@@ -435,10 +437,16 @@ export default function MedicalConsultationsCard({
       try {
         const { data } = await supabaseClient
           .from("providers")
-          .select("id, name, specialty, email, phone, gln, zsr, canton")
+          .select("id, name, specialty, email, phone, gln, zsr, canton, role")
           .order("name");
         if (!isMounted) return;
-        if (data) setProviderOptions(data as Provider[]);
+        if (data) {
+          setProviderOptions(data as Provider[]);
+          // Filter billing entities (clinics)
+          setBillingEntityOptions(data.filter((p: any) => p.role === 'billing_entity') as Provider[]);
+          // Filter medical staff (doctors and nurses)
+          setMedicalStaffOptions(data.filter((p: any) => p.role === 'doctor' || p.role === 'nurse' || p.role === 'technician') as Provider[]);
+        }
       } catch {}
     }
 
@@ -1784,13 +1792,12 @@ export default function MedicalConsultationsCard({
                     let selectedProviderZsr: string | null = null;
                     let selectedProviderCanton: string | null = null;
 
-                    // Doctor is always from the users dropdown
-                    const doctor = userOptions.find(
-                      (user) => user.id === consultationDoctorId,
+                    // Medical staff is from the providers dropdown (with role)
+                    const staff = medicalStaffOptions.find(
+                      (s) => s.id === consultationDoctorId,
                     );
-                    if (doctor) {
-                      doctorName =
-                        (doctor.full_name || doctor.email || "Doctor") as string;
+                    if (staff) {
+                      doctorName = staff.name || "Doctor";
                     }
 
                     if (consultationRecordType === "invoice") {
@@ -2064,7 +2071,7 @@ export default function MedicalConsultationsCard({
 
                         const invoiceLines = invoiceServiceLines
                           .filter((line) => line.serviceId)
-                          .map((line) => {
+                          .map((line, idx) => {
                             const isTardocLine = line.serviceId.startsWith("tardoc-");
                             const tardocCode = isTardocLine ? line.serviceId.replace("tardoc-", "") : null;
                             const service = isTardocLine ? null : invoiceServices.find((s) => s.id === line.serviceId);
@@ -2082,7 +2089,7 @@ export default function MedicalConsultationsCard({
 
                             return {
                               name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : "Service"),
-                              code: tardocCode || (service as any)?.code || null,
+                              code: isTardocLine ? tardocCode : (service as any)?.code || String(idx + 1).padStart(3, '0'),
                               service_id: isTardocLine ? null : line.serviceId,
                               quantity,
                               unit_price: resolvedUnitPrice,
@@ -2126,18 +2133,52 @@ export default function MedicalConsultationsCard({
                           }
                         }
 
+                        // Fetch billing entity (clinic) data to get IBAN
+                        let providerIban = null;
+                        if (selectedProviderId) {
+                          const { data: billingEntity } = await supabaseClient
+                            .from("providers")
+                            .select("iban")
+                            .eq("id", selectedProviderId)
+                            .single();
+                          providerIban = billingEntity?.iban || null;
+                        }
+
+                        // Fetch medical staff (doctor/nurse) data to get GLN/ZSR/Canton
+                        let doctorGln = null;
+                        let doctorZsr = null;
+                        let doctorCanton = null;
+                        if (consultationDoctorId) {
+                          const { data: staffData } = await supabaseClient
+                            .from("providers")
+                            .select("gln, zsr, canton, role")
+                            .eq("id", consultationDoctorId)
+                            .single();
+                          
+                          // Only populate GLN/ZSR if staff is a doctor (not nurse/technician)
+                          if (staffData?.role === "doctor") {
+                            doctorGln = staffData.gln || null;
+                            doctorZsr = staffData.zsr || null;
+                          }
+                          doctorCanton = staffData?.canton || null;
+                        }
+
                         // Build invoice insert payload
                         const invoiceInsertPayload: Record<string, unknown> = {
                             patient_id: patientId,
                             invoice_number: consultationId,
                             invoice_date: consultationDate,
                             treatment_date: scheduledAtIso,
-                            doctor_user_id: consultationDoctorId || null,
+                            doctor_user_id: consultationDoctorId || null, // FK to providers table
                             doctor_name: doctorName,
                             provider_id: selectedProviderId,
                             provider_name: selectedProviderName,
                             provider_gln: selectedProviderGln,
                             provider_zsr: selectedProviderZsr,
+                            provider_iban: providerIban,
+                            doctor_gln: doctorGln,
+                            doctor_zsr: doctorZsr,
+                            doctor_canton: doctorCanton,
                             subtotal: invoiceTotalAmountForInsert || 0,
                             vat_amount: 0,
                             total_amount: invoiceTotalAmountForInsert || 0,
@@ -2385,23 +2426,19 @@ export default function MedicalConsultationsCard({
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-medium text-slate-700">
-                    Doctor
+                    Medical Staff (Doctor/Nurse)
                   </label>
                   <select
                     value={consultationDoctorId}
                     onChange={(event) => setConsultationDoctorId(event.target.value)}
                     className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   >
-                    <option value="">Select doctor</option>
-                    {userOptions.map((user) => {
-                      const label =
-                        user.full_name || user.email || "Unnamed doctor";
-                      return (
-                        <option key={user.id} value={user.id}>
-                          {label}
-                        </option>
-                      );
-                    })}
+                    <option value="">Select staff</option>
+                    {medicalStaffOptions.map((staff) => (
+                      <option key={staff.id} value={staff.id}>
+                        {staff.name}{staff.specialty ? ` (${staff.specialty})` : ""}{staff.gln ? ` - GLN: ${staff.gln}` : ""}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -2409,22 +2446,22 @@ export default function MedicalConsultationsCard({
               {consultationRecordType === "invoice" && (
                 <div className="space-y-1">
                   <label className="block text-[11px] font-medium text-slate-700">
-                    Provider (Billing Entity)
+                    Billing Entity (Clinic)
                   </label>
                   <select
                     value={invoiceProviderId}
                     onChange={(event) => setInvoiceProviderId(event.target.value)}
                     className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   >
-                    <option value="">Select provider</option>
-                    {providerOptions.map((prov) => (
-                      <option key={prov.id} value={prov.id}>
-                        {prov.name}{prov.gln ? ` (GLN: ${prov.gln})` : ""}{prov.zsr ? ` ZSR: ${prov.zsr}` : ""}{!prov.gln && prov.specialty ? ` (${prov.specialty})` : ""}
+                    <option value="">Select billing entity</option>
+                    {billingEntityOptions.map((entity) => (
+                      <option key={entity.id} value={entity.id}>
+                        {entity.name}{entity.gln ? ` (GLN: ${entity.gln})` : ""}
                       </option>
                     ))}
                   </select>
                   {invoiceProviderId && (() => {
-                    const selProv = providerOptions.find(p => p.id === invoiceProviderId);
+                    const selProv = billingEntityOptions.find(p => p.id === invoiceProviderId);
                     if (!selProv) return null;
                     const missing: string[] = [];
                     if (!selProv.gln) missing.push("GLN");

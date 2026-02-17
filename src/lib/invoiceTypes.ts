@@ -47,6 +47,12 @@ export interface Invoice {
   provider_name: string | null;
   provider_gln: string | null;
   provider_zsr: string | null;
+  
+  // New billing fields
+  provider_iban: string | null;
+  doctor_gln: string | null;
+  doctor_zsr: string | null;
+  doctor_canton: string | null;
 
   // Amounts
   subtotal: number;
