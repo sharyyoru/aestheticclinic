@@ -1792,12 +1792,22 @@ export default function MedicalConsultationsCard({
                     let selectedProviderZsr: string | null = null;
                     let selectedProviderCanton: string | null = null;
 
-                    // Medical staff is from the providers dropdown (with role)
-                    const staff = medicalStaffOptions.find(
-                      (s) => s.id === consultationDoctorId,
-                    );
-                    if (staff) {
-                      doctorName = staff.name || "Doctor";
+                    // For invoices: use medical staff from providers table
+                    // For regular consultations: use users table
+                    if (consultationRecordType === "invoice") {
+                      const staff = medicalStaffOptions.find(
+                        (s) => s.id === consultationDoctorId,
+                      );
+                      if (staff) {
+                        doctorName = staff.name || "Doctor";
+                      }
+                    } else {
+                      const doctor = userOptions.find(
+                        (user) => user.id === consultationDoctorId,
+                      );
+                      if (doctor) {
+                        doctorName = (doctor.full_name || doctor.email || "Doctor") as string;
+                      }
                     }
 
                     if (consultationRecordType === "invoice") {
@@ -2426,19 +2436,26 @@ export default function MedicalConsultationsCard({
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-medium text-slate-700">
-                    Medical Staff (Doctor/Nurse)
+                    {consultationRecordType === "invoice" ? "Medical Staff (Doctor/Nurse)" : "Doctor"}
                   </label>
                   <select
                     value={consultationDoctorId}
                     onChange={(event) => setConsultationDoctorId(event.target.value)}
                     className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   >
-                    <option value="">Select staff</option>
-                    {medicalStaffOptions.map((staff) => (
-                      <option key={staff.id} value={staff.id}>
-                        {staff.name}{staff.specialty ? ` (${staff.specialty})` : ""}{staff.gln ? ` - GLN: ${staff.gln}` : ""}
-                      </option>
-                    ))}
+                    <option value="">Select {consultationRecordType === "invoice" ? "staff" : "doctor"}</option>
+                    {consultationRecordType === "invoice" 
+                      ? medicalStaffOptions.map((staff) => (
+                          <option key={staff.id} value={staff.id}>
+                            {staff.name}{staff.specialty ? ` (${staff.specialty})` : ""}{staff.gln ? ` - GLN: ${staff.gln}` : ""}
+                          </option>
+                        ))
+                      : userOptions.map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.full_name || user.email}
+                          </option>
+                        ))
+                    }
                   </select>
                 </div>
               </div>
