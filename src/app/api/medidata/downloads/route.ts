@@ -6,7 +6,7 @@ type MediDataConfigRow = {
   medidata_endpoint_url: string | null;
   medidata_client_id: string | null;
   medidata_username: string | null;
-  medidata_password: string | null;
+  medidata_password_encrypted: string | null;
   is_test_mode: boolean;
 };
 
@@ -19,14 +19,14 @@ export async function GET() {
     // Get MediData config
     const { data: configData } = await supabaseAdmin
       .from("medidata_config")
-      .select("medidata_endpoint_url, medidata_client_id, medidata_username, medidata_password, is_test_mode")
+      .select("medidata_endpoint_url, medidata_client_id, medidata_username, medidata_password_encrypted, is_test_mode")
       .limit(1)
       .single();
 
     const config = configData as MediDataConfigRow | null;
 
     if (!config?.medidata_endpoint_url || !config?.medidata_client_id || 
-        !config?.medidata_username || !config?.medidata_password) {
+        !config?.medidata_username || !config?.medidata_password_encrypted) {
       return NextResponse.json({
         success: false,
         error: "MediData not configured",
@@ -39,7 +39,7 @@ export async function GET() {
       baseUrl: config.medidata_endpoint_url,
       clientId: config.medidata_client_id,
       username: config.medidata_username,
-      password: config.medidata_password,
+      password: config.medidata_password_encrypted,
       isTestMode: config.is_test_mode,
     });
 
@@ -79,14 +79,14 @@ export async function POST(request: NextRequest) {
     // Get MediData config
     const { data: configData } = await supabaseAdmin
       .from("medidata_config")
-      .select("medidata_endpoint_url, medidata_client_id, medidata_username, medidata_password, is_test_mode")
+      .select("medidata_endpoint_url, medidata_client_id, medidata_username, medidata_password_encrypted, is_test_mode")
       .limit(1)
       .single();
 
     const config = configData as MediDataConfigRow | null;
 
     if (!config?.medidata_endpoint_url || !config?.medidata_client_id || 
-        !config?.medidata_username || !config?.medidata_password) {
+        !config?.medidata_username || !config?.medidata_password_encrypted) {
       return NextResponse.json(
         { error: "MediData not configured" },
         { status: 400 }
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       baseUrl: config.medidata_endpoint_url,
       clientId: config.medidata_client_id,
       username: config.medidata_username,
-      password: config.medidata_password,
+      password: config.medidata_password_encrypted,
       isTestMode: config.is_test_mode,
     });
 

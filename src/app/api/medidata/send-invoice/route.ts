@@ -61,7 +61,7 @@ type MediDataConfig = {
   medidata_client_id: string | null;
   medidata_endpoint_url: string | null;
   medidata_username: string | null;
-  medidata_password: string | null;
+  medidata_password_encrypted: string | null;
   is_test_mode: boolean;
 };
 
@@ -77,7 +77,7 @@ const DEFAULT_CLINIC_CONFIG: MediDataConfig = {
   medidata_client_id: null,
   medidata_endpoint_url: null, // e.g., "http://192.168.1.100:8100" for MediData Box
   medidata_username: null,
-  medidata_password: null,
+  medidata_password_encrypted: null,
   is_test_mode: true,
 };
 
@@ -338,7 +338,7 @@ export async function POST(request: NextRequest) {
       config.medidata_endpoint_url && 
       config.medidata_client_id && 
       config.medidata_username && 
-      config.medidata_password;
+      config.medidata_password_encrypted;
 
     if (canTransmit) {
       try {
@@ -347,7 +347,7 @@ export async function POST(request: NextRequest) {
           baseUrl: config.medidata_endpoint_url!,
           clientId: config.medidata_client_id!,
           username: config.medidata_username!,
-          password: config.medidata_password!,
+          password: config.medidata_password_encrypted!,
           isTestMode: config.is_test_mode,
         });
 

@@ -9,7 +9,7 @@ type MediDataConfigRow = {
   medidata_endpoint_url: string | null;
   medidata_client_id: string | null;
   medidata_username: string | null;
-  medidata_password: string | null;
+  medidata_password_encrypted: string | null;
   is_test_mode: boolean;
 };
 
@@ -45,7 +45,7 @@ export async function GET() {
     const configDetails = {
       hasEndpoint: Boolean(config.medidata_endpoint_url),
       hasClientId: Boolean(config.medidata_client_id),
-      hasCredentials: Boolean(config.medidata_username && config.medidata_password),
+      hasCredentials: Boolean(config.medidata_username && config.medidata_password_encrypted),
       isTestMode: config.is_test_mode,
       clinicGln: config.clinic_gln,
       clinicName: config.clinic_name,
@@ -65,7 +65,7 @@ export async function GET() {
       baseUrl: config.medidata_endpoint_url!,
       clientId: config.medidata_client_id!,
       username: config.medidata_username!,
-      password: config.medidata_password!,
+      password: config.medidata_password_encrypted!,
       isTestMode: config.is_test_mode,
     });
 
