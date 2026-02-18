@@ -131,7 +131,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Find the invoice by reference ID (invoice_number)
-    const referenceId = transaction.referenceId || transaction.invoice?.referenceId;
+    // Payrexx sometimes returns the invoice number in invoice.number instead of referenceId
+    const referenceId = transaction.referenceId || 
+                       transaction.invoice?.referenceId || 
+                       transaction.invoice?.number;
     
     if (!referenceId) {
       console.error("No reference ID in webhook payload");
