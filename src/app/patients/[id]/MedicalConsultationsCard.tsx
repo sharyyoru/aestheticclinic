@@ -3635,20 +3635,25 @@ export default function MedicalConsultationsCard({
                           ) : invoiceMode === "flatrate" ? (
                             <div className="space-y-2 px-3 py-3">
                               <AcfAccordionTree
+                                patientSex={patientDetails?.gender?.toLowerCase() === "female" ? 1 : 0}
+                                patientBirthdate={patientDetails?.dob || undefined}
                                 onAddService={(svc: any) => {
                                   const ef = svc.externalFactor ?? 1.0;
                                   const adjustedPrice = svc.tp * ef;
                                   const sideLabel = svc.sideType === 1 ? " [L]" : svc.sideType === 2 ? " [R]" : svc.sideType === 3 ? " [B]" : "";
                                   const factorLabel = ef !== 1.0 ? ` x${ef}` : "";
+                                  const isGesture = !!svc.isTmaGesture;
+                                  const prefix = isGesture ? "tma" : "flatrate";
+                                  const tariffTag = isGesture ? "TMA" : "ACF";
                                   setInvoiceServiceLines((prev) => [
                                     ...prev,
                                     {
-                                      serviceId: `flatrate-${svc.code}`,
+                                      serviceId: `${prefix}-${svc.code}`,
                                       quantity: 1,
                                       unitPrice: adjustedPrice,
                                       groupId: null,
                                       discountPercent: null,
-                                      customName: `${svc.code}${sideLabel}${factorLabel} - ${(svc.name || "").substring(0, 70)}`,
+                                      customName: `[${tariffTag}] ${svc.code}${sideLabel}${factorLabel} - ${(svc.name || "").substring(0, 70)}`,
                                       acfSideType: svc.sideType ?? 0,
                                       acfExternalFactor: ef,
                                       acfRefCode: svc.refCode || "",

@@ -3,9 +3,9 @@
 import { useState, useCallback } from "react";
 import { formatChf } from "@/lib/tardoc";
 
-type AcfChapter = { code: string; name: string; count: number };
+type TmaChapter = { code: string; name: string; count: number };
 
-type AcfTreeNode = {
+type TmaTreeNode = {
   code: string;
   name: string;
   count: number;
@@ -23,10 +23,16 @@ export type AcfServiceWithVariables = {
   sideType: number;
   externalFactor: number;
   refCode: string;
+  // TMA gesture code info (for reference on the invoice)
+  tmaGestureCode?: string;
+  tmaGestureName?: string;
+  isTmaGesture?: boolean; // true = this is the gesture line (TP=0), not the flat rate
 };
 
 type AcfAccordionTreeProps = {
   onAddService: (svc: AcfServiceWithVariables) => void;
+  patientSex?: number; // 0=male, 1=female
+  patientBirthdate?: string; // ISO date
 };
 
 const SIDE_LABELS: Record<number, string> = {
@@ -36,33 +42,55 @@ const SIDE_LABELS: Record<number, string> = {
   3: "Both (bilateral)",
 };
 
-export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps) {
+const TMA_TYPE_BADGES: Record<number, { label: string; color: string }> = {
+  1: { label: "P(OR)", color: "bg-emerald-100 text-emerald-700" },
+  2: { label: "P", color: "bg-blue-100 text-blue-700" },
+  4: { label: "PZ", color: "bg-amber-100 text-amber-700" },
+  5: { label: "E", color: "bg-purple-100 text-purple-700" },
+  6: { label: "EZ", color: "bg-pink-100 text-pink-700" },
+  7: { label: "N", color: "bg-slate-100 text-slate-600" },
+};
+
+const Spinner = ({ className = "h-3 w-3" }: { className?: string }) => (
+  <svg className={`animate-spin text-violet-500 ${className}`} viewBox="0 0 24 24" fill="none">
+    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+  </svg>
+);
+
+export default function AcfAccordionTree({ onAddService, patientSex, patientBirthdate }: AcfAccordionTreeProps) {
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [nodes, setNodes] = useState<Map<string, AcfTreeNode>>(new Map());
+  const [nodes, setNodes] = useState<Map<string, TmaTreeNode>>(new Map());
   const [chapterCodes, setChapterCodes] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  // Staging: selected service before adding to invoice
+  // Staging: selected TMA gesture code before running grouper
   const [staged, setStaged] = useState<any | null>(null);
   const [stageSide, setStageSide] = useState(0);
-  const [stageExtFactor, setStageExtFactor] = useState("1.0");
-  const [stageRefCode, setStageRefCode] = useState("");
+  const [stageIcd, setStageIcd] = useState("");
+  const [stageSex, setStageSex] = useState<number>(patientSex ?? 0);
+  const [stageBirthdate, setStageBirthdate] = useState(patientBirthdate || "1990-01-01");
 
+  // Grouper result
+  const [grouperLoading, setGrouperLoading] = useState(false);
+  const [grouperResult, setGrouperResult] = useState<any | null>(null);
+  const [grouperError, setGrouperError] = useState<string | null>(null);
+
+  // ── Load TMA chapters ──────────────────────────────────────────────────────
   const loadChapters = useCallback(async () => {
     if (loaded || loading) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/acf/sumex?action=chapters");
+      const res = await fetch("/api/acf/sumex?action=tmaChapters");
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        const chapters: AcfChapter[] = json.data;
-        const nodeMap = new Map<string, AcfTreeNode>();
+        const chapters: TmaChapter[] = json.data;
+        const nodeMap = new Map<string, TmaTreeNode>();
         const codes: string[] = [];
         for (const ch of chapters) {
-          // Skip chapters with empty code or name (catch-all/uncategorized)
           if (!ch.code || !ch.name) continue;
           codes.push(ch.code);
           nodeMap.set(ch.code, {
@@ -78,6 +106,7 @@ export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps
     setLoading(false);
   }, [loaded, loading]);
 
+  // ── Toggle chapter → load TMA gesture codes for that chapter ───────────────
   const toggleNode = useCallback(async (code: string) => {
     const node = nodes.get(code);
     if (!node) return;
@@ -94,7 +123,7 @@ export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps
         return next;
       });
       try {
-        const res = await fetch(`/api/acf/sumex?action=searchCode&code=*&chapter=${encodeURIComponent(code)}`);
+        const res = await fetch(`/api/acf/sumex?action=searchTma&code=*&chapter=${encodeURIComponent(code)}&grouperOnly=true`);
         const json = await res.json();
         const services = json.success ? json.data?.services || [] : [];
         setNodes((prev) => {
@@ -112,16 +141,17 @@ export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps
     }
   }, [nodes]);
 
+  // ── Search TMA gesture codes ───────────────────────────────────────────────
   const doSearch = useCallback(async () => {
     const q = searchQuery.trim();
     if (!q) { setSearchResults(null); return; }
     setSearchLoading(true);
     try {
       const isCode = /^[A-Z0-9.*]+$/i.test(q);
-      const codeParam = isCode ? q : "*";
-      const nameParam = isCode ? "" : q;
+      const codeParam = isCode ? (q.includes("*") ? q : q + "*") : "*";
+      const nameParam = isCode ? "" : `*${q}*`;
       const res = await fetch(
-        `/api/acf/sumex?action=searchCode&code=${encodeURIComponent(codeParam)}&name=${encodeURIComponent(nameParam)}`,
+        `/api/acf/sumex?action=searchTma&code=${encodeURIComponent(codeParam)}&name=${encodeURIComponent(nameParam)}&grouperOnly=true`,
       );
       const json = await res.json();
       setSearchResults(json.success ? json.data?.services || [] : []);
@@ -129,29 +159,96 @@ export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps
     setSearchLoading(false);
   }, [searchQuery]);
 
+  // ── Select a TMA gesture code → open staging panel ─────────────────────────
   const handleSelectService = useCallback((svc: any) => {
     setStaged(svc);
-    setStageSide(0);
-    setStageExtFactor("1.0");
-    setStageRefCode("");
+    setStageSide(svc.hasSideDependency ? 1 : 0); // default to Left if side required
+    setStageIcd("");
+    setGrouperResult(null);
+    setGrouperError(null);
   }, []);
 
-  const handleConfirmAdd = useCallback(() => {
+  // ── Run the grouper: TMA gesture + ICD → ACF flat rate code ────────────────
+  const handleRunGrouper = useCallback(async () => {
     if (!staged) return;
-    const ef = parseFloat(stageExtFactor) || 1.0;
+    const icd = stageIcd.trim();
+    if (!icd) {
+      setGrouperError("ICD-10 diagnostic code is required");
+      return;
+    }
+    setGrouperLoading(true);
+    setGrouperError(null);
+    setGrouperResult(null);
+    try {
+      const res = await fetch("/api/acf/sumex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "runGrouper",
+          icdCode: icd,
+          patientSex: stageSex,
+          patientBirthdate: stageBirthdate,
+          law: 0,
+          services: [{
+            code: staged.code,
+            side: stageSide,
+            quantity: 1,
+          }],
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setGrouperResult(json.data);
+        if (json.data.errors?.length > 0) {
+          setGrouperError(json.data.errors.join("; "));
+        }
+      } else {
+        setGrouperError(json.error || json.errors?.join("; ") || "Grouper failed");
+        if (json.data) setGrouperResult(json.data);
+      }
+    } catch (e: any) {
+      setGrouperError(e?.message || "Grouper request failed");
+    }
+    setGrouperLoading(false);
+  }, [staged, stageIcd, stageSide, stageSex, stageBirthdate]);
+
+  // ── Add resulting ACF code to invoice ──────────────────────────────────────
+  // Standard: add TMA gesture line (TP=0) first, then the generated ACF flat rate line
+  const handleAddAcfResult = useCallback((acf: any) => {
+    // 1. TMA gesture code line (documents what was performed, TP = 0)
+    if (staged) {
+      onAddService({
+        code: staged.code,
+        name: staged.name,
+        tp: 0,
+        chapterCode: staged.chapterCode || "",
+        chapterName: staged.chapterName || "",
+        sideType: stageSide,
+        externalFactor: 1.0,
+        refCode: stageIcd.trim(),
+        tmaGestureCode: staged.code,
+        tmaGestureName: staged.name,
+        isTmaGesture: true,
+      });
+    }
+    // 2. ACF flat rate code line (the billable amount)
     onAddService({
-      code: staged.code,
-      name: staged.name,
-      tp: staged.tp,
-      chapterCode: staged.chapterCode,
-      chapterName: staged.chapterName,
+      code: acf.code,
+      name: acf.name,
+      tp: acf.tp,
+      chapterCode: acf.chapterCode,
+      chapterName: acf.chapterName,
       sideType: stageSide,
-      externalFactor: ef,
-      refCode: stageRefCode.trim(),
+      externalFactor: 1.0,
+      refCode: stageIcd.trim(),
+      tmaGestureCode: staged?.code,
+      tmaGestureName: staged?.name,
     });
     setStaged(null);
-  }, [staged, stageSide, stageExtFactor, stageRefCode, onAddService]);
+    setGrouperResult(null);
+  }, [onAddService, stageSide, stageIcd, staged]);
 
+  // ── Initial load button ────────────────────────────────────────────────────
   if (!loaded) {
     return (
       <button
@@ -161,55 +258,69 @@ export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps
       >
         {loading ? (
           <div className="flex items-center justify-center gap-2">
-            <svg className="h-4 w-4 animate-spin text-violet-500" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Loading ACF catalog...
+            <Spinner className="h-4 w-4" />
+            Loading TMA gesture catalog...
           </div>
         ) : (
           <div className="flex items-center justify-center gap-2">
             <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-            Browse ACF Catalog
+            Browse ACF Gesture Codes (TMA)
           </div>
         )}
       </button>
     );
   }
 
-  // Computed preview price for staging
-  const stagedPreviewPrice = staged
-    ? staged.tp * (parseFloat(stageExtFactor) || 1.0)
-    : 0;
-
   return (
     <div className="space-y-2">
-      {/* Staging panel — pricing variables for selected service */}
+      {/* ── Staging panel: TMA gesture code selected → grouper inputs ──────── */}
       {staged && (
         <div className="rounded-lg border-2 border-violet-300 bg-violet-50/60 p-2 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <span className="font-mono text-[10px] font-bold text-violet-800">{staged.code}</span>
-              <span className="ml-1 text-[10px] text-violet-700">{staged.name}</span>
+              {staged.tmaType > 0 && TMA_TYPE_BADGES[staged.tmaType] && (
+                <span className={`ml-1 rounded px-1 py-0.5 text-[7px] font-bold ${TMA_TYPE_BADGES[staged.tmaType].color}`}>
+                  {TMA_TYPE_BADGES[staged.tmaType].label}
+                </span>
+              )}
+              <div className="text-[9px] text-violet-700 mt-0.5 leading-tight">{staged.name}</div>
+              {staged.hasSideDependency && (
+                <div className="text-[8px] text-amber-600 font-medium mt-0.5">⚠ Side specification required</div>
+              )}
             </div>
             <button
               type="button"
-              onClick={() => setStaged(null)}
+              onClick={() => { setStaged(null); setGrouperResult(null); setGrouperError(null); }}
               className="shrink-0 text-[9px] text-slate-400 hover:text-slate-600"
             >
               Cancel
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
+            {/* ICD-10 diagnostic code — REQUIRED */}
+            <div>
+              <label className="block text-[8px] font-semibold text-red-500 uppercase tracking-wide">ICD-10 *</label>
+              <input
+                type="text"
+                placeholder="e.g. Z42.1"
+                value={stageIcd}
+                onChange={(e) => { setStageIcd(e.target.value); setGrouperResult(null); setGrouperError(null); }}
+                className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              />
+            </div>
+
             {/* Side type */}
             <div>
-              <label className="block text-[8px] font-semibold text-slate-500 uppercase tracking-wide">Side</label>
+              <label className="block text-[8px] font-semibold text-slate-500 uppercase tracking-wide">
+                Side {staged.hasSideDependency && <span className="text-red-500">*</span>}
+              </label>
               <select
                 value={stageSide}
-                onChange={(e) => setStageSide(Number(e.target.value))}
+                onChange={(e) => { setStageSide(Number(e.target.value)); setGrouperResult(null); }}
                 className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
               >
                 <option value={0}>None</option>
@@ -219,66 +330,96 @@ export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps
               </select>
             </div>
 
-            {/* External factor */}
+            {/* Patient sex */}
             <div>
-              <label className="block text-[8px] font-semibold text-slate-500 uppercase tracking-wide">Factor</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                max="10"
-                value={stageExtFactor}
-                onChange={(e) => setStageExtFactor(e.target.value)}
+              <label className="block text-[8px] font-semibold text-slate-500 uppercase tracking-wide">Patient Sex</label>
+              <select
+                value={stageSex}
+                onChange={(e) => { setStageSex(Number(e.target.value)); setGrouperResult(null); }}
                 className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
-              />
+              >
+                <option value={0}>Male</option>
+                <option value={1}>Female</option>
+              </select>
             </div>
 
-            {/* ICD-10 ref code */}
+            {/* Patient birthdate */}
             <div>
-              <label className="block text-[8px] font-semibold text-slate-500 uppercase tracking-wide">ICD-10</label>
+              <label className="block text-[8px] font-semibold text-slate-500 uppercase tracking-wide">Birthdate</label>
               <input
-                type="text"
-                placeholder="e.g. L98.4"
-                value={stageRefCode}
-                onChange={(e) => setStageRefCode(e.target.value)}
+                type="date"
+                value={stageBirthdate}
+                onChange={(e) => { setStageBirthdate(e.target.value); setGrouperResult(null); }}
                 className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
               />
             </div>
           </div>
 
-          {/* Price preview + Add button */}
+          {/* Run Grouper button */}
           <div className="flex items-center justify-between pt-0.5">
-            <div className="text-[9px] text-slate-600">
-              <span className="font-medium">Base:</span> {formatChf(staged.tp)}
-              {parseFloat(stageExtFactor) !== 1.0 && (
-                <span className="ml-1">
-                  <span className="text-slate-400">x</span> {stageExtFactor}
-                  <span className="ml-1 text-slate-400">=</span>
-                  <span className="ml-1 font-bold text-violet-700">{formatChf(stagedPreviewPrice)}</span>
-                </span>
-              )}
-              {stageSide > 0 && (
-                <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[8px] font-medium text-amber-700">
-                  {SIDE_LABELS[stageSide]}
-                </span>
-              )}
+            <div className="text-[9px] text-slate-500">
+              Gesture code → ACF flat rate
             </div>
             <button
               type="button"
-              onClick={handleConfirmAdd}
-              className="rounded-md bg-violet-600 px-3 py-1 text-[10px] font-medium text-white shadow-sm hover:bg-violet-700 active:scale-95"
+              disabled={grouperLoading || !stageIcd.trim()}
+              onClick={handleRunGrouper}
+              className="rounded-md bg-violet-600 px-3 py-1 text-[10px] font-medium text-white shadow-sm hover:bg-violet-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
             >
-              Add to Invoice
+              {grouperLoading && <Spinner className="h-3 w-3" />}
+              {grouperLoading ? "Running..." : "Run Grouper"}
             </button>
           </div>
+
+          {/* Grouper error */}
+          {grouperError && (
+            <div className="rounded border border-red-200 bg-red-50 px-2 py-1 text-[9px] text-red-700">
+              {grouperError}
+            </div>
+          )}
+
+          {/* Grouper results — ACF flat rate codes */}
+          {grouperResult && grouperResult.acfCodes?.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[8px] font-bold text-emerald-700 uppercase tracking-wide">
+                Resulting ACF Flat Rate Code{grouperResult.acfCodes.length > 1 ? "s" : ""}
+              </div>
+              {grouperResult.acfCodes.map((acf: any, idx: number) => (
+                <div key={acf.code || idx} className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50/60 px-2 py-1.5">
+                  <div className="min-w-0">
+                    <span className="font-mono text-[10px] font-bold text-emerald-800">{acf.code}</span>
+                    <span className="ml-1 text-[9px] text-emerald-700">{acf.name}</span>
+                    <div className="text-[8px] text-slate-500">{acf.chapterCode} · {acf.chapterName}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-mono text-[10px] font-bold text-emerald-800">{formatChf(acf.tp)}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleAddAcfResult(acf)}
+                      className="rounded bg-emerald-600 px-2 py-0.5 text-[9px] font-medium text-white hover:bg-emerald-700 active:scale-95"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Grouper ran but no ACF code produced */}
+          {grouperResult && grouperResult.acfCodes?.length === 0 && !grouperError && (
+            <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[9px] text-amber-700">
+              No ACF flat rate code produced. Status: {grouperResult.groupingStatusList || "unknown"}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Search bar */}
+      {/* ── Search bar ─────────────────────────────────────────────────────── */}
       <div className="flex gap-1">
         <input
           type="text"
-          placeholder="Search code or keyword..."
+          placeholder="Search gesture code or keyword..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doSearch(); } }}
@@ -303,13 +444,13 @@ export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps
         )}
       </div>
 
-      {/* Search results overlay */}
+      {/* ── Search results ─────────────────────────────────────────────────── */}
       {searchResults !== null ? (
         <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px]">
-          <div className="sticky top-0 z-10 grid grid-cols-[24px_minmax(0,1fr)_64px] items-center gap-0 border-b border-slate-300 bg-slate-100 px-1 py-1 text-[9px] font-bold text-slate-500">
+          <div className="sticky top-0 z-10 grid grid-cols-[24px_minmax(0,1fr)_48px] items-center gap-0 border-b border-slate-300 bg-slate-100 px-1 py-1 text-[9px] font-bold text-slate-500">
             <span />
-            <span className="px-1">PROCEDURE ({searchResults.length})</span>
-            <span className="px-1 text-right">CHF</span>
+            <span className="px-1">GESTURE CODE ({searchResults.length})</span>
+            <span className="px-1 text-right">TYPE</span>
           </div>
           {searchResults.length === 0 ? (
             <div className="py-3 text-center text-[10px] text-slate-400">
@@ -317,18 +458,18 @@ export default function AcfAccordionTree({ onAddService }: AcfAccordionTreeProps
             </div>
           ) : (
             searchResults.map((svc: any, idx: number) => (
-              <ServiceRow key={svc.code || `search-${idx}`} svc={svc} onSelect={handleSelectService} selectedCode={staged?.code} />
+              <TmaServiceRow key={svc.code || `search-${idx}`} svc={svc} onSelect={handleSelectService} selectedCode={staged?.code} />
             ))
           )}
         </div>
       ) : (
-        /* Chapter accordion tree */
+        /* ── Chapter accordion tree ──────────────────────────────────────── */
         <div className="max-h-96 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px]">
-          <div className="sticky top-0 z-10 grid grid-cols-[24px_minmax(0,1fr)_48px_64px] items-center gap-0 border-b border-slate-300 bg-slate-100 px-1 py-1 text-[9px] font-bold text-slate-500">
+          <div className="sticky top-0 z-10 grid grid-cols-[24px_minmax(0,1fr)_48px_48px] items-center gap-0 border-b border-slate-300 bg-slate-100 px-1 py-1 text-[9px] font-bold text-slate-500">
             <span />
-            <span className="px-1">CHAPTER / CODE</span>
+            <span className="px-1">CHAPTER / GESTURE CODE</span>
             <span className="px-1 text-right">COUNT</span>
-            <span className="px-1 text-right">CHF</span>
+            <span className="px-1 text-right">TYPE</span>
           </div>
           {chapterCodes.map((code) => (
             <ChapterRow
@@ -352,7 +493,7 @@ function ChapterRow({
   code, nodes, onToggle, onSelect, selectedCode,
 }: {
   code: string;
-  nodes: Map<string, AcfTreeNode>;
+  nodes: Map<string, TmaTreeNode>;
   onToggle: (code: string) => void;
   onSelect: (svc: any) => void;
   selectedCode?: string;
@@ -363,15 +504,12 @@ function ChapterRow({
   return (
     <>
       <div
-        className="grid grid-cols-[24px_minmax(0,1fr)_48px_64px] items-center gap-0 border-b border-slate-100 bg-slate-50/60 px-1 py-1 hover:bg-violet-50/40 cursor-pointer"
+        className="grid grid-cols-[24px_minmax(0,1fr)_48px_48px] items-center gap-0 border-b border-slate-100 bg-slate-50/60 px-1 py-1 hover:bg-violet-50/40 cursor-pointer"
         onClick={() => onToggle(code)}
       >
         <span className="flex h-4 w-4 items-center justify-center text-slate-400">
           {node.loading ? (
-            <svg className="h-3 w-3 animate-spin text-violet-500" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
+            <Spinner />
           ) : node.expanded ? (
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -391,19 +529,19 @@ function ChapterRow({
       </div>
 
       {node.expanded && node.services && node.services.map((svc: any, idx: number) => (
-        <ServiceRow key={svc.code || `svc-${idx}`} svc={svc} onSelect={onSelect} selectedCode={selectedCode} indent />
+        <TmaServiceRow key={svc.code || `svc-${idx}`} svc={svc} onSelect={onSelect} selectedCode={selectedCode} indent />
       ))}
 
       {node.expanded && node.services && node.services.length === 0 && !node.loading && (
-        <div className="py-2 pl-8 text-[9px] text-slate-400">No services in this chapter.</div>
+        <div className="py-2 pl-8 text-[9px] text-slate-400">No gesture codes in this chapter.</div>
       )}
     </>
   );
 }
 
-// ─── Service row ─────────────────────────────────────────────────────────────
+// ─── TMA Service row ─────────────────────────────────────────────────────────
 
-function ServiceRow({
+function TmaServiceRow({
   svc, onSelect, selectedCode, indent = false,
 }: {
   svc: any;
@@ -412,12 +550,13 @@ function ServiceRow({
   indent?: boolean;
 }) {
   const isSelected = selectedCode === svc.code && svc.code;
+  const badge = TMA_TYPE_BADGES[svc.tmaType as number];
 
   return (
     <div
       className={`grid items-center gap-0 border-b border-slate-50 px-1 py-0.5 cursor-pointer transition-colors ${
         isSelected ? "bg-violet-100/70" : "hover:bg-emerald-50/40"
-      } ${indent ? "grid-cols-[24px_minmax(0,1fr)_48px_64px] pl-5" : "grid-cols-[24px_minmax(0,1fr)_64px]"}`}
+      } ${indent ? "grid-cols-[24px_minmax(0,1fr)_48px_48px] pl-5" : "grid-cols-[24px_minmax(0,1fr)_48px]"}`}
       onClick={(e) => { e.stopPropagation(); onSelect(svc); }}
     >
       <span className={`flex h-4 w-4 items-center justify-center rounded text-[10px] font-bold leading-none ${
@@ -428,14 +567,19 @@ function ServiceRow({
       <div className="min-w-0 px-1">
         <div>
           <span className="font-mono text-[9px] font-semibold text-slate-600">{svc.code}</span>
-          <span className="ml-1 text-[9px] text-slate-500" title={svc.name}>
-            {svc.name}
-          </span>
+          <span className="ml-1 text-[9px] text-slate-500" title={svc.name}>{svc.name}</span>
         </div>
+        {svc.hasSideDependency && (
+          <span className="text-[7px] text-amber-600 font-medium">side required</span>
+        )}
       </div>
       {indent && <span />}
-      <span className="px-1 text-right font-mono text-[9px] font-semibold text-slate-800">
-        {formatChf(svc.tp)}
+      <span className="px-1 text-right">
+        {badge ? (
+          <span className={`rounded px-1 py-0.5 text-[7px] font-bold ${badge.color}`}>{badge.label}</span>
+        ) : (
+          <span className="text-[8px] text-slate-400">TMA</span>
+        )}
       </span>
     </div>
   );

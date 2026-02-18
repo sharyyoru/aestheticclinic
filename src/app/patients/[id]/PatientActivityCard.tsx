@@ -7,7 +7,7 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import { stripEmailSignature } from "@/utils/emailCleaner";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 import RichTextEditor from "@/components/RichTextEditor";
-import WhatsAppConversation from "@/components/WhatsAppConversation";
+import WhatsAppWebConversation from "@/components/WhatsAppWebConversation";
 
 type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals";
 
@@ -303,12 +303,6 @@ export default function PatientActivityCard({
     EmailAttachmentCount[]
   >([]);
 
-  const [whatsappMessages, setWhatsappMessages] = useState<WhatsappMessage[]>([]);
-  const [whatsappLoading, setWhatsappLoading] = useState(false);
-  const [whatsappError, setWhatsappError] = useState<string | null>(null);
-  const [whatsappBody, setWhatsappBody] = useState("");
-  const [whatsappTo, setWhatsappTo] = useState("");
-  const [whatsappSending, setWhatsappSending] = useState(false);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -472,70 +466,6 @@ export default function PatientActivityCard({
     }, 100);
   }, [searchParams, deals, dealsLoading, dealIdFromQueryHandled]);
 
-  async function handleWhatsAppSend(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const to = whatsappTo.trim();
-    const body = whatsappBody.trim();
-
-    if (!to || !body) {
-      setWhatsappError("Phone number and message are required.");
-      return;
-    }
-
-    try {
-      setWhatsappSending(true);
-      setWhatsappError(null);
-
-      const response = await fetch("/api/whatsapp/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          patientId,
-          to,
-          body,
-        }),
-      });
-
-      let payload: any = null;
-      try {
-        payload = await response.json();
-      } catch {
-      }
-
-      console.log("/api/whatsapp/send response", response.status, payload);
-
-      if (!response.ok) {
-        setWhatsappError(
-          payload?.error ?? "WhatsApp message saved internally but failed to send.",
-        );
-        setWhatsappSending(false);
-        return;
-      }
-
-      const nowIso = new Date().toISOString();
-      const newMessage: WhatsappMessage = {
-        id: (payload?.id as string) ?? nowIso,
-        patient_id: patientId,
-        to_number: to,
-        from_number: null,
-        body,
-        status: "sent",
-        direction: "outbound",
-        sent_at: nowIso,
-        created_at: nowIso,
-      };
-
-      setWhatsappMessages((prev) => [newMessage, ...prev]);
-      setWhatsappBody("");
-    } catch {
-      setWhatsappError("Failed to send WhatsApp message.");
-    } finally {
-      setWhatsappSending(false);
-    }
-  }
 
   useEffect(() => {
     let isMounted = true;
@@ -1377,63 +1307,6 @@ export default function PatientActivityCard({
     };
   }, [patientId, userOptions]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadPatientContactAndWhatsApp() {
-      try {
-        const { data: patientRow } = await supabaseClient
-          .from("patients")
-          .select("phone")
-          .eq("id", patientId)
-          .single();
-
-        if (!isMounted) return;
-
-        const phone = (patientRow?.phone as string | null) ?? null;
-        if (phone && phone.trim().length > 0) {
-          setWhatsappTo((prev) => prev || phone.trim());
-        }
-      } catch {
-      }
-
-      try {
-        setWhatsappLoading(true);
-        setWhatsappError(null);
-
-        const { data, error } = await supabaseClient
-          .from("whatsapp_messages")
-          .select(
-            "id, patient_id, to_number, from_number, body, status, direction, sent_at, created_at",
-          )
-          .eq("patient_id", patientId)
-          .order("created_at", { ascending: false });
-
-        if (!isMounted) return;
-
-        if (error || !data) {
-          setWhatsappError(error?.message ?? "Failed to load WhatsApp messages.");
-          setWhatsappMessages([]);
-        } else {
-          setWhatsappMessages(data as WhatsappMessage[]);
-        }
-      } catch {
-        if (!isMounted) return;
-        setWhatsappError("Failed to load WhatsApp messages.");
-        setWhatsappMessages([]);
-      } finally {
-        if (isMounted) {
-          setWhatsappLoading(false);
-        }
-      }
-    }
-
-    loadPatientContactAndWhatsApp();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [patientId]);
 
   function handleNoteBodyChange(value: string) {
     setNoteBody(value);
@@ -3529,8 +3402,7 @@ export default function PatientActivityCard({
           </div>
         )}
         {activeTab === "whatsapp" && (
-          <WhatsAppConversation
-            patientId={patientId}
+          <WhatsAppWebConversation
             patientPhone={patientPhone}
             patientName={patientName}
           />

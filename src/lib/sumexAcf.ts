@@ -620,3 +620,489 @@ export async function getAcfSessionInfo(
     tariffTMA: session.tariffTMA,
   };
 }
+
+// --------------------------------------------------------------------------
+// ISearchTMA — Browse & Search TMA Gesture Codes
+// --------------------------------------------------------------------------
+//
+// TMA (LKAAT) codes are the surgical gesture codes that doctors select.
+// They are INPUT to the grouper which produces ACF flat rate codes (005).
+// TMA codes have TP=0 — they have no direct price.
+//
+// TMAType enum:
+//   0 = enTMATypeAny (no filter)
+//   1 = enTMATypeIsPOR (main trigger P in OR group)
+//   2 = enTMATypeIsPNotOR (main trigger P not in OR group)
+//   3 = enTMATypeIsP (filter: P(OR) + P(notOR))
+//   4 = enTMATypeIsPZ (additional service PZ, needs P as reference)
+//   5 = enTMATypeIsE (TARDOC-like main service E)
+//   6 = enTMATypeIsEZ (TARDOC-like additional service EZ, needs E as reference)
+//   7 = enTMATypeIsN (neither E nor P, e.g. hemodialysis)
+//   8 = enTMATypeIsPandE (filter: both P and E)
+//
+// ServiceProperties bit flags:
+//   1   = HasSideDependency
+//   256 = NeedsRefCode
+//   512 = IsGrouperRelevant
+//   2048 = IsContactRelated
+
+export type TmaType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+export const TMA_TYPE_LABELS: Record<TmaType, string> = {
+  0: "Any",
+  1: "P(OR) — Main trigger (OR group)",
+  2: "P(notOR) — Main trigger (not OR)",
+  3: "P — All main triggers",
+  4: "PZ — Additional (needs P ref)",
+  5: "E — TARDOC-like main",
+  6: "EZ — TARDOC-like additional (needs E ref)",
+  7: "N — Other",
+  8: "P+E — Main triggers + TARDOC-like",
+};
+
+export type TmaServiceRecord = {
+  code: string;
+  name: string;
+  interpretation: string;
+  chapterCode: string;
+  chapterName: string;
+  referenceCode: string;
+  tariffType: string; // "TMA"
+  tmaType: TmaType;
+  validFrom: string;
+  validTo: string;
+  serviceProperties: number;
+  // Derived flags from serviceProperties
+  hasSideDependency: boolean;
+  needsRefCode: boolean;
+  isGrouperRelevant: boolean;
+};
+
+function mapTmaServiceRecord(raw: Record<string, unknown>): TmaServiceRecord {
+  const props = (raw.plServiceProperties as number) ?? 0;
+  return {
+    code: (raw.pbstrCode as string) ?? "",
+    name: (raw.pbstrName as string) ?? "",
+    interpretation: (raw.pbstrInterpretation as string) ?? "",
+    chapterCode: (raw.pbstrChapterCode as string) ?? "",
+    chapterName: (raw.pbstrChapterName as string) ?? "",
+    referenceCode: (raw.pbstrReferenceCode as string) ?? "",
+    tariffType: (raw.pbstrTariffType as string) ?? "TMA",
+    tmaType: ((raw.peTMAType as number) ?? 0) as TmaType,
+    validFrom: (raw.pdValidFrom as string) ?? "",
+    validTo: (raw.pdValidTo as string) ?? "",
+    serviceProperties: props,
+    hasSideDependency: (props & 1) !== 0,
+    needsRefCode: (props & 256) !== 0,
+    isGrouperRelevant: (props & 512) !== 0,
+  };
+}
+
+async function createSearchTMA(session: AcfSession): Promise<number> {
+  const data = await acfGet<{ pISearchTMA: number }>(
+    `IAcfValidator/GetCreateSearchTMA?pIAcfValidator=${session.validatorHandle}`,
+  );
+  return data.pISearchTMA;
+}
+
+/**
+ * Search TMA gesture codes in the LKAAT catalog.
+ *
+ * @param code - TMA code pattern (e.g. "C02*", "*" for all). Supports wildcards.
+ * @param chapterCode - Filter by chapter (e.g. "Cap02"). Empty = all.
+ * @param name - Filter by name substring. Empty = no filter.
+ * @param tmaType - Filter by TMA type. 0 = any (no filter).
+ * @param onlyGrouperRelevant - Only return grouper-relevant services.
+ * @param date - Reference date (ISO string).
+ */
+export async function searchTma(
+  code: string = "*",
+  chapterCode: string = "",
+  name: string = "",
+  tmaType: TmaType = 0,
+  onlyGrouperRelevant: boolean = false,
+  date?: string,
+  language: AcfLanguage = 2,
+): Promise<{ count: number; services: TmaServiceRecord[] }> {
+  const session = await getOrCreateAcfSession(language);
+  const searchHandle = await createSearchTMA(session);
+
+  const searchDate = date || new Date().toISOString().split("T")[0] + "T00:00:00";
+
+  await acfPost("ISearchTMA", "SearchGeneral", {
+    pISearchTMA: searchHandle,
+    dDate: searchDate,
+    eTMAType: tmaType,
+    eOnlyGrouperRelevant: onlyGrouperRelevant ? 1 : 0,
+    bstrCode: code,
+    bstrName: name,
+    bstrChapterCode: chapterCode,
+  });
+
+  const countRes = await acfPost<{ pbStatus: boolean; plSize: number }>(
+    "ISearchTMA",
+    "GetRecordCount",
+    { pISearchTMA: searchHandle },
+  );
+
+  const count = countRes.plSize ?? 0;
+  if (count === 0) return { count: 0, services: [] };
+
+  const allServices: TmaServiceRecord[] = [];
+  let hasMore = true;
+  while (hasMore) {
+    try {
+      const rawServices = await acfPost<Array<Record<string, unknown>>>(
+        "ISearchTMA",
+        "GetServices",
+        { pISearchTMA: searchHandle },
+      );
+      if (Array.isArray(rawServices) && rawServices.length > 0) {
+        const batch = rawServices
+          .filter((r) => r.pbStatus)
+          .map(mapTmaServiceRecord);
+        allServices.push(...batch);
+        if (batch.length < 200) hasMore = false; // API returns max 200 per call
+      } else {
+        hasMore = false;
+      }
+    } catch {
+      hasMore = false;
+    }
+  }
+
+  return { count, services: allServices };
+}
+
+/**
+ * Get all unique chapters from the TMA catalog.
+ */
+export async function getTmaChapters(
+  language: AcfLanguage = 2,
+): Promise<Array<{ code: string; name: string; count: number }>> {
+  // Search all P-type gesture codes (main triggers) which are grouper-relevant
+  const { services } = await searchTma("*", "", "", 0, true, undefined, language);
+
+  const chapterMap = new Map<string, { name: string; count: number }>();
+  for (const svc of services) {
+    const existing = chapterMap.get(svc.chapterCode);
+    if (existing) {
+      existing.count++;
+    } else {
+      chapterMap.set(svc.chapterCode, { name: svc.chapterName, count: 1 });
+    }
+  }
+
+  return Array.from(chapterMap.entries())
+    .map(([code, info]) => ({ code, name: info.name, count: info.count }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+}
+
+// --------------------------------------------------------------------------
+// IValidateTMA — Grouper: TMA Gesture Codes → ACF Flat Rate Codes
+// --------------------------------------------------------------------------
+//
+// Workflow:
+// 1. Initialize — reset
+// 2. AddACFBase — set diagnostic context (ICD, patient sex/age, law)
+// 3. AddService — add TMA gesture code(s)
+// 4. Finalize — run grouper, returns ACF code(s)
+// 5. GetFirstACFBase/GetNextACFBase — read grouped ACF results
+// 6. GetFirstService/GetNextService — read validated TMA services
+//
+// Key constraints:
+// - SessionNumber must be > 15
+// - Side is MANDATORY for codes with HasSideDependency flag
+
+export type TmaGrouperInput = {
+  icdCode: string;
+  patientSex: 0 | 1; // 0=male, 1=female
+  patientBirthdate: string; // ISO date
+  law?: number; // 0=KVG, 1=UVG, 2=MVG, 3=IVG, 4=VVG
+  sessionNumber?: number; // must be > 15, defaults to 100
+  services: Array<{
+    code: string;
+    referenceCode?: string;
+    quantity?: number;
+    date?: string;
+    side?: AcfSideType; // 0=none, 1=left, 2=right, 3=both
+    name?: string;
+    ignoreValidate?: boolean;
+    hook?: number;
+  }>;
+};
+
+export type TmaGrouperACFResult = {
+  sessionNumber: number;
+  icdCode: string;
+  chapterCode: string;
+  acfCode: string;
+  groupingSuccess: boolean;
+  groupingTries: number;
+  patientSex: number;
+  patientBirthdate: string;
+  law: number;
+  firstDate: string;
+};
+
+export type TmaGrouperServiceResult = {
+  code: string;
+  name: string;
+  referenceCode: string;
+  tariffType: string;
+  tmaType: TmaType;
+  quantity: number;
+  side: AcfSideType;
+  externalFactor: number;
+  sessionNumber: number;
+  hook: number;
+  date: string;
+};
+
+export type TmaGrouperResult = {
+  success: boolean;
+  groupingStatusList: string;
+  numACF: number;
+  acfBases: TmaGrouperACFResult[];
+  services: TmaGrouperServiceResult[];
+  // The resulting ACF flat rate codes with their pricing (looked up from ISearch005)
+  acfCodes: Array<{
+    code: string;
+    name: string;
+    tp: number; // CHF flat rate amount
+    chapterCode: string;
+    chapterName: string;
+  }>;
+  errors: string[];
+};
+
+async function createValidateTMA(session: AcfSession): Promise<number> {
+  const data = await acfGet<{ pIValidateTMA: number }>(
+    `IAcfValidator/GetCreateValidateTMA?pIAcfValidator=${session.validatorHandle}`,
+  );
+  return data.pIValidateTMA;
+}
+
+/**
+ * Run the TMA grouper: takes gesture codes + ICD diagnostic → produces ACF flat rate codes.
+ *
+ * This is the core function that converts TMA gesture codes into billable ACF flat rate codes.
+ */
+export async function runTmaGrouper(
+  input: TmaGrouperInput,
+  language: AcfLanguage = 2,
+): Promise<TmaGrouperResult> {
+  const session = await getOrCreateAcfSession(language);
+  const handle = await createValidateTMA(session);
+  const errors: string[] = [];
+
+  const sessionNum = input.sessionNumber ?? 100;
+  const dateStr = new Date().toISOString().split("T")[0] + "T00:00:00";
+
+  // 1. Initialize
+  await acfPost("IValidateTMA", "Initialize", { pIValidateTMA: handle });
+
+  // 2. AddACFBase — set diagnostic context
+  const addBaseUrl = `${SUMEX_ACF_BASE_URL}/IValidateTMA/AddACFBase`;
+  const addBaseRes = await fetch(addBaseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pIValidateTMA: handle,
+      lSessionNumber: sessionNum,
+      bstrICDCode: input.icdCode,
+      ePatientSex: input.patientSex,
+      dPatientBirthdate: input.patientBirthdate,
+      eLaw: input.law ?? 0,
+    }),
+    cache: "no-store",
+  });
+
+  if (!addBaseRes.ok) {
+    const errBody = await addBaseRes.json().catch(() => ({})) as Record<string, unknown>;
+    const errText = (errBody.pbstrAbortText as string) || `AddACFBase failed: ${addBaseRes.status}`;
+    errors.push(errText);
+    return { success: false, groupingStatusList: "", numACF: 0, acfBases: [], services: [], acfCodes: [], errors };
+  }
+
+  // 3. AddService — add each TMA gesture code
+  for (const svc of input.services) {
+    const svcDate = svc.date || dateStr;
+    const addSvcUrl = `${SUMEX_ACF_BASE_URL}/IValidateTMA/AddService`;
+    const addSvcRes = await fetch(addSvcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pIValidateTMA: handle,
+        bstrCode: svc.code,
+        bstrReferenceCode: svc.referenceCode || "",
+        dQuantity: svc.quantity ?? 1,
+        lSessionNumber: sessionNum,
+        dDate: svcDate,
+        eSide: svc.side ?? 0,
+        bstrName: svc.name || "",
+        eIgnoreValidate: svc.ignoreValidate ? 1 : 0,
+        lHook: svc.hook ?? 0,
+      }),
+      cache: "no-store",
+    });
+
+    if (!addSvcRes.ok) {
+      const errBody = await addSvcRes.json().catch(() => ({})) as Record<string, unknown>;
+      const errText = (errBody.pbstrAbortText as string) || `AddService ${svc.code} failed: ${addSvcRes.status}`;
+      errors.push(errText);
+      // Continue adding remaining services — don't abort entirely
+    }
+  }
+
+  // 4. Finalize — run the grouper
+  const finalizeUrl = `${SUMEX_ACF_BASE_URL}/IValidateTMA/Finalize`;
+  const finalizeRes = await fetch(finalizeUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pIValidateTMA: handle }),
+    cache: "no-store",
+  });
+
+  let groupingStatusList = "";
+  let numACF = 0;
+  let finalizeSuccess = false;
+
+  if (finalizeRes.ok) {
+    const finalData = await finalizeRes.json() as Record<string, unknown>;
+    groupingStatusList = (finalData.pbstrGroupingStatusList as string) || "";
+    numACF = (finalData.plNumACF as number) || 0;
+    finalizeSuccess = (finalData.pbStatus as boolean) || false;
+  } else {
+    const errBody = await finalizeRes.json().catch(() => ({})) as Record<string, unknown>;
+    const errText = (errBody.pbstrAbortText as string) || `Finalize failed: ${finalizeRes.status}`;
+    errors.push(errText);
+  }
+
+  // 5. Read ACFBase results (grouped ACF codes)
+  const acfBases: TmaGrouperACFResult[] = [];
+  try {
+    const first = await acfPost<Record<string, unknown>>(
+      "IValidateTMA", "GetFirstACFBase", { pIValidateTMA: handle },
+    );
+    if (first.pbStatus) {
+      acfBases.push(mapAcfBase(first));
+      let hasMore = true;
+      while (hasMore) {
+        try {
+          const next = await acfPost<Record<string, unknown>>(
+            "IValidateTMA", "GetNextACFBase", { pIValidateTMA: handle },
+          );
+          if (next.pbStatus) {
+            acfBases.push(mapAcfBase(next));
+          } else {
+            hasMore = false;
+          }
+        } catch { hasMore = false; }
+      }
+    }
+  } catch { /* no ACF bases */ }
+
+  // 6. Read validated TMA services
+  const services: TmaGrouperServiceResult[] = [];
+  try {
+    const first = await acfPost<Record<string, unknown>>(
+      "IValidateTMA", "GetFirstService", { pIValidateTMA: handle },
+    );
+    if (first.pbStatus) {
+      services.push(mapTmaGrouperService(first));
+      let hasMore = true;
+      while (hasMore) {
+        try {
+          const next = await acfPost<Record<string, unknown>>(
+            "IValidateTMA", "GetNextService", { pIValidateTMA: handle },
+          );
+          if (next.pbStatus) {
+            services.push(mapTmaGrouperService(next));
+          } else {
+            hasMore = false;
+          }
+        } catch { hasMore = false; }
+      }
+    }
+  } catch { /* no services */ }
+
+  // 7. Look up pricing for each successful ACF code via ISearch005
+  const acfCodes: TmaGrouperResult["acfCodes"] = [];
+  for (const base of acfBases) {
+    if (base.groupingSuccess && base.acfCode) {
+      try {
+        const { services: acfServices } = await searchAcf005(
+          base.acfCode, "", "", true, undefined, language,
+        );
+        if (acfServices.length > 0) {
+          const svc = acfServices[0];
+          acfCodes.push({
+            code: svc.code,
+            name: svc.name,
+            tp: svc.tp,
+            chapterCode: svc.chapterCode,
+            chapterName: svc.chapterName,
+          });
+        } else {
+          acfCodes.push({
+            code: base.acfCode,
+            name: "",
+            tp: 0,
+            chapterCode: base.chapterCode,
+            chapterName: "",
+          });
+        }
+      } catch {
+        acfCodes.push({
+          code: base.acfCode,
+          name: "",
+          tp: 0,
+          chapterCode: base.chapterCode,
+          chapterName: "",
+        });
+      }
+    }
+  }
+
+  return {
+    success: finalizeSuccess && errors.length === 0,
+    groupingStatusList,
+    numACF,
+    acfBases,
+    services,
+    acfCodes,
+    errors,
+  };
+}
+
+function mapAcfBase(raw: Record<string, unknown>): TmaGrouperACFResult {
+  return {
+    sessionNumber: (raw.plSessionNumber as number) ?? 0,
+    icdCode: (raw.pbstrICDCode as string) ?? "",
+    chapterCode: (raw.pbstrChapterCode as string) ?? "",
+    acfCode: (raw.pbstrACFCode as string) ?? "",
+    groupingSuccess: (raw.peGroupingSuccess as number) === 1,
+    groupingTries: (raw.plGroupingTries as number) ?? 0,
+    patientSex: (raw.pePatientSex as number) ?? 0,
+    patientBirthdate: (raw.pdPatientBirthdate as string) ?? "",
+    law: (raw.peLaw as number) ?? 0,
+    firstDate: (raw.pdFirstDate as string) ?? "",
+  };
+}
+
+function mapTmaGrouperService(raw: Record<string, unknown>): TmaGrouperServiceResult {
+  return {
+    code: (raw.pbstrCode as string) ?? "",
+    name: (raw.pbstrName as string) ?? "",
+    referenceCode: (raw.pbstrReferenceCode as string) ?? "",
+    tariffType: (raw.pbstrTariffType as string) ?? "TMA",
+    tmaType: ((raw.peTMAType as number) ?? 0) as TmaType,
+    quantity: (raw.pdQuantity as number) ?? 1,
+    side: ((raw.peSide as number) ?? 0) as AcfSideType,
+    externalFactor: (raw.pdExternalFactor as number) ?? 1,
+    sessionNumber: (raw.plSessionNumber as number) ?? 0,
+    hook: (raw.plHook as number) ?? 0,
+    date: (raw.pdDate as string) ?? "",
+  };
+}

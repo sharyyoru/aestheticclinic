@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 type InvoiceRow = {
@@ -443,6 +443,8 @@ export default function FinancialsPage() {
     );
   }, [filteredInvoices]);
 
+  const [activeTab, setActiveTab] = useState<"overview" | "receipts">("overview");
+
   function handleExportPdf() {
     if (typeof window === "undefined") return;
     window.print();
@@ -457,15 +459,44 @@ export default function FinancialsPage() {
             patients.
           </p>
         </div>
+        {activeTab === "overview" && (
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            Export current view (PDF)
+          </button>
+        )}
+      </div>
+
+      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      <div className="flex gap-1 border-b border-slate-200 financials-hide-on-print">
         <button
           type="button"
-          onClick={handleExportPdf}
-          className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          onClick={() => setActiveTab("overview")}
+          className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
+            activeTab === "overview"
+              ? "border-sky-500 text-sky-700"
+              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          }`}
         >
-          Export current view (PDF)
+          Overview
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("receipts")}
+          className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
+            activeTab === "receipts"
+              ? "border-sky-500 text-sky-700"
+              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          }`}
+        >
+          Bank Payment Receipts
         </button>
       </div>
 
+      {activeTab === "overview" && <>
       <div className="flex flex-wrap items-center gap-3 financials-hide-on-print">
         <select
           value={patientFilter}
@@ -778,6 +809,9 @@ export default function FinancialsPage() {
           </>
         )}
       </div>
+      </>}
+      {activeTab === "receipts" && <BankPaymentReceipts />}
+
       <style jsx global>{`
         @media print {
           .financials-hide-on-print {
@@ -785,6 +819,321 @@ export default function FinancialsPage() {
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+// ─── Bank Payment Receipts Tab ────────────────────────────────────────────────
+
+type ReceiptFile = {
+  name: string;
+  created_at: string;
+  size: number;
+  url: string;
+};
+
+function fileExt(name: string) {
+  return name.split(".").pop()?.toLowerCase() || "";
+}
+
+function isImage(name: string) {
+  return ["jpg", "jpeg", "png", "gif", "webp"].includes(fileExt(name));
+}
+
+function isPdf(name: string) {
+  return fileExt(name) === "pdf";
+}
+
+function displayName(raw: string) {
+  return raw.replace(/^\d+_/, "");
+}
+
+function BankPaymentReceipts() {
+  const [files, setFiles] = useState<ReceiptFile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ReceiptFile | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const BUCKET = "finance-documents";
+
+  const loadFiles = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: listError } = await supabaseClient.storage
+        .from(BUCKET)
+        .list("", { sortBy: { column: "created_at", order: "desc" } });
+
+      if (listError) {
+        setError(listError.message);
+        setFiles([]);
+      } else {
+        const items: ReceiptFile[] = (data || [])
+          .filter((f) => f.name && !f.name.startsWith("."))
+          .map((f) => {
+            const { data: urlData } = supabaseClient.storage
+              .from(BUCKET)
+              .getPublicUrl(f.name);
+            return {
+              name: f.name,
+              created_at: f.created_at || "",
+              size: (f.metadata as any)?.size || 0,
+              url: urlData?.publicUrl || "",
+            };
+          });
+        setFiles(items);
+      }
+    } catch {
+      setError("Failed to load files.");
+      setFiles([]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadFiles();
+  }, [loadFiles]);
+
+  const handleUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFiles = e.target.files;
+      if (!selectedFiles || selectedFiles.length === 0) return;
+      setUploading(true);
+      setError(null);
+
+      const errors: string[] = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        const { error: uploadError } = await supabaseClient.storage
+          .from(BUCKET)
+          .upload(safeName, file, { upsert: false });
+        if (uploadError) {
+          errors.push(`${file.name}: ${uploadError.message}`);
+        }
+      }
+
+      if (errors.length > 0) setError(errors.join("; "));
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setUploading(false);
+      void loadFiles();
+    },
+    [loadFiles],
+  );
+
+  const handleDelete = useCallback(
+    async (file: ReceiptFile) => {
+      if (!window.confirm(`Delete "${displayName(file.name)}"?`)) return;
+      const { error: delError } = await supabaseClient.storage
+        .from(BUCKET)
+        .remove([file.name]);
+      if (delError) {
+        setError(delError.message);
+      } else {
+        if (preview?.name === file.name) setPreview(null);
+        void loadFiles();
+      }
+    },
+    [loadFiles, preview],
+  );
+
+  const formatFileSize = (bytes: number): string => {
+    if (!bytes || bytes <= 0) return "-";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-white/90 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Bank Payment Receipts</h2>
+          <p className="mt-0.5 text-sm text-slate-500">Upload and manage bank payment receipt documents.</p>
+        </div>
+        <label
+          className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 shadow-sm hover:bg-sky-100 transition-colors ${
+            uploading ? "opacity-50 pointer-events-none" : ""
+          }`}
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          {uploading ? "Uploading..." : "Upload File"}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls,.doc,.docx"
+            onChange={handleUpload}
+            className="hidden"
+          />
+        </label>
+      </div>
+
+      {error && (
+        <div className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* Split pane: list + preview */}
+      <div className="flex min-h-[520px]">
+        {/* ── File list ── */}
+        <div className={`flex flex-col ${preview ? "w-2/5 border-r border-slate-100" : "w-full"} transition-all`}>
+          {loading ? (
+            <div className="flex flex-1 items-center justify-center py-16">
+              <p className="text-sm text-slate-400">Loading files...</p>
+            </div>
+          ) : files.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
+              <svg className="h-14 w-14 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              <p className="mt-3 text-sm font-medium text-slate-500">No receipts uploaded yet</p>
+              <p className="mt-1 text-xs text-slate-400">Click &ldquo;Upload File&rdquo; to get started.</p>
+            </div>
+          ) : (
+            <table className="w-full text-left">
+              <thead className="border-b border-slate-100 bg-slate-50">
+                <tr>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">File Name</th>
+                  <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Uploaded</th>
+                  {!preview && <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Size</th>}
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {files.map((file) => {
+                  const isSelected = preview?.name === file.name;
+                  return (
+                    <tr
+                      key={file.name}
+                      onClick={() => setPreview(isSelected ? null : file)}
+                      className={`cursor-pointer transition-colors ${
+                        isSelected
+                          ? "bg-sky-50"
+                          : "hover:bg-slate-50/70"
+                      }`}
+                    >
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          {/* File type icon */}
+                          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold uppercase ${
+                            isPdf(file.name) ? "bg-red-100 text-red-600" :
+                            isImage(file.name) ? "bg-emerald-100 text-emerald-600" :
+                            "bg-slate-100 text-slate-500"
+                          }`}>
+                            {fileExt(file.name) || "?"}
+                          </div>
+                          <span className={`text-sm font-medium truncate max-w-[180px] ${isSelected ? "text-sky-700" : "text-slate-800"}`}>
+                            {displayName(file.name)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-slate-500 whitespace-nowrap">
+                        {file.created_at
+                          ? new Date(file.created_at).toLocaleDateString(undefined, {
+                              year: "numeric", month: "short", day: "numeric",
+                            })
+                          : "-"}
+                      </td>
+                      {!preview && (
+                        <td className="px-4 py-3.5 text-sm text-slate-400">{formatFileSize(file.size)}</td>
+                      )}
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          <a
+                            href={file.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-md px-2.5 py-1 text-xs font-medium text-sky-600 hover:bg-sky-50 hover:text-sky-800"
+                          >
+                            Open
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(file)}
+                            className="rounded-md px-2.5 py-1 text-xs font-medium text-red-500 hover:bg-red-50 hover:text-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* ── Preview panel ── */}
+        {preview && (
+          <div className="flex w-3/5 flex-col">
+            {/* Preview header */}
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">{displayName(preview.name)}</p>
+                <p className="text-xs text-slate-400">{formatFileSize(preview.size)}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={preview.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Open in new tab ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreview(null)}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50"
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* Preview content */}
+            <div className="flex flex-1 items-center justify-center bg-slate-100/60 p-4">
+              {isPdf(preview.name) ? (
+                <iframe
+                  src={preview.url}
+                  className="h-full w-full rounded-lg border border-slate-200 bg-white shadow-sm"
+                  style={{ minHeight: "460px" }}
+                  title={displayName(preview.name)}
+                />
+              ) : isImage(preview.name) ? (
+                <img
+                  src={preview.url}
+                  alt={displayName(preview.name)}
+                  className="max-h-[460px] max-w-full rounded-lg border border-slate-200 object-contain shadow-sm"
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-200 text-lg font-bold uppercase text-slate-500">
+                    {fileExt(preview.name)}
+                  </div>
+                  <p className="text-sm text-slate-500">Preview not available for this file type.</p>
+                  <a
+                    href={preview.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700"
+                  >
+                    Download / Open
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

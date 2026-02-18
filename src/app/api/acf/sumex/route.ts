@@ -8,7 +8,12 @@ import {
   addServiceToValidate005,
   finalizeValidate005,
   getValidatedServices005,
+  searchTma,
+  getTmaChapters,
+  runTmaGrouper,
   type AcfValidateServiceInput,
+  type TmaType,
+  type TmaGrouperInput,
 } from "@/lib/sumexAcf";
 
 /**
@@ -18,6 +23,8 @@ import {
  * Actions:
  * - searchCode: Search ACF flat rate codes (code pattern, chapter, name)
  * - chapters: Get all ACF chapters with service counts
+ * - searchTma: Search TMA gesture codes
+ * - tmaChapters: Get all TMA chapters with service counts
  * - info: Get tariff DB version info
  * - refresh: Invalidate cached session
  */
@@ -53,6 +60,33 @@ export async function GET(request: NextRequest) {
 
       case "chapters": {
         const chapters = await getAcfChapters();
+        return NextResponse.json({
+          success: true,
+          data: chapters,
+        });
+      }
+
+      case "searchTma": {
+        const code = searchParams.get("code") || "*";
+        const chapter = searchParams.get("chapter") || "";
+        const name = searchParams.get("name") || "";
+        const tmaType = parseInt(searchParams.get("tmaType") || "0", 10) as TmaType;
+        const grouperOnly = searchParams.get("grouperOnly") === "true";
+        const date = searchParams.get("date") || undefined;
+
+        const result = await searchTma(code, chapter, name, tmaType, grouperOnly, date);
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            count: result.count,
+            services: result.services,
+          },
+        });
+      }
+
+      case "tmaChapters": {
+        const chapters = await getTmaChapters();
         return NextResponse.json({
           success: true,
           data: chapters,
@@ -95,19 +129,54 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST handler for ACF validation.
+ * POST handler for ACF validation and TMA grouper.
  *
- * Body: { services: AcfValidateServiceInput[] }
+ * Body.action = "validate005" (default):
+ *   { services: AcfValidateServiceInput[] }
+ *   Runs IValidate005: Initialize → AddService → Finalize → GetServices
  *
- * Runs the IValidate005 workflow:
- * 1. Initialize — create fresh validator
- * 2. AddService — add each service with pricing parameters
- * 3. Finalize — run rule checks, get totals
- * 4. GetServices — retrieve validated/modified service list
+ * Body.action = "runGrouper":
+ *   { icdCode, patientSex, patientBirthdate, law?, sessionNumber?, services: [{code, side?, ...}] }
+ *   Runs IValidateTMA: gesture codes + ICD → ACF flat rate codes
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const action = body.action || "validate005";
+
+    if (action === "runGrouper") {
+      const input: TmaGrouperInput = {
+        icdCode: body.icdCode || "",
+        patientSex: body.patientSex ?? 0,
+        patientBirthdate: body.patientBirthdate || "1990-01-01",
+        law: body.law ?? 0,
+        sessionNumber: body.sessionNumber ?? 100,
+        services: body.services || [],
+      };
+
+      if (!input.icdCode) {
+        return NextResponse.json(
+          { success: false, error: "ICD-10 diagnostic code is required" },
+          { status: 400 },
+        );
+      }
+      if (input.services.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "At least one TMA gesture code is required" },
+          { status: 400 },
+        );
+      }
+
+      const result = await runTmaGrouper(input);
+
+      return NextResponse.json({
+        success: result.success,
+        data: result,
+        ...(result.errors.length > 0 ? { errors: result.errors } : {}),
+      });
+    }
+
+    // Default: validate005
     const services: AcfValidateServiceInput[] = body.services || [];
 
     if (services.length === 0) {

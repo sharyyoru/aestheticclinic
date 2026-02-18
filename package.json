@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "whatsapp": "node server/whatsapp-server.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -32,7 +33,8 @@
     "react-email-editor": "^1.7.11",
     "slate": "^0.123.0",
     "slate-history": "^0.113.1",
-    "slate-react": "^0.123.0"
+    "slate-react": "^0.123.0",
+    "whatsapp-web.js": "^1.34.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
