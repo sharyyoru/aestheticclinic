@@ -132,7 +132,7 @@ export type InvoiceClinic = {
 // Service line for invoice
 export type InvoiceServiceLine = {
   code: string;
-  tariffType: string; // '001' for TARMED, '402' for drugs/GTIN
+  tariffType: string; // '001' for TARMED, '005' for ACF, '402' for drugs/GTIN
   description: string;
   quantity: number;
   unitPrice: number;
@@ -140,6 +140,11 @@ export type InvoiceServiceLine = {
   date: string;
   providerId: string;
   providerGln: string;
+  // ACF-specific (optional)
+  externalFactor?: number; // dExternalFactor multiplier (default 1.0)
+  sideType?: number; // 0=none, 1=left, 2=right, 3=bilateral
+  sessionNumber?: number; // lSessionNumber (default 1)
+  refCode?: string; // ICD-10 reference code
 };
 
 // Complete invoice request data
@@ -187,7 +192,12 @@ export function generateSumexXml(request: MediDataInvoiceRequest): string {
   };
 
   // Build service records XML
-  const servicesXml = request.services.map((service, index) => `
+  const servicesXml = request.services.map((service, index) => {
+    const extFactor = service.externalFactor ?? 1;
+    const svcAttrs = service.sideType ?? 0;
+    const session = service.sessionNumber ?? 1;
+    const refCode = service.refCode || '';
+    return `
       <record_tarmed
         record_id="${index + 1}"
         tariff_type="${service.tariffType}"
@@ -198,13 +208,17 @@ export function generateSumexXml(request: MediDataInvoiceRequest): string {
         responsible_id="${escapeXml(service.providerGln)}"
         unit="${service.unitPrice.toFixed(2)}"
         unit_factor="1.00"
+        ${extFactor !== 1 ? `external_factor="${extFactor.toFixed(2)}"` : ''}
+        ${svcAttrs > 0 ? `service_attributes="${svcAttrs}"` : ''}
+        ${session > 1 ? `session="${session}"` : ''}
+        ${refCode ? `ref_code="${escapeXml(refCode)}"` : ''}
         amount="${service.total.toFixed(2)}"
         validate="1"
         obligation="1"
       >
         <text>${escapeXml(service.description)}</text>
-      </record_tarmed>`
-  ).join('\n');
+      </record_tarmed>`;
+  }).join('\n');
 
   // Determine recipient GLN (use receiver GLN if available, otherwise insurer GLN)
   const recipientGln = request.patient.insurance?.receiverGln || request.patient.insurance?.insurerGln || '';

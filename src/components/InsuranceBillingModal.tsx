@@ -14,12 +14,20 @@ type LineItem = {
   id: string;
   code: string | null;
   tardoc_code: string | null;
+  tariff_code: number | null;
   name: string;
   quantity: number;
   unit_price: number;
   total_price: number;
   tp_al: number;
   tp_tl: number;
+  external_factor_mt: number;
+  side_type: number;
+  session_number: number;
+  ref_code: string | null;
+  date_begin: string | null;
+  provider_gln: string | null;
+  catalog_name: string | null;
 };
 
 type InsuranceBillingModalProps = {
@@ -73,7 +81,7 @@ export default function InsuranceBillingModal({
       // Load line items from invoice_line_items
       const { data: items } = await supabaseClient
         .from("invoice_line_items")
-        .select("id, code, tardoc_code, name, quantity, unit_price, total_price, tp_al, tp_tl")
+        .select("id, code, tardoc_code, tariff_code, name, quantity, unit_price, total_price, tp_al, tp_tl, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, catalog_name")
         .eq("invoice_id", consultationId)
         .order("sort_order", { ascending: true });
 
