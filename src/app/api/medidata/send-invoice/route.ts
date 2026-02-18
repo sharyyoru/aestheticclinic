@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   generateSumexXml,
   createMediDataUploadInfo,
@@ -56,6 +56,8 @@ type MediDataConfig = {
   clinic_canton: string | null;
   medidata_client_id: string | null;
   medidata_endpoint_url: string | null;
+  medidata_username: string | null;
+  medidata_password: string | null;
   is_test_mode: boolean;
 };
 
@@ -69,7 +71,9 @@ const DEFAULT_CLINIC_CONFIG: MediDataConfig = {
   clinic_address_city: "Genève",
   clinic_canton: "GE",
   medidata_client_id: null,
-  medidata_endpoint_url: "https://medidata.ch/md/ela",
+  medidata_endpoint_url: null, // e.g., "http://192.168.1.100:8100" for MediData Box
+  medidata_username: null,
+  medidata_password: null,
   is_test_mode: true,
 };
 
@@ -97,17 +101,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify user authentication
-    const { data: authData } = await supabaseClient.auth.getUser();
-    if (!authData?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    // Get consultation data
-    const { data: consultation, error: consultationError } = await supabaseClient
+    // Get consultation data (skip auth check - already authenticated via middleware)
+    const { data: consultation, error: consultationError } = await supabaseAdmin
       .from("consultations")
       .select("*")
       .eq("id", consultationId)
@@ -123,11 +118,13 @@ export async function POST(request: NextRequest) {
 
     const consultationData = consultation as unknown as ConsultationData;
 
+    const patientId = bodyPatientId || consultationData.patient_id;
+
     // Get patient data
-    const { data: patient, error: patientError } = await supabaseClient
+    const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
       .select("*")
-      .eq("id", consultationData.patient_id)
+      .eq("id", patientId)
       .single();
 
     if (patientError || !patient) {
@@ -137,33 +134,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const patientData = patient as PatientData;
+    const patientData = patient as unknown as PatientData;
 
-    // Get patient insurance
-    const { data: insurances } = await supabaseClient
+    // Get insurance data if available
+    let insuranceData: InsuranceData | null = null;
+    const { data: insurances } = await supabaseAdmin
       .from("patient_insurances")
       .select("*")
-      .eq("patient_id", patientData.id)
-      .order("is_primary", { ascending: false })
+      .eq("patient_id", patientId)
       .limit(1);
 
-    const insurance = insurances?.[0] as InsuranceData | undefined;
+    if (insurances && insurances.length > 0) {
+      insuranceData = insurances[0] as unknown as InsuranceData;
+    }
 
     // Get detailed Swiss insurer data if available
     let swissInsurer: { receiver_gln: string | null; tp_allowed: boolean | null } | null = null;
 
-    if (insurance?.insurer_id) {
-      const { data } = await supabaseClient
+    if (insuranceData?.insurer_id) {
+      const { data } = await supabaseAdmin
         .from("swiss_insurers")
         .select("receiver_gln, tp_allowed")
-        .eq("id", insurance.insurer_id)
+        .eq("id", insuranceData.insurer_id)
         .single();
 
       if (data) swissInsurer = data;
     }
 
     // Get clinic configuration
-    const { data: configData } = await supabaseClient
+    const { data: configData } = await supabaseAdmin
       .from("medidata_config")
       .select("*")
       .limit(1)
@@ -177,13 +176,49 @@ export async function POST(request: NextRequest) {
     const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const treatmentDate = consultationData.scheduled_at.split('T')[0];
 
-    // Calculate services based on duration (TARDOC - valid from 01.01.2026)
-    const duration = durationMinutes || extractDurationFromContent(consultationData.content);
-    const services = generateTardocServicesFromDuration(
-      duration,
-      treatmentDate,
-      config.clinic_gln
-    );
+    // Try to load actual invoice line items from the invoices table
+    let services: import("@/lib/medidata").InvoiceServiceLine[] = [];
+
+    // Find the invoice linked to this consultation
+    const invoiceId = body.invoiceId || consultationId;
+    const { data: dbLineItems } = await supabaseAdmin
+      .from("invoice_line_items")
+      .select("code, name, quantity, unit_price, total_price, tariff_code, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, catalog_name")
+      .eq("invoice_id", invoiceId)
+      .order("sort_order", { ascending: true });
+
+    if (dbLineItems && dbLineItems.length > 0) {
+      // Map actual line items to InvoiceServiceLine for XML generation
+      services = dbLineItems.map((item: any) => {
+        const isAcf = item.tariff_code === 5 || item.catalog_name === "ACF";
+        const isTardoc = item.tariff_code === 7 || item.catalog_name === "TARDOC";
+        const tariffType = isAcf ? "005" : isTardoc ? "001" : "999";
+        return {
+          code: item.code || "",
+          tariffType,
+          description: item.name || "",
+          quantity: item.quantity || 1,
+          unitPrice: item.unit_price || 0,
+          total: item.total_price || 0,
+          date: item.date_begin || treatmentDate,
+          providerId: item.provider_gln || config.clinic_gln,
+          providerGln: item.provider_gln || config.clinic_gln,
+          // ACF-specific fields
+          externalFactor: isAcf ? (item.external_factor_mt ?? 1) : undefined,
+          sideType: isAcf ? (item.side_type ?? 0) : undefined,
+          sessionNumber: item.session_number ?? 1,
+          refCode: item.ref_code || undefined,
+        };
+      });
+    } else {
+      // Fallback: generate TARDOC services from duration (backward compatibility)
+      const duration = durationMinutes || extractDurationFromContent(consultationData.content);
+      services = generateTardocServicesFromDuration(
+        duration,
+        treatmentDate,
+        config.clinic_gln
+      );
+    }
 
     // Calculate totals
     const subtotal = services.reduce((sum, s) => sum + s.total, 0);
@@ -207,22 +242,22 @@ export async function POST(request: NextRequest) {
         lastName: patientData.last_name,
         dob: patientData.dob,
         gender: patientData.gender as 'male' | 'female' | 'other' | null,
-        avsNumber: avsNumber || insurance?.avs_number || null,
+        avsNumber: avsNumber || insuranceData?.avs_number || null,
         address: {
           street: patientData.street_address,
           postalCode: patientData.postal_code,
           city: patientData.town,
         },
         insurance: {
-          insurerId: insurance?.insurer_id || null,
-          insurerGln: insurerGln || insurance?.gln || '7601003000016',
+          insurerId: insuranceData?.insurer_id || null,
+          insurerGln: insurerGln || insuranceData?.gln || '7601003000016',
           receiverGln: swissInsurer?.receiver_gln || null,
-          insurerName: insurerName || insurance?.provider_name || 'Unknown Insurer',
-          policyNumber: policyNumber || insurance?.policy_number || null,
-          cardNumber: insurance?.card_number || null,
+          insurerName: insurerName || insuranceData?.provider_name || 'Unknown Insurer',
+          policyNumber: policyNumber || insuranceData?.policy_number || null,
+          cardNumber: insuranceData?.card_number || null,
           lawType: lawType as SwissLawType,
           billingType: billingType as BillingType,
-          caseNumber: insurance?.case_number || null,
+          caseNumber: insuranceData?.case_number || null,
         },
       },
       provider: {
@@ -255,12 +290,12 @@ export async function POST(request: NextRequest) {
     const xmlContent = generateSumexXml(invoiceRequest);
 
     // Create submission record
-    const { data: submission, error: submissionError } = await supabaseClient
+    const { data: submission, error: submissionError } = await supabaseAdmin
       .from("medidata_submissions")
       .insert({
         consultation_id: consultationId,
         patient_id: patientData.id,
-        insurer_id: insurance?.insurer_id || null,
+        insurer_id: insuranceData?.insurer_id || null,
         invoice_number: invoiceNumber,
         invoice_date: invoiceDate,
         invoice_amount: total,
@@ -269,7 +304,7 @@ export async function POST(request: NextRequest) {
         xml_content: xmlContent,
         xml_version: '4.50',
         status: 'draft',
-        created_by: authData.user.id,
+        created_by: null,
       })
       .select()
       .single();
@@ -283,18 +318,74 @@ export async function POST(request: NextRequest) {
     }
 
     // Record initial status in history
-    await supabaseClient.from("medidata_submission_history").insert({
+    await supabaseAdmin.from("medidata_submission_history").insert({
       submission_id: submission.id,
       previous_status: null,
       new_status: 'draft',
-      changed_by: authData.user.id,
+      changed_by: null,
     });
 
-    // If not in test mode and MediData is configured, attempt to send
-    if (!config.is_test_mode && config.medidata_client_id) {
-      // TODO: Implement actual MediData API call
-      // This would require the MediData Virtual Appliance setup
-      // For now, we just create the draft
+    // If not in test mode and MediData is configured, attempt to send to MediData Box
+    let medidataTransmissionStatus = 'draft';
+    let medidataTransmissionError = null;
+
+    if (!config.is_test_mode && config.medidata_endpoint_url && config.medidata_client_id && config.medidata_username && config.medidata_password) {
+      try {
+        // Prepare metadata for MediData Box
+        const uploadInfo = {
+          type: "invoice",
+          format: "xml_45",
+          sender: config.clinic_gln,
+          receiver: insurerGln || insuranceData?.gln || '7601003000016',
+          timestamp: new Date().toISOString(),
+        };
+
+        // Create FormData for multipart upload
+        const formData = new FormData();
+        formData.append('elauploadstream', new Blob([xmlContent], { type: 'application/xml' }), 'invoice.xml');
+        formData.append('elauploadinfo', new Blob([JSON.stringify(uploadInfo)], { type: 'application/json' }), 'info.json');
+
+        // Send to MediData Box
+        const basicAuth = Buffer.from(`${config.medidata_username}:${config.medidata_password}`).toString('base64');
+        const medidataResponse = await fetch(`${config.medidata_endpoint_url}/md/ela/uploads`, {
+          method: 'POST',
+          headers: {
+            'X-CLIENT-ID': config.medidata_client_id,
+            'Authorization': `Basic ${basicAuth}`,
+          },
+          body: formData,
+        });
+
+        if (medidataResponse.ok) {
+          const result = await medidataResponse.json();
+          medidataTransmissionStatus = 'pending';
+          
+          // Update submission with transmission details
+          await supabaseAdmin
+            .from("medidata_submissions")
+            .update({
+              status: 'pending',
+              medidata_transmission_date: new Date().toISOString(),
+            })
+            .eq("id", submission.id);
+
+          // Record status change
+          await supabaseAdmin.from("medidata_submission_history").insert({
+            submission_id: submission.id,
+            previous_status: 'draft',
+            new_status: 'pending',
+            changed_by: null,
+            notes: `Transmitted to MediData Box: ${result.id || 'success'}`,
+          });
+        } else {
+          const errorText = await medidataResponse.text();
+          medidataTransmissionError = `MediData Box error: ${medidataResponse.status} - ${errorText}`;
+          console.error("MediData transmission failed:", medidataTransmissionError);
+        }
+      } catch (error) {
+        medidataTransmissionError = `Failed to connect to MediData Box: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        console.error("MediData transmission error:", error);
+      }
     }
 
     return NextResponse.json({
@@ -302,8 +393,10 @@ export async function POST(request: NextRequest) {
       submission: {
         id: submission.id,
         invoiceNumber,
-        status: 'draft',
+        status: medidataTransmissionStatus,
         xmlGenerated: true,
+        transmitted: medidataTransmissionStatus === 'pending',
+        transmissionError: medidataTransmissionError,
         total,
         services: services.map(s => ({
           code: s.code,

@@ -176,6 +176,7 @@ export interface InvoiceLineItem {
   section_code: string | null;
   session_number: number;
   service_attributes: number;
+  side_type: number; // ACF laterality: 0=none, 1=left, 2=right, 3=bilateral
 
   // Catalog metadata
   catalog_name: string | null;

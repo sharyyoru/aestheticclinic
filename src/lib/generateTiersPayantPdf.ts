@@ -380,8 +380,41 @@ export async function generateTiersPayantPdf(
     }
   }
 
-  // Non-TARDOC lines (regular services)
-  const regularLines = lineItems.filter((item) => !(item.tariff_code === 7 || item.tardoc_code));
+  // ACF flat rate lines (tariff type 005)
+  const flatRateLines = lineItems.filter((item) => item.tariff_code === 5 || item.tariff_code === 590);
+  for (const item of flatRateLines) {
+    const dateStr = fmtDate(item.date_begin || invoice.treatment_date);
+    const tariffType = "005";
+    const acfExtFactor = item.external_factor_mt ?? 1;
+    const acfBaseTP = item.tp_al || item.unit_price;
+    const sideCode = item.side_type === 1 ? "L" : item.side_type === 2 ? "R" : item.side_type === 3 ? "B" : "";
+    pdf.text(dateStr, colDate, y);
+    pdf.text(tariffType, colTarif, y);
+    pdf.text(item.code || "", colCode, y);
+    pdf.text(item.ref_code || "", colRef, y);
+    pdf.text(sideCode, colGr, y);
+    pdf.text(String(item.session_number || 1), colCs, y);
+    pdf.text(num(item.quantity), colQty, y);
+    pdf.text(num(acfBaseTP), colPtPM, y);
+    pdf.text("1.00", colFPM, y);
+    pdf.text("", colPtPT, y);
+    pdf.text("", colFPT, y);
+    pdf.text(acfExtFactor !== 1 ? num(acfExtFactor) : "", colERT, y);
+    pdf.text(num(item.total_price), colMontant, y, { align: "right" });
+    y += 3;
+    pdf.setFontSize(5.5);
+    pdf.text(truncate(item.name || "", 120), colCode, y);
+    pdf.setFontSize(fs6);
+    y += 3.5;
+
+    if (y > 250) {
+      pdf.addPage();
+      y = 15;
+    }
+  }
+
+  // Non-TARDOC, non-flat-rate lines (regular services)
+  const regularLines = lineItems.filter((item) => !(item.tariff_code === 7 || item.tardoc_code || item.tariff_code === 5 || item.tariff_code === 590));
   for (const item of regularLines) {
     const dateStr = fmtDate(item.date_begin || invoice.treatment_date);
     pdf.text(dateStr, colDate, y);

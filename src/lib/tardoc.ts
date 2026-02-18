@@ -790,6 +790,19 @@ export const TARDOC_MEDICINES: TardocMedicine[] = [
   },
 ];
 
+// ============================================================================
+// ACF — Ambulatory Case Flatrates (Forfaits ambulatoires)
+// ============================================================================
+
+/**
+ * ACF tariff type code used in invoice line items.
+ * Stored as numeric 5 in DB (tariff_code column is number | null).
+ * Display as "005" (zero-padded) on PDF and XML output.
+ * Data is served live from the Sumex1 acfValidatorServer100.
+ */
+export const ACF_TARIFF_CODE = 5;
+export const ACF_TARIFF_TYPE_DISPLAY = "005";
+
 // Helper functions
 
 /**

@@ -220,6 +220,14 @@ export default function PatientDetailsWizard({
     const currentEmployer =
       (formData.get("current_employer") as string | null)?.trim() || "";
 
+    // Address fields
+    const streetAddress =
+      (formData.get("street_address") as string | null)?.trim() || null;
+    const postalCode =
+      (formData.get("postal_code") as string | null)?.trim() || null;
+    const town =
+      (formData.get("town") as string | null)?.trim() || null;
+
     if (
       !nationality ||
       !profession ||
@@ -236,6 +244,9 @@ export default function PatientDetailsWizard({
       nationality,
       profession,
       current_employer: currentEmployer,
+      street_address: streetAddress,
+      postal_code: postalCode,
+      town: town,
     };
 
     if (gender) {
@@ -580,36 +591,97 @@ export default function PatientDetailsWizard({
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-1">
-                <label
-                  htmlFor="profession"
-                  className="block text-xs font-medium text-slate-700"
-                >
-                  Profession <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="profession"
-                  name="profession"
-                  type="text"
-                  defaultValue={patient.profession ?? ""}
-                  className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                />
+            <div className="space-y-3">
+              <div className="text-xs font-medium text-slate-700 border-b border-slate-200 pb-1">
+                Address Information
               </div>
               <div className="space-y-1">
                 <label
-                  htmlFor="current_employer"
+                  htmlFor="street_address"
                   className="block text-xs font-medium text-slate-700"
                 >
-                  Current employer <span className="text-red-500">*</span>
+                  Street address
                 </label>
                 <input
-                  id="current_employer"
-                  name="current_employer"
+                  id="street_address"
+                  name="street_address"
                   type="text"
-                  defaultValue={patient.current_employer ?? ""}
+                  defaultValue={patient.street_address ?? ""}
                   className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  placeholder="123 Main Street"
                 />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="postal_code"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Postal code
+                  </label>
+                  <input
+                    id="postal_code"
+                    name="postal_code"
+                    type="text"
+                    defaultValue={patient.postal_code ?? ""}
+                    className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    placeholder="1208"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor="town"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Town/City
+                  </label>
+                  <input
+                    id="town"
+                    name="town"
+                    type="text"
+                    defaultValue={patient.town ?? ""}
+                    className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    placeholder="Genève"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-xs font-medium text-slate-700 border-b border-slate-200 pb-1">
+                Professional Information
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="profession"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Profession <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="profession"
+                    name="profession"
+                    type="text"
+                    defaultValue={patient.profession ?? ""}
+                    className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor="current_employer"
+                    className="block text-xs font-medium text-slate-700"
+                  >
+                    Current employer <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="current_employer"
+                    name="current_employer"
+                    type="text"
+                    defaultValue={patient.current_employer ?? ""}
+                    className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                </div>
               </div>
             </div>
 

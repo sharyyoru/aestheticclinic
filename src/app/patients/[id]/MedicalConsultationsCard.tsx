@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import {
@@ -10,12 +10,15 @@ import {
   CANTON_TAX_POINT_VALUES,
   calculateTardocPrice,
   formatChf,
+  ACF_TARIFF_CODE,
+  ACF_TARIFF_TYPE_DISPLAY,
   type TardocMedicine,
   type SwissCanton,
 } from "@/lib/tardoc";
 import InsuranceBillingModal from "@/components/InsuranceBillingModal";
 import InvoiceStatusBadge from "@/components/InvoiceStatusBadge";
 import TardocAccordionTree from "@/components/TardocAccordionTree";
+import AcfAccordionTree from "@/components/AcfAccordionTree";
 import { type MediDataInvoiceStatus } from "@/lib/medidata";
 
 type TaskPriority = "low" | "medium" | "high";
@@ -111,6 +114,11 @@ type InvoiceServiceLine = {
   groupId: string | null;
   discountPercent: number | null;
   customName: string | null;
+  // ACF pricing variables
+  acfSideType?: number; // 0=none, 1=left, 2=right, 3=bilateral
+  acfExternalFactor?: number; // multiplier (default 1.0)
+  acfRefCode?: string; // ICD-10 reference code
+  acfBaseTP?: number; // original catalog TP before any modifications
 };
 
 type InvoiceService = {
@@ -261,7 +269,7 @@ export default function MedicalConsultationsCard({
   );
   const [invoicePaymentMethod, setInvoicePaymentMethod] = useState("");
   const [invoiceProviderId, setInvoiceProviderId] = useState<string>("");
-  const [invoiceMode, setInvoiceMode] = useState<"group" | "individual" | "tardoc">(
+  const [invoiceMode, setInvoiceMode] = useState<"group" | "individual" | "tardoc" | "flatrate">(
     "individual", // default to Individual Services
   );
   const [selectedTardocCode, setSelectedTardocCode] = useState("");
@@ -298,6 +306,18 @@ export default function MedicalConsultationsCard({
   const [invoiceSelectedServiceId, setInvoiceSelectedServiceId] =
     useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // ACF validation dialog state
+  const [acfValidationDialog, setAcfValidationDialog] = useState<{
+    originalCount: number;
+    validatedCount: number;
+    added: number;
+    modified: number;
+    deleted: number;
+    validatedServices: any[];
+    totalAmount: number;
+  } | null>(null);
+  const acfValidationResolveRef = useRef<((accept: boolean) => void) | null>(null);
 
   const [consultations, setConsultations] = useState<ConsultationRow[]>([]);
   const [consultationsLoading, setConsultationsLoading] = useState(false);
@@ -600,7 +620,7 @@ export default function MedicalConsultationsCard({
           const invoiceIds = invoicesWithoutContent.map((r) => r.invoice_id!);
           const { data: allLineItems } = await supabaseClient
             .from("invoice_line_items")
-            .select("invoice_id, name, code, quantity, unit_price, total_price")
+            .select("invoice_id, name, code, quantity, unit_price, total_price, tariff_code, catalog_name")
             .in("invoice_id", invoiceIds)
             .order("sort_order", { ascending: true });
 
@@ -621,7 +641,12 @@ export default function MedicalConsultationsCard({
                 .map((item) => {
                   const lineTotal = item.total_price || (item.unit_price || 0) * (item.quantity || 1);
                   totalAmount += lineTotal;
-                  return `<tr class="border-b border-slate-100"><td class="px-2 py-1">${item.code || "-"}</td><td class="px-2 py-1">${item.name || "Service"}</td><td class="px-2 py-1 text-right">${item.quantity || 1}</td><td class="px-2 py-1 text-right">CHF ${(item.unit_price || 0).toFixed(2)}</td><td class="px-2 py-1 text-right">CHF ${lineTotal.toFixed(2)}</td></tr>`;
+                  const badge = item.tariff_code === 7 || item.catalog_name === "TARDOC"
+                    ? `<span class="ml-1 inline-flex rounded bg-red-50 px-1 text-[8px] font-medium text-red-600">TARDOC</span>`
+                    : item.tariff_code === 5 || item.tariff_code === 590 || item.catalog_name === "ACF" || item.catalog_name === "SURGERY_FLAT_RATE"
+                    ? `<span class="ml-1 inline-flex rounded bg-violet-50 px-1 text-[8px] font-medium text-violet-600">ACF</span>`
+                    : "";
+                  return `<tr class="border-b border-slate-100"><td class="px-2 py-1">${item.code || "-"}${badge}</td><td class="px-2 py-1">${item.name || "Service"}</td><td class="px-2 py-1 text-right">${item.quantity || 1}</td><td class="px-2 py-1 text-right">CHF ${(item.unit_price || 0).toFixed(2)}</td><td class="px-2 py-1 text-right">CHF ${lineTotal.toFixed(2)}</td></tr>`;
                 })
                 .join("");
 
@@ -2079,12 +2104,128 @@ export default function MedicalConsultationsCard({
                         const isTardocInvoice = invoiceMode === "tardoc";
                         const taxPointValue = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
 
-                        const invoiceLines = invoiceServiceLines
+                        // ── ACF Validation: validate flat rate services before saving ──
+                        let workingServiceLines = [...invoiceServiceLines];
+                        if (invoiceMode === "flatrate") {
+                          const acfLines = workingServiceLines.filter(
+                            (l) => l.serviceId.startsWith("flatrate-"),
+                          );
+
+                          if (acfLines.length > 0) {
+                            // Build validation request from ACF lines
+                            const acfServicesToValidate = acfLines.map((line, i) => ({
+                              code: line.serviceId.replace("flatrate-", ""),
+                              tp: line.acfBaseTP ?? line.unitPrice ?? 0,
+                              date: scheduledAtIso || new Date().toISOString(),
+                              side: (line.acfSideType ?? 0) as 0 | 1 | 2 | 3,
+                              externalFactor: line.acfExternalFactor ?? 1.0,
+                              quantity: line.quantity > 0 ? line.quantity : 1,
+                              sessionNumber: i + 1,
+                              referenceCode: line.acfRefCode || "",
+                            }));
+
+                            try {
+                              const validateRes = await fetch("/api/acf/sumex", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ services: acfServicesToValidate }),
+                              });
+                              const validateJson = await validateRes.json();
+
+                              if (validateJson.success) {
+                                const { addResults, finalize, validatedServices } = validateJson.data;
+
+                                // Check for rejected services
+                                const rejected = (addResults || []).filter((r: any) => !r.success);
+                                const hasChanges =
+                                  rejected.length > 0 ||
+                                  (finalize.addedServiceCount ?? 0) > 0 ||
+                                  (finalize.modifiedServiceCount ?? 0) > 0 ||
+                                  (finalize.deletedServiceCount ?? 0) > 0;
+
+                                // If all services were rejected, show error
+                                if (validatedServices.length === 0 && rejected.length > 0) {
+                                  const rejectedInfo = rejected
+                                    .map((r: any) => `${r.code}: ${r.abortInfo || "rejected"}`)
+                                    .join("\n");
+                                  setConsultationError(
+                                    `ACF validation rejected all services:\n${rejectedInfo}`,
+                                  );
+                                  setConsultationSaving(false);
+                                  return;
+                                }
+
+                                // Show dialog if validator changed anything or rejected some services
+                                if (hasChanges && validatedServices.length > 0) {
+                                  const userAccepted = await new Promise<boolean>((resolve) => {
+                                    acfValidationResolveRef.current = resolve;
+                                    setAcfValidationDialog({
+                                      originalCount: acfLines.length,
+                                      validatedCount: validatedServices.length,
+                                      added: finalize.addedServiceCount ?? 0,
+                                      modified: finalize.modifiedServiceCount ?? 0,
+                                      deleted: (finalize.deletedServiceCount ?? 0) + rejected.length,
+                                      validatedServices,
+                                      totalAmount: finalize.totalAmount ||
+                                        validatedServices.reduce((s: number, v: any) => s + (v.amount ?? 0), 0),
+                                    });
+                                  });
+
+                                  setAcfValidationDialog(null);
+                                  acfValidationResolveRef.current = null;
+
+                                  if (!userAccepted) {
+                                    setConsultationSaving(false);
+                                    return;
+                                  }
+                                }
+
+                                // Replace ACF lines with validated services
+                                if (validatedServices.length > 0) {
+                                  const nonAcfLines = workingServiceLines.filter(
+                                    (l) => !l.serviceId.startsWith("flatrate-"),
+                                  );
+                                  const validatedLines: InvoiceServiceLine[] =
+                                    validatedServices.map((vs: any) => {
+                                      const ef = vs.externalFactor ?? 1.0;
+                                      const sideLabel =
+                                        vs.side === 1 ? " [L]" : vs.side === 2 ? " [R]" : vs.side === 3 ? " [B]" : "";
+                                      const factorLabel = ef !== 1.0 ? ` x${ef}` : "";
+                                      return {
+                                        serviceId: `flatrate-${vs.code}`,
+                                        quantity: vs.quantity ?? 1,
+                                        unitPrice: vs.amount ?? vs.tp * ef,
+                                        groupId: null,
+                                        discountPercent: null,
+                                        customName: `${vs.code}${sideLabel}${factorLabel} - ${(vs.name || "").substring(0, 70)}`,
+                                        acfSideType: vs.side ?? 0,
+                                        acfExternalFactor: ef,
+                                        acfRefCode: vs.referenceCode || "",
+                                        acfBaseTP: vs.tp ?? 0,
+                                      };
+                                    });
+
+                                  workingServiceLines = [...nonAcfLines, ...validatedLines];
+                                }
+                              } else {
+                                console.warn("ACF validation failed:", validateJson.error);
+                                // Continue without validation — user can still save
+                              }
+                            } catch (valErr) {
+                              console.warn("ACF validation request failed:", valErr);
+                              // Continue without validation — don't block saving
+                            }
+                          }
+                        }
+
+                        const invoiceLines = workingServiceLines
                           .filter((line) => line.serviceId)
                           .map((line, idx) => {
                             const isTardocLine = line.serviceId.startsWith("tardoc-");
+                            const isFlatRateLine = line.serviceId.startsWith("flatrate-");
                             const tardocCode = isTardocLine ? line.serviceId.replace("tardoc-", "") : null;
-                            const service = isTardocLine ? null : invoiceServices.find((s) => s.id === line.serviceId);
+                            const flatRateCode = isFlatRateLine ? line.serviceId.replace("flatrate-", "") : null;
+                            const service = (isTardocLine || isFlatRateLine) ? null : invoiceServices.find((s) => s.id === line.serviceId);
                             const quantity = line.quantity > 0 ? line.quantity : 1;
                             const resolvedUnitPrice = (() => {
                               if (line.unitPrice !== null && Number.isFinite(line.unitPrice)) return Math.max(0, line.unitPrice);
@@ -2097,37 +2238,40 @@ export default function MedicalConsultationsCard({
                               ? tardocSearchResults.find((r: any) => r.code === tardocCode)
                               : null;
 
+                            // Determine tariff code: 7=TARDOC, '005'=ACF Flat Rate, null=regular
+                            const tariffCode = isTardocLine ? 7 : isFlatRateLine ? ACF_TARIFF_CODE : null;
+
                             return {
-                              name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : "Service"),
-                              code: isTardocLine ? tardocCode : (service as any)?.code || String(idx + 1).padStart(3, '0'),
-                              service_id: isTardocLine ? null : line.serviceId,
+                              name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : "Service"),
+                              code: isTardocLine ? tardocCode : isFlatRateLine ? flatRateCode : (service as any)?.code || String(idx + 1).padStart(3, '0'),
+                              service_id: (isTardocLine || isFlatRateLine) ? null : line.serviceId,
                               quantity,
                               unit_price: resolvedUnitPrice,
                               total_price: resolvedUnitPrice * quantity,
-                              // TARDOC-specific fields
-                              tariff_code: isTardocLine ? 7 : null,
+                              tariff_code: tariffCode,
                               tardoc_code: tardocCode,
-                              tp_al: tardocResult?.tpMT ?? 0,
+                              tp_al: isFlatRateLine ? (line.acfBaseTP ?? resolvedUnitPrice) : (tardocResult?.tpMT ?? 0),
                               tp_tl: tardocResult?.tpTT ?? 0,
                               tp_al_value: isTardocLine ? taxPointValue : 1,
                               tp_tl_value: isTardocLine ? taxPointValue : 1,
                               tp_al_scale_factor: 1,
                               tp_tl_scale_factor: 1,
-                              external_factor_mt: 1,
+                              external_factor_mt: isFlatRateLine ? (line.acfExternalFactor ?? 1) : 1,
                               external_factor_tt: 1,
                               price_al: isTardocLine ? Math.round((tardocResult?.tpMT ?? 0) * taxPointValue * 100) / 100 : 0,
                               price_tl: isTardocLine ? Math.round((tardocResult?.tpTT ?? 0) * taxPointValue * 100) / 100 : 0,
-                              provider_gln: isTardocLine ? selectedProviderGln : null,
-                              responsible_gln: isTardocLine ? selectedProviderGln : null,
-                              billing_role: isTardocLine ? "both" : null,
+                              provider_gln: (isTardocLine || isFlatRateLine) ? selectedProviderGln : null,
+                              responsible_gln: (isTardocLine || isFlatRateLine) ? selectedProviderGln : null,
+                              billing_role: (isTardocLine || isFlatRateLine) ? "both" : null,
                               record_id: tardocResult?.recordId ?? null,
-                              ref_code: null as string | null,
+                              ref_code: isFlatRateLine ? (line.acfRefCode || null) : (null as string | null),
                               section_code: tardocResult?.section ?? null,
                               session_number: 1,
                               service_attributes: 0,
+                              side_type: isFlatRateLine ? (line.acfSideType ?? 0) : 0,
                               date_begin: scheduledAtIso || null,
-                              catalog_name: isTardocLine ? "TARDOC" : null,
-                              catalog_nature: isTardocLine ? "TARIFF_CATALOG" : null,
+                              catalog_name: isTardocLine ? "TARDOC" : isFlatRateLine ? "ACF" : null,
+                              catalog_nature: (isTardocLine || isFlatRateLine) ? "TARIFF_CATALOG" : null,
                             };
                           });
 
@@ -2214,6 +2358,16 @@ export default function MedicalConsultationsCard({
                           ];
                         }
 
+                        // Add ACF-specific invoice fields
+                        const isAcfInvoice = invoiceMode === "flatrate";
+                        if (isAcfInvoice) {
+                          invoiceInsertPayload.treatment_canton = invoiceCanton;
+                          invoiceInsertPayload.treatment_reason = "disease";
+                          invoiceInsertPayload.treatment_date_end = scheduledAtIso;
+                          invoiceInsertPayload.billing_type = "TP";
+                          invoiceInsertPayload.health_insurance_law = "KVG";
+                        }
+
                         const { data: invoiceRow, error: invoiceInsertError } = await supabaseClient
                           .from("invoices")
                           .insert(invoiceInsertPayload)
@@ -2259,6 +2413,7 @@ export default function MedicalConsultationsCard({
                             section_code: line.section_code,
                             session_number: line.session_number,
                             service_attributes: line.service_attributes,
+                            side_type: line.side_type ?? 0,
                             date_begin: line.date_begin,
                             catalog_name: line.catalog_name,
                             catalog_nature: line.catalog_nature,
@@ -2865,6 +3020,18 @@ export default function MedicalConsultationsCard({
                             >
                               TARDOC
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => setInvoiceMode("flatrate")}
+                              className={
+                                "flex-1 px-2 py-1.5 text-center text-[10px] font-medium " +
+                                (invoiceMode === "flatrate"
+                                  ? "bg-violet-600 text-white"
+                                  : "bg-transparent text-slate-600")
+                              }
+                            >
+                              Flat Rate
+                            </button>
                           </div>
 
                           {invoiceMode === "individual" ? (
@@ -3217,6 +3384,35 @@ export default function MedicalConsultationsCard({
                                 </button>
                               </div>
                             </div>
+                          ) : invoiceMode === "flatrate" ? (
+                            <div className="space-y-2 px-3 py-3">
+                              <AcfAccordionTree
+                                onAddService={(svc: any) => {
+                                  const ef = svc.externalFactor ?? 1.0;
+                                  const adjustedPrice = svc.tp * ef;
+                                  const sideLabel = svc.sideType === 1 ? " [L]" : svc.sideType === 2 ? " [R]" : svc.sideType === 3 ? " [B]" : "";
+                                  const factorLabel = ef !== 1.0 ? ` x${ef}` : "";
+                                  setInvoiceServiceLines((prev) => [
+                                    ...prev,
+                                    {
+                                      serviceId: `flatrate-${svc.code}`,
+                                      quantity: 1,
+                                      unitPrice: adjustedPrice,
+                                      groupId: null,
+                                      discountPercent: null,
+                                      customName: `${svc.code}${sideLabel}${factorLabel} - ${(svc.name || "").substring(0, 70)}`,
+                                      acfSideType: svc.sideType ?? 0,
+                                      acfExternalFactor: ef,
+                                      acfRefCode: svc.refCode || "",
+                                      acfBaseTP: svc.tp,
+                                    },
+                                  ]);
+                                }}
+                              />
+                              <p className="text-[9px] text-slate-400">
+                                ACF - Ambulatory Case Flatrates (tariff {ACF_TARIFF_TYPE_DISPLAY}). Live data from Sumex1 acfValidator.
+                              </p>
+                            </div>
                           ) : null}
                         </div>
 
@@ -3444,11 +3640,13 @@ export default function MedicalConsultationsCard({
                           <div className="space-y-2">
                             {invoiceServiceLines.map((line, index) => {
                               const isTardocLine = line.serviceId.startsWith("tardoc-");
+                              const isFlatRateLine = line.serviceId.startsWith("flatrate-");
                               const tardocCode = isTardocLine ? line.serviceId.replace("tardoc-", "") : null;
-                              const service = isTardocLine ? null : invoiceServices.find(
+                              const flatRateCode = isFlatRateLine ? line.serviceId.replace("flatrate-", "") : null;
+                              const service = (isTardocLine || isFlatRateLine) ? null : invoiceServices.find(
                                 (s) => s.id === line.serviceId,
                               );
-                              const defaultLabel = service?.name || (tardocCode ? `TARDOC ${tardocCode}` : "Service");
+                              const defaultLabel = service?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : "Service");
                               const label = line.customName || defaultLabel;
                               const group =
                                 line.groupId !== null
@@ -3458,6 +3656,7 @@ export default function MedicalConsultationsCard({
                                   : null;
                               const metaBits: string[] = [];
                               if (tardocCode) metaBits.push("TARDOC");
+                              if (flatRateCode) metaBits.push("FLAT RATE");
                               if (group) metaBits.push(group.name);
                               if (
                                 line.discountPercent !== null &&
@@ -3485,7 +3684,7 @@ export default function MedicalConsultationsCard({
                                 >
                                   <div className="space-y-0.5">
                                     <span className="block text-[10px] font-medium text-slate-600">
-                                      Item {(tardocCode || service?.code) && <span className="font-bold">({tardocCode || service?.code})</span>}
+                                      Item {(tardocCode || flatRateCode || service?.code) && <span className="font-bold">({tardocCode || flatRateCode || service?.code})</span>}
                                     </span>
                                     <input
                                       type="text"
@@ -4784,6 +4983,87 @@ export default function MedicalConsultationsCard({
           </div>
         </div>
       ) : null}
+
+      {/* ACF Validation Confirmation Dialog */}
+      {acfValidationDialog && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <h3 className="text-sm font-semibold text-slate-900">
+              ACF Validation Changes
+            </h3>
+            <p className="mt-1 text-[11px] text-slate-500">
+              The Sumex1 validator adjusted your services to comply with Swiss ACF billing rules.
+            </p>
+
+            <div className="mt-3 space-y-1.5">
+              {acfValidationDialog.added > 0 && (
+                <div className="flex items-center gap-2 rounded-md bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
+                  <span className="font-bold text-emerald-600">+{acfValidationDialog.added}</span>
+                  service(s) automatically added
+                </div>
+              )}
+              {acfValidationDialog.modified > 0 && (
+                <div className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800">
+                  <span className="font-bold text-amber-600">{acfValidationDialog.modified}</span>
+                  service(s) modified (amounts adjusted)
+                </div>
+              )}
+              {acfValidationDialog.deleted > 0 && (
+                <div className="flex items-center gap-2 rounded-md bg-red-50 px-3 py-1.5 text-[11px] text-red-800">
+                  <span className="font-bold text-red-600">-{acfValidationDialog.deleted}</span>
+                  service(s) removed (bundled or invalid)
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
+              <p className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                Final validated services ({acfValidationDialog.validatedCount})
+              </p>
+              <div className="max-h-40 space-y-0.5 overflow-y-auto">
+                {acfValidationDialog.validatedServices.map((svc: any, i: number) => (
+                  <div key={svc.code + "-" + i} className="flex items-center justify-between rounded bg-white px-2 py-1 text-[10px]">
+                    <div className="min-w-0">
+                      <span className="font-mono font-semibold text-slate-700">{svc.code}</span>
+                      <span className="ml-1 text-slate-500">{(svc.name || "").substring(0, 50)}</span>
+                    </div>
+                    <span className="shrink-0 font-mono font-semibold text-slate-900">
+                      {formatChf(svc.amount ?? svc.tp)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1.5 flex justify-between border-t border-slate-200 pt-1.5 text-[10px] font-semibold">
+                <span className="text-slate-600">Total</span>
+                <span className="font-mono text-slate-900">
+                  {formatChf(acfValidationDialog.totalAmount)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  acfValidationResolveRef.current?.(false);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  acfValidationResolveRef.current?.(true);
+                }}
+                className="rounded-lg bg-violet-600 px-4 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-violet-700"
+              >
+                Accept & Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Insurance Billing Modal */}
       <InsuranceBillingModal
