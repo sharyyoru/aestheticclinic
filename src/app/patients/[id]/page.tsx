@@ -584,16 +584,16 @@ export default async function PatientPage({
               }}
             />
 
-            <MedicalConsultationsCard patientId={patient.id} patientFirstName={patient.first_name} patientLastName={patient.last_name} />
+            <MedicalConsultationsCard patientId={patient.id} patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
           </>
         ) : null}
 
         {medicalTab === "notes" ? (
-          <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="notes" patientFirstName={patient.first_name} patientLastName={patient.last_name} />
+          <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="notes" patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
         ) : null}
 
         {medicalTab === "prescription" ? (
-          <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="prescription" patientFirstName={patient.first_name} patientLastName={patient.last_name} />
+          <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="prescription" patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
         ) : null}
 
         {medicalTab === "invoice" ? (
@@ -696,12 +696,12 @@ export default async function PatientPage({
               </div>
             </div>
 
-            <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="invoice" patientFirstName={patient.first_name} patientLastName={patient.last_name} />
+            <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="invoice" patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
           </>
         ) : null}
 
         {medicalTab === "3d" ? (
-          <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="3d" patientFirstName={patient.first_name} patientLastName={patient.last_name} />
+          <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="3d" patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
         ) : null}
 
         {medicalTab === "file" ? (

@@ -224,11 +224,13 @@ export default function MedicalConsultationsCard({
   recordTypeFilter,
   patientFirstName,
   patientLastName,
+  patientEmail,
 }: {
   patientId: string;
   recordTypeFilter?: ConsultationRecordType;
   patientFirstName?: string;
   patientLastName?: string;
+  patientEmail?: string | null;
 }) {
   const router = useRouter();
 
@@ -306,6 +308,11 @@ export default function MedicalConsultationsCard({
   const [invoiceSelectedServiceId, setInvoiceSelectedServiceId] =
     useState("");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [sendingConsultationsEmail, setSendingConsultationsEmail] = useState(false);
+  const [sendConsultationsEmailError, setSendConsultationsEmailError] = useState<string | null>(null);
+  const [sendConsultationsEmailSuccess, setSendConsultationsEmailSuccess] = useState(false);
 
   // ACF validation dialog state
   const [acfValidationDialog, setAcfValidationDialog] = useState<{
@@ -373,6 +380,8 @@ export default function MedicalConsultationsCard({
   const [axenitaPdfDocs, setAxenitaPdfDocs] = useState<AxenitaPdfDocument[]>([]);
   const [axenitaPdfLoading, setAxenitaPdfLoading] = useState(false);
   const [axenitaPdfError, setAxenitaPdfError] = useState<string | null>(null);
+
+  const [exportingConsultationsPdf, setExportingConsultationsPdf] = useState(false);
 
   const [externalLabs, setExternalLabs] = useState<{ id: string; name: string; url: string; username: string; password: string; type: string }[]>([]);
   const [labDropdownOpen, setLabDropdownOpen] = useState(false);
@@ -690,8 +699,17 @@ export default function MedicalConsultationsCard({
         const user = data?.user ?? null;
         if (user) {
           setCurrentUserId(user.id);
+          setCurrentUserEmail(user.email ?? null);
+          const meta = user.user_metadata ?? {};
+          const name = meta.full_name ||
+            [meta.first_name, meta.last_name].filter(Boolean).join(" ") ||
+            user.email ||
+            null;
+          setCurrentUserName(name);
         } else {
           setCurrentUserId(null);
+          setCurrentUserEmail(null);
+          setCurrentUserName(null);
         }
       } catch {
         if (!isMounted) return;
@@ -1345,6 +1363,208 @@ export default function MedicalConsultationsCard({
   const invoiceInstallmentsPlanComplete =
     invoiceInstallmentsTotalPercentRounded === 100;
 
+  async function buildConsultationsPdfBlob(): Promise<{ blob: Blob; fileName: string }> {
+    const { default: jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    const patientName = `${patientFirstName ?? ""} ${patientLastName ?? ""}`.trim();
+    const now = new Date().toLocaleDateString("en-GB");
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const marginLeft = 14;
+    const marginRight = 14;
+    const contentWidth = pageW - marginLeft - marginRight;
+    let y = 16;
+
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 30, 30);
+    doc.text(`Consultations \u2013 ${patientName}`, marginLeft, y);
+    y += 7;
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(130, 130, 130);
+    doc.text(`Exported on ${now}  \u00b7  ${filteredSortedConsultations.length} record(s)`, marginLeft, y);
+    y += 5;
+
+    doc.setDrawColor(200, 200, 200);
+    doc.line(marginLeft, y, pageW - marginRight, y);
+    y += 7;
+
+    if (filteredSortedConsultations.length === 0) {
+      doc.setFontSize(10);
+      doc.setTextColor(150, 150, 150);
+      doc.text("No consultations found.", marginLeft, y);
+    }
+
+    for (const row of filteredSortedConsultations) {
+      if (y > pageH - 35) {
+        doc.addPage();
+        y = 16;
+      }
+
+      const scheduledDate = row.scheduled_at
+        ? new Date(row.scheduled_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })
+        : "\u2014";
+
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(60, 60, 60);
+      doc.text(`[${(row.record_type ?? "").toUpperCase()}]  ${scheduledDate}`, marginLeft, y);
+      y += 5;
+
+      if (row.doctor_name) {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(110, 110, 110);
+        doc.text(`Doctor: ${row.doctor_name}`, marginLeft, y);
+        y += 4.5;
+      }
+
+      if (row.title) {
+        doc.setFontSize(9.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(20, 20, 20);
+        const titleLines = doc.splitTextToSize(row.title, contentWidth);
+        if (y + titleLines.length * 5 > pageH - 20) { doc.addPage(); y = 16; }
+        doc.text(titleLines, marginLeft, y);
+        y += titleLines.length * 5;
+      }
+
+      if (row.content) {
+        const plain = row.content
+          .replace(/<[^>]*>/g, " ")
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (plain) {
+          doc.setFontSize(8.5);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(60, 60, 60);
+          const contentLines = doc.splitTextToSize(plain, contentWidth);
+          if (y + contentLines.length * 4.5 > pageH - 20) { doc.addPage(); y = 16; }
+          doc.text(contentLines, marginLeft, y);
+          y += contentLines.length * 4.5;
+        }
+      }
+
+      y += 3;
+      doc.setDrawColor(220, 220, 220);
+      doc.line(marginLeft, y, pageW - marginRight, y);
+      y += 6;
+    }
+
+    const safeName = patientName.replace(/\s+/g, "_");
+    const safeDate = now.replace(/\//g, "-");
+    const fileName = `consultations_${safeName}_${safeDate}.pdf`;
+    const blob = doc.output("blob");
+    return { blob, fileName };
+  }
+
+  async function exportConsultationsToPdf() {
+    if (exportingConsultationsPdf) return;
+    setExportingConsultationsPdf(true);
+    try {
+      const { blob, fileName } = await buildConsultationsPdfBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportingConsultationsPdf(false);
+    }
+  }
+
+  async function sendConsultationsToEmail() {
+    if (sendingConsultationsEmail) return;
+    if (!patientEmail) {
+      setSendConsultationsEmailError("No email address on file for this patient.");
+      return;
+    }
+    setSendingConsultationsEmail(true);
+    setSendConsultationsEmailError(null);
+    setSendConsultationsEmailSuccess(false);
+    try {
+      const patientName = `${patientFirstName ?? ""} ${patientLastName ?? ""}`.trim();
+      const { blob, fileName } = await buildConsultationsPdfBlob();
+
+      const subject = `Consultation Records \u2013 ${patientName}`;
+      const htmlBody = `<p>Dear ${patientName},</p><p>Please find attached your consultation records.</p><p>This document contains <strong>${filteredSortedConsultations.length} record(s)</strong> exported on ${new Date().toLocaleDateString("en-GB")}.</p><p>Best regards,<br/>Aesthetic Clinic</p>`;
+
+      const { data: inserted, error: insertError } = await supabaseClient
+        .from("emails")
+        .insert({
+          patient_id: patientId,
+          to_address: patientEmail,
+          from_address: currentUserEmail,
+          subject,
+          body: htmlBody,
+          direction: "outbound",
+          status: "sent",
+          sent_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+
+      if (insertError || !inserted) {
+        setSendConsultationsEmailError(insertError?.message ?? "Failed to create email record.");
+        return;
+      }
+
+      const emailId = (inserted as any).id as string;
+
+      const storagePath = `${patientId}/${emailId}/${fileName}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from("email-attachments")
+        .upload(storagePath, blob, { contentType: "application/pdf", upsert: true });
+
+      if (uploadError) {
+        setSendConsultationsEmailError(uploadError.message ?? "Failed to upload PDF.");
+        return;
+      }
+
+      await supabaseClient.from("email_attachments").insert({
+        email_id: emailId,
+        file_name: fileName,
+        storage_path: storagePath,
+        mime_type: "application/pdf",
+        file_size: blob.size,
+      });
+
+      const res = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: patientEmail,
+          subject,
+          html: htmlBody,
+          fromUserEmail: currentUserEmail,
+          fromUserName: currentUserName,
+          emailId,
+          patientId,
+        }),
+      });
+
+      if (!res.ok) {
+        setSendConsultationsEmailError("Email saved but failed to deliver. Check activity log.");
+        return;
+      }
+
+      setSendConsultationsEmailSuccess(true);
+      setTimeout(() => setSendConsultationsEmailSuccess(false), 4000);
+    } catch (err: any) {
+      setSendConsultationsEmailError((err as any)?.message ?? "Failed to send email.");
+    } finally {
+      setSendingConsultationsEmail(false);
+    }
+  }
+
   return (
     <>
       <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
@@ -1594,6 +1814,34 @@ export default function MedicalConsultationsCard({
                 </button>
               </>
             ) : null}
+            <button
+              type="button"
+              onClick={() => void exportConsultationsToPdf()}
+              disabled={exportingConsultationsPdf}
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2.5 11.5v1.5a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1.5" />
+                <path d="M8 2v8M5 7.5l3 3 3-3" />
+              </svg>
+              {exportingConsultationsPdf ? "Exporting..." : "Export to PDF"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void sendConsultationsToEmail()}
+              disabled={sendingConsultationsEmail || !patientEmail}
+              title={!patientEmail ? "No email address on file for this patient" : "Send consultation records to patient email"}
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1.5" y="3.5" width="13" height="9" rx="1" />
+                <path d="M1.5 4.5l6.5 4.5 6.5-4.5" />
+              </svg>
+              {sendingConsultationsEmail ? "Sending..." : sendConsultationsEmailSuccess ? "Sent!" : "Send to Email"}
+            </button>
+            {sendConsultationsEmailError && (
+              <span className="text-[10px] text-red-500">{sendConsultationsEmailError}</span>
+            )}
             <button
               type="button"
               onClick={() => setShowArchived((prev) => !prev)}
