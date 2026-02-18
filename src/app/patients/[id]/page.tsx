@@ -19,6 +19,7 @@ import PatientCrmSection from "./PatientCrmSection";
 import CrmTabDropdown from "./CrmTabDropdown";
 import MedicationCard from "./MedicationCard";
 import AgeBadge from "./AgeBadge";
+import PatientCockpitDetails from "./PatientCockpitDetails";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ async function getPatientWithDetails(id: string) {
   const { data: patient, error } = await supabaseAdmin
     .from("patients")
     .select(
-      "id, first_name, last_name, email, phone, gender, dob, marital_status, nationality, street_address, postal_code, town, profession, current_employer, source, notes, avatar_url, language_preference, clinic_preference, lifecycle_stage, contact_owner_name, contact_owner_email, created_by, created_at, updated_at",
+      "id, first_name, last_name, email, phone, gender, dob, marital_status, nationality, street_address, postal_code, town, country, profession, current_employer, source, notes, avatar_url, language_preference, clinic_preference, lifecycle_stage, contact_owner_name, contact_owner_email, created_by, created_at, updated_at",
     )
     .eq("id", id)
     .single();
@@ -566,100 +567,22 @@ export default async function PatientPage({
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <div className="space-y-1 text-[11px]">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Patient Details
-                  </h3>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Email:</span>{" "}
-                    <span className="text-slate-900">{patient.email ?? "N/A"}</span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Mobile Number:</span>{" "}
-                    <span className="text-slate-900">{patient.phone ?? "N/A"}</span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Civil Status:</span>{" "}
-                    <span className="text-slate-900">
-                      {patient.marital_status ?? "N/A"}
-                    </span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Gender:</span>{" "}
-                    <span className="text-slate-900">{genderRaw ?? "N/A"}</span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Patient Number:</span>{" "}
-                    <span className="text-slate-900">{patient.id}</span>
-                  </p>
-                </div>
-
-                <div className="space-y-1 text-[11px]">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Patient Address
-                  </h3>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Street Number:</span>{" "}
-                    <span className="text-slate-900">N/A</span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Street:</span>{" "}
-                    <span className="text-slate-900">
-                      {patient.street_address ?? "N/A"}
-                    </span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Zip Code:</span>{" "}
-                    <span className="text-slate-900">
-                      {patient.postal_code ?? "N/A"}
-                    </span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Country:</span>{" "}
-                    <span className="text-slate-900">N/A</span>
-                  </p>
-                </div>
-
-                <div className="space-y-1 text-[11px]">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Patient Emergency Contact
-                  </h3>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Name:</span>{" "}
-                    <span className="text-slate-900">N/A</span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Mobile Number:</span>{" "}
-                    <span className="text-slate-900">N/A</span>
-                  </p>
-                  <p className="text-slate-500">
-                    <span className="font-semibold text-slate-700">Relation to Patient:</span>{" "}
-                    <span className="text-slate-900">N/A</span>
-                  </p>
-                </div>
-
-                <div className="space-y-2 text-[11px]">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Before and After
-                  </h3>
-                  <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[11px] font-medium text-slate-500">
-                        View reconstruction
-                      </p>
-                      <button
-                        type="button"
-                        className="inline-flex items-center rounded-full border border-sky-200/80 bg-sky-600 px-3 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700"
-                      >
-                        View
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <PatientCockpitDetails
+              patient={{
+                id: patient.id,
+                email: (patient as any).email ?? null,
+                phone: (patient as any).phone ?? null,
+                marital_status: (patient as any).marital_status ?? null,
+                gender: (patient as any).gender ?? null,
+                street_address: (patient as any).street_address ?? null,
+                postal_code: (patient as any).postal_code ?? null,
+                town: (patient as any).town ?? null,
+                country: (patient as any).country ?? null,
+                emergency_contact_name: (patient as any).emergency_contact_name ?? null,
+                emergency_contact_phone: (patient as any).emergency_contact_phone ?? null,
+                emergency_contact_relation: (patient as any).emergency_contact_relation ?? null,
+              }}
+            />
 
             <MedicalConsultationsCard patientId={patient.id} patientFirstName={patient.first_name} patientLastName={patient.last_name} />
           </>
