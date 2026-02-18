@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   generateSumexXml,
-  createMediDataUploadInfo,
   generateTardocServicesFromDuration,
   type MediDataInvoiceRequest,
   type BillingType,
   type SwissLawType,
 } from "@/lib/medidata";
-import { calculateSumexTardocPrice, type SwissCanton, DEFAULT_CANTON } from "@/lib/tardoc";
+import { type SwissCanton } from "@/lib/tardoc";
+import {
+  MediDataClient,
+  buildUploadInfo,
+  type MediDataConfig as ClientConfig,
+} from "@/lib/medidataClient";
 
 type ConsultationData = {
   id: string;
@@ -327,45 +331,55 @@ export async function POST(request: NextRequest) {
 
     // If not in test mode and MediData is configured, attempt to send to MediData Box
     let medidataTransmissionStatus = 'draft';
-    let medidataTransmissionError = null;
+    let medidataTransmissionError: string | null = null;
+    let medidataMessageId: string | null = null;
 
-    if (!config.is_test_mode && config.medidata_endpoint_url && config.medidata_client_id && config.medidata_username && config.medidata_password) {
+    const canTransmit = !config.is_test_mode && 
+      config.medidata_endpoint_url && 
+      config.medidata_client_id && 
+      config.medidata_username && 
+      config.medidata_password;
+
+    if (canTransmit) {
       try {
-        // Prepare metadata for MediData Box
-        const uploadInfo = {
-          type: "invoice",
-          format: "xml_45",
-          sender: config.clinic_gln,
-          receiver: insurerGln || insuranceData?.gln || '7601003000016',
-          timestamp: new Date().toISOString(),
-        };
-
-        // Create FormData for multipart upload
-        const formData = new FormData();
-        formData.append('elauploadstream', new Blob([xmlContent], { type: 'application/xml' }), 'invoice.xml');
-        formData.append('elauploadinfo', new Blob([JSON.stringify(uploadInfo)], { type: 'application/json' }), 'info.json');
-
-        // Send to MediData Box
-        const basicAuth = Buffer.from(`${config.medidata_username}:${config.medidata_password}`).toString('base64');
-        const medidataResponse = await fetch(`${config.medidata_endpoint_url}/md/ela/uploads`, {
-          method: 'POST',
-          headers: {
-            'X-CLIENT-ID': config.medidata_client_id,
-            'Authorization': `Basic ${basicAuth}`,
-          },
-          body: formData,
+        // Create MediData client
+        const medidataClient = new MediDataClient({
+          baseUrl: config.medidata_endpoint_url!,
+          clientId: config.medidata_client_id!,
+          username: config.medidata_username!,
+          password: config.medidata_password!,
+          isTestMode: config.is_test_mode,
         });
 
-        if (medidataResponse.ok) {
-          const result = await medidataResponse.json();
+        // Build upload info with proper metadata
+        const receiverGln = invoiceRequest.patient.insurance?.receiverGln || 
+                           invoiceRequest.patient.insurance?.insurerGln || 
+                           '7601003000016';
+
+        const uploadInfo = buildUploadInfo({
+          senderGln: config.clinic_gln,
+          receiverGln,
+          invoiceNumber,
+          lawType,
+          billingType: billingType as "TG" | "TP",
+          isReminder: false,
+        });
+
+        // Upload invoice to MediData
+        const uploadResult = await medidataClient.uploadInvoice(xmlContent, uploadInfo);
+
+        if (uploadResult.success) {
           medidataTransmissionStatus = 'pending';
+          medidataMessageId = uploadResult.messageId;
           
           // Update submission with transmission details
           await supabaseAdmin
             .from("medidata_submissions")
             .update({
               status: 'pending',
+              medidata_message_id: uploadResult.messageId,
               medidata_transmission_date: new Date().toISOString(),
+              medidata_response_code: String(uploadResult.statusCode),
             })
             .eq("id", submission.id);
 
@@ -374,17 +388,38 @@ export async function POST(request: NextRequest) {
             submission_id: submission.id,
             previous_status: 'draft',
             new_status: 'pending',
+            response_code: String(uploadResult.statusCode),
             changed_by: null,
-            notes: `Transmitted to MediData Box: ${result.id || 'success'}`,
+            notes: `Transmitted to MediData Box. Message ID: ${uploadResult.messageId || 'unknown'}`,
           });
+
+          console.log(`Invoice ${invoiceNumber} transmitted to MediData. Message ID: ${uploadResult.messageId}`);
         } else {
-          const errorText = await medidataResponse.text();
-          medidataTransmissionError = `MediData Box error: ${medidataResponse.status} - ${errorText}`;
-          console.error("MediData transmission failed:", medidataTransmissionError);
+          medidataTransmissionError = uploadResult.errorMessage || `MediData upload failed with status ${uploadResult.statusCode}`;
+          console.error("MediData transmission failed:", medidataTransmissionError, uploadResult.rawResponse);
+
+          // Record the error in history
+          await supabaseAdmin.from("medidata_submission_history").insert({
+            submission_id: submission.id,
+            previous_status: 'draft',
+            new_status: 'draft',
+            response_code: String(uploadResult.statusCode),
+            changed_by: null,
+            notes: `Transmission failed: ${medidataTransmissionError}`,
+          });
         }
       } catch (error) {
         medidataTransmissionError = `Failed to connect to MediData Box: ${error instanceof Error ? error.message : 'Unknown error'}`;
         console.error("MediData transmission error:", error);
+
+        // Record the error in history
+        await supabaseAdmin.from("medidata_submission_history").insert({
+          submission_id: submission.id,
+          previous_status: 'draft',
+          new_status: 'draft',
+          changed_by: null,
+          notes: `Connection error: ${medidataTransmissionError}`,
+        });
       }
     }
 
@@ -394,6 +429,7 @@ export async function POST(request: NextRequest) {
         id: submission.id,
         invoiceNumber,
         status: medidataTransmissionStatus,
+        messageId: medidataMessageId,
         xmlGenerated: true,
         transmitted: medidataTransmissionStatus === 'pending',
         transmissionError: medidataTransmissionError,
