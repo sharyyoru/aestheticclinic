@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
 
 type AppointmentStatus =
   | "scheduled"
@@ -853,7 +854,7 @@ export default function CalendarPage() {
         const { data, error } = await supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, start_time, end_time, status, reason, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+            "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
@@ -1878,11 +1879,13 @@ export default function CalendarPage() {
           start_time: startIso,
           end_time: endIso,
           reason,
+          title: draftTitle || baseReason || null,
+          notes: draftDescription.trim() || null,
           location: draftLocation || null,
           source: "manual",
         })
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -2089,12 +2092,13 @@ export default function CalendarPage() {
       const existingReason = editingAppointment.reason ?? "";
       const { serviceLabel } = getServiceAndStatusFromReason(existingReason);
       const doctorName = getDoctorNameFromReason(existingReason);
-      const notes = getNotesFromReason(existingReason);
+      
+      // Extract notes from old appointment (backward compatibility)
+      const existingNotes = getAppointmentNotes(editingAppointment);
       
       let updatedReason = serviceLabel || "Appointment";
       if (doctorName) updatedReason += ` [Doctor: ${doctorName}]`;
       if (editCategory && editCategory !== "No selection") updatedReason += ` [Category: ${editCategory}]`;
-      if (notes) updatedReason += ` [Notes: ${notes}]`;
       if (editBookingStatus && editBookingStatus !== "Aucune sélection") updatedReason += ` [Status: ${editBookingStatus}]`;
 
       const { data, error } = await supabaseClient
@@ -2105,10 +2109,11 @@ export default function CalendarPage() {
           end_time: endIso,
           location: editLocation || null,
           reason: updatedReason,
+          notes: existingNotes || null,
         })
         .eq("id", editingAppointment.id)
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -2698,7 +2703,7 @@ export default function CalendarPage() {
                           const doctorColor = doctorCalendar?.color ?? "";
 
                           const category = getCategoryFromReason(appt.reason);
-                          const notes = getNotesFromReason(appt.reason);
+                          const notes = getAppointmentNotes(appt);
                           const { statusLabel } = getServiceAndStatusFromReason(appt.reason);
                           const statusIcon = getStatusIcon(statusLabel);
 
@@ -2942,7 +2947,7 @@ export default function CalendarPage() {
                                     const timeLabel = formatTimeRangeLabel(start, end && !Number.isNaN(end.getTime()) ? end : null);
 
                                     const category = getCategoryFromReason(appt.reason);
-                                    const notes = getNotesFromReason(appt.reason);
+                                    const notes = getAppointmentNotes(appt);
                                     const { statusLabel: dayStatusLabel } = getServiceAndStatusFromReason(appt.reason);
                                     const dayStatusIcon = getStatusIcon(dayStatusLabel);
 
@@ -3200,11 +3205,11 @@ export default function CalendarPage() {
                       )}
                     </div>
                   </div>
-                  {getNotesFromReason(editingAppointment.reason) && (
+                  {getAppointmentNotes(editingAppointment) && (
                     <div className="mt-2 pt-2 border-t border-slate-200">
                       <p className="text-[10px] text-slate-500">Notes</p>
                       <p className="text-[11px] text-slate-800 whitespace-pre-wrap">
-                        {getNotesFromReason(editingAppointment.reason)}
+                        {getAppointmentNotes(editingAppointment)}
                       </p>
                     </div>
                   )}

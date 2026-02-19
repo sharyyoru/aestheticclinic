@@ -92,7 +92,7 @@ export default function Home() {
         const appointmentsPromise = supabaseClient
           .from("appointments")
           .select(
-            "id, start_time, status, reason, patient:patients(id, first_name, last_name)",
+            "id, start_time, status, reason, title, notes, patient:patients(id, first_name, last_name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", dayStart)

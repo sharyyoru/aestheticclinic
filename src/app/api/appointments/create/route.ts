@@ -327,14 +327,8 @@ export async function POST(request: Request) {
     if (serviceName) {
       reason += ` - ${serviceName}`;
     }
-    if (title && title !== `Appointment with ${patientName}`) {
-      reason += ` [${title}]`;
-    }
     if (assignedUserName && assignedUserName !== "Staff Member") {
       reason += ` [Doctor: ${assignedUserName}]`;
-    }
-    if (notes) {
-      reason += ` [Notes: ${notes}]`;
     }
 
     // Create the appointment using the existing schema
@@ -348,6 +342,8 @@ export async function POST(request: Request) {
         start_time: appointmentDateObj.toISOString(),
         end_time: endDateObj.toISOString(),
         reason,
+        title: title || null,
+        notes: notes || null,
         location: location || null,
         status: "scheduled",
         source: "manual",

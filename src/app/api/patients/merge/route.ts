@@ -123,7 +123,79 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Delete the merged patients
+    // 3. Copy files in patient-documents storage bucket (keep originals)
+    for (const patientId of patientIdsToMerge) {
+      console.log(`Copying storage files from patient ${patientId} to ${primaryPatientId}`);
+      
+      try {
+        // List all files for this patient in patient-documents bucket
+        const { data: files, error: listError } = await supabase.storage
+          .from("patient-documents")
+          .list(patientId);
+
+        if (listError) {
+          console.log(`Note: Could not list files for patient ${patientId}:`, listError.message);
+          continue;
+        }
+
+        if (!files || files.length === 0) {
+          console.log(`No files found for patient ${patientId}`);
+          continue;
+        }
+
+        // List existing files in primary patient's folder to check for duplicates
+        const { data: existingFiles } = await supabase.storage
+          .from("patient-documents")
+          .list(primaryPatientId);
+
+        const existingFileNames = new Set(
+          (existingFiles || []).map(f => f.name)
+        );
+
+        // Copy each file to the primary patient's folder
+        for (const file of files) {
+          const oldPath = `${patientId}/${file.name}`;
+          let newFileName = file.name;
+
+          // Handle duplicate filenames by appending a counter
+          if (existingFileNames.has(newFileName)) {
+            const nameParts = newFileName.split('.');
+            const extension = nameParts.length > 1 ? nameParts.pop() : '';
+            const baseName = nameParts.join('.');
+            
+            let counter = 1;
+            do {
+              newFileName = extension 
+                ? `${baseName}_${counter}.${extension}`
+                : `${baseName}_${counter}`;
+              counter++;
+            } while (existingFileNames.has(newFileName));
+            
+            console.log(`File name conflict: ${file.name} → ${newFileName}`);
+          }
+
+          const newPath = `${primaryPatientId}/${newFileName}`;
+
+          // Copy file to new location (keeping original)
+          const { error: copyError } = await supabase.storage
+            .from("patient-documents")
+            .copy(oldPath, newPath);
+
+          if (copyError) {
+            console.log(`Note: Could not copy file ${oldPath}:`, copyError.message);
+            continue;
+          }
+
+          // Add to existing files set to prevent duplicates in this batch
+          existingFileNames.add(newFileName);
+          console.log(`Copied file: ${oldPath} → ${newPath}`);
+        }
+      } catch (storageError) {
+        console.log(`Note: Error processing storage for patient ${patientId}:`, storageError);
+      }
+    }
+
+    // 4. Delete the merged patients
     const { error: deleteError } = await supabase
       .from("patients")
       .delete()

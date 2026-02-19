@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
 
 type AppointmentStatus =
   | "scheduled"
@@ -18,6 +19,8 @@ type Appointment = {
   end_time: string | null;
   status: AppointmentStatus;
   reason: string | null;
+  title?: string | null;
+  notes?: string | null;
   location: string | null;
   provider: {
     id: string;
@@ -242,7 +245,7 @@ export default function PatientRendezvousTab({
         const { data, error: queryError } = await supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, start_time, end_time, status, reason, location, provider:providers(id, name)"
+            "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, provider:providers(id, name)"
           )
           .eq("patient_id", patientId)
           .order("start_time", { ascending: false });
@@ -466,7 +469,7 @@ export default function PatientRendezvousTab({
         })
         .eq("id", editingAppointment.id)
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, location, provider:providers(id, name)"
+          "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, provider:providers(id, name)"
         )
         .single();
 
