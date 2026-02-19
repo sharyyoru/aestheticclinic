@@ -38,6 +38,11 @@ db.exec(`
 // Prepared statements
 const statements = {
   getUserSession: db.prepare('SELECT * FROM user_sessions WHERE user_id = ?'),
+
+  ensureUserSession: db.prepare(`
+    INSERT OR IGNORE INTO user_sessions (user_id, status, last_activity, updated_at)
+    VALUES (?, 'disconnected', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  `),
   
   upsertUserSession: db.prepare(`
     INSERT INTO user_sessions (user_id, phone_number, display_name, status, qr_code, connected_at, last_activity, updated_at)
@@ -107,17 +112,24 @@ function upsertUserSession(userId, data) {
   );
 }
 
+function ensureUserSession(userId) {
+  statements.ensureUserSession.run(userId);
+}
+
 function updateSessionStatus(userId, status) {
+  ensureUserSession(userId);
   const now = new Date().toISOString();
   statements.updateSessionStatus.run(status, now, userId);
 }
 
 function updateSessionQR(userId, qrCode) {
+  ensureUserSession(userId);
   const now = new Date().toISOString();
   statements.updateSessionQR.run(qrCode, now, userId);
 }
 
 function clearSessionQR(userId) {
+  ensureUserSession(userId);
   statements.clearSessionQR.run(userId);
 }
 
@@ -126,6 +138,7 @@ function getAllActiveSessions() {
 }
 
 function logEvent(userId, eventType, eventData = null) {
+  ensureUserSession(userId);
   const dataStr = eventData ? JSON.stringify(eventData) : null;
   statements.logEvent.run(userId, eventType, dataStr);
 }
@@ -146,6 +159,7 @@ setInterval(cleanupOldLogs, 24 * 60 * 60 * 1000);
 module.exports = {
   db,
   getUserSession,
+  ensureUserSession,
   upsertUserSession,
   updateSessionStatus,
   updateSessionQR,
