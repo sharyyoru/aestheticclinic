@@ -15,6 +15,25 @@ export async function POST(request: Request) {
     cache: 'no-store',
     headers: { 'Authorization': authHeader }
   });
-  
-  return NextResponse.json({ success: true });
+
+  let payload: any = null;
+  try {
+    payload = await res.json();
+  } catch {
+    payload = { error: 'Upstream did not return JSON' };
+  }
+
+  if (!res.ok) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: payload?.error || `WhatsApp server error (${res.status})`,
+        upstreamStatus: res.status,
+        upstreamBody: payload,
+      },
+      { status: res.status }
+    );
+  }
+
+  return NextResponse.json({ success: true, upstream: payload });
 }

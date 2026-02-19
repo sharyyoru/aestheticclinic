@@ -48,6 +48,7 @@ app.get('/status', requireAuth, async (req, res) => {
     const status = await getConnectionStatus(req.userId);
     res.json(status);
   } catch (err) {
+    console.error('Status error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -58,6 +59,7 @@ app.post('/connect', requireAuth, async (req, res) => {
     const result = await initializeWhatsApp(req.userId);
     res.json(result);
   } catch (err) {
+    console.error('Connect error:', err);
     res.status(500).json({ error: err.message });
   }
 });
