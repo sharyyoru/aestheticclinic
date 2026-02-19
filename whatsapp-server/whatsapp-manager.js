@@ -13,6 +13,9 @@ const {
 // Store active WhatsApp clients per user
 const clients = new Map();
 
+// Track init watchdog timers per user
+const initWatchdogs = new Map();
+
 // WebSocket clients per user for real-time updates
 const wsClientsByUser = new Map();
 
@@ -46,9 +49,25 @@ function getWhatsAppClient(userId) {
     }
   });
 
+  // Helpful diagnostics (Railway debugging)
+  client.on('loading_screen', (percent, message) => {
+    console.log(`WhatsApp loading for user ${userId}: ${percent}% - ${message}`);
+  });
+
+  client.on('change_state', (state) => {
+    console.log(`WhatsApp state changed for user ${userId}: ${state}`);
+  });
+
   // QR Code event
   client.on('qr', async (qr) => {
     console.log(`QR Code received for user: ${userId}`);
+
+    // QR means init succeeded; stop watchdog
+    const watchdog = initWatchdogs.get(userId);
+    if (watchdog) {
+      clearTimeout(watchdog);
+      initWatchdogs.delete(userId);
+    }
     try {
       const qrDataUrl = await QRCode.toDataURL(qr, { width: 256, margin: 2 });
       updateSessionQR(userId, qrDataUrl);
@@ -66,6 +85,13 @@ function getWhatsAppClient(userId) {
   // Authenticated event
   client.on('authenticated', () => {
     console.log(`WhatsApp authenticated for user: ${userId}`);
+
+    // Authenticated means init succeeded; stop watchdog
+    const watchdog = initWatchdogs.get(userId);
+    if (watchdog) {
+      clearTimeout(watchdog);
+      initWatchdogs.delete(userId);
+    }
     clearSessionQR(userId);
     updateSessionStatus(userId, 'authenticated');
     logEvent(userId, 'authenticated');
@@ -76,6 +102,13 @@ function getWhatsAppClient(userId) {
   // Ready event
   client.on('ready', async () => {
     console.log(`WhatsApp ready for user: ${userId}`);
+
+    // Ready means init succeeded; stop watchdog
+    const watchdog = initWatchdogs.get(userId);
+    if (watchdog) {
+      clearTimeout(watchdog);
+      initWatchdogs.delete(userId);
+    }
     
     try {
       const info = client.info;
@@ -138,6 +171,12 @@ function getWhatsAppClient(userId) {
   // Disconnected event
   client.on('disconnected', (reason) => {
     console.log(`WhatsApp disconnected for user ${userId}:`, reason);
+
+    const watchdog = initWatchdogs.get(userId);
+    if (watchdog) {
+      clearTimeout(watchdog);
+      initWatchdogs.delete(userId);
+    }
     updateSessionStatus(userId, 'disconnected');
     logEvent(userId, 'disconnected', { reason });
     
@@ -151,6 +190,12 @@ function getWhatsAppClient(userId) {
   // Auth failure
   client.on('auth_failure', (msg) => {
     console.error(`WhatsApp auth failure for user ${userId}:`, msg);
+
+    const watchdog = initWatchdogs.get(userId);
+    if (watchdog) {
+      clearTimeout(watchdog);
+      initWatchdogs.delete(userId);
+    }
     updateSessionStatus(userId, 'disconnected');
     logEvent(userId, 'auth_failure', { message: msg });
     
@@ -188,6 +233,30 @@ async function initializeWhatsApp(userId) {
   initializingUsers.add(userId);
   updateSessionStatus(userId, 'launching');
   logEvent(userId, 'initialize_start');
+
+  // If initialization hangs (Chromium stuck), cleanup so the user can retry.
+  // This is common on low-memory instances.
+  const existingWatchdog = initWatchdogs.get(userId);
+  if (existingWatchdog) {
+    clearTimeout(existingWatchdog);
+  }
+  initWatchdogs.set(userId, setTimeout(async () => {
+    console.error(`Initialization timeout for user ${userId} (no QR/auth/ready)`);
+    initializingUsers.delete(userId);
+    initWatchdogs.delete(userId);
+    logEvent(userId, 'initialize_timeout');
+    updateSessionStatus(userId, 'disconnected');
+
+    const clientToDestroy = clients.get(userId);
+    clients.delete(userId);
+    try {
+      if (clientToDestroy) {
+        await clientToDestroy.destroy();
+      }
+    } catch (e) {
+      console.error(`Error destroying timed-out client for user ${userId}:`, e);
+    }
+  }, 90000));
   
   // Start initialization in background (don't block the HTTP response)
   client.initialize().then(() => {
@@ -196,6 +265,11 @@ async function initializeWhatsApp(userId) {
   }).catch(err => {
     console.error(`Initialization error for user ${userId}:`, err);
     initializingUsers.delete(userId);
+    const watchdog = initWatchdogs.get(userId);
+    if (watchdog) {
+      clearTimeout(watchdog);
+      initWatchdogs.delete(userId);
+    }
     clients.delete(userId);
     updateSessionStatus(userId, 'disconnected');
     logEvent(userId, 'initialize_error', { error: err.message });
