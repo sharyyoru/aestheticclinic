@@ -162,10 +162,19 @@ function getWhatsAppClient(userId) {
   return client;
 }
 
+// Track which users are currently initializing to prevent duplicate calls
+const initializingUsers = new Set();
+
 /**
  * Initialize WhatsApp for a user
  */
 async function initializeWhatsApp(userId) {
+  // Prevent duplicate initialization
+  if (initializingUsers.has(userId)) {
+    console.log(`WhatsApp already initializing for user: ${userId}`);
+    return { success: true, message: 'Already initializing' };
+  }
+
   const client = getWhatsAppClient(userId);
   
   // Check if already initialized
@@ -176,18 +185,23 @@ async function initializeWhatsApp(userId) {
   }
   
   console.log(`Initializing WhatsApp for user: ${userId}`);
-  updateSessionStatus(userId, 'initializing');
+  initializingUsers.add(userId);
+  updateSessionStatus(userId, 'launching');
   logEvent(userId, 'initialize_start');
   
-  try {
-    await client.initialize();
-    return { success: true, message: 'Initialization started' };
-  } catch (err) {
+  // Start initialization in background (don't block the HTTP response)
+  client.initialize().then(() => {
+    console.log(`WhatsApp client initialized for user: ${userId}`);
+    initializingUsers.delete(userId);
+  }).catch(err => {
     console.error(`Initialization error for user ${userId}:`, err);
+    initializingUsers.delete(userId);
+    clients.delete(userId);
     updateSessionStatus(userId, 'disconnected');
     logEvent(userId, 'initialize_error', { error: err.message });
-    throw err;
-  }
+  });
+  
+  return { success: true, message: 'Initialization started' };
 }
 
 /**
@@ -237,13 +251,19 @@ async function getConnectionStatus(userId) {
       clientState = await client.getState();
       isReady = clientState === 'CONNECTED';
     } catch (err) {
-      // Client exists but not responding
-      clientState = 'ERROR';
+      // Client exists but Chromium is still starting — not an error if we're initializing
+      clientState = initializingUsers.has(userId) ? 'LAUNCHING' : 'ERROR';
     }
   }
   
+  // Use DB status, but if we know we're initializing, override
+  let status = session?.status || 'disconnected';
+  if (initializingUsers.has(userId) && status === 'disconnected') {
+    status = 'launching';
+  }
+  
   return {
-    status: session?.status || 'disconnected',
+    status,
     qrCode: session?.qr_code || null,
     phoneNumber: session?.phone_number || null,
     displayName: session?.display_name || null,

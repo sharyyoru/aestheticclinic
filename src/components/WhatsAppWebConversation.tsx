@@ -50,6 +50,7 @@ export default function WhatsAppWebConversation({
   patientName = "Patient",
 }: WhatsAppWebConversationProps) {
   const [status, setStatus] = useState<'disconnected' | 'launching' | 'qr' | 'authenticated' | 'ready'>('disconnected');
+  const connectCalledRef = useRef(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [patientChat, setPatientChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -147,15 +148,12 @@ export default function WhatsAppWebConversation({
   }, [patientChat, isNewChat]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = async () => {
+    if (connectCalledRef.current) return;
+    connectCalledRef.current = true;
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch('/api/whatsapp-web/init', { 
-        method: 'POST',
-        headers 
-      });
-      if (res.ok) {
-        startPolling();
-      }
+      setStatus('launching');
+      await fetch('/api/whatsapp-web/init', { method: 'POST', headers });
     } catch (err) {
       console.error('Failed to connect:', err);
     }
@@ -172,7 +170,7 @@ export default function WhatsAppWebConversation({
         await loadPatientChat();
         return;
       }
-      // If disconnected, auto-connect
+      // If disconnected, auto-connect once
       if (data.status === 'disconnected') {
         await handleConnect();
       }
