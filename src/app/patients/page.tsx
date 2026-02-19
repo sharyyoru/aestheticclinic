@@ -217,6 +217,10 @@ export default function PatientsPage() {
   const totalPages = Math.max(1, Math.ceil(filteredPatients.length / pageSize));
   const [page, setPage] = useState(1);
 
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, ownerFilter, ownerNameFilter, createdFilter, statusFilter]);
+
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
   const pageEnd = pageStart + pageSize;
