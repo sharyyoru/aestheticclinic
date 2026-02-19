@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { MessageSquare, Send, Loader2, Phone } from "lucide-react";
+import { supabaseClient } from '@/lib/supabaseClient';
 
 interface Chat {
   id: string;
@@ -67,6 +68,18 @@ export default function WhatsAppWebConversation({
   const isFirstLoad = useRef(true);
   const isSendingRef = useRef(false);
 
+  // Get auth headers for API calls
+  const getAuthHeaders = async () => {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('Not authenticated');
+    }
+    return {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json'
+    };
+  };
+
   // Only scroll to bottom on first load or when WE send a message
   const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -105,7 +118,8 @@ export default function WhatsAppWebConversation({
       // Skip if we're mid-send to avoid race with optimistic messages
       if (isSendingRef.current) return;
       try {
-        const res = await fetch(`/api/whatsapp-web/messages/${encodeURIComponent(chatId)}`);
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/whatsapp-web/messages/${encodeURIComponent(chatId)}`, { headers });
         const data = await res.json();
         const incoming: Message[] = data.messages || [];
         if (incoming.length === 0) return;
@@ -134,7 +148,8 @@ export default function WhatsAppWebConversation({
 
   const autoInit = async () => {
     try {
-      const res = await fetch('/api/whatsapp-web/status');
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/whatsapp-web/status', { headers });
       const data = await res.json();
       setStatus(data.status);
       setQrCode(data.qrCode);
@@ -150,7 +165,8 @@ export default function WhatsAppWebConversation({
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const res = await fetch('/api/whatsapp-web/status');
+        const headers = await getAuthHeaders();
+        const res = await fetch('/api/whatsapp-web/status', { headers });
         const data = await res.json();
         setStatus(data.status);
         setQrCode(data.qrCode);
@@ -167,10 +183,11 @@ export default function WhatsAppWebConversation({
     setLoadingChat(true);
     setError(null);
     try {
+      const headers = await getAuthHeaders();
       // Run both in parallel — chats list is used as fast fallback
       const [chatRes, chatsRes] = await Promise.all([
-        fetch(`/api/whatsapp-web/chat-by-phone?phone=${encodeURIComponent(patientPhone)}`),
-        fetch('/api/whatsapp-web/chats'),
+        fetch(`/api/whatsapp-web/chat-by-phone?phone=${encodeURIComponent(patientPhone)}`, { headers }),
+        fetch('/api/whatsapp-web/chats', { headers }),
       ]);
       const chatData = await chatRes.json();
       const chatsData = await chatsRes.json();
@@ -205,7 +222,8 @@ export default function WhatsAppWebConversation({
   const fetchMessages = async (chat: Chat, scrollInstant = false) => {
     setLoadingMessages(true);
     try {
-      const res = await fetch(`/api/whatsapp-web/messages/${encodeURIComponent(chat.id)}`);
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/whatsapp-web/messages/${encodeURIComponent(chat.id)}`, { headers });
       const data = await res.json();
       setMessages(data.messages || []);
       // Scroll to bottom after initial load
@@ -246,9 +264,10 @@ export default function WhatsAppWebConversation({
     setTimeout(() => scrollToBottom('smooth'), 30);
 
     try {
+      const headers = await getAuthHeaders();
       const sendRes = await fetch('/api/whatsapp-web/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ chatId, message: text }),
       });
 
@@ -265,7 +284,8 @@ export default function WhatsAppWebConversation({
         // Quietly upgrade to real chat object after WhatsApp creates it
         setTimeout(async () => {
           try {
-            const r = await fetch(`/api/whatsapp-web/chat-by-phone?phone=${encodeURIComponent(patientPhone)}`);
+            const headers = await getAuthHeaders();
+            const r = await fetch(`/api/whatsapp-web/chat-by-phone?phone=${encodeURIComponent(patientPhone)}`, { headers });
             const d = await r.json();
             if (d.chat) setPatientChat(d.chat);
           } catch { /* ignore */ }
@@ -275,7 +295,8 @@ export default function WhatsAppWebConversation({
         // Use the captured chatId (not stale patientChat.id from closure)
         setTimeout(async () => {
           try {
-            const res = await fetch(`/api/whatsapp-web/messages/${encodeURIComponent(chatId)}`);
+            const headers = await getAuthHeaders();
+            const res = await fetch(`/api/whatsapp-web/messages/${encodeURIComponent(chatId)}`, { headers });
             const data = await res.json();
             const realMsgs: Message[] = data.messages || [];
             if (realMsgs.length > 0) {

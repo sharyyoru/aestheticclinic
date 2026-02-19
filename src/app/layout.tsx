@@ -15,7 +15,6 @@ import { TasksNotificationsProvider } from "@/components/TasksNotificationsConte
 import { EmailNotificationsProvider } from "@/components/EmailNotificationsContext";
 import GlobalLoader from "@/components/GlobalLoader";
 import SidebarLeadImportDropdown from "@/components/SidebarLeadImportDropdown";
-import CacheVersionChecker from "@/components/CacheVersionChecker";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -42,7 +41,6 @@ export default function RootLayout({
       <body
         className={`${manrope.variable} ${geistMono.variable} antialiased`}
       >
-        <CacheVersionChecker />
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff,_#e0f2fe_40%,_#fdf2ff_80%)] px-4 py-6 sm:px-6 lg:px-8">
           <GlobalLoader />
           <CommentsUnreadProvider>

@@ -78,6 +78,19 @@ docker run -p 3001:3001 \
    - Mount path: `/app/whatsapp-sessions` (for WhatsApp sessions)
 6. Deploy!
 
+### Production URL
+
+**WhatsApp Server**: https://aestheticclinic-production.up.railway.app
+
+## Main App Configuration
+
+Update your main application's environment variables:
+
+```bash
+# In your main app's .env.local
+WA_SERVER_URL=https://aestheticclinic-production.up.railway.app
+```
+
 ## API Endpoints
 
 All endpoints require `Authorization: Bearer <jwt>` header with a valid JWT token containing user ID.
