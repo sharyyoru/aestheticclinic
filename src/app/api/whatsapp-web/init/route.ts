@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createWhatsAppAuthHeader } from '@/lib/whatsapp-auth';
 
-const WA_SERVER = 'https://example.com'; // Replace with your WhatsApp server URL
+const WA_SERVER = process.env.WA_SERVER_URL || 'http://localhost:3001';
 
 export async function POST(request: Request) {
   const authHeader = createWhatsAppAuthHeader(request);
