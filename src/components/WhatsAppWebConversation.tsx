@@ -146,6 +146,21 @@ export default function WhatsAppWebConversation({
     };
   }, [patientChat, isNewChat]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleConnect = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/whatsapp-web/init', { 
+        method: 'POST',
+        headers 
+      });
+      if (res.ok) {
+        startPolling();
+      }
+    } catch (err) {
+      console.error('Failed to connect:', err);
+    }
+  };
+
   const autoInit = async () => {
     try {
       const headers = await getAuthHeaders();
@@ -156,6 +171,10 @@ export default function WhatsAppWebConversation({
       if (data.status === 'ready') {
         await loadPatientChat();
         return;
+      }
+      // If disconnected, auto-connect
+      if (data.status === 'disconnected') {
+        await handleConnect();
       }
     } catch { /* server not up yet */ }
     startPolling();
