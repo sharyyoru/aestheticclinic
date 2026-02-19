@@ -17,9 +17,12 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
+# Copy package files
 COPY package*.json ./
-RUN npm ci --only=production
 
+RUN npm install --only=production
+
+# Copy all application files
 COPY . .
 
 # Create directories for WhatsApp session persistence and SQLite database
