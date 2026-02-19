@@ -844,8 +844,71 @@ function isPdf(name: string) {
   return fileExt(name) === "pdf";
 }
 
+function isXml(name: string) {
+  return fileExt(name) === "xml";
+}
+
 function displayName(raw: string) {
   return raw.replace(/^\d+_/, "");
+}
+
+// Parse camt.054 XML bank statement
+type ParsedTransaction = {
+  date: string;
+  amount: string;
+  currency: string;
+  debtor: string;
+  reference: string;
+  description: string;
+};
+
+function parseCamt054Xml(xmlText: string): ParsedTransaction[] {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlText, "text/xml");
+    
+    // Check for parsing errors
+    const parserError = doc.querySelector("parsererror");
+    if (parserError) return [];
+
+    const transactions: ParsedTransaction[] = [];
+    const entries = doc.querySelectorAll("Ntry");
+
+    entries.forEach((entry) => {
+      const date = entry.querySelector("BookgDt Dt")?.textContent || "";
+      const amtEl = entry.querySelector("Amt");
+      const amount = amtEl?.textContent || "0";
+      const currency = amtEl?.getAttribute("Ccy") || "";
+      const cdtDbtInd = entry.querySelector("CdtDbtInd")?.textContent || "";
+      
+      // Get debtor name from transaction details
+      const debtor = entry.querySelector("TxDtls RltdPties Dbtr Pty Nm")?.textContent || 
+                     entry.querySelector("TxDtls RltdPties UltmtDbtr Pty Nm")?.textContent || 
+                     "Unknown";
+      
+      // Get reference (QRR or other)
+      const reference = entry.querySelector("TxDtls RmtInf Strd CdtrRefInf Ref")?.textContent || 
+                       entry.querySelector("TxDtls Refs EndToEndId")?.textContent || 
+                       "";
+      
+      const description = entry.querySelector("AddtlNtryInf")?.textContent || 
+                         entry.querySelector("TxDtls AddtlTxInf")?.textContent || 
+                         "";
+
+      transactions.push({
+        date,
+        amount: `${cdtDbtInd === "DBIT" ? "-" : ""}${amount}`,
+        currency,
+        debtor,
+        reference,
+        description,
+      });
+    });
+
+    return transactions;
+  } catch {
+    return [];
+  }
 }
 
 function BankPaymentReceipts() {
@@ -854,9 +917,36 @@ function BankPaymentReceipts() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<ReceiptFile | null>(null);
+  const [xmlContent, setXmlContent] = useState<string | null>(null);
+  const [xmlTransactions, setXmlTransactions] = useState<ParsedTransaction[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const BUCKET = "finance-documents";
+
+  // Fetch and parse XML when preview changes
+  useEffect(() => {
+    if (!preview || !isXml(preview.name)) {
+      setXmlContent(null);
+      setXmlTransactions([]);
+      return;
+    }
+
+    const previewUrl = preview.url;
+    async function fetchXml() {
+      try {
+        const response = await fetch(previewUrl);
+        const text = await response.text();
+        setXmlContent(text);
+        const parsed = parseCamt054Xml(text);
+        setXmlTransactions(parsed);
+      } catch {
+        setXmlContent(null);
+        setXmlTransactions([]);
+      }
+    }
+
+    void fetchXml();
+  }, [preview]);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -967,7 +1057,7 @@ function BankPaymentReceipts() {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls,.doc,.docx"
+            accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls,.doc,.docx,.xml"
             onChange={handleUpload}
             className="hidden"
           />
@@ -1100,7 +1190,7 @@ function BankPaymentReceipts() {
             </div>
 
             {/* Preview content */}
-            <div className="flex flex-1 items-center justify-center bg-slate-100/60 p-4">
+            <div className="flex flex-1 bg-slate-100/60 p-4 overflow-auto">
               {isPdf(preview.name) ? (
                 <iframe
                   src={preview.url}
@@ -1109,13 +1199,60 @@ function BankPaymentReceipts() {
                   title={displayName(preview.name)}
                 />
               ) : isImage(preview.name) ? (
-                <img
-                  src={preview.url}
-                  alt={displayName(preview.name)}
-                  className="max-h-[460px] max-w-full rounded-lg border border-slate-200 object-contain shadow-sm"
-                />
+                <div className="flex flex-1 items-center justify-center">
+                  <img
+                    src={preview.url}
+                    alt={displayName(preview.name)}
+                    className="max-h-[460px] max-w-full rounded-lg border border-slate-200 object-contain shadow-sm"
+                  />
+                </div>
+              ) : isXml(preview.name) && xmlTransactions.length > 0 ? (
+                <div className="flex-1 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+                    <h3 className="text-sm font-semibold text-slate-800">Bank Transactions</h3>
+                    <p className="text-xs text-slate-500">{xmlTransactions.length} transaction{xmlTransactions.length !== 1 ? "s" : ""} found</p>
+                  </div>
+                  <div className="overflow-auto" style={{ maxHeight: "420px" }}>
+                    <table className="w-full text-left text-xs">
+                      <thead className="sticky top-0 border-b border-slate-100 bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-2.5 font-semibold text-slate-600">Date</th>
+                          <th className="px-4 py-2.5 font-semibold text-slate-600">Amount</th>
+                          <th className="px-4 py-2.5 font-semibold text-slate-600">Debtor</th>
+                          <th className="px-4 py-2.5 font-semibold text-slate-600">Reference</th>
+                          <th className="px-4 py-2.5 font-semibold text-slate-600">Description</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {xmlTransactions.map((tx, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/50">
+                            <td className="px-4 py-2.5 text-slate-700 whitespace-nowrap">
+                              {tx.date ? new Date(tx.date).toLocaleDateString(undefined, {
+                                year: "numeric", month: "short", day: "numeric"
+                              }) : "-"}
+                            </td>
+                            <td className="px-4 py-2.5 whitespace-nowrap">
+                              <span className={`font-semibold ${tx.amount.startsWith("-") ? "text-red-600" : "text-emerald-600"}`}>
+                                {tx.amount} {tx.currency}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-700 max-w-[200px] truncate" title={tx.debtor}>
+                              {tx.debtor}
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-500 font-mono text-[10px] max-w-[180px] truncate" title={tx.reference}>
+                              {tx.reference || "-"}
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-500 text-[11px] max-w-[220px] truncate" title={tx.description}>
+                              {tx.description || "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               ) : (
-                <div className="flex flex-col items-center gap-3 text-center">
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-200 text-lg font-bold uppercase text-slate-500">
                     {fileExt(preview.name)}
                   </div>
