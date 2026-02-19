@@ -49,7 +49,7 @@ export default function WhatsAppWebConversation({
   patientPhone,
   patientName = "Patient",
 }: WhatsAppWebConversationProps) {
-  const [status, setStatus] = useState<'disconnected' | 'launching' | 'qr' | 'authenticated' | 'ready'>('disconnected');
+  const [status, setStatus] = useState<'disconnected' | 'launching' | 'qr' | 'qr_pending' | 'authenticated' | 'ready'>('disconnected');
   const connectCalledRef = useRef(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [patientChat, setPatientChat] = useState<Chat | null>(null);
@@ -378,11 +378,12 @@ export default function WhatsAppWebConversation({
 
   // ── Pre-ready states ────────────────────────────────────────────────────────
   if (status !== 'ready') {
-    const isQr = status === 'qr' && qrCode;
+    const isQr = (status === 'qr' || status === 'qr_pending') && qrCode;
     const statusLabel: Record<string, string> = {
       disconnected: 'Waiting for server…',
       launching: 'Launching Chromium…',
       qr: 'Scan QR Code to connect',
+      qr_pending: 'Scan QR Code to connect',
       authenticated: 'Finalising connection…',
     };
 
