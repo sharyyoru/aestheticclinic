@@ -283,7 +283,6 @@ export default async function PatientPage({
   const medicalTab: MedicalTab =
     rawMedicalTab === "cockpit" ||
       rawMedicalTab === "notes" ||
-      rawMedicalTab === "prescription" ||
       rawMedicalTab === "invoice" ||
       rawMedicalTab === "file" ||
       rawMedicalTab === "photo" ||
@@ -300,7 +299,6 @@ export default async function PatientPage({
   const medicalTabs: { id: MedicalTab; label: string }[] = [
     { id: "cockpit", label: "Cockpit" },
     { id: "notes", label: "Consultations" },
-    { id: "prescription", label: "Prescription" },
     { id: "invoice", label: "Invoice" },
     { id: "medication", label: "Medication" },
     { id: "3d", label: "3D" },
@@ -590,10 +588,6 @@ export default async function PatientPage({
 
         {medicalTab === "notes" ? (
           <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="notes" patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
-        ) : null}
-
-        {medicalTab === "prescription" ? (
-          <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="prescription" patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
         ) : null}
 
         {medicalTab === "invoice" ? (

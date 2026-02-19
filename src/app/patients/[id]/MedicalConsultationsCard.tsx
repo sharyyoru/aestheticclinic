@@ -389,6 +389,11 @@ export default function MedicalConsultationsCard({
 
   // Medication form state
   const [medProductName, setMedProductName] = useState("");
+  const [medSearchQuery, setMedSearchQuery] = useState("");
+  const [medSearchResults, setMedSearchResults] = useState<{ label: string; productNumber: number }[]>([]);
+  const [medSearchLoading, setMedSearchLoading] = useState(false);
+  const [medDropdownOpen, setMedDropdownOpen] = useState(false);
+  const medSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [medProductType, setMedProductType] = useState<"MEDICATION" | "CONSUMABLE">("MEDICATION");
   const [medIntakeKind, setMedIntakeKind] = useState<"ACUTE" | "FIXED">("FIXED");
   const [medAmountMorning, setMedAmountMorning] = useState("");
@@ -407,7 +412,6 @@ export default function MedicalConsultationsCard({
     label: string;
   }[] = [
       { value: "notes", label: "Notes" },
-      { value: "prescription", label: "Prescription" },
       { value: "invoice", label: "Invoice" },
       { value: "file", label: "File" },
       { value: "photo", label: "Photo" },
@@ -1778,6 +1782,9 @@ export default function MedicalConsultationsCard({
                     setInvoiceSelectedCategoryId("");
                     setInvoiceSelectedServiceId("");
                     setMedProductName("");
+                    setMedSearchQuery("");
+                    setMedSearchResults([]);
+                    setMedDropdownOpen(false);
                     setMedProductType("MEDICATION");
                     setMedIntakeKind("FIXED");
                     setMedAmountMorning("");
@@ -2320,6 +2327,9 @@ export default function MedicalConsultationsCard({
 
                       // Reset medication form state
                       setMedProductName("");
+                      setMedSearchQuery("");
+                      setMedSearchResults([]);
+                      setMedDropdownOpen(false);
                       setMedProductType("MEDICATION");
                       setMedIntakeKind("FIXED");
                       setMedAmountMorning("");
@@ -4066,13 +4076,83 @@ export default function MedicalConsultationsCard({
                       <label className="block text-[11px] font-medium text-slate-700">
                         Product Name *
                       </label>
-                      <input
-                        type="text"
-                        value={medProductName}
-                        onChange={(e) => setMedProductName(e.target.value)}
-                        placeholder="e.g. Paracetamol 500mg"
-                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={medSearchQuery}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setMedSearchQuery(val);
+                            setMedProductName(val);
+                            setMedDropdownOpen(true);
+                            if (medSearchTimeoutRef.current) clearTimeout(medSearchTimeoutRef.current);
+                            if (val.trim().length < 2) {
+                              setMedSearchResults([]);
+                              return;
+                            }
+                            medSearchTimeoutRef.current = setTimeout(async () => {
+                              setMedSearchLoading(true);
+                              try {
+                                const res = await fetch(`/api/compendium/search?q=${encodeURIComponent(val.trim())}`);
+                                const data = await res.json();
+                                setMedSearchResults(data.products ?? []);
+                              } catch {
+                                setMedSearchResults([]);
+                              } finally {
+                                setMedSearchLoading(false);
+                              }
+                            }, 300);
+                          }}
+                          onFocus={() => setMedDropdownOpen(true)}
+                          onBlur={() => setTimeout(() => setMedDropdownOpen(false), 150)}
+                          placeholder="Type to search a medicine"
+                          autoComplete="off"
+                          className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 pr-7 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                        {medSearchLoading ? (
+                          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                            <svg className="h-3.5 w-3.5 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                            </svg>
+                          </span>
+                        ) : medSearchQuery ? (
+                          <button
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); setMedSearchQuery(""); setMedProductName(""); setMedSearchResults([]); setMedDropdownOpen(false); }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="2"><path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" /></svg>
+                          </button>
+                        ) : null}
+                        {medDropdownOpen && (
+                          <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg text-xs">
+                            {medSearchResults.length > 0 ? (
+                              medSearchResults.map((item) => (
+                                <li key={item.productNumber}>
+                                  <button
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setMedProductName(item.label);
+                                      setMedSearchQuery(item.label);
+                                      setMedDropdownOpen(false);
+                                      setMedSearchResults([]);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-left text-slate-800 hover:bg-sky-50 hover:text-sky-700"
+                                  >
+                                    {item.label}
+                                  </button>
+                                </li>
+                              ))
+                            ) : (
+                              <li className="px-3 py-2 text-slate-400 italic">
+                                {medSearchLoading ? "Searching..." : medSearchQuery.trim().length < 2 ? "Type at least 2 characters to search..." : "No results found"}
+                              </li>
+                            )}
+                          </ul>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <label className="block text-[11px] font-medium text-slate-700">
