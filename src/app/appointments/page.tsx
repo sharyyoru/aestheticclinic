@@ -3961,6 +3961,7 @@ export default function CalendarPage() {
                       className="w-24 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     >
                       <option value="+41">🇨🇭 +41</option>
+                      <option value="+1">🇫🇷 +33</option>
                       <option value="+971">🇦🇪 +971</option>
                       <option value="+44">🇬🇧 +44</option>
                       <option value="+1">🇺🇸 +1</option>

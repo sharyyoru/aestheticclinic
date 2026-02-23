@@ -217,6 +217,7 @@ export default function NewPatientForm() {
             className="w-28 rounded-lg border border-slate-200 bg-white/90 px-2 py-2 text-sm text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
           >
             <option value="+41">🇨🇭 +41</option>
+            <option value="+33">🇫🇷 +33</option>
             <option value="+971">🇦🇪 +971</option>
             <option value="+44">🇬🇧 +44</option>
             <option value="+1">🇺🇸 +1</option>
