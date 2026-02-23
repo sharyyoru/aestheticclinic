@@ -14,6 +14,12 @@ const DocxPreview = dynamic(() => import('@/components/DocxPreview'), {
   loading: () => <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div></div>
 });
 
+// Dynamic import for TIFF preview (client-side only)
+const TiffPreview = dynamic(() => import('@/components/TiffPreview'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div></div>
+});
+
 interface PatientDocumentsTabProps {
   patientId: string;
   patientName?: string;
@@ -93,6 +99,7 @@ function getMimeType(name: string, metadata?: { mimetype?: string } | null): str
   if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) {
     return `image/${ext === "jpg" ? "jpeg" : ext}`;
   }
+  if (["tiff", "tif"].includes(ext)) return "image/tiff";
   if (["mp4", "webm", "ogg", "mov"].includes(ext)) return `video/${ext}`;
   return "";
 }
@@ -342,7 +349,7 @@ export default function PatientDocumentsTab({
     return () => {
       cancelled = true;
     };
-  }, [patientId, currentPrefix, selectedFile, refreshKey, legacyDocsItems]);
+  }, [patientId, currentPrefix, refreshKey, legacyDocsItems, sortBy, sortOrder]);
 
   const breadcrumbSegments = useMemo(() => {
     const segments = currentPrefix.split("/").filter(Boolean);
@@ -833,11 +840,13 @@ export default function PatientDocumentsTab({
     if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
       return `image/${ext === "jpg" ? "jpeg" : ext}`;
     }
+    if (["tiff", "tif"].includes(ext)) return "image/tiff";
     if (["mp4", "webm", "ogg"].includes(ext)) return `video/${ext}`;
     return "";
   })();
 
-  const isImage = selectedMimeType.startsWith("image/");
+  const isTiff = selectedMimeType === "image/tiff" || (selectedFile && ["tiff", "tif"].includes(getExtension(selectedFile.name)));
+  const isImage = selectedMimeType.startsWith("image/") && !isTiff;
   const isPdf = selectedMimeType === "application/pdf";
   const isVideo = selectedMimeType.startsWith("video/");
 
@@ -1114,7 +1123,8 @@ export default function PatientDocumentsTab({
                     return (
                       <div
                         key={item.path}
-                        className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[11px] transition-all ${
+                        onClick={() => handleSelectFile(item)}
+                        className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[11px] transition-all cursor-pointer ${
                           isSelected
                             ? "border-sky-400 bg-gradient-to-r from-sky-50 to-white shadow-[0_0_0_1px_rgba(56,189,248,0.4)]"
                             : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/60 hover:shadow-sm"
@@ -1292,6 +1302,24 @@ export default function PatientDocumentsTab({
                 <p className="text-[11px] text-slate-500">
                   Unable to generate a preview URL for this file.
                 </p>
+              ) : isTiff ? (
+                <div className="relative group">
+                  <TiffPreview
+                    url={selectedFilePreviewUrl}
+                    className="max-h-[360px] w-auto max-w-full rounded-md border border-slate-200 bg-slate-100 object-contain cursor-pointer transition-transform hover:scale-[1.02]"
+                    onError={(msg) => setError(`TIFF preview error: ${msg}`)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEnlargedImage({ url: selectedFilePreviewUrl, name: selectedFile.name })}
+                    className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                    Enlarge
+                  </button>
+                </div>
               ) : isImage ? (
                 <div className="relative group">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1520,7 +1548,14 @@ export default function PatientDocumentsTab({
             {/* Content */}
             <div className="flex-1 overflow-auto bg-slate-50 p-6">
               <div className="flex items-center justify-center min-h-[400px]">
-                {previewModal.mimeType.startsWith("image/") ? (
+                {previewModal.mimeType === "image/tiff" || previewModal.name.toLowerCase().endsWith('.tiff') || previewModal.name.toLowerCase().endsWith('.tif') ? (
+                  <div className="relative">
+                    <TiffPreview
+                      url={previewModal.url}
+                      className="max-h-[70vh] max-w-full rounded-xl border border-slate-200 bg-white object-contain shadow-lg"
+                    />
+                  </div>
+                ) : previewModal.mimeType.startsWith("image/") ? (
                   <div className="relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
