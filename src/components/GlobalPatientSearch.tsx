@@ -122,7 +122,75 @@ export default function GlobalPatientSearch() {
             if (!filtered.some(f => f.id === m.id)) filtered.push(m);
           }
 
-          setResults(filtered.slice(0, 8));
+          // Score and sort results by relevance
+          const queryLower = trimmed.toLowerCase();
+          const scored = filtered.map(patient => {
+            let score = 0;
+            const firstName = (patient.first_name ?? "").toLowerCase();
+            const lastName = (patient.last_name ?? "").toLowerCase();
+            const fullName = `${firstName} ${lastName}`.trim();
+            const email = (patient.email ?? "").toLowerCase();
+            const phone = (patient.phone ?? "").toLowerCase();
+
+            // Exact full name match = highest priority
+            if (fullName === queryLower) {
+              score += 100;
+            }
+            // Exact first name or last name match
+            else if (firstName === queryLower || lastName === queryLower) {
+              score += 80;
+            }
+            // Name starts with query
+            else if (fullName.startsWith(queryLower) || firstName.startsWith(queryLower) || lastName.startsWith(queryLower)) {
+              score += 60;
+            }
+            // For multi-word queries, check if each word starts a name part
+            else if (words.length > 1) {
+              const allWordsStartName = words.every(word => 
+                firstName.startsWith(word.toLowerCase()) || lastName.startsWith(word.toLowerCase())
+              );
+              if (allWordsStartName) score += 50;
+            }
+            
+            // Contains query in name
+            if (fullName.includes(queryLower)) {
+              score += 20;
+            }
+            
+            // Exact email match
+            if (email === queryLower) {
+              score += 70;
+            }
+            // Email starts with query
+            else if (email.startsWith(queryLower)) {
+              score += 40;
+            }
+            // Email contains query
+            else if (email.includes(queryLower)) {
+              score += 15;
+            }
+
+            // Phone exact match
+            if (phone === queryLower || phone.replace(/\D/g, "") === queryLower.replace(/\D/g, "")) {
+              score += 70;
+            }
+            // Phone contains query
+            else if (phone.includes(queryLower) || phone.replace(/\D/g, "").includes(queryLower.replace(/\D/g, ""))) {
+              score += 25;
+            }
+
+            return { ...patient, _score: score };
+          });
+
+          // Sort by score descending, then by name alphabetically for ties
+          scored.sort((a, b) => {
+            if (b._score !== a._score) return b._score - a._score;
+            const nameA = `${a.first_name ?? ""} ${a.last_name ?? ""}`.toLowerCase();
+            const nameB = `${b.first_name ?? ""} ${b.last_name ?? ""}`.toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+
+          setResults(scored.slice(0, 8));
           setIsOpen(filtered.length > 0);
         }
       } catch (err) {

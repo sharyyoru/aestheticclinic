@@ -154,6 +154,7 @@ export default function PatientsPage() {
 
   const filteredPatients = useMemo(() => {
     const search = searchQuery.trim().toLowerCase();
+    const words = search.split(/\s+/).filter(w => w.length > 0);
     const today = new Date();
     const todayYmd = today.toISOString().slice(0, 10);
     const weekAgoYmd = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
@@ -163,7 +164,7 @@ export default function PatientsPage() {
       .toISOString()
       .slice(0, 10);
 
-    return patients.filter((patient) => {
+    const filtered = patients.filter((patient) => {
       const fullName = `${patient.first_name} ${patient.last_name}`
         .trim()
         .toLowerCase();
@@ -173,7 +174,12 @@ export default function PatientsPage() {
 
       if (search) {
         const haystack = `${fullName} ${email} ${phone} ${dob}`;
-        if (!haystack.includes(search)) return false;
+        // For multi-word search, ensure ALL words match somewhere
+        if (words.length > 1) {
+          if (!words.every(word => haystack.includes(word))) return false;
+        } else {
+          if (!haystack.includes(search)) return false;
+        }
       }
 
       if (ownerFilter === "owner" && ownerNameFilter) {
@@ -203,6 +209,82 @@ export default function PatientsPage() {
 
       return true;
     });
+
+    // If no search query, return filtered results sorted by created_at (default)
+    if (!search) {
+      return filtered;
+    }
+
+    // Score and sort results by relevance when searching
+    const scored = filtered.map(patient => {
+      let score = 0;
+      const firstName = (patient.first_name ?? "").toLowerCase();
+      const lastName = (patient.last_name ?? "").toLowerCase();
+      const fullName = `${firstName} ${lastName}`.trim();
+      const email = (patient.email ?? "").toLowerCase();
+      const phone = (patient.phone ?? "").toLowerCase();
+
+      // Exact full name match = highest priority
+      if (fullName === search) {
+        score += 100;
+      }
+      // Exact first name or last name match
+      else if (firstName === search || lastName === search) {
+        score += 80;
+      }
+      // Name starts with query
+      else if (fullName.startsWith(search) || firstName.startsWith(search) || lastName.startsWith(search)) {
+        score += 60;
+      }
+      // For multi-word queries, check if each word starts a name part
+      else if (words.length > 1) {
+        const allWordsStartName = words.every(word => 
+          firstName.startsWith(word) || lastName.startsWith(word)
+        );
+        if (allWordsStartName) score += 50;
+      }
+      
+      // Contains query in name (additive)
+      if (fullName.includes(search)) {
+        score += 20;
+      }
+      
+      // Exact email match
+      if (email === search) {
+        score += 70;
+      }
+      // Email starts with query
+      else if (email.startsWith(search)) {
+        score += 40;
+      }
+      // Email contains query
+      else if (email.includes(search)) {
+        score += 15;
+      }
+
+      // Phone exact match (normalize digits)
+      const searchDigits = search.replace(/\D/g, "");
+      const phoneDigits = phone.replace(/\D/g, "");
+      if (phone === search || (searchDigits && phoneDigits === searchDigits)) {
+        score += 70;
+      }
+      // Phone contains query
+      else if (phone.includes(search) || (searchDigits && phoneDigits.includes(searchDigits))) {
+        score += 25;
+      }
+
+      return { ...patient, _score: score };
+    });
+
+    // Sort by score descending, then by name alphabetically for ties
+    scored.sort((a, b) => {
+      if (b._score !== a._score) return b._score - a._score;
+      const nameA = `${a.first_name ?? ""} ${a.last_name ?? ""}`.toLowerCase();
+      const nameB = `${b.first_name ?? ""} ${b.last_name ?? ""}`.toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    return scored;
   }, [
     patients,
     searchQuery,
