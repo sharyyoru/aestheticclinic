@@ -745,7 +745,7 @@ export default async function PatientPage({
         ) : null}
 
         {medicalTab === "medication" ? (
-          <MedicationCard patientId={patient.id} />
+          <MedicationCard key={patient.id} patientId={patient.id} />
         ) : null}
 
         {medicalTab === "form_photos" ? (

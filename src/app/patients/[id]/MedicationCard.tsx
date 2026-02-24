@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 type MedicationSubTab = "medicine" | "prescription" | "consumables";
@@ -31,9 +31,14 @@ type PatientPrescription = {
     active: boolean | null;
 };
 
-export default function MedicationCard({ patientId }: { patientId: string }) {
+export default function MedicationCard({ patientId: propPatientId }: { patientId: string }) {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const params = useParams();
+    
+    // Use patientId from URL params (more reliable) or fall back to prop
+    const patientId = (params?.id as string) || propPatientId;
+    
     const [medications, setMedications] = useState<PatientPrescription[]>([]);
     const [loading, setLoading] = useState(false);
     const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -303,7 +308,7 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
-                                    eMediplan PDF
+                                    Generate PDF
                                 </>
                             )}
                         </button>
@@ -428,6 +433,13 @@ function EditMedicationModal({
 }) {
     const [formData, setFormData] = useState({ ...medication });
     const [saving, setSaving] = useState(false);
+    
+    // Compendium search states
+    const [searchQuery, setSearchQuery] = useState(medication.product_name);
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -456,12 +468,93 @@ function EditMedicationModal({
                         <label className="mb-1 block text-xs font-medium text-slate-700">
                             Product Name
                         </label>
-                        <input
-                            type="text"
-                            value={formData.product_name}
-                            onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                        />
+                        <div className="relative">
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setSearchQuery(val);
+                                    setFormData({ ...formData, product_name: val });
+                                    setDropdownOpen(true);
+                                    
+                                    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+                                    if (val.trim().length < 2) {
+                                        setSearchResults([]);
+                                        return;
+                                    }
+                                    searchTimeoutRef.current = setTimeout(async () => {
+                                        setSearchLoading(true);
+                                        try {
+                                            const res = await fetch(`/api/compendium/search?q=${encodeURIComponent(val.trim())}`);
+                                            const data = await res.json();
+                                            setSearchResults(data.products ?? []);
+                                        } catch {
+                                            setSearchResults([]);
+                                        } finally {
+                                            setSearchLoading(false);
+                                        }
+                                    }, 300);
+                                }}
+                                onFocus={() => setDropdownOpen(true)}
+                                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                                placeholder="Type to search a medicine"
+                                autoComplete="off"
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-8 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                            />
+                            {searchLoading ? (
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                                    <svg className="h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                    </svg>
+                                </span>
+                            ) : searchQuery ? (
+                                <button
+                                    type="button"
+                                    onMouseDown={(e) => { 
+                                        e.preventDefault(); 
+                                        setSearchQuery(""); 
+                                        setFormData({ ...formData, product_name: "" }); 
+                                        setSearchResults([]); 
+                                        setDropdownOpen(false); 
+                                    }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <svg viewBox="0 0 16 16" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="2">
+                                        <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                                    </svg>
+                                </button>
+                            ) : null}
+                            
+                            {dropdownOpen && (
+                                <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg text-sm">
+                                    {searchResults.length > 0 ? (
+                                        searchResults.map((item) => (
+                                            <li key={item.productNumber}>
+                                                <button
+                                                    type="button"
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault();
+                                                        setFormData({ ...formData, product_name: item.label });
+                                                        setSearchQuery(item.label);
+                                                        setDropdownOpen(false);
+                                                        setSearchResults([]);
+                                                    }}
+                                                    className="w-full px-3 py-2 text-left text-slate-800 hover:bg-sky-50 hover:text-sky-700"
+                                                >
+                                                    {item.label}
+                                                </button>
+                                            </li>
+                                        ))
+                                    ) : (
+                                        <li className="px-3 py-2 text-slate-400 italic">
+                                            {searchLoading ? "Searching..." : searchQuery.trim().length < 2 ? "Type at least 2 characters to search..." : "No results found"}
+                                        </li>
+                                    )}
+                                </ul>
+                            )}
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-4 gap-3">

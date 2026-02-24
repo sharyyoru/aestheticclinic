@@ -77,10 +77,30 @@ type PatientPrescription = {
   amount_evening: string | null;
   amount_night: string | null;
   intake_from_date: string | null;
+  intake_to_date: string | null;
   intake_note: string | null;
   decision_summary: string | null;
   show_in_mediplan: boolean | null;
   active: boolean | null;
+  quantity: number | null;
+  packaging: string | null;
+};
+
+type ProviderData = {
+  id: string;
+  name: string;
+  specialty: string | null;
+  email: string | null;
+  phone: string | null;
+  gln: string | null;
+  zsr: string | null;
+  street: string | null;
+  street_no: string | null;
+  zip_code: string | null;
+  city: string | null;
+  canton: string | null;
+  salutation: string | null;
+  title: string | null;
 };
 
 type ClinicSettings = {
@@ -214,7 +234,7 @@ async function generateQRCode(data: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { patientId, tabType } = body;
+    const { patientId, tabType, providerId } = body;
 
     if (!patientId) {
       return NextResponse.json({ error: "Patient ID is required" }, { status: 400 });
@@ -234,6 +254,27 @@ export async function POST(request: NextRequest) {
 
     if (patientError || !patient) {
       return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+    }
+
+    // Fetch provider data if providerId is provided
+    let provider: ProviderData | null = null;
+    if (providerId) {
+      const { data: providerData } = await supabase
+        .from("providers")
+        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, salutation, title")
+        .eq("id", providerId)
+        .single();
+      provider = providerData as ProviderData | null;
+    }
+
+    // If no provider specified, try to get the first provider
+    if (!provider) {
+      const { data: defaultProvider } = await supabase
+        .from("providers")
+        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, salutation, title")
+        .limit(1)
+        .single();
+      provider = defaultProvider as ProviderData | null;
     }
 
     // Fetch active medications
@@ -272,7 +313,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No medications found for eMediplan" }, { status: 400 });
     }
 
-    // Fetch clinic settings
+    // Fetch clinic settings (as fallback)
     const { data: settingsData } = await supabase
       .from("settings")
       .select("key, value")
@@ -313,84 +354,6 @@ export async function POST(request: NextRequest) {
     // Generate QR code
     const qrCodeDataUrl = await generateQRCode(chmedJson);
 
-    // Generate PDF
-    const pdf = new jsPDF({
-      orientation: "landscape",
-      unit: "mm",
-      format: "a4",
-    });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 15;
-    let yPos = margin;
-
-    // Header section
-    // eMediplan logo area (left)
-    pdf.setFillColor(0, 150, 200);
-    pdf.setDrawColor(0, 150, 200);
-    
-    // Draw eMediplan text/logo
-    pdf.setFontSize(20);
-    pdf.setTextColor(0, 150, 200);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("eMediplan", margin, yPos + 8);
-    
-    pdf.setFontSize(9);
-    pdf.setTextColor(0, 150, 200);
-    pdf.text("Le plan de médication suisse", margin, yPos + 14);
-
-    // Patient info (center-left)
-    const patientName = `${patient.last_name?.toUpperCase() || ""} ${patient.first_name || ""}`.trim();
-    const patientDob = patient.dob
-      ? new Date(patient.dob).toLocaleDateString("fr-CH")
-      : "";
-    const patientGender = patient.gender === "female" || patient.gender === "Female" ? "(F)" : patient.gender === "male" || patient.gender === "Male" ? "(M)" : "";
-
-    pdf.setFontSize(14);
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFont("helvetica", "bold");
-    pdf.text(patientName, 85, yPos + 5);
-
-    pdf.setFontSize(9);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`${patientDob} ${patientGender}`, 85, yPos + 11);
-    
-    if (patient.street_address || patient.town) {
-      const address = [patient.street_address, patient.town].filter(Boolean).join(", ");
-      pdf.text(address, 85, yPos + 16);
-    }
-
-    // Provider info (center-right)
-    pdf.setFontSize(8);
-    pdf.setTextColor(100, 100, 100);
-    pdf.text("Imprimé par :", 170, yPos + 2);
-    
-    pdf.setTextColor(0, 0, 0);
-    pdf.setFontSize(9);
-    const doctorName = settings.doctor_name || "Docteur";
-    pdf.text(doctorName, 170, yPos + 7);
-    
-    if (settings.clinic_address) {
-      pdf.text(settings.clinic_address, 170, yPos + 12);
-    }
-    if (settings.clinic_postal_code || settings.clinic_city) {
-      pdf.text(`${settings.clinic_postal_code || ""} ${settings.clinic_city || ""}`.trim(), 170, yPos + 17);
-    }
-    if (settings.rcc_number) {
-      pdf.text(`No RCC: ${settings.rcc_number}`, 170, yPos + 22);
-    }
-    if (settings.clinic_phone) {
-      pdf.text(settings.clinic_phone, 170, yPos + 27);
-    }
-
-    // QR Code (far right) - larger size for better scanning
-    const qrSize = 35;
-    pdf.addImage(qrCodeDataUrl, "PNG", pageWidth - margin - qrSize, yPos, qrSize, qrSize);
-
-    yPos += 42;
-
-    // Date of emission
     const now = new Date();
     const emissionDate = now.toLocaleDateString("fr-CH", {
       day: "2-digit",
@@ -402,170 +365,301 @@ export async function POST(request: NextRequest) {
       minute: "2-digit",
     });
 
-    pdf.setFontSize(9);
-    pdf.setTextColor(0, 0, 0);
-    pdf.text(`Date d'émission: ${emissionDate} ${emissionTime}`, margin, yPos);
-    yPos += 8;
+    let pdfBase64: string;
+    let filename: string;
 
-    // Table header
-    const colWidths = {
-      medicament: 65,
-      matin: 14,
-      midi: 14,
-      soir: 14,
-      nuit: 14,
-      unite: 14,
-      de: 22,
-      jusqua: 22,
-      instructions: 35,
-      raison: 25,
-      prescrit: 28,
-    };
+    // Generate different PDF formats based on tab type
+    if (validTabType === "prescription") {
+      // ========== ORDONNANCE FORMAT (Portrait) ==========
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
 
-    const tableStartX = margin;
-    let tableX = tableStartX;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      let yPos = margin;
 
-    // Draw header background
-    pdf.setFillColor(240, 240, 240);
-    pdf.rect(margin, yPos, pageWidth - 2 * margin, 8, "F");
+      // === HEADER SECTION ===
+      pdf.setFontSize(10);
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont("helvetica", "normal");
 
-    pdf.setFontSize(7.5);
-    pdf.setFont("helvetica", "bold");
-    pdf.setTextColor(0, 0, 0);
+      const doctorTitle = provider?.title || provider?.salutation || "Docteur";
+      const doctorName = provider?.name || settings.doctor_name || "Docteur";
+      const doctorFullName = `${doctorTitle} ${doctorName}`.trim();
+      
+      pdf.text(doctorFullName, margin, yPos);
+      yPos += 5;
 
-    // Header cells
-    pdf.text("Médicament", tableX + 2, yPos + 5);
-    tableX += colWidths.medicament;
-    
-    pdf.text("Matin", tableX + 1, yPos + 5);
-    tableX += colWidths.matin;
-    
-    pdf.text("Midi", tableX + 1, yPos + 5);
-    tableX += colWidths.midi;
-    
-    pdf.text("Soir", tableX + 1, yPos + 5);
-    tableX += colWidths.soir;
-    
-    pdf.text("Nuit", tableX + 1, yPos + 5);
-    tableX += colWidths.nuit;
-    
-    pdf.text("Unité", tableX + 1, yPos + 5);
-    tableX += colWidths.unite;
-    
-    pdf.text("De", tableX + 1, yPos + 5);
-    tableX += colWidths.de;
-    
-    pdf.text("Jusqu'à y c.", tableX + 1, yPos + 5);
-    tableX += colWidths.jusqua;
-    
-    pdf.text("Instructions", tableX + 1, yPos + 5);
-    tableX += colWidths.instructions;
-    
-    pdf.text("Raison", tableX + 1, yPos + 5);
-    tableX += colWidths.raison;
-    
-    pdf.text("Prescrit par", tableX + 1, yPos + 5);
-
-    yPos += 10;
-
-    // Draw table border
-    pdf.setDrawColor(200, 200, 200);
-    pdf.line(margin, yPos - 2, pageWidth - margin, yPos - 2);
-
-    // Table rows
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(7.5);
-
-    for (const med of mediplanMeds) {
-      tableX = tableStartX;
-
-      // Check if we need a new page
-      if (yPos > pageHeight - 25) {
-        pdf.addPage();
-        yPos = margin;
+      if (provider?.street) {
+        const streetFull = provider.street_no 
+          ? `${provider.street} ${provider.street_no}` 
+          : provider.street;
+        pdf.text(streetFull, margin, yPos);
+        yPos += 5;
+      } else if (settings.clinic_address) {
+        pdf.text(settings.clinic_address, margin, yPos);
+        yPos += 5;
       }
 
-      // Medication name
-      const productName = med.product_name || "Unknown";
-      pdf.text(productName.substring(0, 50), tableX + 2, yPos + 4);
-      tableX += colWidths.medicament;
+      if (provider?.zip_code || provider?.city) {
+        pdf.text(`${provider.zip_code || ""} ${provider.city || ""}`.trim(), margin, yPos);
+        yPos += 5;
+      } else if (settings.clinic_postal_code || settings.clinic_city) {
+        pdf.text(`${settings.clinic_postal_code || ""} ${settings.clinic_city || ""}`.trim(), margin, yPos);
+        yPos += 5;
+      }
 
-      // Dosage: morning, noon, evening, night
-      const morning = med.amount_morning || "-";
-      const noon = med.amount_noon || "-";
-      const evening = med.amount_evening || "-";
-      const night = med.amount_night || "-";
+      pdf.setTextColor(0, 128, 128);
+      if (provider?.gln) {
+        pdf.text(`No RCC ${provider.gln}`, margin, yPos);
+        yPos += 5;
+      } else if (settings.rcc_number) {
+        pdf.text(`No RCC ${settings.rcc_number}`, margin, yPos);
+        yPos += 5;
+      }
 
-      pdf.text(morning, tableX + 3, yPos + 4);
-      tableX += colWidths.matin;
+      pdf.setTextColor(0, 0, 0);
+      if (provider?.phone) {
+        pdf.text(provider.phone, margin, yPos);
+        yPos += 5;
+      } else if (settings.clinic_phone) {
+        pdf.text(settings.clinic_phone, margin, yPos);
+        yPos += 5;
+      }
+
+      if (provider?.zsr) {
+        pdf.text(`ZSR: ${provider.zsr}`, margin, yPos);
+      }
+
+      // QR Code (top-right)
+      const qrSize = 40;
+      const qrX = pageWidth - margin - qrSize;
+      const qrY = margin;
+      pdf.addImage(qrCodeDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
+
+      pdf.setFontSize(7);
+      pdf.setTextColor(100, 100, 100);
+      const qrDescription = "Grâce au QR code, vous pouvez lire les données de l'ordonnance dans votre système et ne devez pas les ressaisir manuellement.";
+      const qrLines = pdf.splitTextToSize(qrDescription, qrSize);
+      pdf.text(qrLines, qrX, qrY + qrSize + 3);
+
+      // === TITLE SECTION ===
+      yPos = margin + 55;
+      pdf.setFontSize(18);
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Ordonnance", margin, yPos);
       
-      pdf.text(noon, tableX + 3, yPos + 4);
-      tableX += colWidths.midi;
+      const titleWidth = pdf.getTextWidth("Ordonnance");
+      pdf.setDrawColor(0, 0, 0);
+      pdf.setLineWidth(0.5);
+      pdf.line(margin, yPos + 1, margin + titleWidth, yPos + 1);
+
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(emissionDate, pageWidth - margin, yPos, { align: "right" });
+
+      yPos += 15;
+
+      // === PATIENT SECTION ===
+      const patientLastName = (patient.last_name || "").toUpperCase();
+      const patientFirstName = patient.first_name || "";
+      const patientDob = patient.dob ? new Date(patient.dob).toLocaleDateString("fr-CH") : "";
+      const patientGenderText = patient.gender === "female" || patient.gender === "Female" 
+        ? "féminin" 
+        : patient.gender === "male" || patient.gender === "Male" ? "masculin" : "";
+
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(`${patientLastName} ${patientFirstName}, ${patientDob}, ${patientGenderText}`, margin, yPos);
+      yPos += 5;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(0, 128, 128);
+      const patientStreet = patient.street_address || "";
+      const patientCityFull = `${patient.postal_code || ""} ${patient.town || ""}`.trim();
+      if (patientStreet || patientCityFull) {
+        pdf.text([patientStreet, patientCityFull].filter(Boolean).join(", "), margin, yPos);
+      }
+
+      yPos += 15;
+      pdf.setTextColor(0, 0, 0);
+
+      // === MEDICATIONS LIST ===
+      for (const med of mediplanMeds) {
+        if (yPos > pageHeight - 40) {
+          pdf.addPage();
+          yPos = margin;
+        }
+
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(10);
+        pdf.text(med.product_name || "Unknown", margin, yPos);
+
+        const dosageText = `${med.amount_morning || "0"}-${med.amount_noon || "0"}-${med.amount_evening || "0"}-${med.amount_night || "0"} (pièce)`;
+        pdf.setFont("helvetica", "normal");
+        pdf.text(dosageText, pageWidth - margin, yPos, { align: "right" });
+
+        yPos += 5;
+        pdf.setTextColor(0, 128, 128);
+        pdf.setFontSize(9);
+        const packagingText = med.intake_note ? `${med.quantity || 1} ${med.intake_note}` : `${med.quantity || 1}x`;
+        pdf.text(packagingText, margin, yPos);
+
+        if (med.intake_to_date) {
+          pdf.text(`Durée du traitement, jusqu'au: ${new Date(med.intake_to_date).toLocaleDateString("fr-CH")}`, pageWidth - margin, yPos, { align: "right" });
+        }
+
+        yPos += 12;
+        pdf.setTextColor(0, 0, 0);
+        pdf.setDrawColor(220, 220, 220);
+        pdf.setLineWidth(0.2);
+        pdf.line(margin, yPos - 5, pageWidth - margin, yPos - 5);
+      }
+
+      // === FOOTER ===
+      const footerY = pageHeight - 15;
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(`Patient: ${patientLastName} ${patientFirstName}, ${patientDob}, ${patientGenderText}`, margin, footerY);
+      pdf.text("1/1", pageWidth - margin, footerY, { align: "right" });
+
+      pdfBase64 = Buffer.from(pdf.output("arraybuffer")).toString("base64");
+      filename = `ordonnance_${patient.last_name}_${patient.first_name}_${emissionDate.replace(/\./g, "-")}.pdf`;
+
+    } else {
+      // ========== EMEDIPLAN FORMAT (Landscape with table) ==========
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 15;
+      let yPos = margin;
+
+      // Header - eMediplan logo
+      pdf.setFontSize(20);
+      pdf.setTextColor(0, 150, 200);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("eMediplan", margin, yPos + 8);
       
-      pdf.text(evening, tableX + 3, yPos + 4);
-      tableX += colWidths.soir;
-      
-      pdf.text(night, tableX + 3, yPos + 4);
-      tableX += colWidths.nuit;
+      pdf.setFontSize(9);
+      pdf.text("Le plan de médication suisse", margin, yPos + 14);
 
-      // Unit
-      pdf.text("pce", tableX + 1, yPos + 4);
-      tableX += colWidths.unite;
+      // Patient info
+      const patientName = `${patient.last_name?.toUpperCase() || ""} ${patient.first_name || ""}`.trim();
+      const patientDob = patient.dob ? new Date(patient.dob).toLocaleDateString("fr-CH") : "";
+      const patientGender = patient.gender === "female" || patient.gender === "Female" ? "(F)" : patient.gender === "male" || patient.gender === "Male" ? "(M)" : "";
 
-      // From date
-      const fromDate = med.intake_from_date
-        ? new Date(med.intake_from_date).toLocaleDateString("fr-CH")
-        : "-";
-      pdf.text(fromDate, tableX + 1, yPos + 4);
-      tableX += colWidths.de;
+      pdf.setFontSize(14);
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(patientName, 85, yPos + 5);
+      pdf.setFontSize(9);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`${patientDob} ${patientGender}`, 85, yPos + 11);
+      if (patient.street_address || patient.town) {
+        pdf.text([patient.street_address, patient.town].filter(Boolean).join(", "), 85, yPos + 16);
+      }
 
-      // To date (usually indefinite)
-      pdf.text("-", tableX + 1, yPos + 4);
-      tableX += colWidths.jusqua;
+      // Provider info
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text("Imprimé par :", 170, yPos + 2);
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFontSize(9);
+      pdf.text(settings.doctor_name || "Docteur", 170, yPos + 7);
+      if (settings.clinic_address) pdf.text(settings.clinic_address, 170, yPos + 12);
+      if (settings.clinic_postal_code || settings.clinic_city) {
+        pdf.text(`${settings.clinic_postal_code || ""} ${settings.clinic_city || ""}`.trim(), 170, yPos + 17);
+      }
 
-      // Instructions
-      const instructions = med.intake_note || "-";
-      pdf.text(instructions.substring(0, 25), tableX + 1, yPos + 4);
-      tableX += colWidths.instructions;
+      // QR Code
+      const qrSize = 35;
+      pdf.addImage(qrCodeDataUrl, "PNG", pageWidth - margin - qrSize, yPos, qrSize, qrSize);
 
-      // Reason
-      const reason = med.decision_summary || "-";
-      pdf.text(reason.substring(0, 18), tableX + 1, yPos + 4);
-      tableX += colWidths.raison;
-
-      // Prescribed by
-      pdf.text(settings.doctor_name || "-", tableX + 1, yPos + 4);
-
+      yPos += 42;
+      pdf.setFontSize(9);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text(`Date d'émission: ${emissionDate} ${emissionTime}`, margin, yPos);
       yPos += 8;
 
-      // Row separator
-      pdf.setDrawColor(230, 230, 230);
-      pdf.line(margin, yPos - 1, pageWidth - margin, yPos - 1);
+      // Table header
+      const colWidths = { medicament: 65, matin: 14, midi: 14, soir: 14, nuit: 14, unite: 14, de: 22, jusqua: 22, instructions: 35, raison: 25, prescrit: 28 };
+      let tableX = margin;
+
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(margin, yPos, pageWidth - 2 * margin, 8, "F");
+      pdf.setFontSize(7.5);
+      pdf.setFont("helvetica", "bold");
+
+      pdf.text("Médicament", tableX + 2, yPos + 5); tableX += colWidths.medicament;
+      pdf.text("Matin", tableX + 1, yPos + 5); tableX += colWidths.matin;
+      pdf.text("Midi", tableX + 1, yPos + 5); tableX += colWidths.midi;
+      pdf.text("Soir", tableX + 1, yPos + 5); tableX += colWidths.soir;
+      pdf.text("Nuit", tableX + 1, yPos + 5); tableX += colWidths.nuit;
+      pdf.text("Unité", tableX + 1, yPos + 5); tableX += colWidths.unite;
+      pdf.text("De", tableX + 1, yPos + 5); tableX += colWidths.de;
+      pdf.text("Jusqu'à", tableX + 1, yPos + 5); tableX += colWidths.jusqua;
+      pdf.text("Instructions", tableX + 1, yPos + 5); tableX += colWidths.instructions;
+      pdf.text("Raison", tableX + 1, yPos + 5); tableX += colWidths.raison;
+      pdf.text("Prescrit par", tableX + 1, yPos + 5);
+
+      yPos += 10;
+      pdf.setDrawColor(200, 200, 200);
+      pdf.line(margin, yPos - 2, pageWidth - margin, yPos - 2);
+
+      // Table rows
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(7.5);
+
+      for (const med of mediplanMeds) {
+        tableX = margin;
+        if (yPos > pageHeight - 25) {
+          pdf.addPage();
+          yPos = margin;
+        }
+
+        pdf.text((med.product_name || "Unknown").substring(0, 50), tableX + 2, yPos + 4); tableX += colWidths.medicament;
+        pdf.text(med.amount_morning || "-", tableX + 3, yPos + 4); tableX += colWidths.matin;
+        pdf.text(med.amount_noon || "-", tableX + 3, yPos + 4); tableX += colWidths.midi;
+        pdf.text(med.amount_evening || "-", tableX + 3, yPos + 4); tableX += colWidths.soir;
+        pdf.text(med.amount_night || "-", tableX + 3, yPos + 4); tableX += colWidths.nuit;
+        pdf.text("pce", tableX + 1, yPos + 4); tableX += colWidths.unite;
+        pdf.text(med.intake_from_date ? new Date(med.intake_from_date).toLocaleDateString("fr-CH") : "-", tableX + 1, yPos + 4); tableX += colWidths.de;
+        pdf.text("-", tableX + 1, yPos + 4); tableX += colWidths.jusqua;
+        pdf.text((med.intake_note || "-").substring(0, 25), tableX + 1, yPos + 4); tableX += colWidths.instructions;
+        pdf.text((med.decision_summary || "-").substring(0, 18), tableX + 1, yPos + 4); tableX += colWidths.raison;
+        pdf.text(settings.doctor_name || "-", tableX + 1, yPos + 4);
+
+        yPos += 8;
+        pdf.setDrawColor(230, 230, 230);
+        pdf.line(margin, yPos - 1, pageWidth - margin, yPos - 1);
+      }
+
+      // Footer
+      yPos = pageHeight - 12;
+      pdf.setFontSize(7);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(`${patient.last_name?.toUpperCase() || ""} ${patient.first_name || ""} (${patientDob})`, margin, yPos);
+      pdf.text("Plan de médication by HCI Solutions AG (V1.0)", pageWidth / 2, yPos, { align: "center" });
+      pdf.text("Page 1 de 1", pageWidth - margin, yPos, { align: "right" });
+
+      pdfBase64 = Buffer.from(pdf.output("arraybuffer")).toString("base64");
+      filename = `emediplan_${patient.last_name}_${patient.first_name}_${emissionDate.replace(/\./g, "-")}.pdf`;
     }
 
-    // Footer
-    yPos = pageHeight - 12;
-    pdf.setFontSize(7);
-    pdf.setTextColor(100, 100, 100);
-    
-    const patientFooter = `${patient.last_name?.toUpperCase() || ""} ${patient.first_name || ""} (${patientDob})`;
-    pdf.text(patientFooter, margin, yPos);
-    
-    pdf.text("Plan de médication by HCI Solutions AG (V1.0)", pageWidth / 2, yPos, { align: "center" });
-    
-    pdf.text("Page 1 de 1", pageWidth - margin, yPos, { align: "right" });
-
-    // Generate PDF buffer
-    const pdfBuffer = Buffer.from(pdf.output("arraybuffer"));
-    const pdfBase64 = pdfBuffer.toString("base64");
-
-    // Include tab type in filename for clarity
-    const tabSuffix = validTabType ? `_${validTabType}` : "";
-    
     return NextResponse.json({
       success: true,
       pdf: pdfBase64,
-      filename: `emediplan_${patient.last_name}_${patient.first_name}${tabSuffix}_${emissionDate.replace(/\./g, "-")}.pdf`,
+      filename: filename,
       chmedObject: chmedObject,
     });
   } catch (error) {
