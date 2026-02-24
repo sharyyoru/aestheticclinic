@@ -173,12 +173,23 @@ export default function PatientsPage() {
       const dob = (patient.dob ?? "").toLowerCase();
 
       if (search) {
-        const haystack = `${fullName} ${email} ${phone} ${dob}`;
-        // For multi-word search, ensure ALL words match somewhere
-        if (words.length > 1) {
-          if (!words.every(word => haystack.includes(word))) return false;
+        // Check if search is DD/MM/YYYY format for birthday search
+        const ddmmyyyyMatch = search.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (ddmmyyyyMatch) {
+          // Convert DD/MM/YYYY to ISO format for matching
+          const day = ddmmyyyyMatch[1].padStart(2, "0");
+          const month = ddmmyyyyMatch[2].padStart(2, "0");
+          const year = ddmmyyyyMatch[3];
+          const isoDate = `${year}-${month}-${day}`;
+          if (dob !== isoDate) return false;
         } else {
-          if (!haystack.includes(search)) return false;
+          const haystack = `${fullName} ${email} ${phone} ${dob}`;
+          // For multi-word search, ensure ALL words match somewhere
+          if (words.length > 1) {
+            if (!words.every(word => haystack.includes(word))) return false;
+          } else {
+            if (!haystack.includes(search)) return false;
+          }
         }
       }
 

@@ -71,24 +71,38 @@ export default function GlobalPatientSearch() {
         const hasDigits = /\d/.test(trimmed);
         let dobQuery = null;
         if (hasDigits) {
-          // Try exact date match first (e.g. "1998-08-21")
-          const dateMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-          if (dateMatch) {
+          // Try DD/MM/YYYY format first (e.g. "28/10/1985")
+          const ddmmyyyyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (ddmmyyyyMatch) {
+            const day = ddmmyyyyMatch[1].padStart(2, "0");
+            const month = ddmmyyyyMatch[2].padStart(2, "0");
+            const year = ddmmyyyyMatch[3];
+            const isoDate = `${year}-${month}-${day}`;
             dobQuery = supabaseClient
               .from("patients")
               .select("id, first_name, last_name, email, phone, dob")
-              .eq("dob", trimmed)
+              .eq("dob", isoDate)
               .limit(10);
           } else {
-            // Year-only search (e.g. "1998")
-            const yearMatch = trimmed.match(/^(\d{4})$/);
-            if (yearMatch) {
+            // Try exact date match (e.g. "1998-08-21")
+            const dateMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+            if (dateMatch) {
               dobQuery = supabaseClient
                 .from("patients")
                 .select("id, first_name, last_name, email, phone, dob")
-                .gte("dob", `${yearMatch[1]}-01-01`)
-                .lte("dob", `${yearMatch[1]}-12-31`)
+                .eq("dob", trimmed)
                 .limit(10);
+            } else {
+              // Year-only search (e.g. "1998")
+              const yearMatch = trimmed.match(/^(\d{4})$/);
+              if (yearMatch) {
+                dobQuery = supabaseClient
+                  .from("patients")
+                  .select("id, first_name, last_name, email, phone, dob")
+                  .gte("dob", `${yearMatch[1]}-01-01`)
+                  .lte("dob", `${yearMatch[1]}-12-31`)
+                  .limit(10);
+              }
             }
           }
         }
