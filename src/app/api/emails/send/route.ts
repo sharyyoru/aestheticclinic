@@ -243,7 +243,7 @@ export async function POST(request: Request) {
         if (!insertError && insertedEmail) {
           createdEmailId = insertedEmail.id;
           // Update formData with the new email ID for tracking
-          formData.append("v:email-id", createdEmailId);
+          formData.append("v:email-id", createdEmailId || "");
         } else {
           console.error("Error creating email record:", insertError);
         }
