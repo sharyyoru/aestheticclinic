@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
@@ -735,6 +735,16 @@ export default function CalendarPage() {
   const [dragEndMinutes, setDragEndMinutes] = useState<number | null>(null);
   const [dragDate, setDragDate] = useState<Date | null>(null);
   const [dragDoctorCalendarId, setDragDoctorCalendarId] = useState<string | null>(null);
+  
+  // Refs for touch event handling on iPad/tablets
+  const dayViewContainerRef = useRef<HTMLDivElement>(null);
+  const touchDragInfoRef = useRef<{
+    date: Date;
+    doctorCalendarId: string | null;
+    containerTop: number;
+    slotHeight: number;
+    startMinutesOffset: number;
+  } | null>(null);
   
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -1608,6 +1618,7 @@ export default function CalendarPage() {
       setDragStartMinutes(null);
       setDragEndMinutes(null);
       setDragDate(null);
+      touchDragInfoRef.current = null;
       return;
     }
 
@@ -1660,7 +1671,65 @@ export default function CalendarPage() {
     setDragEndMinutes(null);
     setDragDate(null);
     setDragDoctorCalendarId(null);
+    touchDragInfoRef.current = null;
   }
+
+  // Touch event handlers for iPad/tablet drag-to-create
+  const handleTouchStart = useCallback((
+    e: React.TouchEvent,
+    date: Date,
+    totalMinutes: number,
+    doctorCalendarId: string | null,
+    slotElement: HTMLDivElement | null
+  ) => {
+    if (!slotElement) return;
+    
+    // Prevent default to avoid scroll while dragging
+    e.preventDefault();
+    
+    const rect = slotElement.getBoundingClientRect();
+    const containerRect = slotElement.parentElement?.getBoundingClientRect();
+    
+    touchDragInfoRef.current = {
+      date,
+      doctorCalendarId,
+      containerTop: containerRect?.top ?? rect.top,
+      slotHeight: DAY_VIEW_SLOT_HEIGHT,
+      startMinutesOffset: DAY_VIEW_START_MINUTES,
+    };
+    
+    handleDragCreateStart(date, totalMinutes, doctorCalendarId);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDraggingCreate || !touchDragInfoRef.current) return;
+    
+    e.preventDefault();
+    
+    const touch = e.touches[0];
+    if (!touch) return;
+    
+    const { containerTop, slotHeight, startMinutesOffset } = touchDragInfoRef.current;
+    
+    // Calculate which time slot the touch is over
+    const relativeY = touch.clientY - containerTop;
+    const slotIndex = Math.floor(relativeY / slotHeight);
+    const totalMinutes = startMinutesOffset + (slotIndex * DAY_VIEW_SLOT_MINUTES);
+    
+    // Clamp to valid range
+    const clampedMinutes = Math.max(
+      DAY_VIEW_START_MINUTES,
+      Math.min(totalMinutes, DAY_VIEW_END_MINUTES - DAY_VIEW_SLOT_MINUTES)
+    );
+    
+    handleDragCreateMove(clampedMinutes);
+  }, [isDraggingCreate]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!isDraggingCreate) return;
+    e.preventDefault();
+    handleDragCreateEnd();
+  }, [isDraggingCreate, dragStartMinutes, dragEndMinutes, dragDate, dragDoctorCalendarId, doctorCalendars]);
 
   function formatTimeLabel(totalMinutes: number): string {
     if (totalMinutes === DAY_VIEW_END_MINUTES - DAY_VIEW_SLOT_MINUTES) {
@@ -2328,11 +2397,27 @@ export default function CalendarPage() {
                   type="button"
                   onMouseDown={() => handleMiniDayMouseDown(date)}
                   onMouseEnter={() => handleMiniDayMouseEnter(date)}
+                  onTouchStart={() => handleMiniDayMouseDown(date)}
+                  onTouchMove={(e) => {
+                    if (!isDraggingRange) return;
+                    const touch = e.touches[0];
+                    if (!touch) return;
+                    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                    const dateAttr = element?.getAttribute('data-mini-date');
+                    if (dateAttr) {
+                      const [y, m, d] = dateAttr.split('-').map(Number);
+                      if (y && m && d) {
+                        handleMiniDayMouseEnter(new Date(y, m - 1, d));
+                      }
+                    }
+                  }}
+                  onTouchEnd={() => setIsDraggingRange(false)}
                   onClick={() =>
                     setVisibleMonth(
                       new Date(date.getFullYear(), date.getMonth(), 1),
                     )
                   }
+                  data-mini-date={ymd}
                   className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] ${
                     isCurrentMonth ? "text-slate-700" : "text-slate-400"
                   } ${
@@ -2667,6 +2752,9 @@ export default function CalendarPage() {
                     onClick={() => handleMonthDayClick(date)}
                     onMouseDown={() => handleMiniDayMouseDown(date)}
                     onMouseEnter={() => handleMiniDayMouseEnter(date)}
+                    onTouchStart={() => handleMiniDayMouseDown(date)}
+                    onTouchEnd={() => setIsDraggingRange(false)}
+                    data-month-date={ymd}
                     className={`flex min-h-[96px] flex-col border-b border-r border-slate-100 px-2 py-1 text-left last:border-r-0 ${
                       isCurrentMonth ? "bg-white" : "bg-slate-50/80 text-slate-400"
                     } ${inRange ? "bg-sky-50" : ""}`}
@@ -2874,13 +2962,18 @@ export default function CalendarPage() {
                             return (
                               <div
                                 key={doctorCol?.id ?? "all"}
+                                ref={dayViewContainerRef}
                                 className={`relative flex-1 ${colIdx < doctorColumns.length - 1 ? "border-r border-slate-100" : ""}`}
+                                style={{ touchAction: isDraggingCreate ? 'none' : 'auto' }}
                                 onMouseLeave={() => {
                                   if (isDraggingCreate) handleDragCreateEnd();
                                 }}
                                 onMouseUp={() => {
                                   if (isDraggingCreate) handleDragCreateEnd();
                                 }}
+                                onTouchMove={handleTouchMove}
+                                onTouchEnd={handleTouchEnd}
+                                onTouchCancel={handleTouchEnd}
                               >
                                 {/* Horizontal slot lines / draggable empty timeslots */}
                                 {timeSlots.map((totalMinutes) => {
@@ -2904,10 +2997,13 @@ export default function CalendarPage() {
                                           handleDragCreateMove(totalMinutes);
                                         }
                                       }}
+                                      onTouchStart={(e) => {
+                                        handleTouchStart(e, date, totalMinutes, doctorCol?.id ?? null, e.currentTarget);
+                                      }}
                                       className={`block w-full border-t border-slate-100 cursor-pointer hover:bg-sky-50 transition-colors ${
                                         isInDragRange ? "bg-sky-100" : ""
                                       }`}
-                                      style={{ height: DAY_VIEW_SLOT_HEIGHT }}
+                                      style={{ height: DAY_VIEW_SLOT_HEIGHT, touchAction: 'none' }}
                                     />
                                   );
                                 })}
