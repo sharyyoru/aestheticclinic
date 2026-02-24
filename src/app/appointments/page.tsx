@@ -1265,7 +1265,7 @@ export default function CalendarPage() {
 
   const gridDates = useMemo(() => {
     const dates: Date[] = [];
-    const firstDayOfWeek = 0; // Sunday
+    const firstDayOfWeek = 1; // Monday
     const firstOfMonth = new Date(
       visibleMonth.getFullYear(),
       visibleMonth.getMonth(),
@@ -1516,7 +1516,9 @@ export default function CalendarPage() {
       base.getDate(),
     );
     const weekday = start.getDay();
-    start.setDate(start.getDate() - weekday);
+    // Adjust to make Monday the first day of the week (0=Sunday, 1=Monday, ..., 6=Saturday)
+    const adjustedWeekday = weekday === 0 ? 6 : weekday - 1;
+    start.setDate(start.getDate() - adjustedWeekday);
 
     const end = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     end.setDate(start.getDate() + 6);
@@ -2153,6 +2155,9 @@ export default function CalendarPage() {
   function goToToday() {
     const now = new Date();
     setVisibleMonth(new Date(now.getFullYear(), now.getMonth(), 1));
+    setSelectedDate(now);
+    setRangeEndDate(null);
+    setView("day");
   }
 
   function goPrevMonth() {
@@ -2293,7 +2298,7 @@ export default function CalendarPage() {
             </button>
           </div>
           <div className="grid grid-cols-7 text-[9px] font-medium uppercase tracking-wide text-slate-500">
-            {["S", "M", "T", "W", "T", "F", "S"].map((label, index) => (
+            {["M", "T", "W", "T", "F", "S", "S"].map((label, index) => (
               <div key={`${label}-${index}`} className="px-1 py-0.5 text-center">
                 {label}
               </div>
@@ -2639,7 +2644,7 @@ export default function CalendarPage() {
         {view === "month" ? (
           <div className="flex-1 flex flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
             <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium uppercase tracking-wide text-slate-500 sticky top-0 z-10">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
                 <div key={label} className="px-3 py-2">
                   {label}
                 </div>
