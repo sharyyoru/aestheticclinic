@@ -70,6 +70,8 @@ type PatientPrescription = {
   patient_id: string;
   product_name: string;
   product_no: number | null;
+  product_type: string | null;
+  prescription_sheet_id: string | null;
   amount_morning: string | null;
   amount_noon: string | null;
   amount_evening: string | null;
@@ -212,11 +214,14 @@ async function generateQRCode(data: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { patientId } = body;
+    const { patientId, tabType } = body;
 
     if (!patientId) {
       return NextResponse.json({ error: "Patient ID is required" }, { status: 400 });
     }
+
+    // Validate tabType - defaults to showing all if not specified
+    const validTabType = tabType === "medicine" || tabType === "prescription" ? tabType : null;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -243,10 +248,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch medications" }, { status: 500 });
     }
 
-    // Filter to only show medications that should appear in mediplan
-    const mediplanMeds = (medications || []).filter(
+    // Filter medications based on tab type (same logic as MedicationCard.tsx)
+    let filteredMeds = (medications || []).filter(
       (med: PatientPrescription) => med.show_in_mediplan !== false
     );
+
+    if (validTabType === "prescription") {
+      // Prescription tab: only items with prescription_sheet_id
+      filteredMeds = filteredMeds.filter(
+        (med: PatientPrescription) => med.prescription_sheet_id !== null
+      );
+    } else if (validTabType === "medicine") {
+      // Medicine tab: no prescription_sheet_id AND product_type is MEDICATION
+      filteredMeds = filteredMeds.filter(
+        (med: PatientPrescription) =>
+          med.prescription_sheet_id === null && med.product_type === "MEDICATION"
+      );
+    }
+
+    const mediplanMeds = filteredMeds;
 
     if (mediplanMeds.length === 0) {
       return NextResponse.json({ error: "No medications found for eMediplan" }, { status: 400 });
@@ -539,10 +559,13 @@ export async function POST(request: NextRequest) {
     const pdfBuffer = Buffer.from(pdf.output("arraybuffer"));
     const pdfBase64 = pdfBuffer.toString("base64");
 
+    // Include tab type in filename for clarity
+    const tabSuffix = validTabType ? `_${validTabType}` : "";
+    
     return NextResponse.json({
       success: true,
       pdf: pdfBase64,
-      filename: `emediplan_${patient.last_name}_${patient.first_name}_${emissionDate.replace(/\./g, "-")}.pdf`,
+      filename: `emediplan_${patient.last_name}_${patient.first_name}${tabSuffix}_${emissionDate.replace(/\./g, "-")}.pdf`,
       chmedObject: chmedObject,
     });
   } catch (error) {

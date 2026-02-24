@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
@@ -37,6 +37,9 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
     const [medications, setMedications] = useState<PatientPrescription[]>([]);
     const [loading, setLoading] = useState(false);
     const [generatingPdf, setGeneratingPdf] = useState(false);
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [editingMedication, setEditingMedication] = useState<PatientPrescription | null>(null);
+    const [patientEmail, setPatientEmail] = useState<string | null>(null);
 
     const rawSubTab = searchParams?.get("med_sub");
     const subTab: MedicationSubTab =
@@ -46,7 +49,17 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
 
     useEffect(() => {
         loadMedications();
+        loadPatientEmail();
     }, [patientId]);
+
+    async function loadPatientEmail() {
+        const { data } = await supabaseClient
+            .from("patients")
+            .select("email")
+            .eq("id", patientId)
+            .single();
+        if (data) setPatientEmail(data.email);
+    }
 
     async function loadMedications() {
         setLoading(true);
@@ -95,14 +108,111 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
         router.push(`?${params.toString()}`);
     }
 
-    async function handleGenerateEmediplanPdf() {
+    async function handleDeleteMedication(journalEntryId: string) {
+        if (!confirm("Are you sure you want to delete this item?")) return;
+        
+        const { error } = await supabaseClient
+            .from("patient_prescriptions")
+            .update({ active: false })
+            .eq("journal_entry_id", journalEntryId);
+
+        if (error) {
+            alert("Failed to delete item");
+            console.error(error);
+            return;
+        }
+        
+        loadMedications();
+    }
+
+    async function handleUpdateMedication(medication: PatientPrescription) {
+        const { error } = await supabaseClient
+            .from("patient_prescriptions")
+            .update({
+                product_name: medication.product_name,
+                amount_morning: medication.amount_morning,
+                amount_noon: medication.amount_noon,
+                amount_evening: medication.amount_evening,
+                amount_night: medication.amount_night,
+                intake_note: medication.intake_note,
+                decision_summary: medication.decision_summary,
+                quantity: medication.quantity,
+            })
+            .eq("journal_entry_id", medication.journal_entry_id);
+
+        if (error) {
+            alert("Failed to update item");
+            console.error(error);
+            return;
+        }
+        
+        setEditingMedication(null);
+        loadMedications();
+    }
+
+    async function handleSendEmediplanEmail(tabType: "medicine" | "prescription") {
+        if (!patientEmail) {
+            alert("Patient does not have an email address");
+            return;
+        }
+
+        try {
+            setSendingEmail(true);
+
+            // First generate the PDF
+            const pdfResponse = await fetch("/api/emediplan/generate-pdf", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ patientId, tabType }),
+            });
+
+            const pdfData = await pdfResponse.json();
+
+            if (!pdfResponse.ok) {
+                throw new Error(pdfData.error || "Failed to generate eMediplan PDF");
+            }
+
+            // Send email with attachment
+            const emailResponse = await fetch("/api/emails/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    patientId,
+                    to: patientEmail,
+                    subject: `Your Medication Plan - eMediplan`,
+                    html: `<p>Hello,</p><p>Please find attached your medication plan (eMediplan).</p><p>Best regards,<br/>Your Medical Team</p>`,
+                    inlineAttachments: [{
+                        filename: pdfData.filename,
+                        content: pdfData.pdf,
+                        encoding: "base64",
+                        contentType: "application/pdf",
+                    }],
+                }),
+            });
+
+            const emailData = await emailResponse.json();
+
+            if (!emailResponse.ok) {
+                throw new Error(emailData.error || "Failed to send email");
+            }
+
+            alert("eMediplan sent successfully to " + patientEmail);
+        } catch (error) {
+            console.error("Error sending eMediplan email:", error);
+            alert(error instanceof Error ? error.message : "Failed to send eMediplan email");
+        } finally {
+            setSendingEmail(false);
+        }
+    }
+
+    async function handleGenerateEmediplanPdf(tabType: "medicine" | "prescription") {
         try {
             setGeneratingPdf(true);
 
             const response = await fetch("/api/emediplan/generate-pdf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ patientId }),
+                body: JSON.stringify({ patientId, tabType }),
             });
 
             const data = await response.json();
@@ -172,30 +282,55 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
                     </button>
                 </nav>
                 
-                {/* Generate eMediplan PDF Button */}
-                {subTab === "medicine" && filteredMedications.length > 0 && (
-                    <button
-                        onClick={handleGenerateEmediplanPdf}
-                        disabled={generatingPdf}
-                        className="mb-1 inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 shadow-sm transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        {generatingPdf ? (
-                            <>
-                                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                </svg>
-                                Generating...
-                            </>
-                        ) : (
-                            <>
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                eMediplan PDF
-                            </>
-                        )}
-                    </button>
+                {/* Generate eMediplan PDF and Send to Email Buttons */}
+                {(subTab === "medicine" || subTab === "prescription") && filteredMedications.length > 0 && (
+                    <div className="mb-1 flex items-center gap-2">
+                        <button
+                            onClick={() => handleGenerateEmediplanPdf(subTab)}
+                            disabled={generatingPdf || sendingEmail}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 shadow-sm transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {generatingPdf ? (
+                                <>
+                                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    Generating...
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    eMediplan PDF
+                                </>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => handleSendEmediplanEmail(subTab)}
+                            disabled={sendingEmail || generatingPdf}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={patientEmail ? `Send to ${patientEmail}` : "No patient email"}
+                        >
+                            {sendingEmail ? (
+                                <>
+                                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                    Sending...
+                                </>
+                            ) : (
+                                <>
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                    Send to Email
+                                </>
+                            )}
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -239,7 +374,11 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
                                                 </svg>
                                             </button>
                                         </div>
-                                        <PrescriptionTable medications={items} />
+                                        <PrescriptionTable 
+                                            medications={items} 
+                                            onDelete={handleDeleteMedication}
+                                            onEdit={setEditingMedication}
+                                        />
                                     </div>
                                 );
                             })
@@ -265,10 +404,164 @@ export default function MedicationCard({ patientId }: { patientId: string }) {
                     )}
                 </div>
             )}
+
+            {/* Edit Modal */}
+            {editingMedication && (
+                <EditMedicationModal
+                    medication={editingMedication}
+                    onClose={() => setEditingMedication(null)}
+                    onSave={handleUpdateMedication}
+                />
+            )}
         </div>
     );
 }
 
+function EditMedicationModal({
+    medication,
+    onClose,
+    onSave,
+}: {
+    medication: PatientPrescription;
+    onClose: () => void;
+    onSave: (medication: PatientPrescription) => void;
+}) {
+    const [formData, setFormData] = useState({ ...medication });
+    const [saving, setSaving] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSaving(true);
+        await onSave(formData);
+        setSaving(false);
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+                <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-slate-900">Edit Medication</h3>
+                    <button
+                        onClick={onClose}
+                        className="rounded-full p-1 hover:bg-slate-100"
+                    >
+                        <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">
+                            Product Name
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.product_name}
+                            onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-3">
+                        <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-700">Morning</label>
+                            <input
+                                type="text"
+                                value={formData.amount_morning || ""}
+                                onChange={(e) => setFormData({ ...formData, amount_morning: e.target.value })}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                placeholder="-"
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-700">Noon</label>
+                            <input
+                                type="text"
+                                value={formData.amount_noon || ""}
+                                onChange={(e) => setFormData({ ...formData, amount_noon: e.target.value })}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                placeholder="-"
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-700">Evening</label>
+                            <input
+                                type="text"
+                                value={formData.amount_evening || ""}
+                                onChange={(e) => setFormData({ ...formData, amount_evening: e.target.value })}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                placeholder="-"
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-medium text-slate-700">Night</label>
+                            <input
+                                type="text"
+                                value={formData.amount_night || ""}
+                                onChange={(e) => setFormData({ ...formData, amount_night: e.target.value })}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                placeholder="-"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">Quantity</label>
+                        <input
+                            type="number"
+                            value={formData.quantity || ""}
+                            onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || null })}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">
+                            Instructions (Intake Note)
+                        </label>
+                        <textarea
+                            value={formData.intake_note || ""}
+                            onChange={(e) => setFormData({ ...formData, intake_note: e.target.value })}
+                            rows={2}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-700">
+                            Reason (Decision Summary)
+                        </label>
+                        <textarea
+                            value={formData.decision_summary || ""}
+                            onChange={(e) => setFormData({ ...formData, decision_summary: e.target.value })}
+                            rows={2}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        />
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={saving}
+                            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {saving ? "Saving..." : "Save Changes"}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
 
 function MedicationTable({ medications }: { medications: PatientPrescription[] }) {
     return (
@@ -417,13 +710,26 @@ function MedicationTableRow({ medication }: { medication: PatientPrescription })
 }
 
 
-function PrescriptionTable({ medications }: { medications: PatientPrescription[] }) {
+function PrescriptionTable({ 
+    medications, 
+    onDelete, 
+    onEdit 
+}: { 
+    medications: PatientPrescription[]; 
+    onDelete: (journalEntryId: string) => void;
+    onEdit: (medication: PatientPrescription) => void;
+}) {
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-xs">
                 <tbody>
                     {medications.map((med) => (
-                        <PrescriptionTableRow key={med.journal_entry_id} medication={med} />
+                        <PrescriptionTableRow 
+                            key={med.journal_entry_id} 
+                            medication={med} 
+                            onDelete={onDelete}
+                            onEdit={onEdit}
+                        />
                     ))}
                 </tbody>
             </table>
@@ -431,7 +737,16 @@ function PrescriptionTable({ medications }: { medications: PatientPrescription[]
     );
 }
 
-function PrescriptionTableRow({ medication }: { medication: PatientPrescription }) {
+function PrescriptionTableRow({ 
+    medication, 
+    onDelete, 
+    onEdit 
+}: { 
+    medication: PatientPrescription; 
+    onDelete: (journalEntryId: string) => void;
+    onEdit: (medication: PatientPrescription) => void;
+}) {
+    
     const dosage = [
         medication.amount_morning || "-",
         medication.amount_noon || "-",
@@ -474,14 +789,22 @@ function PrescriptionTableRow({ medication }: { medication: PatientPrescription 
             <td className="px-3 py-2 text-center text-slate-600">-</td>
             <td className="px-3 py-2 text-right">
                 <div className="flex items-center justify-end gap-1">
-                    <button className="rounded p-1 hover:bg-slate-100">
+                    <button 
+                        onClick={() => onEdit(medication)}
+                        className="rounded p-1 hover:bg-slate-100"
+                        title="Edit"
+                    >
                         <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                         </svg>
                     </button>
-                    <button className="rounded p-1 hover:bg-slate-100">
-                        <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                    <button 
+                        onClick={() => onDelete(medication.journal_entry_id)}
+                        className="rounded p-1 hover:bg-red-50"
+                        title="Delete"
+                    >
+                        <svg className="h-4 w-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                     </button>
                 </div>
