@@ -2231,6 +2231,9 @@ export default function PatientActivityCard({
   async function handleEmailSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    // Guard against double submission
+    if (emailSaving) return;
+
     const toAddress = emailTo.trim();
     const subject = emailSubject.trim();
     const body = emailBody.trim();
@@ -2448,7 +2451,7 @@ export default function PatientActivityCard({
         }
       }
 
-      setEmails((prev) => [insertedEmail, ...prev]);
+      setEmails((prev) => [insertedEmail, ...prev.filter(e => e.id !== insertedEmail.id)]);
       setEmailTo(defaultEmailTo);
       setEmailSubject("");
       setEmailBody("");
