@@ -5,6 +5,22 @@ import QRCode from "qrcode";
 import { generateSwissQrBillDataUrl, generateSwissReference, formatSwissReferenceWithSpaces, type SwissQrBillData } from "@/lib/swissQrBill";
 import type { Invoice, InvoiceLineItem } from "@/lib/invoiceTypes";
 import { generateTiersPayantPdf, type TiersPayantPatient, type TiersPayantProvider, type TiersPayantInsurer } from "@/lib/generateTiersPayantPdf";
+import {
+  buildInvoiceRequest,
+  mapLawType as mapSumexLaw,
+  mapTiersMode as mapSumexTiers,
+  mapSex as mapSumexSex,
+  RoleType,
+  PlaceType,
+  RequestType,
+  RequestSubtype,
+  DiagnosisType,
+  EsrType,
+  YesNo,
+  type SumexInvoiceInput,
+  type InvoiceServiceInput as SumexServiceInput,
+  type InvoiceDiagnosis as SumexDiagnosis,
+} from "@/lib/sumexInvoice";
 
 type PatientData = {
   first_name: string;
@@ -139,50 +155,194 @@ export async function POST(request: NextRequest) {
       // No need to fetch a separate billing entity
     }
 
-    // ── Detect insurance (Tiers Payant) invoice and generate specialized PDF ──
-    const isInsuranceInvoice = invoiceData.billing_type === "TP" || invoiceData.payment_method === "Insurance";
+    // ── Detect insurance (Tiers Payant / Tiers Garant) invoice and generate specialized PDF ──
+    const isInsuranceInvoice = invoiceData.billing_type === "TP" || invoiceData.billing_type === "TG" || invoiceData.payment_method === "Insurance";
     if (isInsuranceInvoice) {
-      // Fetch insurer data if available
+      console.log(`[GeneratePDF] Insurance invoice detected (${invoiceData.billing_type || "TP"}) — using Sumex1 Print for PDF`);
+
+      // Fetch insurer data
       let insurerData: TiersPayantInsurer | null = null;
+      let insurerGln = "";
+      let insurerName = "";
+      let receiverGln = "";
       if (invoiceData.insurer_id) {
         const { data: insurerRow } = await supabaseAdmin
           .from("swiss_insurers")
-          .select("name, gln, street, zip_code, city, pobox")
+          .select("name, gln, street, zip_code, city, pobox, receiver_gln")
           .eq("id", invoiceData.insurer_id)
           .single();
-        if (insurerRow) insurerData = insurerRow as TiersPayantInsurer;
+        if (insurerRow) {
+          insurerData = insurerRow as TiersPayantInsurer;
+          insurerGln = (insurerRow as any).gln || "";
+          insurerName = (insurerRow as any).name || "";
+          receiverGln = (insurerRow as any).receiver_gln || insurerGln;
+        }
       }
 
-      const tpPatient: TiersPayantPatient = {
-        ...patientData,
-        avs_number: invoiceData.patient_ssn || null,
+      const provGln = billingEntityData?.gln || invoiceData.provider_gln || "7601003000115";
+      const provZsr = billingEntityData?.zsr || invoiceData.provider_zsr || "";
+      const provName = billingEntityData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA";
+      const provStreet = billingEntityData?.street ? `${billingEntityData.street}${billingEntityData.street_no ? " " + billingEntityData.street_no : ""}` : "";
+      const provZip = billingEntityData?.zip_code || "";
+      const provCity = billingEntityData?.city || "";
+      const provCanton = billingEntityData?.canton || invoiceData.treatment_canton || "GE";
+      // IBAN: strip spaces, validate Swiss format, fallback to QR-IBAN
+      const sanitizeIban = (raw: string | null | undefined): string | null => {
+        if (!raw) return null;
+        const stripped = raw.replace(/\s+/g, "").toUpperCase();
+        if (/^CH[0-9A-Z]{19}$/.test(stripped)) return stripped;
+        return null;
+      };
+      const provIban = sanitizeIban(billingEntityData?.iban) || sanitizeIban(invoiceData.provider_iban) || "CH0930788000050249289";
+
+      const treatmentDate = invoiceData.treatment_date || invoiceData.invoice_date || new Date().toISOString().split("T")[0];
+
+      // Map line items to Sumex1 services
+      // GLN must be exactly 13 digits; fall back to billing entity GLN if invalid
+      const isValidGln = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
+
+      const sumexServices: SumexServiceInput[] = lineItems.map((item: any) => {
+        const isAcf = item.tariff_code === 5 || item.catalog_name === "ACF";
+        const isTardoc = item.tariff_code === 7 || item.catalog_name === "TARDOC";
+        const tariffType = isAcf ? "005" : isTardoc ? "001" : "999";
+        const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
+        const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
+        return {
+          tariffType,
+          code: item.code || "",
+          referenceCode: item.ref_code || "",
+          quantity: item.quantity || 1,
+          sessionNumber: item.session_number ?? 1,
+          dateBegin: item.date_begin || treatmentDate,
+          providerGln: svcGln,
+          responsibleGln: svcRespGln,
+          side: (item.side_type as 0 | 1 | 2 | 3) ?? 0,
+          serviceName: item.name || "",
+          unit: item.unit_price || 0,
+          unitFactor: 1,
+          externalFactor: isAcf ? (item.external_factor_mt ?? 1) : 1,
+          amount: item.total_price || 0,
+          vatRate: 0,
+          ignoreValidate: YesNo.Yes,
+        };
+      });
+
+      // Diagnosis codes from invoice
+      const diagCodes: string[] = Array.isArray(invoiceData.diagnosis_codes)
+        ? invoiceData.diagnosis_codes.map((d: any) => d.code || d).filter(Boolean)
+        : [];
+      const sumexDiagnoses: SumexDiagnosis[] = diagCodes.map(code => ({
+        type: DiagnosisType.ICD,
+        code: String(code),
+      }));
+
+      const sumexInput: SumexInvoiceInput = {
+        language: 2,
+        roleType: RoleType.Physician,
+        placeType: PlaceType.Practice,
+        requestType: RequestType.Invoice,
+        requestSubtype: RequestSubtype.Normal,
+        tiersMode: mapSumexTiers(invoiceData.billing_type || "TG"),
+        vatNumber: "",
+        invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
+        invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
+        lawType: mapSumexLaw(invoiceData.health_insurance_law || "KVG"),
+        insuredId: invoiceData.patient_ssn || "",
+        esrType: EsrType.QR,
+        iban: provIban,
+        paymentPeriod: 30,
+        billerGln: provGln,
+        billerZsr: provZsr || undefined,
+        billerAddress: {
+          companyName: provName,
+          street: provStreet,
+          zip: provZip,
+          city: provCity,
+          stateCode: provCanton,
+        },
+        providerGln: provGln,
+        providerZsr: provZsr || undefined,
+        providerAddress: {
+          familyName: staffData?.name || invoiceData.doctor_name || provName,
+          givenName: "",
+          salutation: staffData?.salutation || billingEntityData?.salutation || "",
+          title: staffData?.title || billingEntityData?.title || "",
+          street: provStreet,
+          zip: provZip,
+          city: provCity,
+          stateCode: provCanton,
+        },
+        insuranceGln: insurerGln || undefined,
+        insuranceAddress: insurerGln ? {
+          companyName: insurerName,
+          street: "",
+          zip: "",
+          city: "",
+          stateCode: "",
+        } : undefined,
+        patientSex: mapSumexSex(patientData.gender || "male"),
+        patientBirthdate: patientData.dob || "1990-01-01",
+        patientSsn: invoiceData.patient_ssn || "",
+        patientAddress: {
+          familyName: patientData.last_name,
+          givenName: patientData.first_name,
+          street: patientData.street_address || "",
+          zip: patientData.postal_code || "",
+          city: patientData.town || "",
+          stateCode: provCanton,
+        },
+        treatmentCanton: provCanton,
+        treatmentDateBegin: treatmentDate,
+        treatmentDateEnd: treatmentDate,
+        diagnoses: sumexDiagnoses,
+        services: sumexServices,
+        transportFrom: provGln,
+        transportTo: receiverGln || insurerGln || "",
       };
 
-      // Billing entity (clinic) - used in <billers> section
-      const tpProvider: TiersPayantProvider = {
-        name: billingEntityData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA",
-        gln: billingEntityData?.gln || invoiceData.provider_gln || null,
-        zsr: billingEntityData?.zsr || invoiceData.provider_zsr || null,
-        street: billingEntityData?.street || null,
-        street_no: billingEntityData?.street_no || null,
-        zip_code: billingEntityData?.zip_code || null,
-        city: billingEntityData?.city || null,
-        canton: billingEntityData?.canton || invoiceData.treatment_canton || null,
-        phone: billingEntityData?.phone || null,
-        iban: billingEntityData?.iban || invoiceData.provider_iban || null,
-        salutation: billingEntityData?.salutation || null,
-        title: billingEntityData?.title || null,
-      };
+      // Generate XML + PDF via Sumex1 server
+      const sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true });
 
-      const pdfBuffer = await generateTiersPayantPdf(
-        invoiceData,
-        lineItems,
-        tpPatient,
-        tpProvider,
-        insurerData,
-      );
+      if (!sumexResult.success) {
+        console.error(`[GeneratePDF] Sumex1 FAILED: ${sumexResult.error} / ${sumexResult.abortInfo}`);
+        // Fall back to legacy jsPDF generation
+        console.log(`[GeneratePDF] Falling back to legacy generateTiersPayantPdf`);
+        const tpPatient: TiersPayantPatient = { ...patientData, avs_number: invoiceData.patient_ssn || null };
+        const tpProvider: TiersPayantProvider = {
+          name: provName, gln: provGln, zsr: provZsr, street: billingEntityData?.street || null,
+          street_no: billingEntityData?.street_no || null, zip_code: provZip || null, city: provCity || null,
+          canton: provCanton || null, phone: billingEntityData?.phone || null, iban: provIban || null,
+          salutation: billingEntityData?.salutation || null, title: billingEntityData?.title || null,
+        };
+        const pdfBuffer = await generateTiersPayantPdf(invoiceData, lineItems, tpPatient, tpProvider, insurerData);
+        const fileName = `invoice-tp-${invoiceData.invoice_number}-${Date.now()}.pdf`;
+        const filePath = `${invoiceData.patient_id}/${fileName}`;
+        const { error: uploadError } = await supabaseAdmin.storage.from("invoice-pdfs").upload(filePath, pdfBuffer, { contentType: "application/pdf", cacheControl: "3600", upsert: true });
+        if (uploadError) return NextResponse.json({ error: "Failed to upload PDF" }, { status: 500 });
+        await supabaseAdmin.from("invoices").update({ pdf_path: filePath, pdf_generated_at: new Date().toISOString() }).eq("id", invoiceId);
+        const { data: publicUrlData } = supabaseAdmin.storage.from("invoice-pdfs").getPublicUrl(filePath);
+        return NextResponse.json({ success: true, pdfUrl: publicUrlData.publicUrl, pdfPath: filePath, qrCodeType: "tiers-payant-legacy" });
+      }
 
-      const fileName = `invoice-tp-${invoiceData.invoice_number}-${Date.now()}.pdf`;
+      // Use Sumex1-generated PDF
+      let pdfBuffer: Buffer;
+      if (sumexResult.pdfContent) {
+        pdfBuffer = sumexResult.pdfContent;
+        console.log(`[GeneratePDF] Sumex1 PDF: ${pdfBuffer.length} bytes, schema=${sumexResult.usedSchema}`);
+      } else {
+        // PDF generation didn't work but XML succeeded — fall back to legacy
+        console.warn(`[GeneratePDF] Sumex1 XML OK but PDF not available — falling back to legacy`);
+        const tpPatient: TiersPayantPatient = { ...patientData, avs_number: invoiceData.patient_ssn || null };
+        const tpProvider: TiersPayantProvider = {
+          name: provName, gln: provGln, zsr: provZsr, street: billingEntityData?.street || null,
+          street_no: billingEntityData?.street_no || null, zip_code: provZip || null, city: provCity || null,
+          canton: provCanton || null, phone: billingEntityData?.phone || null, iban: provIban || null,
+          salutation: billingEntityData?.salutation || null, title: billingEntityData?.title || null,
+        };
+        pdfBuffer = await generateTiersPayantPdf(invoiceData, lineItems, tpPatient, tpProvider, insurerData);
+      }
+
+      const fileName = `invoice-sumex-${invoiceData.invoice_number}-${Date.now()}.pdf`;
       const filePath = `${invoiceData.patient_id}/${fileName}`;
 
       const { error: uploadError } = await supabaseAdmin.storage
@@ -210,7 +370,8 @@ export async function POST(request: NextRequest) {
         success: true,
         pdfUrl: publicUrlData.publicUrl,
         pdfPath: filePath,
-        qrCodeType: "tiers-payant",
+        qrCodeType: sumexResult.pdfContent ? "sumex1" : "tiers-payant-legacy",
+        sumex1Schema: sumexResult.usedSchema,
       });
     }
 

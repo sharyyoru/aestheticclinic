@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 const TABS = [
   { id: "external-labs", label: "External Labs" },
   { id: "doctor-scheduling", label: "Doctor Scheduling" },
+  { id: "medidata", label: "MediData Connection" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -64,6 +65,7 @@ export default function SettingsPage() {
       <div className="mt-6">
         {activeTab === "external-labs" && <ExternalLabsTab />}
         {activeTab === "doctor-scheduling" && <DoctorSchedulingTab />}
+        {activeTab === "medidata" && <MediDataConnectionTab />}
       </div>
     </div>
   );
@@ -679,6 +681,178 @@ function ExternalLabsTab() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MediData Connection Tab
+// ---------------------------------------------------------------------------
+
+interface MediDataConfig {
+  senderGln: string;
+  clientId: string;
+  proxyUrl: string;
+  connected: boolean;
+  isTestMode: boolean;
+}
+
+function MediDataConnectionTab() {
+  const [config, setConfig] = useState<MediDataConfig | null>(null);
+  const [mdLoading, setMdLoading] = useState(true);
+  const [mdSaving, setMdSaving] = useState(false);
+  const [mdSenderGln, setMdSenderGln] = useState("");
+  const [mdClientId, setMdClientId] = useState("");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadMdConfig() {
+      try {
+        const res = await fetch("/api/settings/medidata");
+        if (res.ok) {
+          const data = await res.json();
+          setConfig(data);
+          setMdSenderGln(data.senderGln || "");
+          setMdClientId(data.clientId || "");
+        }
+      } catch (err) {
+        console.error("Failed to load MediData settings:", err);
+      } finally {
+        setMdLoading(false);
+      }
+    }
+    loadMdConfig();
+  }, []);
+
+  async function handleMdSave() {
+    setMdSaving(true);
+    setSaveMessage(null);
+    try {
+      const res = await fetch("/api/settings/medidata", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senderGln: mdSenderGln, clientId: mdClientId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSaveMessage(data.message || "Settings saved successfully.");
+      } else {
+        setSaveMessage(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setSaveMessage("Failed to save settings.");
+    } finally {
+      setMdSaving(false);
+    }
+  }
+
+  if (mdLoading) {
+    return (
+      <div className="flex items-center justify-center py-12 text-sm text-slate-400">
+        Loading MediData configuration…
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      {/* Connection Status */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800">Connection Status</h3>
+            <p className="mt-0.5 text-xs text-slate-500">MediData ELA API integration</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex h-2.5 w-2.5 rounded-full ${
+                config?.connected ? "bg-emerald-500 animate-pulse" : "bg-red-400"
+              }`}
+            />
+            <span className={`text-xs font-medium ${config?.connected ? "text-emerald-700" : "text-red-600"}`}>
+              {config?.connected ? "Connected" : "Not Connected"}
+            </span>
+          </div>
+        </div>
+        {config?.isTestMode && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+            <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <span className="text-xs font-medium text-amber-700">Test Mode — Using MediData ACC environment</span>
+          </div>
+        )}
+      </div>
+
+      {/* Credentials */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-800">MediData Credentials</h3>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-slate-600">
+            Sender GLN <span className="text-red-400">*</span>
+          </label>
+          <input
+            type="text"
+            value={mdSenderGln}
+            onChange={(e) => setMdSenderGln(e.target.value)}
+            placeholder="e.g., 7601003000115"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
+          <p className="mt-1 text-[10px] text-slate-400">
+            13-digit GLN registered with MediData for your clinic. Used as the transport &quot;from&quot; in all invoice transmissions.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-slate-600">
+            MediData Client ID <span className="text-red-400">*</span>
+          </label>
+          <input
+            type="text"
+            value={mdClientId}
+            onChange={(e) => setMdClientId(e.target.value)}
+            placeholder="e.g., abc1****def2"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
+          <p className="mt-1 text-[10px] text-slate-400">
+            OAuth2 Client ID provided by MediData for API authentication.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-slate-600">
+            Intermediate GLN (Clearing House)
+          </label>
+          <input
+            type="text"
+            value="7601001304307"
+            disabled
+            className="w-full rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm font-mono text-slate-500"
+          />
+          <p className="mt-1 text-[10px] text-slate-400">
+            MediData clearing house GLN. This is fixed and cannot be changed.
+          </p>
+        </div>
+      </div>
+
+      {/* Save */}
+      <div className="flex items-center justify-between">
+        <div>
+          {saveMessage && (
+            <p className={`text-xs ${saveMessage.startsWith("Error") ? "text-red-600" : "text-emerald-600"}`}>
+              {saveMessage}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={handleMdSave}
+          disabled={mdSaving}
+          className="rounded-lg bg-sky-500 px-5 py-2 text-xs font-medium text-white hover:bg-sky-600 transition-colors disabled:opacity-50"
+        >
+          {mdSaving ? "Saving…" : "Save Settings"}
+        </button>
       </div>
     </div>
   );

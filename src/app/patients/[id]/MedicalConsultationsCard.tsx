@@ -276,6 +276,8 @@ export default function MedicalConsultationsCard({
   );
   const [selectedTardocCode, setSelectedTardocCode] = useState("");
   const [invoiceCanton, setInvoiceCanton] = useState<SwissCanton>(DEFAULT_CANTON);
+  const [invoiceLawType, setInvoiceLawType] = useState("KVG");
+  const [invoiceAccidentDate, setInvoiceAccidentDate] = useState("");
   const [tardocSearchQuery, setTardocSearchQuery] = useState("");
   const [tardocSearchResults, setTardocSearchResults] = useState<any[]>([]);
   const [tardocSearchLoading, setTardocSearchLoading] = useState(false);
@@ -370,6 +372,10 @@ export default function MedicalConsultationsCard({
 
   const [insuranceBillingModalOpen, setInsuranceBillingModalOpen] = useState(false);
   const [insuranceBillingTarget, setInsuranceBillingTarget] = useState<ConsultationRow | null>(null);
+
+  const [checkingXmlId, setCheckingXmlId] = useState<string | null>(null);
+  const [xmlPreviewContent, setXmlPreviewContent] = useState<string | null>(null);
+  const [xmlPreviewError, setXmlPreviewError] = useState<string | null>(null);
 
   const [editConsultationModalOpen, setEditConsultationModalOpen] = useState(false);
   const [editConsultationTarget, setEditConsultationTarget] = useState<ConsultationRow | null>(null);
@@ -1188,6 +1194,28 @@ export default function MedicalConsultationsCard({
       }
     } catch {
       setConsultationsError("Failed to open receipt.");
+    }
+  }
+
+  async function handleCheckXml(invoiceId: string) {
+    setCheckingXmlId(invoiceId);
+    setXmlPreviewError(null);
+    setXmlPreviewContent(null);
+    try {
+      const res = await fetch("/api/sumex/check-xml", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId, patientId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.abortInfo ? `${data.error}: ${data.abortInfo}` : data.details || data.error || "XML generation failed");
+      }
+      setXmlPreviewContent(data.xmlContent);
+    } catch (err) {
+      setXmlPreviewError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setCheckingXmlId(null);
     }
   }
 
@@ -2498,6 +2526,8 @@ export default function MedicalConsultationsCard({
 
                             // Determine tariff code: 7=TARDOC, '005'=ACF Flat Rate, null=regular
                             const tariffCode = isTardocLine ? 7 : isFlatRateLine ? ACF_TARIFF_CODE : null;
+                            // Sumex tariff type string: "001"=TARDOC, "005"=ACF
+                            const tariffType = isTardocLine ? "001" : isFlatRateLine ? "005" : null;
 
                             return {
                               name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : "Service"),
@@ -2507,6 +2537,7 @@ export default function MedicalConsultationsCard({
                               unit_price: resolvedUnitPrice,
                               total_price: resolvedUnitPrice * quantity,
                               tariff_code: tariffCode,
+                              tariff_type: tariffType,
                               tardoc_code: tardocCode,
                               tp_al: isFlatRateLine ? (line.acfBaseTP ?? resolvedUnitPrice) : (tardocResult?.tpMT ?? 0),
                               tp_tl: tardocResult?.tpTT ?? 0,
@@ -2606,10 +2637,13 @@ export default function MedicalConsultationsCard({
                         // Add TARDOC-specific invoice fields
                         if (isTardocInvoice) {
                           invoiceInsertPayload.treatment_canton = invoiceCanton;
-                          invoiceInsertPayload.treatment_reason = "disease";
+                          invoiceInsertPayload.treatment_reason = invoiceLawType === "UVG" ? "accident" : "disease";
                           invoiceInsertPayload.treatment_date_end = scheduledAtIso;
                           invoiceInsertPayload.billing_type = "TP";
-                          invoiceInsertPayload.health_insurance_law = "KVG";
+                          invoiceInsertPayload.health_insurance_law = invoiceLawType;
+                          if (invoiceLawType === "UVG" && invoiceAccidentDate) {
+                            invoiceInsertPayload.accident_date = invoiceAccidentDate;
+                          }
                           invoiceInsertPayload.diagnosis_codes = [
                             { code: "U", type: "cantonal" },
                             { code: "Z", type: "ICD" },
@@ -2620,10 +2654,13 @@ export default function MedicalConsultationsCard({
                         const isAcfInvoice = invoiceMode === "flatrate";
                         if (isAcfInvoice) {
                           invoiceInsertPayload.treatment_canton = invoiceCanton;
-                          invoiceInsertPayload.treatment_reason = "disease";
+                          invoiceInsertPayload.treatment_reason = invoiceLawType === "UVG" ? "accident" : "disease";
                           invoiceInsertPayload.treatment_date_end = scheduledAtIso;
                           invoiceInsertPayload.billing_type = "TP";
-                          invoiceInsertPayload.health_insurance_law = "KVG";
+                          invoiceInsertPayload.health_insurance_law = invoiceLawType;
+                          if (invoiceLawType === "UVG" && invoiceAccidentDate) {
+                            invoiceInsertPayload.accident_date = invoiceAccidentDate;
+                          }
                         }
 
                         const { data: invoiceRow, error: invoiceInsertError } = await supabaseClient
@@ -3479,23 +3516,65 @@ export default function MedicalConsultationsCard({
                             </div>
                           ) : invoiceMode === "tardoc" ? (
                             <div className="space-y-2 px-3 py-3">
-                              {/* Canton selector */}
-                              <div className="space-y-1">
-                                <span className="block text-[10px] font-medium text-slate-600">
-                                  Canton (Tax Point Value)
-                                </span>
-                                <select
-                                  value={invoiceCanton}
-                                  onChange={(e) => setInvoiceCanton(e.target.value as SwissCanton)}
-                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                                >
-                                  {Object.entries(CANTON_TAX_POINT_VALUES).map(([code, value]) => (
-                                    <option key={code} value={code}>
-                                      {code} - CHF {value.toFixed(2)}/pt
-                                    </option>
-                                  ))}
-                                </select>
+                              {/* Canton + Law Type */}
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <span className="block text-[10px] font-medium text-slate-600">
+                                    Canton (Tax Point Value)
+                                  </span>
+                                  <select
+                                    value={invoiceCanton}
+                                    onChange={(e) => setInvoiceCanton(e.target.value as SwissCanton)}
+                                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                  >
+                                    {Object.entries(CANTON_TAX_POINT_VALUES).map(([code, value]) => (
+                                      <option key={code} value={code}>
+                                        {code} - CHF {value.toFixed(2)}/pt
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="block text-[10px] font-medium text-slate-600">
+                                    Insurance Law
+                                  </span>
+                                  <select
+                                    value={invoiceLawType}
+                                    onChange={(e) => setInvoiceLawType(e.target.value)}
+                                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                  >
+                                    <option value="KVG">KVG</option>
+                                    <option value="UVG">UVG</option>
+                                    <option value="IVG">IVG</option>
+                                    <option value="MVG">MVG</option>
+                                    <option value="VVG">VVG</option>
+                                  </select>
+                                </div>
                               </div>
+
+                              {/* UVG: Accident Date */}
+                              {invoiceLawType === "UVG" && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <svg className="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                                    </svg>
+                                    <span className="text-[11px] font-semibold text-amber-700">UVG — Accident Date Required</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="block text-[10px] font-medium text-amber-700">
+                                      Accident Date (Unfalldatum) <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={invoiceAccidentDate}
+                                      onChange={(e) => setInvoiceAccidentDate(e.target.value)}
+                                      className="block w-full rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                    />
+                                    <p className="text-[10px] text-amber-600">Required for UVG (accident insurance) invoices.</p>
+                                  </div>
+                                </div>
+                              )}
 
                               {/* Code search */}
                               <div className="space-y-1">
@@ -4838,6 +4917,17 @@ export default function MedicalConsultationsCard({
 
                             <div className="h-4 w-px bg-slate-200" />
 
+                            {/* Check XML */}
+                            <button
+                              type="button"
+                              onClick={() => handleCheckXml(row.id)}
+                              disabled={checkingXmlId === row.id}
+                              className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                              {checkingXmlId === row.id ? "Checking..." : "Check XML"}
+                            </button>
+
                             {/* Insurance */}
                             <button
                               type="button"
@@ -5393,6 +5483,29 @@ export default function MedicalConsultationsCard({
               >
                 Accept & Save
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* XML Preview Overlay */}
+      {(xmlPreviewContent || xmlPreviewError) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm" onClick={() => { setXmlPreviewContent(null); setXmlPreviewError(null); }}>
+          <div className="relative mx-4 w-full max-w-4xl max-h-[80vh] rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+              <h3 className="text-sm font-semibold text-slate-800">
+                {xmlPreviewError ? "XML Generation Error" : "Sumex1 XML Preview (v5.00)"}
+              </h3>
+              <button type="button" onClick={() => { setXmlPreviewContent(null); setXmlPreviewError(null); }} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="overflow-auto p-4" style={{ maxHeight: "calc(80vh - 56px)" }}>
+              {xmlPreviewError ? (
+                <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{xmlPreviewError}</div>
+              ) : (
+                <pre className="rounded-lg bg-slate-900 p-4 text-[11px] leading-relaxed text-emerald-300 font-mono whitespace-pre-wrap break-all">{xmlPreviewContent}</pre>
+              )}
             </div>
           </div>
         </div>

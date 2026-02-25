@@ -102,32 +102,27 @@ export async function POST(request: NextRequest) {
       changed_by: authData.user.id,
     });
 
-    // Sync insurance payment status to consultation
-    // When insurance marks as paid or partially_paid, update the main invoice
-    if (['paid', 'partially_paid'].includes(newStatus) && submission.consultation_id) {
+    // Sync insurance payment status to the invoice
+    if (['paid', 'partially_paid'].includes(newStatus) && submission.invoice_id) {
       const paidAt = new Date().toISOString();
-      const { error: consultationUpdateError } = await supabaseClient
-        .from("consultations")
+      const { error: invoiceUpdateError } = await supabaseClient
+        .from("invoices")
         .update({
-          invoice_is_paid: true,
-          paid_at: paidAt,
-          paid_by_user_id: authData.user.id,
           insurance_payment_status: newStatus,
           insurance_paid_amount: paidAmount || null,
           insurance_paid_date: paidDate || paidAt,
         })
-        .eq("id", submission.consultation_id);
+        .eq("id", submission.invoice_id);
 
-      if (consultationUpdateError) {
-        console.error("Error syncing insurance payment to consultation:", consultationUpdateError);
-        // Don't fail the request, just log the error
+      if (invoiceUpdateError) {
+        console.error("Error syncing insurance payment to invoice:", invoiceUpdateError);
       }
     }
 
     return NextResponse.json({
       success: true,
       submission: updatedSubmission,
-      consultationSynced: ['paid', 'partially_paid'].includes(newStatus),
+      invoiceSynced: ['paid', 'partially_paid'].includes(newStatus),
     });
   } catch (error) {
     console.error("Error in update-status:", error);
@@ -164,10 +159,11 @@ export async function GET(request: NextRequest) {
     if (submissionId) {
       query = query.eq("id", submissionId);
     } else if (consultationId) {
-      query = query.eq("consultation_id", consultationId);
+      // Support both invoice_id and legacy consultation_id lookups
+      query = query.or(`invoice_id.eq.${consultationId},consultation_id.eq.${consultationId}`);
     } else {
       return NextResponse.json(
-        { error: "Submission ID or Consultation ID is required" },
+        { error: "Submission ID or Invoice ID is required" },
         { status: 400 }
       );
     }

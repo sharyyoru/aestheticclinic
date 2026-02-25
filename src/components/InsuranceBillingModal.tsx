@@ -53,6 +53,7 @@ export default function InsuranceBillingModal({
 }: InsuranceBillingModalProps) {
   const [billingType, setBillingType] = useState<BillingType>("TG");
   const [lawType, setLawType] = useState<SwissLawType>("KVG");
+  const [reminderLevel, setReminderLevel] = useState<number>(0);
   const [diagnosisCodes, setDiagnosisCodes] = useState<string[]>([]);
   const [diagnosisInput, setDiagnosisInput] = useState("");
   const [treatmentReason, setTreatmentReason] = useState("disease");
@@ -61,7 +62,11 @@ export default function InsuranceBillingModal({
   const [avsNumber, setAvsNumber] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
   const [caseNumber, setCaseNumber] = useState("");
+  const [accidentDate, setAccidentDate] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingXml, setIsCheckingXml] = useState(false);
+  const [xmlPreview, setXmlPreview] = useState<string | null>(null);
+  const [xmlError, setXmlError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<any | null>(null);
 
@@ -112,7 +117,7 @@ export default function InsuranceBillingModal({
         // Also load invoice-level data (treatment_reason, diagnosis_codes, billing_type, etc.)
         const { data: inv } = await supabaseClient
           .from("invoices")
-          .select("billing_type, health_insurance_law, treatment_reason, diagnosis_codes")
+          .select("billing_type, health_insurance_law, treatment_reason, diagnosis_codes, reminder_level, accident_date")
           .eq("id", consultationId)
           .maybeSingle();
 
@@ -120,6 +125,8 @@ export default function InsuranceBillingModal({
           if (inv.billing_type) setBillingType(inv.billing_type as BillingType);
           if (inv.health_insurance_law) setLawType(inv.health_insurance_law as SwissLawType);
           if (inv.treatment_reason) setTreatmentReason(inv.treatment_reason);
+          if (typeof inv.reminder_level === 'number') setReminderLevel(inv.reminder_level);
+          if (inv.accident_date) setAccidentDate(inv.accident_date);
           if (inv.diagnosis_codes && Array.isArray(inv.diagnosis_codes)) {
             const codes = inv.diagnosis_codes.map((d: any) => d.code).filter(Boolean);
             if (codes.length > 0) setDiagnosisCodes(codes);
@@ -154,6 +161,49 @@ export default function InsuranceBillingModal({
     setDiagnosisCodes(diagnosisCodes.filter((c) => c !== code));
   };
 
+  const handleCheckXml = async () => {
+    setIsCheckingXml(true);
+    setXmlError(null);
+    setXmlPreview(null);
+
+    try {
+      const response = await fetch("/api/sumex/check-xml", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consultationId,
+          patientId,
+          billingType,
+          lawType,
+          reminderLevel,
+          diagnosisCodes,
+          treatmentReason: lawType === 'UVG' ? 'accident' : treatmentReason,
+          insurerGln: selectedInsurerGln,
+          insurerName: selectedInsurerName,
+          policyNumber,
+          avsNumber,
+          accidentDate: lawType === 'UVG' ? accidentDate : undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.abortInfo
+            ? `${data.error}: ${data.abortInfo}`
+            : data.details || data.error || "XML generation failed",
+        );
+      }
+
+      setXmlPreview(data.xmlContent);
+    } catch (err) {
+      setXmlError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setIsCheckingXml(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedInsurerGln) {
       setError("Please select an insurance company");
@@ -173,13 +223,15 @@ export default function InsuranceBillingModal({
           patientId,
           billingType,
           lawType,
+          reminderLevel,
           diagnosisCodes,
-          treatmentReason,
+          treatmentReason: lawType === 'UVG' ? 'accident' : treatmentReason,
           insurerGln: selectedInsurerGln,
           insurerName: selectedInsurerName,
           policyNumber,
           avsNumber,
           caseNumber,
+          accidentDate: lawType === 'UVG' ? accidentDate : undefined,
         }),
       });
 
@@ -195,12 +247,14 @@ export default function InsuranceBillingModal({
         .update({
           billing_type: billingType,
           health_insurance_law: lawType,
-          treatment_reason: treatmentReason,
+          reminder_level: reminderLevel,
+          treatment_reason: lawType === 'UVG' ? 'accident' : treatmentReason,
           insurance_gln: selectedInsurerGln,
           insurance_name: selectedInsurerName,
           patient_ssn: avsNumber || null,
           diagnosis_codes: diagnosisCodes.map((c) => ({ code: c, type: "ICD" })),
           medical_case_number: caseNumber || null,
+          accident_date: lawType === 'UVG' && accidentDate ? accidentDate : null,
         })
         .eq("id", consultationId);
 
@@ -324,11 +378,12 @@ export default function InsuranceBillingModal({
             </div>
 
             {/* Billing Configuration */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-slate-600">
-                  Billing Type
-                </label>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-600">
+                    Billing Type
+                  </label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -364,7 +419,7 @@ export default function InsuranceBillingModal({
                 <select
                   value={lawType}
                   onChange={(e) => setLawType(e.target.value as SwissLawType)}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 >
                   <option value="KVG">KVG - Assurance maladie</option>
                   <option value="UVG">UVG - Assurance accident</option>
@@ -372,6 +427,27 @@ export default function InsuranceBillingModal({
                   <option value="MVG">MVG - Assurance militaire</option>
                   <option value="VVG">VVG - Assurance privée</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Reminder Level */}
+            <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Document Type
+                </label>
+                <select
+                  value={reminderLevel}
+                  onChange={(e) => setReminderLevel(Number(e.target.value))}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value={0}>Invoice (Normal)</option>
+                  <option value={1}>1st Reminder</option>
+                  <option value={2}>2nd Reminder</option>
+                  <option value={3}>3rd Reminder</option>
+                </select>
+                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                  Select reminder level for follow-up invoices. Normal invoice = 0.
+                </p>
               </div>
             </div>
 
@@ -431,6 +507,48 @@ export default function InsuranceBillingModal({
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                 </div>
+
+                {/* UVG: Accident Date (required) */}
+                {lawType === "UVG" && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                      </svg>
+                      <span className="text-[11px] font-semibold text-amber-700">UVG — Accident Insurance</span>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-medium text-amber-700">
+                        Accident Date <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={accidentDate}
+                        onChange={(e) => setAccidentDate(e.target.value)}
+                        className="w-full rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
+                      <p className="mt-1 text-[10px] text-amber-600">Required for UVG invoices (Unfalldatum).</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* IVG: AHV Number reminder */}
+                {lawType === "IVG" && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="h-3.5 w-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                      </svg>
+                      <span className="text-[11px] font-semibold text-blue-700">IVG — Disability Insurance</span>
+                    </div>
+                    <p className="text-[10px] text-blue-600">
+                      AHV/AVS number (756.XXXX.XXXX.XX) is required for IVG invoices. Please ensure it is filled in above.
+                    </p>
+                    {!avsNumber && (
+                      <p className="text-[10px] font-medium text-red-500">⚠ AVS/AHV Number is missing — required for IVG.</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -549,20 +667,68 @@ export default function InsuranceBillingModal({
               </div>
             )}
 
+            {/* XML Preview */}
+            {xmlPreview && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium text-amber-800">XML Preview (Sumex1 v5.00)</span>
+                  <button
+                    type="button"
+                    onClick={() => setXmlPreview(null)}
+                    className="text-xs text-amber-600 hover:text-amber-800"
+                  >
+                    Close
+                  </button>
+                </div>
+                <pre className="max-h-60 overflow-auto rounded-lg bg-slate-900 p-3 text-[10px] leading-relaxed text-emerald-300 font-mono">
+                  {xmlPreview}
+                </pre>
+              </div>
+            )}
+
+            {xmlError && (
+              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                <span className="font-medium">XML Check Failed:</span> {xmlError}
+              </div>
+            )}
+
             {/* Actions */}
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
               <button
                 type="button"
                 onClick={onClose}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isCheckingXml}
                 className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
+                onClick={handleCheckXml}
+                disabled={isSubmitting || isCheckingXml}
+                className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+              >
+                {isCheckingXml ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Checking...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    Check XML
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={handleSubmit}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isCheckingXml}
                 className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
               >
                 {isSubmitting ? (

@@ -1,18 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  generateSumexXml,
   generateTardocServicesFromDuration,
-  type MediDataInvoiceRequest,
   type BillingType,
   type SwissLawType,
 } from "@/lib/medidata";
-import { type SwissCanton } from "@/lib/tardoc";
 import {
-  MediDataClient,
-  buildUploadInfo,
-  type MediDataConfig as ClientConfig,
-} from "@/lib/medidataClient";
+  uploadInvoiceXml,
+} from "@/lib/medidataProxy";
+import {
+  buildInvoiceRequest,
+  mapLawType as mapSumexLaw,
+  mapTiersMode as mapSumexTiers,
+  mapSex as mapSumexSex,
+  RoleType,
+  PlaceType,
+  RequestType,
+  RequestSubtype,
+  DiagnosisType,
+  EsrType,
+  YesNo,
+  type SumexInvoiceInput,
+  type InvoiceServiceInput as SumexServiceInput,
+  type InvoiceDiagnosis as SumexDiagnosis,
+} from "@/lib/sumexInvoice";
 
 type ConsultationData = {
   id: string;
@@ -65,6 +76,14 @@ type MediDataConfig = {
   is_test_mode: boolean;
 };
 
+// MediData intermediate (clearing house) GLN — required in XML transport <via>
+const MEDIDATA_INTERMEDIATE_GLN = "7601001304307";
+// Per MediData: TG invoices must use this GLN as transport "To" (no transmission to insurance)
+const TG_NO_TRANSMISSION_GLN = "2000000000008";
+
+// MediData sender GLN — must match the GLN registered with MediData for routing
+const MEDIDATA_SENDER_GLN = process.env.MEDIDATA_SENDER_GLN || "";
+
 // Default clinic configuration (can be overridden from database)
 const DEFAULT_CLINIC_CONFIG: MediDataConfig = {
   clinic_gln: "7601003000115",
@@ -85,44 +104,88 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      consultationId,
+      invoiceId,
+      consultationId, // legacy fallback
       patientId: bodyPatientId,
-      billingType = 'TG',
-      lawType = 'KVG',
-      durationMinutes,
+      billingType: bodyBillingType = 'TP',
+      lawType: bodyLawType = 'KVG',
+      reminderLevel = 0,
       diagnosisCodes = [],
       treatmentReason = 'disease',
       insurerGln,
       insurerName,
       policyNumber,
       avsNumber,
-    } = body;
+      caseNumber,
+      accidentDate,
+      durationMinutes,
+    } = body as {
+      invoiceId?: string;
+      consultationId?: string;
+      patientId?: string;
+      billingType?: string;
+      lawType?: string;
+      reminderLevel?: number;
+      diagnosisCodes?: string[];
+      treatmentReason?: string;
+      insurerGln?: string;
+      insurerName?: string;
+      policyNumber?: string;
+      avsNumber?: string;
+      caseNumber?: string;
+      accidentDate?: string;
+      durationMinutes?: number;
+    };
 
-    if (!consultationId) {
-      return NextResponse.json(
-        { error: "Consultation ID is required" },
-        { status: 400 }
-      );
+    // ── Resolve the invoice (primary) or fall back to consultation ──
+    let invoiceRecord: any = null;
+    let consultationData: ConsultationData | null = null;
+    let resolvedInvoiceId: string | null = invoiceId || null;
+
+    if (invoiceId) {
+      const { data: inv, error: invErr } = await supabaseAdmin
+        .from("invoices")
+        .select("*")
+        .eq("id", invoiceId)
+        .single();
+      if (invErr || !inv) {
+        return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+      }
+      invoiceRecord = inv;
+    } else if (consultationId) {
+      // Legacy path: look up invoice by consultation_id, or fall back to consultation table
+      const { data: inv } = await supabaseAdmin
+        .from("invoices")
+        .select("*")
+        .eq("consultation_id", consultationId)
+        .limit(1)
+        .single();
+      if (inv) {
+        invoiceRecord = inv;
+        resolvedInvoiceId = inv.id;
+      } else {
+        const { data: cons } = await supabaseAdmin
+          .from("consultations")
+          .select("*")
+          .eq("id", consultationId)
+          .eq("record_type", "invoice")
+          .single();
+        if (!cons) {
+          return NextResponse.json({ error: "Invoice or consultation not found" }, { status: 404 });
+        }
+        consultationData = cons as unknown as ConsultationData;
+      }
+    } else {
+      return NextResponse.json({ error: "invoiceId is required" }, { status: 400 });
     }
 
-    // Get consultation data (skip auth check - already authenticated via middleware)
-    const { data: consultation, error: consultationError } = await supabaseAdmin
-      .from("consultations")
-      .select("*")
-      .eq("id", consultationId)
-      .eq("record_type", "invoice")
-      .single();
+    const patientId = bodyPatientId
+      || invoiceRecord?.patient_id
+      || consultationData?.patient_id;
 
-    if (consultationError || !consultation) {
-      return NextResponse.json(
-        { error: "Invoice not found" },
-        { status: 404 }
-      );
-    }
-
-    const consultationData = consultation as unknown as ConsultationData;
-
-    const patientId = bodyPatientId || consultationData.patient_id;
+    // Derive billing fields from invoice record when available
+    const billingType = bodyBillingType || invoiceRecord?.billing_type || 'TP';
+    const lawType = bodyLawType || invoiceRecord?.health_insurance_law || 'KVG';
 
     // Get patient data
     const { data: patient, error: patientError } = await supabaseAdmin
@@ -174,21 +237,26 @@ export async function POST(request: NextRequest) {
 
     const config = (configData as MediDataConfig) || DEFAULT_CLINIC_CONFIG;
 
-    // Generate invoice number
-    const invoiceNumber = `INV-${Date.now().toString(36).toUpperCase()}`;
-    const invoiceDate = new Date().toISOString().split('T')[0];
-    const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const treatmentDate = consultationData.scheduled_at.split('T')[0];
+    // Derive invoice metadata
+    const invoiceNumber = invoiceRecord?.invoice_number || `INV-${Date.now().toString(36).toUpperCase()}`;
+    const invoiceDate = invoiceRecord?.invoice_date
+      ? String(invoiceRecord.invoice_date).split('T')[0]
+      : new Date().toISOString().split('T')[0];
+    const dueDate = invoiceRecord?.due_date
+      ? String(invoiceRecord.due_date).split('T')[0]
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const treatmentDate = invoiceRecord?.treatment_date
+      ? new Date(invoiceRecord.treatment_date).toISOString().split('T')[0]
+      : consultationData?.scheduled_at?.split('T')[0]
+        || new Date().toISOString().split('T')[0];
 
-    // Try to load actual invoice line items from the invoices table
+    // Load line items
     let services: import("@/lib/medidata").InvoiceServiceLine[] = [];
-
-    // Find the invoice linked to this consultation
-    const invoiceId = body.invoiceId || consultationId;
+    const lineItemLookupId = resolvedInvoiceId || consultationId;
     const { data: dbLineItems } = await supabaseAdmin
       .from("invoice_line_items")
-      .select("code, name, quantity, unit_price, total_price, tariff_code, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, catalog_name")
-      .eq("invoice_id", invoiceId)
+      .select("code, name, quantity, unit_price, total_price, tariff_code, tariff_type, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, responsible_gln, catalog_name")
+      .eq("invoice_id", lineItemLookupId)
       .order("sort_order", { ascending: true });
 
     if (dbLineItems && dbLineItems.length > 0) {
@@ -196,7 +264,8 @@ export async function POST(request: NextRequest) {
       services = dbLineItems.map((item: any) => {
         const isAcf = item.tariff_code === 5 || item.catalog_name === "ACF";
         const isTardoc = item.tariff_code === 7 || item.catalog_name === "TARDOC";
-        const tariffType = isAcf ? "005" : isTardoc ? "001" : "999";
+        // Use stored tariff_type if available, otherwise derive from tariff_code/catalog_name
+        const tariffType = item.tariff_type || (isAcf ? "005" : isTardoc ? "001" : "999");
         return {
           code: item.code || "",
           tariffType,
@@ -207,8 +276,8 @@ export async function POST(request: NextRequest) {
           date: item.date_begin || treatmentDate,
           providerId: item.provider_gln || config.clinic_gln,
           providerGln: item.provider_gln || config.clinic_gln,
-          // ACF-specific fields
-          externalFactor: isAcf ? (item.external_factor_mt ?? 1) : undefined,
+          // ACF/TARDOC-specific fields
+          externalFactor: (isAcf || isTardoc) ? (item.external_factor_mt ?? 1) : undefined,
           sideType: isAcf ? (item.side_type ?? 0) : undefined,
           sessionNumber: item.session_number ?? 1,
           refCode: item.ref_code || undefined,
@@ -216,7 +285,7 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // Fallback: generate TARDOC services from duration (backward compatibility)
-      const duration = durationMinutes || extractDurationFromContent(consultationData.content);
+      const duration = durationMinutes || extractDurationFromContent(consultationData?.content || null);
       services = generateTardocServicesFromDuration(
         duration,
         treatmentDate,
@@ -226,78 +295,150 @@ export async function POST(request: NextRequest) {
 
     // Calculate totals
     const subtotal = services.reduce((sum, s) => sum + s.total, 0);
-    const total = consultationData.invoice_total_amount || subtotal;
+    const total = invoiceRecord?.total_amount || consultationData?.invoice_total_amount || subtotal;
+    const resolvedInsurerGln = insurerGln || invoiceRecord?.insurance_gln || insuranceData?.gln || '7601003000016';
+    const resolvedReceiverGln = swissInsurer?.receiver_gln || resolvedInsurerGln;
+    const resolvedInsurerName = insurerName || invoiceRecord?.insurance_name || insuranceData?.provider_name || 'Unknown Insurer';
 
-    // Build invoice request
-    const invoiceRequest: MediDataInvoiceRequest = {
-      invoiceNumber,
+    console.log(`[SendInvoice] Building Sumex1 invoice: id=${invoiceNumber}, patient=${patientData.first_name} ${patientData.last_name}, services=${services.length}, total=${total}`);
+
+    // Build Sumex1 input — Sumex1 server is the ONLY XML generation path
+    const sumexServices: SumexServiceInput[] = services.map(s => ({
+      tariffType: s.tariffType || "999",
+      code: s.code,
+      referenceCode: s.refCode || "",
+      quantity: s.quantity,
+      sessionNumber: s.sessionNumber ?? 1,
+      dateBegin: s.date,
+      providerGln: s.providerGln || config.clinic_gln,
+      responsibleGln: s.providerGln || config.clinic_gln,
+      side: (s.sideType as 0 | 1 | 2 | 3) ?? 0,
+      serviceName: s.description || "",
+      unit: s.unitPrice || 0,
+      unitFactor: 1,
+      externalFactor: s.externalFactor ?? 1,
+      amount: s.total || 0,
+      vatRate: 0,
+      ignoreValidate: YesNo.Yes,
+    }));
+
+    const sumexDiagnoses: SumexDiagnosis[] = (diagnosisCodes || []).map((code: string) => ({
+      type: DiagnosisType.ICD,
+      code,
+    }));
+
+    const canton = config.clinic_canton || "GE";
+    const sumexInput: SumexInvoiceInput = {
+      language: 2,
+      roleType: RoleType.Physician,
+      placeType: PlaceType.Practice,
+      requestType: RequestType.Invoice,
+      requestSubtype: RequestSubtype.Normal,
+      tiersMode: mapSumexTiers(billingType),
+      vatNumber: "",
+      invoiceId: invoiceNumber,
       invoiceDate,
-      dueDate,
-      treatmentStart: treatmentDate,
-      treatmentEnd: treatmentDate,
-      treatmentReason,
-      diagnosisCodes,
-      billingType: billingType as BillingType,
-      lawType: lawType as SwissLawType,
-      canton: (config.clinic_canton || 'GE') as SwissCanton,
-      patient: {
-        id: patientData.id,
-        firstName: patientData.first_name,
-        lastName: patientData.last_name,
-        dob: patientData.dob,
-        gender: patientData.gender as 'male' | 'female' | 'other' | null,
-        avsNumber: avsNumber || insuranceData?.avs_number || null,
-        address: {
-          street: patientData.street_address,
-          postalCode: patientData.postal_code,
-          city: patientData.town,
-        },
-        insurance: {
-          insurerId: insuranceData?.insurer_id || null,
-          insurerGln: insurerGln || insuranceData?.gln || '7601003000016',
-          receiverGln: swissInsurer?.receiver_gln || null,
-          insurerName: insurerName || insuranceData?.provider_name || 'Unknown Insurer',
-          policyNumber: policyNumber || insuranceData?.policy_number || null,
-          cardNumber: insuranceData?.card_number || null,
-          lawType: lawType as SwissLawType,
-          billingType: billingType as BillingType,
-          caseNumber: insuranceData?.case_number || null,
-        },
+      reminderLevel: reminderLevel || 0,
+      lawType: mapSumexLaw(lawType),
+      insuredId: insuranceData?.card_number || "",
+      esrType: EsrType.QR,
+      iban: 'CH0930788000050249289',
+      paymentPeriod: 30,
+      billerGln: config.clinic_gln,
+      billerZsr: config.clinic_zsr || undefined,
+      billerAddress: {
+        companyName: config.clinic_name,
+        street: config.clinic_address_street || "",
+        zip: config.clinic_address_postal_code || "",
+        city: config.clinic_address_city || "",
+        stateCode: canton,
       },
-      provider: {
-        id: config.clinic_gln,
-        name: consultationData.doctor_name || config.clinic_name,
-        gln: config.clinic_gln,
-        zsr: config.clinic_zsr,
-        specialty: 'Plastic Surgery',
+      providerGln: invoiceRecord?.doctor_gln || invoiceRecord?.provider_gln || config.clinic_gln,
+      providerZsr: invoiceRecord?.doctor_zsr || invoiceRecord?.provider_zsr || config.clinic_zsr || undefined,
+      providerAddress: {
+        familyName: invoiceRecord?.doctor_name || consultationData?.doctor_name || config.clinic_name,
+        givenName: "",
+        street: config.clinic_address_street || "",
+        zip: config.clinic_address_postal_code || "",
+        city: config.clinic_address_city || "",
+        stateCode: canton,
       },
-      clinic: {
-        name: config.clinic_name,
-        gln: config.clinic_gln,
-        zsr: config.clinic_zsr,
-        address: {
-          street: config.clinic_address_street || '',
-          postalCode: config.clinic_address_postal_code || '',
-          city: config.clinic_address_city || '',
-          canton: (config.clinic_canton || 'GE') as SwissCanton,
-        },
-        iban: 'CH09 3078 8000 0502 4928 9',
-        vatNumber: null,
+      insuranceGln: resolvedInsurerGln,
+      insuranceAddress: {
+        companyName: resolvedInsurerName,
+        street: "",
+        zip: "",
+        city: "",
+        stateCode: "",
       },
-      services,
-      subtotal,
-      vatAmount: 0, // Medical services are VAT exempt in Switzerland
-      total,
+      patientSex: mapSumexSex(patientData.gender || "male"),
+      patientBirthdate: patientData.dob || "1990-01-01",
+      patientSsn: avsNumber || insuranceData?.avs_number || "",
+      patientAddress: {
+        familyName: patientData.last_name,
+        givenName: patientData.first_name,
+        street: patientData.street_address || "",
+        zip: patientData.postal_code || "",
+        city: patientData.town || "",
+        stateCode: canton,
+      },
+      treatmentCanton: canton,
+      treatmentDateBegin: treatmentDate,
+      treatmentDateEnd: treatmentDate,
+      ...(accidentDate ? { acid: accidentDate } : {}),
+      ...(caseNumber ? { apid: caseNumber } : {}),
+      diagnoses: sumexDiagnoses,
+      services: sumexServices,
+      transportFrom: MEDIDATA_SENDER_GLN || config.clinic_gln,
+      transportViaGln: MEDIDATA_INTERMEDIATE_GLN,
+      // Per MediData (Vladimir): TG uses GLN 2000000000008 (no direct transmission to insurance)
+      transportTo: billingType === 'TG' ? TG_NO_TRANSMISSION_GLN : resolvedReceiverGln,
     };
 
-    // Generate XML
-    const xmlContent = generateSumexXml(invoiceRequest);
+    // Generate XML + PDF via Sumex1 server (no fallback — this is the only path)
+    const sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true });
+
+    if (!sumexResult.success || !sumexResult.xmlContent) {
+      console.error(`[SendInvoice] Sumex1 XML generation FAILED for ${invoiceNumber}: error=${sumexResult.error}, abort=${sumexResult.abortInfo}, validErr=${sumexResult.validationError}`);
+      return NextResponse.json(
+        {
+          error: "Sumex1 XML generation failed",
+          details: sumexResult.error,
+          abortInfo: sumexResult.abortInfo,
+          validationError: sumexResult.validationError,
+        },
+        { status: 500 }
+      );
+    }
+
+    const xmlContent = sumexResult.xmlContent;
+    console.log(`[SendInvoice] Sumex1 XML generated: schema=${sumexResult.usedSchema}, validErr=${sumexResult.validationError}, pdfSize=${sumexResult.pdfContent?.length ?? 0}`);
+
+    // Upload PDF to Supabase storage if generated
+    let pdfStoragePath: string | null = null;
+    if (sumexResult.pdfContent) {
+      const pdfFileName = `invoice-sumex-${invoiceNumber}-${Date.now()}.pdf`;
+      const pdfPath = `${patientData.id}/${pdfFileName}`;
+      const { error: pdfUploadErr } = await supabaseAdmin.storage
+        .from("invoice-pdfs")
+        .upload(pdfPath, sumexResult.pdfContent, {
+          contentType: "application/pdf",
+          cacheControl: "3600",
+          upsert: true,
+        });
+      if (pdfUploadErr) {
+        console.warn(`[SendInvoice] PDF upload to storage failed: ${pdfUploadErr.message}`);
+      } else {
+        pdfStoragePath = pdfPath;
+        console.log(`[SendInvoice] PDF uploaded to storage: ${pdfPath}`);
+      }
+    }
 
     // Create submission record
     const { data: submission, error: submissionError } = await supabaseAdmin
       .from("medidata_submissions")
       .insert({
-        consultation_id: consultationId,
+        invoice_id: resolvedInvoiceId,
         patient_id: patientData.id,
         insurer_id: insuranceData?.insurer_id || null,
         invoice_number: invoiceNumber,
@@ -306,7 +447,7 @@ export async function POST(request: NextRequest) {
         billing_type: billingType,
         law_type: lawType,
         xml_content: xmlContent,
-        xml_version: '4.50',
+        xml_version: '5.00',
         status: 'draft',
         created_by: null,
       })
@@ -329,55 +470,41 @@ export async function POST(request: NextRequest) {
       changed_by: null,
     });
 
-    // If not in test mode and MediData is configured, attempt to send to MediData Box
+    // Send XML to MediData via proxy
     let medidataTransmissionStatus = 'draft';
     let medidataTransmissionError: string | null = null;
-    let medidataMessageId: string | null = null;
+    let medidataTransmissionRef: string | null = null;
 
-    const canTransmit = !config.is_test_mode && 
-      config.medidata_endpoint_url && 
-      config.medidata_client_id && 
-      config.medidata_username && 
-      config.medidata_password_encrypted;
+    const canTransmit = !!process.env.MEDIDATA_PROXY_API_KEY;
 
     if (canTransmit) {
       try {
-        // Create MediData client
-        const medidataClient = new MediDataClient({
-          baseUrl: config.medidata_endpoint_url!,
-          clientId: config.medidata_client_id!,
-          username: config.medidata_username!,
-          password: config.medidata_password_encrypted!,
-          isTestMode: config.is_test_mode,
-        });
+        console.log(`[SendInvoice] Uploading to MediData proxy: invoice=${invoiceNumber}`);
 
-        // Build upload info with proper metadata
-        const receiverGln = invoiceRequest.patient.insurance?.receiverGln || 
-                           invoiceRequest.patient.insurance?.insurerGln || 
-                           '7601003000016';
-
-        const uploadInfo = buildUploadInfo({
-          senderGln: config.clinic_gln,
-          receiverGln,
-          invoiceNumber,
-          lawType,
-          billingType: billingType as "TG" | "TP",
-          isReminder: false,
-        });
-
-        // Upload invoice to MediData
-        const uploadResult = await medidataClient.uploadInvoice(xmlContent, uploadInfo);
+        const uploadReceiverGln = billingType === 'TG' ? TG_NO_TRANSMISSION_GLN : resolvedReceiverGln;
+        const uploadResult = await uploadInvoiceXml(
+          xmlContent,
+          `${invoiceNumber}.xml`,
+          {
+            source: "aestheticclinic",
+            invoiceNumber,
+            senderGln: config.clinic_gln,
+            receiverGln: uploadReceiverGln,
+            lawType,
+            billingType,
+          },
+        );
 
         if (uploadResult.success) {
           medidataTransmissionStatus = 'pending';
-          medidataMessageId = uploadResult.messageId;
-          
+          medidataTransmissionRef = uploadResult.transmissionReference;
+
           // Update submission with transmission details
           await supabaseAdmin
             .from("medidata_submissions")
             .update({
               status: 'pending',
-              medidata_message_id: uploadResult.messageId,
+              medidata_message_id: uploadResult.transmissionReference,
               medidata_transmission_date: new Date().toISOString(),
               medidata_response_code: String(uploadResult.statusCode),
             })
@@ -390,13 +517,42 @@ export async function POST(request: NextRequest) {
             new_status: 'pending',
             response_code: String(uploadResult.statusCode),
             changed_by: null,
-            notes: `Transmitted to MediData Box. Message ID: ${uploadResult.messageId || 'unknown'}`,
+            notes: `Transmitted via proxy. Ref: ${uploadResult.transmissionReference || 'unknown'}`,
           });
 
-          console.log(`Invoice ${invoiceNumber} transmitted to MediData. Message ID: ${uploadResult.messageId}`);
+          console.log(`[SendInvoice] Invoice ${invoiceNumber} transmitted. Ref: ${uploadResult.transmissionReference}`);
+
+          // ── Send patient copy for TP invoices (LAMal Art. 42 para. 3) ──
+          if (billingType === "TP") {
+            try {
+              const copyInput: SumexInvoiceInput = {
+                ...sumexInput,
+                requestSubtype: RequestSubtype.Copy,
+              };
+              const copyResult = await buildInvoiceRequest(copyInput, { generatePdf: false });
+              if (copyResult.success && copyResult.xmlContent) {
+                const copyUpload = await uploadInvoiceXml(copyResult.xmlContent, `${invoiceNumber}-copy.xml`, {
+                  source: "send-invoice-patient-copy",
+                  invoiceNumber,
+                  senderGln: config.clinic_gln,
+                  receiverGln: resolvedReceiverGln,
+                  requestSubtype: "copy",
+                });
+                if (copyUpload.success) {
+                  console.log(`[SendInvoice] Patient copy sent for ${invoiceNumber}: ref=${copyUpload.transmissionReference}`);
+                } else {
+                  console.warn(`[SendInvoice] Patient copy upload failed for ${invoiceNumber}: ${copyUpload.errorMessage}`);
+                }
+              } else {
+                console.warn(`[SendInvoice] Patient copy XML failed for ${invoiceNumber}: ${copyResult.error}`);
+              }
+            } catch (copyErr) {
+              console.warn(`[SendInvoice] Patient copy error for ${invoiceNumber}:`, copyErr);
+            }
+          }
         } else {
-          medidataTransmissionError = uploadResult.errorMessage || `MediData upload failed with status ${uploadResult.statusCode}`;
-          console.error("MediData transmission failed:", medidataTransmissionError, uploadResult.rawResponse);
+          medidataTransmissionError = uploadResult.errorMessage || `Proxy upload failed (${uploadResult.statusCode})`;
+          console.error("[SendInvoice] Proxy transmission failed:", medidataTransmissionError, uploadResult.rawResponse);
 
           // Record the error in history
           await supabaseAdmin.from("medidata_submission_history").insert({
@@ -409,8 +565,8 @@ export async function POST(request: NextRequest) {
           });
         }
       } catch (error) {
-        medidataTransmissionError = `Failed to connect to MediData Box: ${error instanceof Error ? error.message : 'Unknown error'}`;
-        console.error("MediData transmission error:", error);
+        medidataTransmissionError = `Proxy error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        console.error("[SendInvoice] Proxy transmission error:", error);
 
         // Record the error in history
         await supabaseAdmin.from("medidata_submission_history").insert({
@@ -418,9 +574,11 @@ export async function POST(request: NextRequest) {
           previous_status: 'draft',
           new_status: 'draft',
           changed_by: null,
-          notes: `Connection error: ${medidataTransmissionError}`,
+          notes: `Proxy error: ${medidataTransmissionError}`,
         });
       }
+    } else {
+      console.warn("[SendInvoice] MEDIDATA_PROXY_API_KEY not set — skipping transmission");
     }
 
     return NextResponse.json({
@@ -429,8 +587,12 @@ export async function POST(request: NextRequest) {
         id: submission.id,
         invoiceNumber,
         status: medidataTransmissionStatus,
-        messageId: medidataMessageId,
+        messageId: medidataTransmissionRef,
         xmlGenerated: true,
+        xmlVersion: '5.00',
+        sumex1Schema: sumexResult.usedSchema,
+        pdfGenerated: !!pdfStoragePath,
+        pdfStoragePath,
         transmitted: medidataTransmissionStatus === 'pending',
         transmissionError: medidataTransmissionError,
         total,
