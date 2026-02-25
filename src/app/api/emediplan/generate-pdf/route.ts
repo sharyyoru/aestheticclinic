@@ -234,7 +234,7 @@ async function generateQRCode(data: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { patientId, tabType, providerId } = body;
+    const { patientId, tabType, providerId, prescriptionSheetId } = body;
 
     if (!patientId) {
       return NextResponse.json({ error: "Patient ID is required" }, { status: 400 });
@@ -299,6 +299,13 @@ export async function POST(request: NextRequest) {
       filteredMeds = filteredMeds.filter(
         (med: PatientPrescription) => med.prescription_sheet_id !== null
       );
+      
+      // If a specific prescriptionSheetId is provided, filter to only that prescription
+      if (prescriptionSheetId) {
+        filteredMeds = filteredMeds.filter(
+          (med: PatientPrescription) => med.prescription_sheet_id === prescriptionSheetId
+        );
+      }
     } else if (validTabType === "medicine") {
       // Medicine tab: no prescription_sheet_id AND product_type is MEDICATION
       filteredMeds = filteredMeds.filter(

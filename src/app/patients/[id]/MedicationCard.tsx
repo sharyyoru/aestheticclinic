@@ -155,7 +155,7 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
         loadMedications();
     }
 
-    async function handleSendEmediplanEmail(tabType: "medicine" | "prescription") {
+    async function handleSendEmediplanEmail(tabType: "medicine" | "prescription", prescriptionSheetId?: string) {
         if (!patientEmail) {
             alert("Patient does not have an email address");
             return;
@@ -168,7 +168,7 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
             const pdfResponse = await fetch("/api/emediplan/generate-pdf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ patientId, tabType }),
+                body: JSON.stringify({ patientId, tabType, prescriptionSheetId }),
             });
 
             const pdfData = await pdfResponse.json();
@@ -184,7 +184,7 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                 body: JSON.stringify({
                     patientId,
                     to: patientEmail,
-                    subject: `Your Medication Plan - eMediplan`,
+                    subject: `Your Medication Plan`,
                     html: `<p>Hello,</p><p>Please find attached your medication plan (eMediplan).</p><p>Best regards,<br/>Your Medical Team</p>`,
                     inlineAttachments: [{
                         filename: pdfData.filename,
@@ -201,7 +201,7 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                 throw new Error(emailData.error || "Failed to send email");
             }
 
-            alert("eMediplan sent successfully to " + patientEmail);
+            alert("email sent successfully to " + patientEmail);
         } catch (error) {
             console.error("Error sending eMediplan email:", error);
             alert(error instanceof Error ? error.message : "Failed to send eMediplan email");
@@ -210,14 +210,14 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
         }
     }
 
-    async function handleGenerateEmediplanPdf(tabType: "medicine" | "prescription") {
+    async function handleGenerateEmediplanPdf(tabType: "medicine" | "prescription", prescriptionSheetId?: string) {
         try {
             setGeneratingPdf(true);
 
             const response = await fetch("/api/emediplan/generate-pdf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ patientId, tabType }),
+                body: JSON.stringify({ patientId, tabType, prescriptionSheetId }),
             });
 
             const data = await response.json();
@@ -287,8 +287,8 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                     </button>
                 </nav>
                 
-                {/* Generate eMediplan PDF and Send to Email Buttons */}
-                {(subTab === "medicine" || subTab === "prescription") && filteredMedications.length > 0 && (
+                {/* Generate eMediplan PDF and Send to Email Buttons - Only for medicine tab */}
+                {subTab === "medicine" && filteredMedications.length > 0 && (
                     <div className="mb-1 flex items-center gap-2">
                         <button
                             onClick={() => handleGenerateEmediplanPdf(subTab)}
@@ -373,11 +373,35 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                                                     {prescriptionDate.toUpperCase()} ORDONNANCE
                                                 </span>
                                             </div>
-                                            <button className="text-slate-400 hover:text-slate-600">
-                                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                                                </svg>
-                                            </button>
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={() => handleGenerateEmediplanPdf("prescription", sheetId)}
+                                                    disabled={generatingPdf || sendingEmail}
+                                                    className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-[10px] font-medium text-cyan-700 shadow-sm transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    title="Generate PDF"
+                                                >
+                                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                    </svg>
+                                                    PDF
+                                                </button>
+                                                <button
+                                                    onClick={() => handleSendEmediplanEmail("prescription", sheetId)}
+                                                    disabled={sendingEmail || generatingPdf}
+                                                    className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    title={patientEmail ? `Send to ${patientEmail}` : "No patient email"}
+                                                >
+                                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                                    </svg>
+                                                    Email
+                                                </button>
+                                                <button className="ml-1 text-slate-400 hover:text-slate-600">
+                                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                                    </svg>
+                                                </button>
+                                            </div>
                                         </div>
                                         <PrescriptionTable 
                                             medications={items} 
