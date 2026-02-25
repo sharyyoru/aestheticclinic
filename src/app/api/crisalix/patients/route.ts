@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+// Increase body size limit to 25MB for image uploads
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '25mb',
+    },
+  },
+};
+
+// For App Router, also export runtime config
+export const maxDuration = 60; // 60 seconds timeout for large uploads
+
 const CRISALIX_API_BASE_URL =
   process.env.CRISALIX_API_BASE_URL ?? "https://api3d-staging.crisalix.com";
 

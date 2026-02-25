@@ -6,6 +6,88 @@ import { supabaseClient } from "@/lib/supabaseClient";
 
 type ReconstructionType = "breast" | "face" | "body";
 
+// Maximum file size in bytes (1MB) - Vercel has a 4.5MB body limit
+const MAX_FILE_SIZE = 1 * 1024 * 1024;
+// Target quality for JPEG compression
+const COMPRESSION_QUALITY = 0.8;
+// Maximum image dimension
+const MAX_IMAGE_DIMENSION = 2048;
+
+/**
+ * Compress an image file if it exceeds the max size
+ * Returns the original file if compression is not needed or fails
+ */
+async function compressImage(file: File): Promise<File> {
+  // Skip if already small enough
+  if (file.size <= MAX_FILE_SIZE) {
+    console.log(`[Image Compress] File ${file.name} already small (${(file.size / 1024).toFixed(1)}KB), skipping compression`);
+    return file;
+  }
+
+  console.log(`[Image Compress] Compressing ${file.name} from ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    img.onload = () => {
+      // Calculate new dimensions while maintaining aspect ratio
+      let { width, height } = img;
+      
+      if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        if (width > height) {
+          height = Math.round((height * MAX_IMAGE_DIMENSION) / width);
+          width = MAX_IMAGE_DIMENSION;
+        } else {
+          width = Math.round((width * MAX_IMAGE_DIMENSION) / height);
+          height = MAX_IMAGE_DIMENSION;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      if (!ctx) {
+        console.warn('[Image Compress] Canvas context not available, using original');
+        resolve(file);
+        return;
+      }
+
+      // Draw and compress
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            console.warn('[Image Compress] Compression failed, using original');
+            resolve(file);
+            return;
+          }
+
+          const compressedFile = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+
+          console.log(`[Image Compress] Compressed ${file.name}: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressedFile.size / 1024).toFixed(1)}KB`);
+          resolve(compressedFile);
+        },
+        'image/jpeg',
+        COMPRESSION_QUALITY
+      );
+    };
+
+    img.onerror = () => {
+      console.warn('[Image Compress] Failed to load image, using original');
+      resolve(file);
+    };
+
+    // Load the image
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 interface PatientImage {
   name: string;
   path: string;
@@ -273,46 +355,57 @@ export default function Patient3DSetupPage() {
         hasBackFile: !!backFile,
       });
       
+      // Compress images before upload to stay under Vercel's 4.5MB body limit
+      console.log("[3D Setup] Compressing images...");
+      
       // Add image files from state (works for both upload and gallery selection)
       if (leftFile) {
-        formData.append("left_profile", leftFile, leftFile.name);
+        const compressedLeft = await compressImage(leftFile);
+        formData.append("left_profile", compressedLeft, compressedLeft.name);
         console.log("[3D Setup] ✓ Added left_profile:", {
-          name: leftFile.name,
-          size: leftFile.size,
-          type: leftFile.type,
+          name: compressedLeft.name,
+          originalSize: leftFile.size,
+          compressedSize: compressedLeft.size,
+          type: compressedLeft.type,
         });
       } else {
         console.warn("[3D Setup] ✗ No left_profile file");
       }
       
       if (frontFile) {
-        formData.append("front_profile", frontFile, frontFile.name);
+        const compressedFront = await compressImage(frontFile);
+        formData.append("front_profile", compressedFront, compressedFront.name);
         console.log("[3D Setup] ✓ Added front_profile:", {
-          name: frontFile.name,
-          size: frontFile.size,
-          type: frontFile.type,
+          name: compressedFront.name,
+          originalSize: frontFile.size,
+          compressedSize: compressedFront.size,
+          type: compressedFront.type,
         });
       } else {
         console.warn("[3D Setup] ✗ No front_profile file");
       }
       
       if (rightFile) {
-        formData.append("right_profile", rightFile, rightFile.name);
+        const compressedRight = await compressImage(rightFile);
+        formData.append("right_profile", compressedRight, compressedRight.name);
         console.log("[3D Setup] ✓ Added right_profile:", {
-          name: rightFile.name,
-          size: rightFile.size,
-          type: rightFile.type,
+          name: compressedRight.name,
+          originalSize: rightFile.size,
+          compressedSize: compressedRight.size,
+          type: compressedRight.type,
         });
       } else {
         console.warn("[3D Setup] ✗ No right_profile file");
       }
       
       if (type === "body" && backFile) {
-        formData.append("back_profile", backFile, backFile.name);
+        const compressedBack = await compressImage(backFile);
+        formData.append("back_profile", compressedBack, compressedBack.name);
         console.log("[3D Setup] ✓ Added back_profile:", {
-          name: backFile.name,
-          size: backFile.size,
-          type: backFile.type,
+          name: compressedBack.name,
+          originalSize: backFile.size,
+          compressedSize: compressedBack.size,
+          type: compressedBack.type,
         });
       }
       
