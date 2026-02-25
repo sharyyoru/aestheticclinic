@@ -237,6 +237,22 @@ const CONSULTATION_DURATION_OPTIONS = [
   { value: 180, label: "3 hours" },
   { value: 210, label: "3.5 hours" },
   { value: 240, label: "4 hours" },
+  { value: 300, label: "5 hours" },
+  { value: 360, label: "6 hours" },
+  { value: 420, label: "7 hours" },
+  { value: 480, label: "8 hours" },
+  { value: 540, label: "9 hours" },
+  { value: 600, label: "10 hours" },
+  { value: 660, label: "11 hours" },
+  { value: 720, label: "12 hours" },
+  { value: 780, label: "13 hours" },
+  { value: 840, label: "14 hours" },
+  { value: 900, label: "15 hours" },
+  { value: 960, label: "16 hours" },
+  { value: 1020, label: "17 hours" },
+  { value: 1080, label: "18 hours" },
+  { value: 1140, label: "19 hours" },
+  { value: 1200, label: "20 hours" },
 ];
 
 const APPOINTMENT_CATEGORY_OPTIONS = [
@@ -296,7 +312,7 @@ type CalendarAppointment = {
 
 type CalendarView = "month" | "day" | "range";
 
-const DAY_VIEW_START_MINUTES = 8 * 60;
+const DAY_VIEW_START_MINUTES = 6 * 60;
 const DAY_VIEW_END_MINUTES = 20 * 60; // 8 PM
 const DAY_VIEW_SLOT_MINUTES = 15;
 const DAY_VIEW_SLOT_HEIGHT = 28;
