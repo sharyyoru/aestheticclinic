@@ -141,7 +141,88 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No reference ID" }, { status: 400 });
     }
 
-    // Look up the invoice by invoice_number
+    // Check if this is an installment payment (referenceId format: INVOICE_NUMBER-INST1)
+    const installmentMatch = referenceId.match(/^(.+)-INST(\d+)$/);
+
+    if (installmentMatch) {
+      // ── Installment-level payment ──
+      const invoiceNumber = installmentMatch[1];
+      const installmentNumber = parseInt(installmentMatch[2], 10);
+
+      const { data: invoice } = await supabaseAdmin
+        .from("invoices")
+        .select("id, invoice_number, total_amount, status")
+        .eq("invoice_number", invoiceNumber)
+        .single();
+
+      if (!invoice) {
+        console.error("Invoice not found for installment reference:", referenceId);
+        return NextResponse.json({ received: true, message: "Invoice not found" });
+      }
+
+      // Find the installment
+      const { data: installment } = await supabaseAdmin
+        .from("invoice_installments")
+        .select("id, amount, status")
+        .eq("invoice_id", invoice.id)
+        .eq("installment_number", installmentNumber)
+        .single();
+
+      if (!installment) {
+        console.error("Installment not found:", referenceId);
+        return NextResponse.json({ received: true, message: "Installment not found" });
+      }
+
+      const isPaid = isTransactionPaid(transaction.status);
+      const paidAt = isPaid ? new Date().toISOString() : null;
+
+      // Update installment
+      const instUpdate: Record<string, unknown> = {
+        payrexx_transaction_id: String(transaction.id),
+        payrexx_payment_status: transaction.status,
+      };
+      if (isPaid && installment.status !== "PAID") {
+        instUpdate.status = "PAID";
+        instUpdate.paid_amount = installment.amount;
+        instUpdate.paid_at = paidAt;
+        instUpdate.payrexx_paid_at = paidAt;
+      }
+
+      await supabaseAdmin
+        .from("invoice_installments")
+        .update(instUpdate)
+        .eq("id", installment.id);
+
+      // Recalculate invoice-level status based on all installments
+      if (isPaid) {
+        const { data: allInstallments } = await supabaseAdmin
+          .from("invoice_installments")
+          .select("amount, status")
+          .eq("invoice_id", invoice.id);
+
+        if (allInstallments && allInstallments.length > 0) {
+          const totalPaid = allInstallments
+            .filter((i: { status: string }) => i.status === "PAID")
+            .reduce((s: number, i: { amount: number }) => s + Number(i.amount || 0), 0);
+          const invoiceTotal = Number(invoice.total_amount) || 0;
+
+          const invoiceUpdate: Record<string, unknown> = { paid_amount: totalPaid };
+          if (totalPaid >= invoiceTotal - 0.01) {
+            invoiceUpdate.status = "PAID";
+            invoiceUpdate.paid_at = paidAt;
+          } else if (totalPaid > 0) {
+            invoiceUpdate.status = "PARTIAL_PAID";
+          }
+
+          await supabaseAdmin.from("invoices").update(invoiceUpdate).eq("id", invoice.id);
+        }
+      }
+
+      console.log("Installment payment processed:", { referenceId, isPaid });
+      return NextResponse.json({ received: true, installmentId: installment.id, isPaid });
+    }
+
+    // ── Invoice-level payment (original flow) ──
     const { data: invoice, error: invoiceError } = await supabaseAdmin
       .from("invoices")
       .select("id, invoice_number, status, total_amount, payrexx_payment_status")
@@ -150,7 +231,6 @@ export async function POST(request: NextRequest) {
 
     if (invoiceError || !invoice) {
       console.error("Invoice not found for reference ID:", referenceId);
-      // Still return 200 to prevent Payrexx from retrying
       return NextResponse.json({ 
         received: true, 
         message: "Invoice not found" 

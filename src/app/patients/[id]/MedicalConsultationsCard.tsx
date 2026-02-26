@@ -83,6 +83,7 @@ type ConsultationRow = {
   created_by_name: string | null;
   is_archived: boolean;
   archived_at: string | null;
+  reference_number: string | null;
 };
 
 type PlatformUser = {
@@ -100,6 +101,7 @@ type Provider = {
   gln: string | null;
   zsr: string | null;
   canton: string | null;
+  iban: string | null;
 };
 
 type PrescriptionLine = {
@@ -150,10 +152,48 @@ type InvoicePaymentTerm = "full" | "installment";
 
 type InvoiceExtraOption = "complimentary" | null;
 
+function generateSwissReference(invoiceId: string): string {
+  let numericPart = invoiceId.replace(/\D/g, "");
+  if (numericPart.length === 0) {
+    let hash = "";
+    for (let i = 0; i < invoiceId.length; i++) {
+      hash += invoiceId.charCodeAt(i).toString().padStart(3, "0");
+    }
+    numericPart = hash;
+  }
+  const padded = numericPart.length > 26 ? numericPart.slice(-26) : numericPart.padStart(26, "0");
+  const table = [0, 9, 4, 6, 8, 2, 7, 1, 3, 5];
+  let carry = 0;
+  for (const ch of padded) carry = table[(carry + parseInt(ch, 10)) % 10];
+  return padded + ((10 - carry) % 10).toString();
+}
+
 type InvoiceInstallment = {
   id: string;
   percent: number;
   dueDate: string;
+};
+
+type DbInstallment = {
+  id: string;
+  invoice_id: string;
+  installment_number: number;
+  amount: number;
+  due_date: string | null;
+  payment_method: string | null;
+  status: "PENDING" | "PAID" | "CANCELLED";
+  paid_amount: number;
+  paid_at: string | null;
+  invoice_number: string | null;
+  reference_number: string | null;
+  notes: string | null;
+  payrexx_gateway_id: number | null;
+  payrexx_gateway_hash: string | null;
+  payrexx_payment_link: string | null;
+  payrexx_payment_status: string | null;
+  payrexx_transaction_id: string | null;
+  payrexx_paid_at: string | null;
+  created_at: string;
 };
 
 // TARDOC-compliant medicines for Swiss healthcare billing
@@ -366,7 +406,18 @@ export default function MedicalConsultationsCard({
   const [editInvoiceModalOpen, setEditInvoiceModalOpen] = useState(false);
   const [editInvoiceTarget, setEditInvoiceTarget] = useState<ConsultationRow | null>(null);
   const [editInvoiceTitle, setEditInvoiceTitle] = useState("");
+  const [editInvoiceRefNumber, setEditInvoiceRefNumber] = useState("");
   const [editInvoiceSaving, setEditInvoiceSaving] = useState(false);
+
+  const [installmentsModalOpen, setInstallmentsModalOpen] = useState(false);
+  const [installmentsTarget, setInstallmentsTarget] = useState<ConsultationRow | null>(null);
+  const [installments, setInstallments] = useState<DbInstallment[]>([]);
+  const [installmentsLoading, setInstallmentsLoading] = useState(false);
+  const [installmentPdfGenerating, setInstallmentPdfGenerating] = useState<string | null>(null);
+  const [installmentsSaving, setInstallmentsSaving] = useState(false);
+
+  // Installment summaries for outside UI display (keyed by invoice_id)
+  const [installmentSummaries, setInstallmentSummaries] = useState<Record<string, { total: number; paid: number; count: number; paidCount: number }>>({});
 
   const [paymentStatusModalOpen, setPaymentStatusModalOpen] = useState(false);
   const [paymentStatusTarget, setPaymentStatusTarget] = useState<ConsultationRow | null>(null);
@@ -478,7 +529,7 @@ export default function MedicalConsultationsCard({
       try {
         const { data } = await supabaseClient
           .from("providers")
-          .select("id, name, specialty, email, phone, gln, zsr, canton, role")
+          .select("id, name, specialty, email, phone, gln, zsr, canton, role, iban")
           .order("name");
         if (!isMounted) return;
         if (data) {
@@ -565,13 +616,14 @@ export default function MedicalConsultationsCard({
         const nonInvoiceRows: ConsultationRow[] = (consultData ?? []).map((r: any) => ({
           ...r,
           invoice_id: null,
+          reference_number: null,
         }));
 
         // 2) Load invoice records directly from invoices table
         const { data: invoiceData, error: invoiceError } = await supabaseClient
           .from("invoices")
           .select(
-            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, provider_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, title",
+            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, provider_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, title, reference_number",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -632,6 +684,7 @@ export default function MedicalConsultationsCard({
             created_by_name: inv.created_by_name ?? null,
             is_archived: inv.is_archived ?? false,
             archived_at: null,
+            reference_number: inv.reference_number ?? null,
           };
         });
 
@@ -686,6 +739,30 @@ export default function MedicalConsultationsCard({
         if (!isMounted) return;
         setConsultations(allRows);
         setConsultationsLoading(false);
+
+        // Load installment summaries for all invoices
+        const invoiceIdsForInstallments = invoiceRows.map((r) => r.invoice_id).filter(Boolean) as string[];
+        if (invoiceIdsForInstallments.length > 0) {
+          const { data: allInstData } = await supabaseClient
+            .from("invoice_installments")
+            .select("invoice_id, amount, status")
+            .in("invoice_id", invoiceIdsForInstallments);
+          if (allInstData && allInstData.length > 0) {
+            const summaries: Record<string, { total: number; paid: number; count: number; paidCount: number }> = {};
+            for (const inst of allInstData) {
+              if (!summaries[inst.invoice_id]) {
+                summaries[inst.invoice_id] = { total: 0, paid: 0, count: 0, paidCount: 0 };
+              }
+              summaries[inst.invoice_id].count++;
+              summaries[inst.invoice_id].total += Number(inst.amount || 0);
+              if (inst.status === "PAID") {
+                summaries[inst.invoice_id].paidCount++;
+                summaries[inst.invoice_id].paid += Number(inst.amount || 0);
+              }
+            }
+            if (isMounted) setInstallmentSummaries(summaries);
+          }
+        }
       } catch {
         if (!isMounted) return;
         setConsultationsError("Failed to load consultations.");
@@ -1037,7 +1114,8 @@ export default function MedicalConsultationsCard({
       const { error } = await supabaseClient
         .from("invoices")
         .update({
-          title: editInvoiceTitle,
+          title: editInvoiceTitle || null,
+          reference_number: editInvoiceRefNumber || null,
         })
         .eq("id", editInvoiceTarget.invoice_id);
 
@@ -1050,7 +1128,7 @@ export default function MedicalConsultationsCard({
       setConsultations((prev) =>
         prev.map((row) =>
           row.invoice_id === editInvoiceTarget.invoice_id
-            ? { ...row, title: editInvoiceTitle }
+            ? { ...row, title: editInvoiceTitle, reference_number: editInvoiceRefNumber || null }
             : row
         )
       );
@@ -1062,6 +1140,444 @@ export default function MedicalConsultationsCard({
       alert("Failed to update invoice.");
     } finally {
       setEditInvoiceSaving(false);
+    }
+  }
+
+  async function handleOpenInstallments(invoice: ConsultationRow) {
+    if (!invoice.invoice_id) return;
+    setInstallmentsTarget(invoice);
+    setInstallmentsModalOpen(true);
+    setInstallmentsLoading(true);
+    try {
+      const { data, error } = await supabaseClient
+        .from("invoice_installments")
+        .select("*")
+        .eq("invoice_id", invoice.invoice_id)
+        .order("installment_number", { ascending: true });
+      if (error) {
+        console.error("Failed to load installments:", error);
+        setInstallments([]);
+      } else {
+        setInstallments((data ?? []) as DbInstallment[]);
+      }
+    } catch (err) {
+      console.error("Error loading installments:", err);
+      setInstallments([]);
+    } finally {
+      setInstallmentsLoading(false);
+    }
+  }
+
+  function handleAddInstallment() {
+    if (!installmentsTarget) return;
+    const totalAmount = installmentsTarget.invoice_total_amount ?? 0;
+    const allocated = installments.reduce((sum, inst) => sum + (inst.amount || 0), 0);
+    const remaining = Math.max(0, totalAmount - allocated);
+    const nextNumber = installments.length > 0
+      ? Math.max(...installments.map(i => i.installment_number)) + 1
+      : 1;
+    setInstallments((prev) => [
+      ...prev,
+      {
+        id: `new-${Date.now()}`,
+        invoice_id: installmentsTarget.invoice_id!,
+        installment_number: nextNumber,
+        amount: Math.round(remaining * 100) / 100,
+        due_date: null,
+        payment_method: null,
+        status: "PENDING",
+        paid_amount: 0,
+        paid_at: null,
+        invoice_number: null,
+        reference_number: null,
+        notes: null,
+        payrexx_gateway_id: null,
+        payrexx_gateway_hash: null,
+        payrexx_payment_link: null,
+        payrexx_payment_status: null,
+        payrexx_transaction_id: null,
+        payrexx_paid_at: null,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+  }
+
+  function handleRemoveInstallment(index: number) {
+    setInstallments((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleUpdateInstallment(index: number, updates: Partial<DbInstallment>) {
+    setInstallments((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      return next;
+    });
+  }
+
+  async function handleSaveInstallments() {
+    if (!installmentsTarget?.invoice_id) return;
+    setInstallmentsSaving(true);
+    try {
+      // Delete all existing installments for this invoice
+      const { error: deleteError } = await supabaseClient
+        .from("invoice_installments")
+        .delete()
+        .eq("invoice_id", installmentsTarget.invoice_id);
+      if (deleteError) {
+        alert("Failed to save installments: " + deleteError.message);
+        return;
+      }
+
+      // Get parent invoice number for generating installment invoice numbers
+      const { data: parentInvoiceData } = await supabaseClient
+        .from("invoices")
+        .select("invoice_number")
+        .eq("id", installmentsTarget.invoice_id)
+        .single();
+      const parentInvoiceNumber = parentInvoiceData?.invoice_number || installmentsTarget.consultation_id;
+
+      // Insert all current installments
+      let savedInstallments: DbInstallment[] = [];
+      if (installments.length > 0) {
+        const rows = installments.map((inst, idx) => {
+          const instNumber = idx + 1;
+          const instInvoiceNumber = `${parentInvoiceNumber}${instNumber.toString().padStart(4, '0')}`;
+          const instReference = generateSwissReference(instInvoiceNumber);
+          return {
+            invoice_id: installmentsTarget.invoice_id,
+            installment_number: instNumber,
+            amount: inst.amount,
+            due_date: inst.due_date || null,
+            payment_method: inst.payment_method || null,
+            status: inst.status,
+            paid_amount: inst.paid_amount || 0,
+            paid_at: inst.paid_at || null,
+            invoice_number: instInvoiceNumber,
+            reference_number: instReference,
+            notes: inst.notes || null,
+            payrexx_gateway_id: inst.payrexx_gateway_id || null,
+            payrexx_gateway_hash: inst.payrexx_gateway_hash || null,
+            payrexx_payment_link: inst.payrexx_payment_link || null,
+            payrexx_payment_status: inst.payrexx_payment_status || null,
+            payrexx_transaction_id: inst.payrexx_transaction_id || null,
+            payrexx_paid_at: inst.payrexx_paid_at || null,
+          };
+        });
+
+        const { data: inserted, error: insertError } = await supabaseClient
+          .from("invoice_installments")
+          .insert(rows)
+          .select("*");
+
+        if (insertError) {
+          alert("Failed to save installments: " + insertError.message);
+          return;
+        }
+        savedInstallments = (inserted ?? []) as DbInstallment[];
+        setInstallments(savedInstallments);
+      }
+
+      // Update invoice payment_method to "Installment" if installments exist
+      if (installments.length > 0) {
+        await supabaseClient
+          .from("invoices")
+          .update({ payment_method: "Installment" })
+          .eq("id", installmentsTarget.invoice_id);
+      }
+
+      // Create Payrexx gateways for Online/Cash installments that don't have one yet
+      for (const inst of savedInstallments) {
+        const pm = (inst.payment_method || "").toLowerCase();
+        if ((pm.includes("online") || pm.includes("cash")) && !inst.payrexx_payment_link && inst.status !== "PAID") {
+          try {
+            const res = await fetch("/api/payments/create-installment-gateway", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ installmentId: inst.id }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.paymentLink) {
+                // Update local state with the new payment link
+                setInstallments((prev) =>
+                  prev.map((i) =>
+                    i.id === inst.id
+                      ? { ...i, payrexx_payment_link: data.paymentLink, payrexx_gateway_id: data.gatewayId, payrexx_payment_status: "waiting" }
+                      : i
+                  )
+                );
+              }
+            }
+          } catch (err) {
+            console.error("Failed to create Payrexx gateway for installment:", inst.id, err);
+          }
+        }
+      }
+
+      // Update installment summaries for outside UI
+      if (installmentsTarget.invoice_id) {
+        const latestInstallments = savedInstallments.length > 0 ? savedInstallments : [];
+        const totalAllocated = latestInstallments.reduce((s, i) => s + Number(i.amount || 0), 0);
+        const totalPaidAmt = latestInstallments.filter((i) => i.status === "PAID").reduce((s, i) => s + Number(i.amount || 0), 0);
+        const paidCount = latestInstallments.filter((i) => i.status === "PAID").length;
+        setInstallmentSummaries((prev) => ({
+          ...prev,
+          [installmentsTarget.invoice_id!]: { total: totalAllocated, paid: totalPaidAmt, count: latestInstallments.length, paidCount },
+        }));
+      }
+
+      alert("Installments saved successfully.");
+    } catch (err) {
+      console.error("Error saving installments:", err);
+      alert("Failed to save installments.");
+    } finally {
+      setInstallmentsSaving(false);
+    }
+  }
+
+  async function handleMarkInstallmentPaid(index: number) {
+    const inst = installments[index];
+    if (!inst || !installmentsTarget?.invoice_id) return;
+    const newStatus = inst.status === "PAID" ? "PENDING" : "PAID";
+    const paidAt = newStatus === "PAID" ? new Date().toISOString() : null;
+    const paidAmount = newStatus === "PAID" ? inst.amount : 0;
+
+    // Update local installment state
+    const updatedInstallments = installments.map((i, idx) =>
+      idx === index ? { ...i, status: newStatus as "PAID" | "PENDING", paid_amount: paidAmount, paid_at: paidAt } : i
+    );
+    setInstallments(updatedInstallments);
+
+    // Persist installment status to DB (if it's a saved installment, not a new one)
+    if (!inst.id.startsWith("new-")) {
+      await supabaseClient
+        .from("invoice_installments")
+        .update({ status: newStatus, paid_amount: paidAmount, paid_at: paidAt })
+        .eq("id", inst.id);
+    }
+
+    // Recalculate master invoice paid_amount and status
+    const totalPaid = updatedInstallments
+      .filter((i) => i.status === "PAID")
+      .reduce((sum, i) => sum + Number(i.amount || 0), 0);
+    const invoiceTotal = installmentsTarget.invoice_total_amount ?? 0;
+
+    let invoiceStatus: InvoiceStatus = "OPEN";
+    if (totalPaid >= invoiceTotal - 0.01 && invoiceTotal > 0) {
+      invoiceStatus = "PAID";
+    } else if (totalPaid > 0) {
+      invoiceStatus = "PARTIAL_PAID";
+    }
+
+    // Update master invoice in DB
+    const invoiceUpdate: Record<string, unknown> = {
+      paid_amount: totalPaid,
+      status: invoiceStatus,
+    };
+    if (invoiceStatus === "PAID") {
+      invoiceUpdate.paid_at = paidAt;
+    }
+    await supabaseClient
+      .from("invoices")
+      .update(invoiceUpdate)
+      .eq("id", installmentsTarget.invoice_id);
+
+    // Update local consultations state
+    setConsultations((prev) =>
+      prev.map((row) =>
+        row.invoice_id === installmentsTarget.invoice_id
+          ? {
+              ...row,
+              invoice_paid_amount: totalPaid,
+              invoice_status: invoiceStatus,
+              invoice_is_paid: invoiceStatus === "PAID",
+            }
+          : row
+      )
+    );
+
+    // Update installmentsTarget to reflect new status
+    setInstallmentsTarget((prev) =>
+      prev ? { ...prev, invoice_paid_amount: totalPaid, invoice_status: invoiceStatus, invoice_is_paid: invoiceStatus === "PAID" } : prev
+    );
+
+    // Update installment summaries for outside UI
+    const paidCount = updatedInstallments.filter((i) => i.status === "PAID").length;
+    setInstallmentSummaries((prev) => ({
+      ...prev,
+      [installmentsTarget.invoice_id!]: {
+        total: updatedInstallments.reduce((s, i) => s + Number(i.amount || 0), 0),
+        paid: totalPaid,
+        count: updatedInstallments.length,
+        paidCount,
+      },
+    }));
+  }
+
+  async function handleGenerateInstallmentInvoice(inst: DbInstallment) {
+    if (!installmentsTarget?.invoice_id || inst.id.startsWith("new-")) {
+      alert("Please save installments first before generating an invoice.");
+      return;
+    }
+
+    setInstallmentPdfGenerating(inst.id);
+
+    // Check if sub-invoice already exists for this installment
+    const { data: existing } = await supabaseClient
+      .from("invoices")
+      .select("id, invoice_number")
+      .eq("installment_id", inst.id)
+      .maybeSingle();
+
+    if (existing) {
+      // Already exists - generate/regenerate PDF
+      try {
+        const res = await fetch("/api/invoices/generate-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ invoiceId: existing.id }),
+        });
+        const data = await res.json();
+        if (data.pdfUrl) {
+          window.open(data.pdfUrl, "_blank");
+        } else {
+          alert("Failed to generate PDF: " + (data.error || "Unknown error"));
+        }
+      } catch (err) {
+        console.error("Error generating installment PDF:", err);
+        alert("Failed to generate installment invoice PDF.");
+      } finally {
+        setInstallmentPdfGenerating(null);
+      }
+      return;
+    }
+
+    // Fetch parent invoice data to clone
+    const { data: parentInvoice, error: parentError } = await supabaseClient
+      .from("invoices")
+      .select("*")
+      .eq("id", installmentsTarget.invoice_id)
+      .single();
+
+    if (parentError || !parentInvoice) {
+      alert("Failed to fetch parent invoice data.");
+      return;
+    }
+
+    // Create sub-invoice number: master invoice + 4-digit installment number (e.g., 10000010001, 10000010002)
+    // This ensures pure numeric format for Sumex1 Swiss QR reference compatibility
+    const subInvoiceNumber = `${parentInvoice.invoice_number}${inst.installment_number.toString().padStart(4, '0')}`;
+
+    // For online payment, use existing Payrexx data from installment record
+    let payrexxData: any = {};
+    const instPaymentMethod = inst.payment_method || parentInvoice.payment_method;
+    const isOnlinePayment = instPaymentMethod === "Online Payment" || instPaymentMethod === "Online";
+    console.log(`[Installment Invoice] Payment method: "${instPaymentMethod}", isOnlinePayment: ${isOnlinePayment}`);
+    
+    if (isOnlinePayment && inst.payrexx_payment_link) {
+      // Use existing Payrexx data from the installment record
+      payrexxData = {
+        payrexx_gateway_id: inst.payrexx_gateway_id,
+        payrexx_gateway_hash: inst.payrexx_gateway_hash,
+        payrexx_payment_link: inst.payrexx_payment_link,
+        payrexx_payment_status: inst.payrexx_payment_status || "waiting",
+      };
+      console.log(`[Installment Invoice] Using existing Payrexx link from installment: ${inst.payrexx_payment_link}`);
+    }
+
+    // Create sub-invoice
+    const { data: subInvoice, error: subError } = await supabaseClient
+      .from("invoices")
+      .insert({
+        patient_id: parentInvoice.patient_id,
+        invoice_number: subInvoiceNumber,
+        title: `${parentInvoice.title || parentInvoice.invoice_number} - Installment ${inst.installment_number}`,
+        invoice_date: inst.due_date || parentInvoice.invoice_date,
+        treatment_date: parentInvoice.treatment_date,
+        doctor_user_id: parentInvoice.doctor_user_id,
+        doctor_name: parentInvoice.doctor_name,
+        provider_id: parentInvoice.provider_id,
+        provider_name: parentInvoice.provider_name,
+        provider_gln: parentInvoice.provider_gln,
+        provider_zsr: parentInvoice.provider_zsr,
+        provider_iban: parentInvoice.provider_iban,
+        doctor_gln: parentInvoice.doctor_gln,
+        doctor_zsr: parentInvoice.doctor_zsr,
+        doctor_canton: parentInvoice.doctor_canton,
+        subtotal: inst.amount,
+        vat_amount: 0,
+        total_amount: inst.amount,
+        status: inst.status === "PAID" ? "PAID" : "OPEN",
+        paid_amount: inst.status === "PAID" ? inst.amount : 0,
+        is_complimentary: false,
+        payment_method: inst.payment_method || parentInvoice.payment_method,
+        created_by_user_id: parentInvoice.created_by_user_id,
+        created_by_name: parentInvoice.created_by_name,
+        is_archived: false,
+        reference_number: generateSwissReference(subInvoiceNumber),
+        parent_invoice_id: installmentsTarget.invoice_id,
+        installment_id: inst.id,
+        treatment_canton: parentInvoice.treatment_canton,
+        billing_type: parentInvoice.billing_type || "TG",
+        health_insurance_law: parentInvoice.health_insurance_law,
+        ...payrexxData,
+      })
+      .select("id")
+      .single();
+
+    if (subError || !subInvoice) {
+      alert("Failed to create installment invoice: " + (subError?.message || "Unknown error"));
+      setInstallmentPdfGenerating(null);
+      return;
+    }
+
+    // Copy line items from parent, scaling amounts proportionally
+    const { data: parentLineItems } = await supabaseClient
+      .from("invoice_line_items")
+      .select("*")
+      .eq("invoice_id", installmentsTarget.invoice_id)
+      .order("sort_order", { ascending: true });
+
+    if (parentLineItems && parentLineItems.length > 0) {
+      const parentTotal = Number(parentInvoice.total_amount) || 1;
+      const ratio = inst.amount / parentTotal;
+
+      const scaledItems = parentLineItems.map((item: Record<string, unknown>, idx: number) => ({
+        invoice_id: subInvoice.id,
+        name: item.name,
+        code: item.code,
+        quantity: item.quantity,
+        unit_price: Math.round(Number(item.unit_price || 0) * ratio * 100) / 100,
+        total_price: Math.round(Number(item.total_price || 0) * ratio * 100) / 100,
+        sort_order: idx,
+        tariff_code: item.tariff_code,
+        catalog_name: item.catalog_name,
+        provider_gln: item.provider_gln,
+        responsible_gln: item.responsible_gln,
+        date_begin: item.date_begin,
+      }));
+
+      await supabaseClient.from("invoice_line_items").insert(scaledItems);
+    }
+
+    // Generate PDF
+    try {
+      const res = await fetch("/api/invoices/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId: subInvoice.id }),
+      });
+      const data = await res.json();
+      if (data.pdfUrl) {
+        window.open(data.pdfUrl, "_blank");
+      } else {
+        alert("Installment invoice created but PDF generation failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      console.error("Error generating installment PDF:", err);
+      alert("Installment invoice created. PDF generation failed.");
+    } finally {
+      setInstallmentPdfGenerating(null);
     }
   }
 
@@ -1321,7 +1837,8 @@ export default function MedicalConsultationsCard({
 
   function handleEditInvoice(invoice: ConsultationRow) {
     setEditInvoiceTarget(invoice);
-    setEditInvoiceTitle(invoice.title || invoice.consultation_id || "");
+    setEditInvoiceTitle(invoice.title || "");
+    setEditInvoiceRefNumber(invoice.reference_number || "");
     setEditInvoiceModalOpen(true);
   }
 
@@ -2104,11 +2621,19 @@ export default function MedicalConsultationsCard({
                     setConsultationSaving(true);
                     setConsultationError(null);
 
-                    const consultationId = `CONS-${Date.now()
-                      .toString(36)
-                      .toUpperCase()}`;
+                    // Generate sequential numeric invoice number from database
+                    const { data: invoiceNumberData, error: invoiceNumberError } = await supabaseClient
+                      .rpc('generate_invoice_number');
+                    
+                    if (invoiceNumberError || !invoiceNumberData) {
+                      setConsultationError('Failed to generate invoice number');
+                      setConsultationSaving(false);
+                      return;
+                    }
+
+                    const consultationId = invoiceNumberData as string;
                     const effectiveTitle =
-                      consultationTitle.trim() || consultationId;
+                      consultationTitle.trim() || `Invoice ${consultationId}`;
 
                     const { data: authData } =
                       await supabaseClient.auth.getUser();
@@ -2645,6 +3170,22 @@ export default function MedicalConsultationsCard({
                           doctorCanton = staffData?.canton || null;
                         }
 
+                        // Auto-select first billing entity if none selected (required for Sumex1 PDF generation)
+                        let finalProviderId = selectedProviderId;
+                        let finalProviderName = selectedProviderName;
+                        let finalProviderGln = selectedProviderGln;
+                        let finalProviderZsr = selectedProviderZsr;
+                        let finalProviderIban = providerIban;
+                        
+                        if (!finalProviderId && billingEntityOptions.length > 0) {
+                          const defaultEntity = billingEntityOptions[0];
+                          finalProviderId = defaultEntity.id;
+                          finalProviderName = defaultEntity.name;
+                          finalProviderGln = defaultEntity.gln || null;
+                          finalProviderZsr = defaultEntity.zsr || null;
+                          finalProviderIban = defaultEntity.iban || null;
+                        }
+
                         // Build invoice insert payload
                         const invoiceInsertPayload: Record<string, unknown> = {
                             patient_id: patientId,
@@ -2654,11 +3195,11 @@ export default function MedicalConsultationsCard({
                             treatment_date: scheduledAtIso,
                             doctor_user_id: consultationDoctorId || null, // FK to providers table
                             doctor_name: doctorName,
-                            provider_id: selectedProviderId,
-                            provider_name: selectedProviderName,
-                            provider_gln: selectedProviderGln,
-                            provider_zsr: selectedProviderZsr,
-                            provider_iban: providerIban,
+                            provider_id: finalProviderId,
+                            provider_name: finalProviderName,
+                            provider_gln: finalProviderGln,
+                            provider_zsr: finalProviderZsr,
+                            provider_iban: finalProviderIban,
                             doctor_gln: doctorGln,
                             doctor_zsr: doctorZsr,
                             doctor_canton: doctorCanton,
@@ -2671,6 +3212,7 @@ export default function MedicalConsultationsCard({
                             created_by_user_id: createdByUserId,
                             created_by_name: createdByName,
                             is_archived: false,
+                            reference_number: generateSwissReference(consultationId),
                             is_demo: false,
                         };
 
@@ -2763,6 +3305,76 @@ export default function MedicalConsultationsCard({
                           }
                         }
 
+                        // Save installments to DB if payment term is installment
+                        if (invoicePaymentTerm === "installment" && invoiceInstallments.length > 0) {
+                          const totalAmount = invoiceTotalAmountForInsert || 0;
+                          const isOnlinePayment = paymentMethod?.toLowerCase().includes("online");
+                          
+                          // Create Payrexx gateways for each installment if payment method is Online
+                          const installmentRowsWithPayrexx = await Promise.all(
+                            invoiceInstallments
+                              .filter((inst) => Number.isFinite(inst.percent) && inst.percent > 0)
+                              .map(async (inst, idx) => {
+                                const installmentAmount = Math.round((totalAmount * Math.min(100, inst.percent)) / 100 * 100) / 100;
+                                const installmentNumber = idx + 1;
+                                
+                                let payrexxData: any = {};
+                                if (isOnlinePayment) {
+                                  try {
+                                    const payrexxRes = await fetch("/api/payrexx/create-gateway", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        amount: installmentAmount,
+                                        currency: "CHF",
+                                        purpose: `Installment ${installmentNumber} - Invoice ${consultationId}`,
+                                        referenceId: `${consultationId}-I${installmentNumber}`,
+                                      }),
+                                    });
+                                    const payrexxJson = await payrexxRes.json();
+                                    if (payrexxJson.success) {
+                                      payrexxData = {
+                                        payrexx_gateway_id: payrexxJson.gatewayId,
+                                        payrexx_gateway_hash: payrexxJson.hash,
+                                        payrexx_payment_link: payrexxJson.link,
+                                        payrexx_payment_status: "waiting",
+                                      };
+                                      console.log(`[Installment ${installmentNumber}] Payrexx link created: ${payrexxJson.link}`);
+                                    }
+                                  } catch (payrexxErr) {
+                                    console.error(`[Installment ${installmentNumber}] Failed to create Payrexx link:`, payrexxErr);
+                                  }
+                                }
+                                
+                                // Generate invoice number and reference for this installment
+                                const installmentInvoiceNumber = `${consultationId}${installmentNumber.toString().padStart(4, '0')}`;
+                                const installmentReference = generateSwissReference(installmentInvoiceNumber);
+                                
+                                return {
+                                  invoice_id: invoiceRow.id,
+                                  installment_number: installmentNumber,
+                                  amount: installmentAmount,
+                                  due_date: inst.dueDate || null,
+                                  payment_method: paymentMethod || null,
+                                  status: "PENDING",
+                                  paid_amount: 0,
+                                  invoice_number: installmentInvoiceNumber,
+                                  reference_number: installmentReference,
+                                  ...payrexxData,
+                                };
+                              })
+                          );
+                          
+                          if (installmentRowsWithPayrexx.length > 0) {
+                            const { error: instError } = await supabaseClient
+                              .from("invoice_installments")
+                              .insert(installmentRowsWithPayrexx);
+                            if (instError) {
+                              console.error("Failed to insert installments:", instError);
+                            }
+                          }
+                        }
+
                         // Create Payrexx payment gateway if applicable
                         const pmLower = paymentMethod?.toLowerCase() || "";
                         if (pmLower.includes("cash") || pmLower.includes("online")) {
@@ -2809,6 +3421,7 @@ export default function MedicalConsultationsCard({
                           created_by_name: createdByName,
                           is_archived: false,
                           archived_at: null,
+                          reference_number: generateSwissReference(consultationId),
                         };
 
                         setConsultations((prev) => [inserted, ...prev]);
@@ -4861,6 +5474,33 @@ export default function MedicalConsultationsCard({
                             </div>
                           )}
 
+                          {/* Installments summary */}
+                          {row.invoice_id && installmentSummaries[row.invoice_id] && (
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-violet-100 bg-violet-50/60 px-3 py-2 text-[11px]">
+                              <div className="flex items-center gap-1.5">
+                                <svg className="h-3.5 w-3.5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                                <span className="font-medium text-violet-700">
+                                  Installments: {installmentSummaries[row.invoice_id].paidCount}/{installmentSummaries[row.invoice_id].count} paid
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-violet-500">Paid</span>
+                                <span className="font-semibold text-emerald-700">CHF {installmentSummaries[row.invoice_id].paid.toFixed(2)}</span>
+                              </div>
+                              {installmentSummaries[row.invoice_id].total - installmentSummaries[row.invoice_id].paid > 0.01 && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-violet-500">Remaining</span>
+                                  <span className="font-semibold text-amber-600">
+                                    CHF {(installmentSummaries[row.invoice_id].total - installmentSummaries[row.invoice_id].paid).toFixed(2)}
+                                  </span>
+                                </div>
+                              )}
+                              {installmentSummaries[row.invoice_id].paidCount === installmentSummaries[row.invoice_id].count && (
+                                <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">All Paid</span>
+                              )}
+                            </div>
+                          )}
+
                           {/* Action buttons toolbar */}
                           <div className="flex flex-wrap items-center gap-1.5">
                             {/* Document group */}
@@ -4906,6 +5546,15 @@ export default function MedicalConsultationsCard({
                             >
                               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                               {effectiveStatus === "PARTIAL_PAID" ? "Update Payment" : "Payment Status"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenInstallments(row)}
+                              className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-medium text-violet-700 hover:bg-violet-100 transition-colors"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                              Installments
                             </button>
 
                             {!row.invoice_is_paid && row.payment_method &&
@@ -5348,6 +5997,222 @@ export default function MedicalConsultationsCard({
         </div>
       ) : null}
 
+      {/* Installments Modal */}
+      {installmentsModalOpen && installmentsTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h3 className="text-sm font-semibold text-slate-900">Manage Installments</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Invoice #{installmentsTarget.consultation_id} — Total: CHF {(installmentsTarget.invoice_total_amount ?? 0).toFixed(2)}
+              </p>
+            </div>
+            <div className="space-y-4 px-6 py-6">
+              {installmentsLoading ? (
+                <p className="text-xs text-slate-500">Loading installments...</p>
+              ) : (
+                <>
+                  {installments.length === 0 ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-center">
+                      <p className="text-xs text-slate-600">No installments defined. Click "Add Installment" to create a payment plan.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {installments.map((inst, index) => {
+                        const isPaid = inst.status === "PAID";
+                        return (
+                          <div
+                            key={inst.id}
+                            className={`rounded-lg border p-4 ${isPaid ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-white"}`}
+                          >
+                            <div className="mb-3 flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-900">
+                                Installment {index + 1}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkInstallmentPaid(index)}
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isPaid
+                                    ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                    : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                  }`}
+                                >
+                                  {isPaid ? "Paid" : "Pending"}
+                                </button>
+                                {!isPaid && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveInstallment(index)}
+                                    className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-100"
+                                  >
+                                    Remove
+                                  </button>
+                                )}
+                                {!inst.id.startsWith("new-") && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleGenerateInstallmentInvoice(inst)}
+                                    disabled={installmentPdfGenerating === inst.id}
+                                    className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
+                                  >
+                                    {installmentPdfGenerating === inst.id ? (
+                                      <>
+                                        <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span>Generating...</span>
+                                      </>
+                                    ) : (
+                                      "Generate Invoice"
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-600 mb-1">Amount (CHF)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={inst.amount || ""}
+                                  onChange={(e) => handleUpdateInstallment(index, { amount: parseFloat(e.target.value) || 0 })}
+                                  disabled={isPaid}
+                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-600 mb-1">Due Date</label>
+                                <input
+                                  type="date"
+                                  value={inst.due_date || ""}
+                                  onChange={(e) => handleUpdateInstallment(index, { due_date: e.target.value || null })}
+                                  disabled={isPaid}
+                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-600 mb-1">Payment Method</label>
+                                <select
+                                  value={inst.payment_method || ""}
+                                  onChange={(e) => handleUpdateInstallment(index, { payment_method: e.target.value || null })}
+                                  disabled={isPaid}
+                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-slate-100 disabled:text-slate-500"
+                                >
+                                  <option value="">Select method</option>
+                                  <option value="Cash">Cash</option>
+                                  <option value="Card">Card</option>
+                                  <option value="Bank Transfer">Bank Transfer</option>
+                                  <option value="Online">Online</option>
+                                  <option value="Insurance">Insurance</option>
+                                  <option value="TWINT">TWINT</option>
+                                </select>
+                              </div>
+                              <div className="col-span-2">
+                                <label className="block text-[10px] font-medium text-slate-600 mb-1">Notes</label>
+                                <input
+                                  type="text"
+                                  value={inst.notes || ""}
+                                  onChange={(e) => handleUpdateInstallment(index, { notes: e.target.value || null })}
+                                  placeholder="Optional notes"
+                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                />
+                              </div>
+                              {inst.payrexx_payment_link && (
+                                <div className="col-span-2 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2">
+                                  <svg className="h-3.5 w-3.5 flex-shrink-0 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                  <span className="flex-1 truncate text-[10px] text-blue-700">{inst.payrexx_payment_link}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(inst.payrexx_payment_link!).then(() => alert("Payment link copied!")).catch(() => alert("Failed to copy"));
+                                    }}
+                                    className="flex-shrink-0 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-700"
+                                  >
+                                    Copy Link
+                                  </button>
+                                  {inst.payrexx_payment_status && (
+                                    <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                      inst.payrexx_payment_status === "confirmed" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                                    }`}>
+                                      {inst.payrexx_payment_status}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Summary */}
+                  {installments.length > 0 && (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-600">Allocated:</span>
+                        <span className="font-semibold text-slate-900">
+                          CHF {installments.reduce((s, i) => s + (i.amount || 0), 0).toFixed(2)}
+                          {" / "}
+                          CHF {(installmentsTarget.invoice_total_amount ?? 0).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-xs">
+                        <span className="text-slate-600">Remaining:</span>
+                        <span className={`font-semibold ${
+                          (installmentsTarget.invoice_total_amount ?? 0) - installments.reduce((s, i) => s + (i.amount || 0), 0) > 0.01
+                            ? "text-amber-600" : "text-emerald-600"
+                        }`}>
+                          CHF {Math.max(0, (installmentsTarget.invoice_total_amount ?? 0) - installments.reduce((s, i) => s + (i.amount || 0), 0)).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-xs">
+                        <span className="text-slate-600">Total Paid:</span>
+                        <span className="font-semibold text-emerald-600">
+                          CHF {installments.filter(i => i.status === "PAID").reduce((s, i) => s + (i.amount || 0), 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleAddInstallment}
+                    className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 transition-colors"
+                  >
+                    <span className="text-sm">+</span> Add Installment
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+              <button
+                onClick={() => {
+                  setInstallmentsModalOpen(false);
+                  setInstallmentsTarget(null);
+                  setInstallments([]);
+                }}
+                disabled={installmentsSaving}
+                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveInstallments}
+                disabled={installmentsSaving || installmentsLoading}
+                className="inline-flex items-center rounded-full bg-violet-600 px-4 py-2 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                {installmentsSaving ? "Saving..." : "Save Installments"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Invoice Editing Modal */}
       {editInvoiceModalOpen && editInvoiceTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -5370,6 +6235,17 @@ export default function MedicalConsultationsCard({
                     onChange={(e) => setEditInvoiceTitle(e.target.value)}
                     className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     placeholder="Invoice title"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-700 mb-1">
+                    Reference Number <span className="text-slate-400">(auto-generated)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editInvoiceTarget?.reference_number || generateSwissReference(editInvoiceTarget?.consultation_id || "")}
+                    readOnly
+                    className="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 shadow-sm font-mono cursor-default"
                   />
                 </div>
               </div>

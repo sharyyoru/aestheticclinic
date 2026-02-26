@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import jsPDF from "jspdf";
 import QRCode from "qrcode";
-import { generateSwissQrBillDataUrl, generateSwissReference, formatSwissReferenceWithSpaces, type SwissQrBillData } from "@/lib/swissQrBill";
+import { generateSwissReference } from "@/lib/swissQrBill";
 import type { Invoice, InvoiceLineItem } from "@/lib/invoiceTypes";
-import { generateTiersPayantPdf, type TiersPayantPatient, type TiersPayantProvider, type TiersPayantInsurer } from "@/lib/generateTiersPayantPdf";
 import {
   buildInvoiceRequest,
   mapLawType as mapSumexLaw,
@@ -17,6 +15,7 @@ import {
   DiagnosisType,
   EsrType,
   YesNo,
+  GenerationAttribute,
   type SumexInvoiceInput,
   type InvoiceServiceInput as SumexServiceInput,
   type InvoiceDiagnosis as SumexDiagnosis,
@@ -156,12 +155,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Detect insurance (Tiers Payant / Tiers Garant) invoice and generate specialized PDF ──
-    const isInsuranceInvoice = invoiceData.billing_type === "TP" || invoiceData.billing_type === "TG" || invoiceData.payment_method === "Insurance";
+    // Only treat as insurance if there's an actual insurer OR payment method is Insurance
+    const isInsuranceInvoice = !!invoiceData.insurer_id || invoiceData.payment_method === "Insurance";
     if (isInsuranceInvoice) {
       console.log(`[GeneratePDF] Insurance invoice detected (${invoiceData.billing_type || "TP"}) — using Sumex1 Print for PDF`);
 
       // Fetch insurer data
-      let insurerData: TiersPayantInsurer | null = null;
       let insurerGln = "";
       let insurerName = "";
       let receiverGln = "";
@@ -172,7 +171,6 @@ export async function POST(request: NextRequest) {
           .eq("id", invoiceData.insurer_id)
           .single();
         if (insurerRow) {
-          insurerData = insurerRow as TiersPayantInsurer;
           insurerGln = (insurerRow as any).gln || "";
           insurerName = (insurerRow as any).name || "";
           receiverGln = (insurerRow as any).receiver_gln || insurerGln;
@@ -305,42 +303,24 @@ export async function POST(request: NextRequest) {
 
       if (!sumexResult.success) {
         console.error(`[GeneratePDF] Sumex1 FAILED: ${sumexResult.error} / ${sumexResult.abortInfo}`);
-        // Fall back to legacy jsPDF generation
-        console.log(`[GeneratePDF] Falling back to legacy generateTiersPayantPdf`);
-        const tpPatient: TiersPayantPatient = { ...patientData, avs_number: invoiceData.patient_ssn || null };
-        const tpProvider: TiersPayantProvider = {
-          name: provName, gln: provGln, zsr: provZsr, street: billingEntityData?.street || null,
-          street_no: billingEntityData?.street_no || null, zip_code: provZip || null, city: provCity || null,
-          canton: provCanton || null, phone: billingEntityData?.phone || null, iban: provIban || null,
-          salutation: billingEntityData?.salutation || null, title: billingEntityData?.title || null,
-        };
-        const pdfBuffer = await generateTiersPayantPdf(invoiceData, lineItems, tpPatient, tpProvider, insurerData);
-        const fileName = `invoice-tp-${invoiceData.invoice_number}-${Date.now()}.pdf`;
-        const filePath = `${invoiceData.patient_id}/${fileName}`;
-        const { error: uploadError } = await supabaseAdmin.storage.from("invoice-pdfs").upload(filePath, pdfBuffer, { contentType: "application/pdf", cacheControl: "3600", upsert: true });
-        if (uploadError) return NextResponse.json({ error: "Failed to upload PDF" }, { status: 500 });
-        await supabaseAdmin.from("invoices").update({ pdf_path: filePath, pdf_generated_at: new Date().toISOString() }).eq("id", invoiceId);
-        const { data: publicUrlData } = supabaseAdmin.storage.from("invoice-pdfs").getPublicUrl(filePath);
-        return NextResponse.json({ success: true, pdfUrl: publicUrlData.publicUrl, pdfPath: filePath, qrCodeType: "tiers-payant-legacy" });
+        return NextResponse.json({ 
+          error: "Sumex1 PDF generation failed", 
+          details: sumexResult.error,
+          abortInfo: sumexResult.abortInfo 
+        }, { status: 500 });
       }
 
       // Use Sumex1-generated PDF
-      let pdfBuffer: Buffer;
-      if (sumexResult.pdfContent) {
-        pdfBuffer = sumexResult.pdfContent;
-        console.log(`[GeneratePDF] Sumex1 PDF: ${pdfBuffer.length} bytes, schema=${sumexResult.usedSchema}`);
-      } else {
-        // PDF generation didn't work but XML succeeded — fall back to legacy
-        console.warn(`[GeneratePDF] Sumex1 XML OK but PDF not available — falling back to legacy`);
-        const tpPatient: TiersPayantPatient = { ...patientData, avs_number: invoiceData.patient_ssn || null };
-        const tpProvider: TiersPayantProvider = {
-          name: provName, gln: provGln, zsr: provZsr, street: billingEntityData?.street || null,
-          street_no: billingEntityData?.street_no || null, zip_code: provZip || null, city: provCity || null,
-          canton: provCanton || null, phone: billingEntityData?.phone || null, iban: provIban || null,
-          salutation: billingEntityData?.salutation || null, title: billingEntityData?.title || null,
-        };
-        pdfBuffer = await generateTiersPayantPdf(invoiceData, lineItems, tpPatient, tpProvider, insurerData);
+      if (!sumexResult.pdfContent) {
+        console.error(`[GeneratePDF] Sumex1 XML OK but PDF not available`);
+        return NextResponse.json({ 
+          error: "Sumex1 PDF generation failed - no PDF content returned",
+          xmlGenerated: true
+        }, { status: 500 });
       }
+
+      const pdfBuffer = sumexResult.pdfContent;
+      console.log(`[GeneratePDF] Sumex1 PDF: ${pdfBuffer.length} bytes, schema=${sumexResult.usedSchema}`);
 
       const fileName = `invoice-sumex-${invoiceData.invoice_number}-${Date.now()}.pdf`;
       const filePath = `${invoiceData.patient_id}/${fileName}`;
@@ -370,421 +350,215 @@ export async function POST(request: NextRequest) {
         success: true,
         pdfUrl: publicUrlData.publicUrl,
         pdfPath: filePath,
-        qrCodeType: sumexResult.pdfContent ? "sumex1" : "tiers-payant-legacy",
+        qrCodeType: "sumex1",
         sumex1Schema: sumexResult.usedSchema,
       });
     }
 
-    // For cash/online invoices: Header shows DOCTOR name, but QR bill uses CLINIC IBAN
-    // Use doctor/staff data for header (who performed the service)
-    const headerName = staffData?.name || invoiceData.doctor_name || invoiceData.provider_name || "Aesthetics Clinic XT SA";
-    const headerTitle = staffData?.title || staffData?.specialty || "Chirurgie Plastique, Esthétique et Reconstructrice";
-    const headerRcc = staffData?.zsr || invoiceData.doctor_zsr || invoiceData.provider_zsr || "";
-    
-    // Use billing entity data for address and contact (clinic info)
-    const provStreet = billingEntityData?.street || "chemin Rieu";
-    const provBuildingNumber = billingEntityData?.street_no || "18";
-    const provPostalCode = billingEntityData?.zip_code || "1208";
-    const provTown = billingEntityData?.city || "Genève";
-    const provCountry = "CH";
-    const provPhone = billingEntityData?.phone || "022 732 22 23";
-    const provClinicName = billingEntityData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA";
-    
-    // IBAN fallback chain: invoice.provider_iban (new) -> live provider.iban -> hardcoded default
-    // Always use CLINIC IBAN for QR bill payment (not doctor's personal account)
-    const provIban = invoiceData.provider_iban || billingEntityData?.iban || "CH0930788000050249289";
-    const provIbanFormatted = provIban.replace(/(.{4})/g, "$1 ").trim();
+    // ── Try Sumex1 for cash/online invoices too (unified template) ──
+    {
+      console.log(`[GeneratePDF] Non-insurance invoice — attempting Sumex1 unified template (TG mode, no insurance)`);
 
-    // Ensure payment link token exists
-    let paymentLinkToken = invoiceData.payment_link_token;
-    if (!paymentLinkToken) {
-      const { data: tokenData, error: tokenError } = await supabaseAdmin.rpc(
-        "generate_payment_link_token"
-      );
-
-      if (tokenError || !tokenData) {
-        return NextResponse.json(
-          { error: "Failed to generate payment link token" },
-          { status: 500 }
-        );
-      }
-
-      paymentLinkToken = tokenData as string;
-
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 90);
-
-      const { error: updateError } = await supabaseAdmin
-        .from("invoices")
-        .update({
-          payment_link_token: paymentLinkToken,
-          payment_link_expires_at: expiresAt.toISOString(),
-        })
-        .eq("id", invoiceId);
-
-      if (updateError) {
-        return NextResponse.json(
-          { error: "Failed to update payment link" },
-          { status: 500 }
-        );
-      }
-    }
-
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
-    
-    // Generate QR code based on payment method
-    let qrCodeDataUrl: string;
-    let isPayrexxPayment = false;
-    let isBankTransferQr = false;
-    
-    if ((invoiceData.payment_method === "Online Payment" || invoiceData.payment_method === "Cash") && invoiceData.payrexx_payment_link) {
-      const paymentUrl = invoiceData.payrexx_payment_link;
-      isPayrexxPayment = true;
-      qrCodeDataUrl = await QRCode.toDataURL(paymentUrl, {
-        width: 200,
-        margin: 1,
-        color: { dark: "#000000", light: "#FFFFFF" },
-      });
-    } else if (invoiceData.payment_method === "Bank transfer") {
-      isBankTransferQr = true;
-      const swissReference = generateSwissReference(invoiceData.invoice_number);
-      // Parse patient street address into street + building number
-      const patientStreetParts = (patientData.street_address || "").match(/^(.+?)\s+(\d+\S*)$/);
-      const patientStreet = patientStreetParts ? patientStreetParts[1] : (patientData.street_address || "");
-      const patientBuildingNumber = patientStreetParts ? patientStreetParts[2] : "";
-
-      const qrBillData: SwissQrBillData = {
-        iban: provIban,
-        creditorName: provClinicName,
-        creditorStreet: provStreet,
-        creditorBuildingNumber: provBuildingNumber,
-        creditorPostalCode: provPostalCode,
-        creditorTown: provTown,
-        creditorCountry: provCountry,
-        amount: invoiceData.total_amount || undefined,
-        currency: "CHF",
-        debtorName: patientData.first_name && patientData.last_name ? `${patientData.first_name} ${patientData.last_name}` : undefined,
-        debtorStreet: patientStreet || undefined,
-        debtorBuildingNumber: patientBuildingNumber || undefined,
-        debtorPostalCode: patientData.postal_code || undefined,
-        debtorTown: patientData.town || undefined,
-        debtorCountry: "CH",
-        referenceType: "QRR",
-        reference: swissReference,
-        unstructuredMessage: `Invoice ${invoiceData.invoice_number} - Medical Services`,
+      const provGln = billingEntityData?.gln || invoiceData.provider_gln || "7601003000115";
+      const provZsr = billingEntityData?.zsr || invoiceData.provider_zsr || "";
+      const provName = billingEntityData?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA";
+      const provStreetFull = billingEntityData?.street ? `${billingEntityData.street}${billingEntityData.street_no ? " " + billingEntityData.street_no : ""}` : "";
+      const provZip = billingEntityData?.zip_code || "";
+      const provCity = billingEntityData?.city || "";
+      const provCanton = billingEntityData?.canton || invoiceData.treatment_canton || "GE";
+      const sanitizeIban2 = (raw: string | null | undefined): string | null => {
+        if (!raw) return null;
+        const stripped = raw.replace(/\s+/g, "").toUpperCase();
+        if (/^CH[0-9A-Z]{19}$/.test(stripped)) return stripped;
+        return null;
       };
-      qrCodeDataUrl = await generateSwissQrBillDataUrl(qrBillData);
-    } else {
-      const paymentUrl = `${baseUrl}/invoice/pay/${paymentLinkToken}`;
-      qrCodeDataUrl = await QRCode.toDataURL(paymentUrl, {
-        width: 200,
-        margin: 1,
-        color: { dark: "#000000", light: "#FFFFFF" },
-      });
-    }
+      const provIbanSumex = sanitizeIban2(billingEntityData?.iban) || sanitizeIban2(invoiceData.provider_iban) || "CH0930788000050249289";
+      const treatmentDate = invoiceData.treatment_date || invoiceData.invoice_date || new Date().toISOString().split("T")[0];
 
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-    });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-
-    pdf.setFillColor(220, 220, 220);
-    pdf.rect(0, 0, pageWidth, 40, "F");
-
-    pdf.setFontSize(11);
-    pdf.setFont("helvetica", "bold");
-    pdf.setTextColor(0, 0, 0);
-    pdf.text(headerName, 15, 15);
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.text(headerTitle, 15, 20);
-    pdf.text(provClinicName, 15, 25);
-    pdf.text(`${provStreet} ${provBuildingNumber}`, 15, 30);
-    pdf.text(`${provPostalCode} ${provTown}`, 15, 35);
-
-    pdf.setFontSize(9);
-    if (headerRcc) pdf.text(`RCC ${headerRcc}`, pageWidth - 15, 15, { align: "right" });
-    pdf.text(`Tél. ${provPhone}`, pageWidth - 15, 20, { align: "right" });
-
-    pdf.setFontSize(14);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Facture d'honoraires", 15, 55);
-
-    const invoiceDate = new Date(invoiceData.invoice_date);
-    const formattedDate = invoiceDate.toLocaleDateString("fr-CH");
-
-    pdf.setFontSize(9);
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`Madame/Sir`, pageWidth - 15, 55, { align: "right" });
-    pdf.text(`${patientData.first_name} ${patientData.last_name}`, pageWidth - 15, 60, { align: "right" });
-
-    let yPos = 70;
-    pdf.setFillColor(200, 200, 200);
-    pdf.rect(15, yPos, pageWidth - 30, 6, "F");
-    pdf.setFont("helvetica", "bold");
-    pdf.text("No de facture", 20, yPos + 4);
-    pdf.text("Date de facture", 80, yPos + 4);
-    yPos += 6;
-
-    pdf.setFont("helvetica", "normal");
-    pdf.text(invoiceData.invoice_number, 20, yPos + 4);
-    pdf.text(formattedDate, 80, yPos + 4);
-    yPos += 10;
-
-    pdf.setFillColor(200, 200, 200);
-    pdf.rect(15, yPos, pageWidth - 30, 6, "F");
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Patient", 20, yPos + 4);
-    yPos += 6;
-
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`${patientData.first_name} ${patientData.last_name}`, 20, yPos + 4);
-    yPos += 5;
-
-    if (patientData.dob) {
-      const dob = new Date(patientData.dob);
-      pdf.text(`${dob.toLocaleDateString("fr-CH")}`, 80, yPos + 4);
-      yPos += 5;
-    }
-
-    if (patientData.gender) {
-      pdf.text(patientData.gender === "male" ? "Male" : patientData.gender === "female" ? "Female" : "Other", 120, yPos + 4);
-      yPos += 5;
-    }
-
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Adresse", 20, yPos + 4);
-    yPos += 5;
-    pdf.setFont("helvetica", "normal");
-    if (patientData.street_address) {
-      pdf.text(patientData.street_address, 20, yPos + 4);
-      yPos += 5;
-    }
-
-    // Doctor info
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Mandant exécutant", 20, yPos + 4);
-    yPos += 5;
-    pdf.setFont("helvetica", "normal");
-    pdf.text(invoiceData.doctor_name || "Xavier Tenorio", 20, yPos + 4);
-    yPos += 5;
-
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Médecin traitant", 20, yPos + 4);
-    yPos += 10;
-
-    // Service lines table header
-    pdf.setFillColor(200, 200, 200);
-    pdf.rect(15, yPos, pageWidth - 30, 6, "F");
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Date", 17, yPos + 4);
-    pdf.text("Code", 40, yPos + 4);
-    pdf.text("Prestation", 70, yPos + 4);
-    pdf.text("Qté", 125, yPos + 4);
-    pdf.text("Prix unitaire", 140, yPos + 4);
-    pdf.text("Total", pageWidth - 20, yPos + 4, { align: "right" });
-    yPos += 6;
-
-    pdf.setFont("helvetica", "normal");
-    const prestationDate = invoiceData.treatment_date
-      ? new Date(invoiceData.treatment_date).toLocaleDateString("fr-CH")
-      : formattedDate;
-    
-    if (lineItems.length > 0) {
-      lineItems.forEach((item: InvoiceLineItem) => {
-        pdf.text(prestationDate, 17, yPos + 4);
-        pdf.text(item.code || "-", 40, yPos + 4);
-        const maxNameLength = 30;
-        const displayName = (item.name || "Service").length > maxNameLength 
-          ? (item.name || "Service").substring(0, maxNameLength) + "..." 
-          : (item.name || "Service");
-        pdf.text(displayName, 70, yPos + 4);
-        pdf.text(String(item.quantity || 1), 125, yPos + 4);
-        pdf.text((item.unit_price || 0).toFixed(2), 140, yPos + 4);
-        pdf.text((item.total_price || 0).toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
-        yPos += 5;
-      });
-    } else {
-      // Fallback if no line items
-      pdf.text(prestationDate, 17, yPos + 4);
-      pdf.text("-", 40, yPos + 4);
-      pdf.text("Service", 70, yPos + 4);
-      pdf.text("1", 130, yPos + 4);
-      const fallbackTotal = invoiceData.total_amount || 0;
-      pdf.text(fallbackTotal.toFixed(2), 150, yPos + 4);
-      pdf.text(fallbackTotal.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
-      yPos += 5;
-    }
-
-    const totalAmount = invoiceData.total_amount || 0;
-    const paidAmount = invoiceData.paid_amount || 0;
-    const remainingAmount = Math.max(0, totalAmount - paidAmount);
-    const invoiceStatus = invoiceData.status || "OPEN";
-    
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Autres prestations", 70, yPos + 4);
-    pdf.text(totalAmount.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
-    yPos += 10;
-
-    pdf.setFontSize(10);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Total de la facture", 20, yPos + 4);
-    pdf.text("Total facture", 130, yPos + 4);
-    pdf.text(totalAmount.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
-    yPos += 6;
-    
-    // Show paid amount if any payment has been made
-    if (paidAmount > 0) {
-      pdf.setFont("helvetica", "normal");
-      pdf.setTextColor(0, 128, 0);
-      pdf.text("Montant payé", 20, yPos + 4);
-      pdf.text("Payé", 130, yPos + 4);
-      pdf.text(`-${paidAmount.toFixed(2)}`, pageWidth - 20, yPos + 4, { align: "right" });
-      yPos += 6;
-      pdf.setTextColor(0, 0, 0);
-    }
-    
-    // Show remaining balance
-    pdf.setFont("helvetica", "bold");
-    if (invoiceStatus === "PARTIAL_PAID" && remainingAmount > 0) {
-      pdf.setTextColor(200, 100, 0);
-      pdf.text("Solde restant à payer", 20, yPos + 4);
-      pdf.text("Reste à payer", 130, yPos + 4);
-      pdf.text(remainingAmount.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
-      pdf.setTextColor(0, 0, 0);
-    } else if (invoiceStatus === "PAID" || remainingAmount <= 0) {
-      pdf.setTextColor(0, 128, 0);
-      pdf.text("PAYÉ EN TOTALITÉ", 20, yPos + 4);
-      pdf.text("Reste à payer", 130, yPos + 4);
-      pdf.text("0.00", pageWidth - 20, yPos + 4, { align: "right" });
-      pdf.setTextColor(0, 0, 0);
-    } else {
-      pdf.text("Total à payer dès réception", 20, yPos + 4);
-      pdf.text("Total à payer", 130, yPos + 4);
-      pdf.text(totalAmount.toFixed(2), pageWidth - 20, yPos + 4, { align: "right" });
-    }
-    yPos += 15;
-
-    pdf.setFontSize(9);
-    pdf.setFont("helvetica", "bold");
-    pdf.text("©Adresse", 20, yPos);
-    pdf.text("Section paiement", 80, yPos);
-    pdf.text("Compte / Payable à", 140, yPos);
-    yPos += 5;
-
-    pdf.setFont("helvetica", "normal");
-    pdf.text("Compte / Payable à", 20, yPos);
-    pdf.text(provIbanFormatted, 80, yPos);
-    yPos += 4;
-    pdf.text(provIbanFormatted, 20, yPos);
-    pdf.text(provClinicName, 80, yPos);
-    pdf.text(provClinicName, 140, yPos);
-    yPos += 4;
-    pdf.text(provClinicName, 20, yPos);
-    pdf.text(`${provStreet} ${provBuildingNumber}`, 80, yPos);
-    pdf.text(`${provStreet} ${provBuildingNumber}`, 140, yPos);
-    yPos += 4;
-    pdf.text(`${provStreet} ${provBuildingNumber}`, 20, yPos);
-    pdf.text(`${provPostalCode} ${provTown}`, 80, yPos);
-    pdf.text(`${provPostalCode} ${provTown}`, 140, yPos);
-    yPos += 4;
-    pdf.text(`${provPostalCode} ${provTown}`, 20, yPos);
-    yPos += 6;
-
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Référence", 20, yPos);
-    pdf.text("Référence", 140, yPos);
-    yPos += 4;
-    pdf.setFont("helvetica", "normal");
-    
-    const displayReference = formatSwissReferenceWithSpaces(generateSwissReference(invoiceData.invoice_number));
-    
-    pdf.text(displayReference, 20, yPos);
-    pdf.text(displayReference, 140, yPos);
-    yPos += 6;
-
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Payable par", 20, yPos);
-    pdf.text("Payable par", 140, yPos);
-    yPos += 4;
-    pdf.setFont("helvetica", "normal");
-    pdf.text("No address available", 20, yPos);
-    pdf.text("No address available", 140, yPos);
-    yPos += 10;
-
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Monnaie", 20, yPos);
-    pdf.text("Montant", 40, yPos);
-    pdf.text("Monnaie", 100, yPos);
-    pdf.text("Montant", 120, yPos);
-    yPos += 4;
-    pdf.setFont("helvetica", "normal");
-    pdf.text("CHF", 20, yPos);
-    pdf.text(totalAmount.toFixed(2), 40, yPos);
-    pdf.text("CHF", 100, yPos);
-    pdf.text(totalAmount.toFixed(2), 120, yPos);
-    yPos += 6;
-
-    pdf.setFont("helvetica", "bold");
-    pdf.text("Point de dépôt", 60, yPos);
-
-    pdf.setDrawColor(255, 0, 0);
-    pdf.setLineWidth(0.5);
-    pdf.rect(80, yPos - 30, 40, 40);
-
-    pdf.addImage(qrCodeDataUrl, "PNG", 85, yPos - 28, 30, 30);
-
-    const pdfBuffer = Buffer.from(pdf.output("arraybuffer"));
-    const fileName = `invoice-${invoiceData.invoice_number}-${Date.now()}.pdf`;
-    const filePath = `${invoiceData.patient_id}/${fileName}`;
-
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("invoice-pdfs")
-      .upload(filePath, pdfBuffer, {
-        contentType: "application/pdf",
-        cacheControl: "3600",
-        upsert: true,
+      // Map line items
+      const isValidGln2 = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
+      const sumexServices2: SumexServiceInput[] = lineItems.map((item: any) => {
+        const svcGln = isValidGln2(item.provider_gln) ? item.provider_gln : provGln;
+        return {
+          tariffType: "999",
+          code: item.code || "",
+          referenceCode: "",
+          quantity: item.quantity || 1,
+          sessionNumber: 1,
+          dateBegin: item.date_begin || treatmentDate,
+          providerGln: svcGln,
+          responsibleGln: svcGln,
+          side: 0 as 0,
+          serviceName: item.name || "",
+          unit: item.unit_price || 0,
+          unitFactor: 1,
+          externalFactor: 1,
+          amount: item.total_price || 0,
+          vatRate: 0,
+          ignoreValidate: YesNo.Yes,
+        };
       });
 
-    if (uploadError) {
-      return NextResponse.json(
-        { error: "Failed to upload PDF" },
-        { status: 500 }
-      );
+      const sumexInput2: SumexInvoiceInput = {
+        language: 2,
+        roleType: RoleType.Physician,
+        placeType: PlaceType.Practice,
+        requestType: RequestType.Invoice,
+        requestSubtype: RequestSubtype.Normal,
+        tiersMode: mapSumexTiers("TG"),
+        vatNumber: "",
+        invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
+        invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
+        lawType: mapSumexLaw(invoiceData.health_insurance_law || "VVG"),
+        esrType: EsrType.QR,
+        iban: provIbanSumex,
+        paymentPeriod: 30,
+        billerGln: provGln,
+        billerZsr: provZsr || undefined,
+        billerAddress: {
+          companyName: provName,
+          street: provStreetFull,
+          zip: provZip,
+          city: provCity,
+          stateCode: provCanton,
+        },
+        providerGln: provGln,
+        providerZsr: provZsr || undefined,
+        providerAddress: {
+          familyName: staffData?.name || invoiceData.doctor_name || provName,
+          givenName: "",
+          salutation: staffData?.salutation || billingEntityData?.salutation || "",
+          title: staffData?.title || billingEntityData?.title || "",
+          street: provStreetFull,
+          zip: provZip,
+          city: provCity,
+          stateCode: provCanton,
+        },
+        patientSex: mapSumexSex(patientData.gender || "male"),
+        patientBirthdate: patientData.dob || "1990-01-01",
+        patientSsn: "",
+        patientAddress: {
+          familyName: patientData.last_name,
+          givenName: patientData.first_name,
+          street: patientData.street_address || "",
+          zip: patientData.postal_code || "",
+          city: patientData.town || "",
+          stateCode: provCanton,
+        },
+        treatmentCanton: provCanton,
+        treatmentDateBegin: treatmentDate,
+        treatmentDateEnd: treatmentDate,
+        services: sumexServices2,
+      };
+
+      try {
+        const sumexResult2 = await buildInvoiceRequest(sumexInput2, { generatePdf: true });
+
+        if (sumexResult2.success && sumexResult2.pdfContent) {
+          const hasPayrexxLink = !!invoiceData.payrexx_payment_link;
+          console.log(`[GeneratePDF] Sumex1 unified PDF generated: ${sumexResult2.pdfContent.length} bytes, hasPayrexxLink=${hasPayrexxLink}`);
+          
+          let finalPdfBuffer = sumexResult2.pdfContent;
+
+          // For online payments with Payrexx link, overlay Payrexx QR on top of
+          // the bank QR code on the payment slip (FIRST page = patient invoice).
+          // Sumex1 generates multi-page PDF: page 1 = patient invoice with QR, rest = copies.
+          // Swiss QR-bill standard: A4 page (595x842pt), payment slip is bottom 105mm (≈298pt).
+          // Payment part is on the right side (210mm wide), receipt on left (62mm).
+          // QR code in payment part: 46x46mm, positioned 67mm from left edge of payment part.
+          if (hasPayrexxLink) {
+            try {
+              console.log(`[GeneratePDF] Starting Payrexx QR overlay for link: ${invoiceData.payrexx_payment_link}`);
+              const { PDFDocument, rgb } = await import("pdf-lib");
+              const pdfDoc = await PDFDocument.load(sumexResult2.pdfContent);
+              const pages = pdfDoc.getPages();
+              const firstPage = pages[0]; // Patient invoice is always page 1
+              const { width: pageWidth, height: pageHeight } = firstPage.getSize();
+              console.log(`[GeneratePDF] PDF total pages: ${pages.length}, page 1 size: ${pageWidth}x${pageHeight}pt`);
+              
+              // Generate Payrexx QR code as PNG
+              const payrexxLink = invoiceData.payrexx_payment_link as string;
+              const qrDataUrl = await QRCode.toDataURL(payrexxLink, {
+                width: 300,
+                margin: 0,
+                color: { dark: "#000000", light: "#FFFFFF" },
+              });
+              const qrImageBytes = Buffer.from(qrDataUrl.split(",")[1], "base64");
+              const qrImage = await pdfDoc.embedPng(qrImageBytes);
+              console.log(`[GeneratePDF] Payrexx QR image generated: ${qrImageBytes.length} bytes`);
+              
+              // Swiss QR-bill layout (in mm, converted to pt: 1mm ≈ 2.834pt):
+              // Payment slip (Zahlteil) is at the bottom 105mm of the page
+              // - Receipt part (Empfangsschein): left side, 0-62mm from left
+              // - Payment part (Zahlteil): right side, 62-210mm from left
+              // - QR code is in the payment part, positioned at:
+              //   * Horizontal: 67mm from left edge of payment part = 62+67 = 129mm from page left = 365pt
+              //   * Vertical: The QR is centered in the payment slip height, roughly 42mm from page bottom
+              // - QR size: 46x46mm ≈ 130x130pt
+              const qrSize = 130; // 46mm in points
+              const qrX = 190; // 129mm from left = 365pt
+              const qrY = 122; // 42mm from bottom = 119pt
+              
+              console.log(`[GeneratePDF] Overlaying on PAGE 1 at (${qrX}, ${qrY}) size ${qrSize}x${qrSize}`);
+              // White-out the existing bank QR code area
+              firstPage.drawRectangle({
+                x: qrX - 2,
+                y: qrY - 2,
+                width: qrSize + 4,
+                height: qrSize + 4,
+                color: rgb(1, 1, 1),
+              });
+              
+              // Draw Payrexx QR on top
+              firstPage.drawImage(qrImage, {
+                x: qrX,
+                y: qrY,
+                width: qrSize,
+                height: qrSize,
+              });
+              
+              finalPdfBuffer = Buffer.from(await pdfDoc.save());
+              console.log(`[GeneratePDF] ✓ Successfully overlaid Payrexx QR on page 1 payment slip`);
+            } catch (qrErr) {
+              console.error(`[GeneratePDF] ✗ Failed to overlay Payrexx QR:`, qrErr);
+            }
+          }
+
+          const fileName = `invoice-sumex-${invoiceData.invoice_number}-${Date.now()}.pdf`;
+          const filePath = `${invoiceData.patient_id}/${fileName}`;
+          const { error: uploadError } = await supabaseAdmin.storage.from("invoice-pdfs").upload(filePath, finalPdfBuffer, { contentType: "application/pdf", cacheControl: "3600", upsert: true });
+          if (!uploadError) {
+            await supabaseAdmin.from("invoices").update({ pdf_path: filePath, pdf_generated_at: new Date().toISOString() }).eq("id", invoiceId);
+            const { data: publicUrlData } = supabaseAdmin.storage.from("invoice-pdfs").getPublicUrl(filePath);
+            return NextResponse.json({ 
+              success: true, 
+              pdfUrl: publicUrlData.publicUrl, 
+              pdfPath: filePath, 
+              qrCodeType: hasPayrexxLink ? "sumex1-payrexx" : "sumex1-unified", 
+              sumex1Schema: sumexResult2.usedSchema 
+            });
+          }
+        } else {
+          console.error(`[GeneratePDF] Sumex1 unified failed: ${sumexResult2.error}`);
+          return NextResponse.json({ 
+            error: "Sumex1 PDF generation failed", 
+            details: sumexResult2.error 
+          }, { status: 500 });
+        }
+      } catch (sumex2Err) {
+        console.error(`[GeneratePDF] Sumex1 unified error:`, sumex2Err);
+        return NextResponse.json({ 
+          error: "Sumex1 PDF generation error", 
+          details: String(sumex2Err) 
+        }, { status: 500 });
+      }
     }
 
-    const { error: updateError } = await supabaseAdmin
-      .from("invoices")
-      .update({ pdf_path: filePath, pdf_generated_at: new Date().toISOString() })
-      .eq("id", invoiceId);
-
-    if (updateError) {
-      return NextResponse.json(
-        { error: "Failed to update invoice PDF path" },
-        { status: 500 }
-      );
-    }
-
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from("invoice-pdfs")
-      .getPublicUrl(filePath);
-
-    return NextResponse.json({
-      success: true,
-      pdfUrl: publicUrlData.publicUrl,
-      pdfPath: filePath,
-      paymentUrl: isPayrexxPayment ? invoiceData.payrexx_payment_link : `${baseUrl}/invoice/pay/${paymentLinkToken}`,
-      paymentLinkToken,
-      qrCodeType: isBankTransferQr ? "swiss-qr-bill" : isPayrexxPayment ? "payrex" : "internal",
-    });
+    // Should never reach here - all paths above should return
+    console.error(`[GeneratePDF] Unexpected code path - no PDF generated`);
+    return NextResponse.json({ error: "Unexpected error - no PDF generated" }, { status: 500 });
   } catch (error) {
-    console.error("Error generating invoice PDF:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("[GeneratePDF] Fatal error:", error);
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }

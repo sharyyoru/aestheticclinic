@@ -443,7 +443,7 @@ export default function FinancialsPage() {
     );
   }, [filteredInvoices]);
 
-  const [activeTab, setActiveTab] = useState<"overview" | "receipts">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "receipts" | "import_history">("overview");
 
   function handleExportPdf() {
     if (typeof window === "undefined") return;
@@ -493,6 +493,17 @@ export default function FinancialsPage() {
           }`}
         >
           Bank Payment Receipts
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("import_history")}
+          className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors ${
+            activeTab === "import_history"
+              ? "border-sky-500 text-sky-700"
+              : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+          }`}
+        >
+          Payment Import History
         </button>
       </div>
 
@@ -811,6 +822,7 @@ export default function FinancialsPage() {
       </div>
       </>}
       {activeTab === "receipts" && <BankPaymentReceipts />}
+      {activeTab === "import_history" && <PaymentImportHistory />}
 
       <style jsx global>{`
         @media print {
@@ -919,6 +931,8 @@ function BankPaymentReceipts() {
   const [preview, setPreview] = useState<ReceiptFile | null>(null);
   const [xmlContent, setXmlContent] = useState<string | null>(null);
   const [xmlTransactions, setXmlTransactions] = useState<ParsedTransaction[]>([]);
+  const [processing, setProcessing] = useState(false);
+  const [processResult, setProcessResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const BUCKET = "finance-documents";
@@ -947,6 +961,40 @@ function BankPaymentReceipts() {
 
     void fetchXml();
   }, [preview]);
+
+  async function handleProcessPayments() {
+    if (!xmlContent || !preview) return;
+    setProcessing(true);
+    setProcessResult(null);
+    setError(null);
+    try {
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const user = authData?.user;
+      const meta = (user?.user_metadata || {}) as Record<string, unknown>;
+      const userName = [meta.first_name, meta.last_name].filter(Boolean).join(" ") || user?.email || null;
+
+      const res = await fetch("/api/bank-payments/process-xml", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          xmlContent,
+          fileName: displayName(preview.name),
+          fileUrl: preview.url,
+          userId: user?.id || null,
+          userName,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setError(json.error || "Failed to process payments");
+      } else {
+        setProcessResult(json);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to process payments");
+    }
+    setProcessing(false);
+  }
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -1208,11 +1256,89 @@ function BankPaymentReceipts() {
                 </div>
               ) : isXml(preview.name) && xmlTransactions.length > 0 ? (
                 <div className="flex-1 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
-                  <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
-                    <h3 className="text-sm font-semibold text-slate-800">Bank Transactions</h3>
-                    <p className="text-xs text-slate-500">{xmlTransactions.length} transaction{xmlTransactions.length !== 1 ? "s" : ""} found</p>
+                  <div className="border-b border-slate-100 bg-slate-50 px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-800">Bank Transactions</h3>
+                      <p className="text-xs text-slate-500">{xmlTransactions.length} transaction{xmlTransactions.length !== 1 ? "s" : ""} found</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleProcessPayments}
+                      disabled={processing}
+                      className={`rounded-lg px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors ${
+                        processing
+                          ? "bg-slate-400 cursor-not-allowed"
+                          : "bg-emerald-600 hover:bg-emerald-700"
+                      }`}
+                    >
+                      {processing ? "Processing..." : "Match & Tag Payments"}
+                    </button>
                   </div>
-                  <div className="overflow-auto" style={{ maxHeight: "420px" }}>
+
+                  {/* Process Results */}
+                  {processResult && (
+                    <div className="border-b border-slate-100 px-4 py-3 space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                          Matched: {processResult.summary.matched}
+                        </span>
+                        {processResult.summary.underpaid > 0 && (
+                          <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700 border border-amber-200">
+                            Underpaid: {processResult.summary.underpaid}
+                          </span>
+                        )}
+                        {processResult.summary.overpaid > 0 && (
+                          <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-semibold text-orange-700 border border-orange-200">
+                            Overpaid: {processResult.summary.overpaid}
+                          </span>
+                        )}
+                        {processResult.summary.alreadyPaid > 0 && (
+                          <span className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-semibold text-sky-700 border border-sky-200">
+                            Already Paid: {processResult.summary.alreadyPaid}
+                          </span>
+                        )}
+                        {processResult.summary.unmatched > 0 && (
+                          <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-semibold text-red-700 border border-red-200">
+                            Unmatched: {processResult.summary.unmatched}
+                          </span>
+                        )}
+                        <span className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600 border border-slate-200">
+                          Total: CHF {processResult.summary.totalAmount?.toFixed(2)}
+                        </span>
+                      </div>
+                      {processResult.summary.bankName && (
+                        <p className="text-[10px] text-slate-500">
+                          Bank: {processResult.summary.bankName} | IBAN: {processResult.summary.iban}
+                        </p>
+                      )}
+                      {/* Per-transaction results */}
+                      <div className="space-y-1">
+                        {processResult.results?.map((r: any, i: number) => {
+                          const statusColors: Record<string, string> = {
+                            matched: "bg-emerald-50 text-emerald-800 border-emerald-200",
+                            underpaid: "bg-amber-50 text-amber-800 border-amber-200",
+                            overpaid: "bg-orange-50 text-orange-800 border-orange-200",
+                            already_paid: "bg-sky-50 text-sky-800 border-sky-200",
+                            unmatched: "bg-red-50 text-red-800 border-red-200",
+                            duplicate: "bg-purple-50 text-purple-800 border-purple-200",
+                            error: "bg-red-100 text-red-900 border-red-300",
+                          };
+                          return (
+                            <div key={i} className={`rounded-md border px-3 py-2 text-[11px] ${statusColors[r.matchStatus] || "bg-slate-50 text-slate-700 border-slate-200"}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-semibold">{r.amount?.toFixed(2)} {r.currency}</span>
+                                <span className="uppercase text-[9px] font-bold tracking-wider">{r.matchStatus.replace("_", " ")}</span>
+                              </div>
+                              <p className="mt-0.5">{r.matchNotes}</p>
+                              {r.debtorName && <p className="text-[10px] opacity-70">From: {r.debtorName}</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="overflow-auto" style={{ maxHeight: processResult ? "250px" : "420px" }}>
                     <table className="w-full text-left text-xs">
                       <thead className="sticky top-0 border-b border-slate-100 bg-slate-50">
                         <tr>
@@ -1271,6 +1397,263 @@ function BankPaymentReceipts() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Payment Import History Tab ──────────────────────────────────────────────
+
+type ImportRecord = {
+  id: string;
+  file_name: string;
+  file_url: string | null;
+  imported_at: string;
+  imported_by_name: string | null;
+  total_transactions: number;
+  matched_count: number;
+  unmatched_count: number;
+  already_paid_count: number;
+  overpaid_count: number;
+  underpaid_count: number;
+  total_amount: number;
+  matched_amount: number;
+  message_id: string | null;
+  iban: string | null;
+  bank_name: string | null;
+  statement_date_from: string | null;
+  statement_date_to: string | null;
+  status: string;
+  error_message: string | null;
+};
+
+type ImportItem = {
+  id: string;
+  import_id: string;
+  booking_date: string | null;
+  amount: number;
+  currency: string;
+  reference_number: string | null;
+  debtor_name: string | null;
+  ultimate_debtor_name: string | null;
+  debtor_iban: string | null;
+  description: string | null;
+  bank_reference: string | null;
+  end_to_end_id: string | null;
+  credit_debit: string;
+  match_status: string;
+  match_notes: string | null;
+  matched_invoice_id: string | null;
+  matched_installment_id: string | null;
+  matched_invoice_number: string | null;
+  previous_paid_amount: number | null;
+  new_paid_amount: number | null;
+};
+
+function PaymentImportHistory() {
+  const [imports, setImports] = useState<ImportRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedImport, setSelectedImport] = useState<ImportRecord | null>(null);
+  const [items, setItems] = useState<ImportItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data } = await supabaseClient
+        .from("bank_payment_imports")
+        .select("*")
+        .order("imported_at", { ascending: false })
+        .limit(50);
+      setImports((data as ImportRecord[]) || []);
+      setLoading(false);
+    }
+    void load();
+  }, []);
+
+  async function loadItems(importId: string) {
+    setItemsLoading(true);
+    const { data } = await supabaseClient
+      .from("bank_payment_import_items")
+      .select("*")
+      .eq("import_id", importId)
+      .order("booking_date", { ascending: true });
+    setItems((data as ImportItem[]) || []);
+    setItemsLoading(false);
+  }
+
+  function handleSelectImport(rec: ImportRecord) {
+    if (selectedImport?.id === rec.id) {
+      setSelectedImport(null);
+      setItems([]);
+    } else {
+      setSelectedImport(rec);
+      void loadItems(rec.id);
+    }
+  }
+
+  const statusColors: Record<string, string> = {
+    matched: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    underpaid: "bg-amber-50 text-amber-700 border-amber-200",
+    overpaid: "bg-orange-50 text-orange-700 border-orange-200",
+    already_paid: "bg-sky-50 text-sky-700 border-sky-200",
+    unmatched: "bg-red-50 text-red-700 border-red-200",
+    duplicate: "bg-purple-50 text-purple-700 border-purple-200",
+    error: "bg-red-100 text-red-800 border-red-300",
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-white/90 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur overflow-hidden">
+      <div className="border-b border-slate-100 px-6 py-4">
+        <h2 className="text-base font-semibold text-slate-900">Payment Import History</h2>
+        <p className="mt-0.5 text-sm text-slate-500">History of bank XML payment file imports and matching results.</p>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <p className="text-sm text-slate-400">Loading import history...</p>
+        </div>
+      ) : imports.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <svg className="h-14 w-14 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p className="mt-3 text-sm font-medium text-slate-500">No payment imports yet</p>
+          <p className="mt-1 text-xs text-slate-400">Upload and process a bank XML file from the Bank Payment Receipts tab.</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {imports.map((rec) => {
+            const isSelected = selectedImport?.id === rec.id;
+            const importStatus = rec.status === "completed" ? "bg-emerald-50 text-emerald-700" :
+                                 rec.status === "partial" ? "bg-amber-50 text-amber-700" :
+                                 "bg-red-50 text-red-700";
+            return (
+              <div key={rec.id}>
+                <button
+                  type="button"
+                  onClick={() => handleSelectImport(rec)}
+                  className={`w-full text-left px-6 py-4 transition-colors hover:bg-slate-50 ${isSelected ? "bg-sky-50/50" : ""}`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-900 truncate">{rec.file_name}</p>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${importStatus}`}>
+                          {rec.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                        <span>{new Date(rec.imported_at).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        {rec.imported_by_name && <span>by {rec.imported_by_name}</span>}
+                        {rec.bank_name && <span>{rec.bank_name}</span>}
+                        {rec.iban && <span className="font-mono text-[10px]">{rec.iban}</span>}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 shrink-0">
+                      <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600">
+                        {rec.total_transactions} txns
+                      </span>
+                      <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                        {rec.matched_count} matched
+                      </span>
+                      {rec.unmatched_count > 0 && (
+                        <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700">
+                          {rec.unmatched_count} unmatched
+                        </span>
+                      )}
+                      {rec.underpaid_count > 0 && (
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+                          {rec.underpaid_count} underpaid
+                        </span>
+                      )}
+                      {rec.overpaid_count > 0 && (
+                        <span className="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-[10px] font-semibold text-orange-700">
+                          {rec.overpaid_count} overpaid
+                        </span>
+                      )}
+                      {rec.already_paid_count > 0 && (
+                        <span className="inline-flex items-center rounded-md bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-700">
+                          {rec.already_paid_count} already paid
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 flex gap-4 text-xs text-slate-500">
+                    <span>Total: <strong className="text-slate-700">CHF {Number(rec.total_amount).toFixed(2)}</strong></span>
+                    <span>Matched: <strong className="text-emerald-700">CHF {Number(rec.matched_amount).toFixed(2)}</strong></span>
+                    {rec.statement_date_from && rec.statement_date_to && (
+                      <span>Period: {rec.statement_date_from.split("T")[0]} → {rec.statement_date_to.split("T")[0]}</span>
+                    )}
+                  </div>
+                </button>
+
+                {/* Expanded detail */}
+                {isSelected && (
+                  <div className="border-t border-slate-100 bg-slate-50/50 px-6 py-4">
+                    {rec.error_message && (
+                      <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        {rec.error_message}
+                      </div>
+                    )}
+                    {itemsLoading ? (
+                      <p className="text-xs text-slate-400 py-4 text-center">Loading transactions...</p>
+                    ) : items.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-4 text-center">No transaction details available.</p>
+                    ) : (
+                      <div className="overflow-auto rounded-lg border border-slate-200 bg-white" style={{ maxHeight: "400px" }}>
+                        <table className="w-full text-left text-xs">
+                          <thead className="sticky top-0 border-b border-slate-100 bg-slate-50">
+                            <tr>
+                              <th className="px-3 py-2 font-semibold text-slate-600">Status</th>
+                              <th className="px-3 py-2 font-semibold text-slate-600">Date</th>
+                              <th className="px-3 py-2 font-semibold text-slate-600">Amount</th>
+                              <th className="px-3 py-2 font-semibold text-slate-600">Debtor</th>
+                              <th className="px-3 py-2 font-semibold text-slate-600">Reference</th>
+                              <th className="px-3 py-2 font-semibold text-slate-600">Invoice</th>
+                              <th className="px-3 py-2 font-semibold text-slate-600">Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {items.map((item) => (
+                              <tr key={item.id} className="hover:bg-slate-50/50">
+                                <td className="px-3 py-2">
+                                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${statusColors[item.match_status] || "bg-slate-50 text-slate-600 border-slate-200"}`}>
+                                    {item.match_status.replace("_", " ")}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-slate-700 whitespace-nowrap">
+                                  {item.booking_date ? new Date(item.booking_date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "-"}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <span className="font-semibold text-emerald-600">
+                                    {Number(item.amount).toFixed(2)} {item.currency}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-slate-700 max-w-[140px] truncate" title={item.debtor_name || item.ultimate_debtor_name || ""}>
+                                  {item.ultimate_debtor_name || item.debtor_name || "-"}
+                                </td>
+                                <td className="px-3 py-2 text-slate-500 font-mono text-[9px] max-w-[140px] truncate" title={item.reference_number || ""}>
+                                  {item.reference_number || "-"}
+                                </td>
+                                <td className="px-3 py-2 text-slate-700 font-medium">
+                                  {item.matched_invoice_number || "-"}
+                                </td>
+                                <td className="px-3 py-2 text-slate-500 text-[10px] max-w-[200px]" title={item.match_notes || ""}>
+                                  <span className="line-clamp-2">{item.match_notes || "-"}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

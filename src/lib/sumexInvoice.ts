@@ -1234,7 +1234,7 @@ export async function buildInvoiceRequest(
     for (let attempt = 1; attempt <= 2; attempt++) {
       console.log(`${LOG_PREFIX} POST IGeneralInvoiceRequestManager/GetXML (attempt ${attempt})`);
       const ctrl = new AbortController();
-      const tmout = setTimeout(() => ctrl.abort(), 90_000);
+      const tmout = setTimeout(() => ctrl.abort(), 30_000); // Reduced from 90s to 30s
       try {
         const gxRes = await fetch(
           `${SUMEX_REQUEST_BASE_URL}/IGeneralInvoiceRequestManager/GetXML`,
@@ -1261,8 +1261,8 @@ export async function buildInvoiceRequest(
 
         if (text.length === 0) {
           if (attempt < 2) {
-            console.warn(`${LOG_PREFIX} GetXML returned empty body (status=${gxRes.status}) — retrying in 2s...`);
-            await new Promise(r => setTimeout(r, 2000));
+            console.warn(`${LOG_PREFIX} GetXML returned empty body (status=${gxRes.status}) — retrying in 1s...`);
+            await new Promise(r => setTimeout(r, 1000)); // Reduced from 2s to 1s
             continue;
           }
           throw new Error(`GetXML returned HTTP ${gxRes.status} with empty body after ${attempt + 1} attempts.`);
