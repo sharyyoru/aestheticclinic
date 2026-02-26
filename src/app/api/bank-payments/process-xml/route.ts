@@ -363,7 +363,6 @@ async function applyPaymentToInvoice(
     .update({
       paid_amount: newPaidAmount,
       status: newInvoiceStatus,
-      is_paid: newInvoiceStatus === "PAID",
     })
     .eq("id", invoice.id);
 
@@ -470,7 +469,6 @@ async function applyPaymentToInstallment(
         .update({
           paid_amount: totalInstPaid,
           status: invoiceStatus,
-          is_paid: invoiceStatus === "PAID",
         })
         .eq("id", installment.invoice_id);
     }
