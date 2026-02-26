@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import {
@@ -5998,16 +5999,17 @@ export default function MedicalConsultationsCard({
       ) : null}
 
       {/* Installments Modal */}
-      {installmentsModalOpen && installmentsTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl">
-            <div className="border-b border-slate-200 px-6 py-4">
-              <h3 className="text-sm font-semibold text-slate-900">Manage Installments</h3>
-              <p className="mt-1 text-xs text-slate-600">
-                Invoice #{installmentsTarget.consultation_id} — Total: CHF {(installmentsTarget.invoice_total_amount ?? 0).toFixed(2)}
-              </p>
-            </div>
-            <div className="space-y-4 px-6 py-6">
+      {installmentsModalOpen && installmentsTarget && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+              <div className="w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
+                <div className="border-b border-slate-200 px-6 py-4">
+                  <h3 className="text-sm font-semibold text-slate-900">Manage Installments</h3>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Invoice #{installmentsTarget.consultation_id} — Total: CHF {(installmentsTarget.invoice_total_amount ?? 0).toFixed(2)}
+                  </p>
+                </div>
+                <div className="space-y-4 px-6 py-6">
               {installmentsLoading ? (
                 <p className="text-xs text-slate-500">Loading installments...</p>
               ) : (
@@ -6210,7 +6212,8 @@ export default function MedicalConsultationsCard({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
 
       {/* Invoice Editing Modal */}
