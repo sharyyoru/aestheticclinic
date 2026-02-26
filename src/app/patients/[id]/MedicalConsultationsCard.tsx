@@ -571,7 +571,7 @@ export default function MedicalConsultationsCard({
         const { data: invoiceData, error: invoiceError } = await supabaseClient
           .from("invoices")
           .select(
-            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, provider_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived",
+            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, provider_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, title",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -609,7 +609,7 @@ export default function MedicalConsultationsCard({
             id: inv.id,
             patient_id: inv.patient_id ?? patientId,
             consultation_id: inv.invoice_number ?? inv.id,
-            title: linked?.title || `Invoice #${inv.invoice_number || inv.id}`,
+            title: inv.title,
             content: linked?.content ?? null,
             record_type: "invoice" as ConsultationRecordType,
             doctor_user_id: inv.doctor_user_id ?? null,
@@ -1047,7 +1047,7 @@ export default function MedicalConsultationsCard({
       }
 
       // Update local state
-      setInvoices((prev) =>
+      setConsultations((prev) =>
         prev.map((row) =>
           row.invoice_id === editInvoiceTarget.invoice_id
             ? { ...row, title: editInvoiceTitle }
@@ -1321,7 +1321,7 @@ export default function MedicalConsultationsCard({
 
   function handleEditInvoice(invoice: ConsultationRow) {
     setEditInvoiceTarget(invoice);
-    setEditInvoiceTitle(invoice.title || "");
+    setEditInvoiceTitle(invoice.title || invoice.consultation_id || "");
     setEditInvoiceModalOpen(true);
   }
 
@@ -4607,6 +4607,11 @@ export default function MedicalConsultationsCard({
 
                 const displayTitle = (() => {
                   const title = row.title ?? "";
+                  // For invoices, show title as-is (no prefix removal)
+                  if (isInvoice) {
+                    return title;
+                  }
+                  // For consultations, remove "Consultation " prefix if present
                   const prefix = "Consultation ";
                   return title.startsWith(prefix)
                     ? title.slice(prefix.length)
@@ -4760,20 +4765,29 @@ export default function MedicalConsultationsCard({
                     </div>
 
                     <div className="mt-2 text-[11px] text-slate-800">
-                      {isNotes ? (
+                      {isInvoice ? (
+                        <div className="mb-2 text-[10px] text-slate-600">
+                          <span className="font-semibold">Invoice #:</span>{" "}
+                          <span className="font-mono text-slate-800">{row.consultation_id}</span>
+                        </div>
+                      ) : isNotes ? (
                         <div className="mb-2 text-[10px] text-slate-600">
                           <span className="font-semibold">Consultation ID:</span>{" "}
                           <span className="font-mono text-slate-800">{row.consultation_id}</span>
                         </div>
                       ) : null}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-semibold">{displayTitle}</div>
-                        {isComplimentaryInvoice ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                            Complimentary service
-                          </span>
-                        ) : null}
-                      </div>
+                      {displayTitle && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className={`font-semibold ${isInvoice ? "text-slate-900 text-[12px]" : ""}`}>
+                            {displayTitle}
+                          </div>
+                          {isComplimentaryInvoice ? (
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
+                              Complimentary service
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
                       {is3d && threeDMeta ? (
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-600">
                           <span>
