@@ -20,6 +20,12 @@ const TiffPreview = dynamic(() => import('@/components/TiffPreview'), {
   loading: () => <div className="flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div></div>
 });
 
+// Dynamic import for HEIC preview (client-side only)
+const HeicPreview = dynamic(() => import('@/components/HeicPreview'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div></div>
+});
+
 interface PatientDocumentsTabProps {
   patientId: string;
   patientName?: string;
@@ -96,10 +102,11 @@ function getMimeType(name: string, metadata?: { mimetype?: string } | null): str
   if (metadata?.mimetype) return metadata.mimetype;
   const ext = getExtension(name);
   if (ext === "pdf") return "application/pdf";
-  if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) {
-    return `image/${ext === "jpg" ? "jpeg" : ext}`;
+  if (["jpg", "jpeg", "png", "gif", "webp", "svg", "jfif"].includes(ext)) {
+    return `image/${ext === "jpg" || ext === "jfif" ? "jpeg" : ext}`;
   }
   if (["tiff", "tif"].includes(ext)) return "image/tiff";
+  if (["heic", "heif"].includes(ext)) return "image/heic";
   if (["mp4", "webm", "ogg", "mov"].includes(ext)) return `video/${ext}`;
   return "";
 }
@@ -833,20 +840,24 @@ export default function PatientDocumentsTab({
 
   const selectedMimeType = (() => {
     if (!selectedFile || selectedFile.kind !== "file") return "";
-    const fromMeta = selectedFile.metadata?.mimetype;
-    if (fromMeta) return fromMeta;
+    // Always resolve by extension first for known types (metadata can be wrong, e.g. jfif → application/octet-stream)
     const ext = getExtension(selectedFile.name);
     if (ext === "pdf") return "application/pdf";
-    if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
-      return `image/${ext === "jpg" ? "jpeg" : ext}`;
+    if (["jpg", "jpeg", "png", "gif", "webp", "svg", "jfif"].includes(ext)) {
+      return `image/${ext === "jpg" || ext === "jfif" ? "jpeg" : ext}`;
     }
     if (["tiff", "tif"].includes(ext)) return "image/tiff";
-    if (["mp4", "webm", "ogg"].includes(ext)) return `video/${ext}`;
+    if (["heic", "heif"].includes(ext)) return "image/heic";
+    if (["mp4", "webm", "ogg", "mov"].includes(ext)) return `video/${ext}`;
+    // Fall back to metadata mimetype for unknown extensions
+    const fromMeta = selectedFile.metadata?.mimetype;
+    if (fromMeta) return fromMeta;
     return "";
   })();
 
   const isTiff = selectedMimeType === "image/tiff" || (selectedFile && ["tiff", "tif"].includes(getExtension(selectedFile.name)));
-  const isImage = selectedMimeType.startsWith("image/") && !isTiff;
+  const isHeic = selectedMimeType === "image/heic" || (selectedFile && ["heic", "heif"].includes(getExtension(selectedFile.name)));
+  const isImage = selectedMimeType.startsWith("image/") && !isTiff && !isHeic;
   const isPdf = selectedMimeType === "application/pdf";
   const isVideo = selectedMimeType.startsWith("video/");
 
@@ -1114,6 +1125,9 @@ export default function PatientDocumentsTab({
                       "png",
                       "gif",
                       "webp",
+                      "jfif",
+                      "heic",
+                      "heif",
                     ].includes(ext);
                     const uploadDate = item.created_at || item.updated_at;
                     const mimeType = getMimeType(item.name, item.metadata);
@@ -1308,6 +1322,24 @@ export default function PatientDocumentsTab({
                     url={selectedFilePreviewUrl}
                     className="max-h-[360px] w-auto max-w-full rounded-md border border-slate-200 bg-slate-100 object-contain cursor-pointer transition-transform hover:scale-[1.02]"
                     onError={(msg) => setError(`TIFF preview error: ${msg}`)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEnlargedImage({ url: selectedFilePreviewUrl, name: selectedFile.name })}
+                    className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                    Enlarge
+                  </button>
+                </div>
+              ) : isHeic ? (
+                <div className="relative group">
+                  <HeicPreview
+                    url={selectedFilePreviewUrl}
+                    className="max-h-[360px] w-auto max-w-full rounded-md border border-slate-200 bg-slate-100 object-contain cursor-pointer transition-transform hover:scale-[1.02]"
+                    onError={(msg) => setError(`HEIC preview error: ${msg}`)}
                   />
                   <button
                     type="button"
@@ -1551,6 +1583,13 @@ export default function PatientDocumentsTab({
                 {previewModal.mimeType === "image/tiff" || previewModal.name.toLowerCase().endsWith('.tiff') || previewModal.name.toLowerCase().endsWith('.tif') ? (
                   <div className="relative">
                     <TiffPreview
+                      url={previewModal.url}
+                      className="max-h-[70vh] max-w-full rounded-xl border border-slate-200 bg-white object-contain shadow-lg"
+                    />
+                  </div>
+                ) : previewModal.mimeType === "image/heic" || previewModal.name.toLowerCase().endsWith('.heic') || previewModal.name.toLowerCase().endsWith('.heif') ? (
+                  <div className="relative">
+                    <HeicPreview
                       url={previewModal.url}
                       className="max-h-[70vh] max-w-full rounded-xl border border-slate-200 bg-white object-contain shadow-lg"
                     />
