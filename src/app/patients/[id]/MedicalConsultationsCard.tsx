@@ -365,6 +365,8 @@ export default function MedicalConsultationsCard({
 
   const [editInvoiceModalOpen, setEditInvoiceModalOpen] = useState(false);
   const [editInvoiceTarget, setEditInvoiceTarget] = useState<ConsultationRow | null>(null);
+  const [editInvoiceTitle, setEditInvoiceTitle] = useState("");
+  const [editInvoiceSaving, setEditInvoiceSaving] = useState(false);
 
   const [paymentStatusModalOpen, setPaymentStatusModalOpen] = useState(false);
   const [paymentStatusTarget, setPaymentStatusTarget] = useState<ConsultationRow | null>(null);
@@ -1027,6 +1029,42 @@ export default function MedicalConsultationsCard({
     setEditConsultationModalOpen(true);
   }
 
+  async function handleSaveEditInvoice() {
+    if (!editInvoiceTarget) return;
+
+    setEditInvoiceSaving(true);
+    try {
+      const { error } = await supabaseClient
+        .from("invoices")
+        .update({
+          title: editInvoiceTitle,
+        })
+        .eq("id", editInvoiceTarget.invoice_id);
+
+      if (error) {
+        alert(error.message ?? "Failed to update invoice.");
+        return;
+      }
+
+      // Update local state
+      setInvoices((prev) =>
+        prev.map((row) =>
+          row.invoice_id === editInvoiceTarget.invoice_id
+            ? { ...row, title: editInvoiceTitle }
+            : row
+        )
+      );
+
+      setEditInvoiceModalOpen(false);
+      setEditInvoiceTarget(null);
+    } catch (err) {
+      console.error("Error updating invoice:", err);
+      alert("Failed to update invoice.");
+    } finally {
+      setEditInvoiceSaving(false);
+    }
+  }
+
   async function handleSaveEditConsultation() {
     if (!editConsultationTarget) return;
 
@@ -1283,6 +1321,7 @@ export default function MedicalConsultationsCard({
 
   function handleEditInvoice(invoice: ConsultationRow) {
     setEditInvoiceTarget(invoice);
+    setEditInvoiceTitle(invoice.title || "");
     setEditInvoiceModalOpen(true);
   }
 
@@ -2610,6 +2649,7 @@ export default function MedicalConsultationsCard({
                         const invoiceInsertPayload: Record<string, unknown> = {
                             patient_id: patientId,
                             invoice_number: consultationId,
+                            title: consultationTitle.trim() || consultationId,
                             invoice_date: consultationDate,
                             treatment_date: scheduledAtIso,
                             doctor_user_id: consultationDoctorId || null, // FK to providers table
@@ -5305,16 +5345,26 @@ export default function MedicalConsultationsCard({
               </p>
             </div>
             <div className="space-y-4 px-6 py-6">
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                <p className="text-xs text-blue-800">
-                  <strong>Coming Soon:</strong> Invoice editing functionality will be available in a future update. For now, you can regenerate the PDF with updated information by creating a new consultation record.
-                </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-700 mb-1">
+                    Invoice Title
+                  </label>
+                  <input
+                    type="text"
+                    value={editInvoiceTitle}
+                    onChange={(e) => setEditInvoiceTitle(e.target.value)}
+                    className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    placeholder="Invoice title"
+                  />
+                </div>
               </div>
+
               <div className="rounded-lg bg-slate-50 p-4">
                 <div className="space-y-2 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Title:</span>
-                    <span className="font-medium text-slate-900">{editInvoiceTarget.title}</span>
+                    <span className="text-slate-600">Invoice Number:</span>
+                    <span className="font-medium text-slate-900">{editInvoiceTarget.consultation_id}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">Amount:</span>
@@ -5334,6 +5384,12 @@ export default function MedicalConsultationsCard({
                   </div>
                 </div>
               </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-[10px] text-amber-700">
+                  <strong>Note:</strong> Only the invoice title can be edited. To modify amounts or line items, please create a new invoice.
+                </p>
+              </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
               <button
@@ -5341,9 +5397,17 @@ export default function MedicalConsultationsCard({
                   setEditInvoiceModalOpen(false);
                   setEditInvoiceTarget(null);
                 }}
-                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                disabled={editInvoiceSaving}
+                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
-                Close
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEditInvoice}
+                disabled={editInvoiceSaving}
+                className="inline-flex items-center rounded-full bg-sky-600 px-4 py-2 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {editInvoiceSaving ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>

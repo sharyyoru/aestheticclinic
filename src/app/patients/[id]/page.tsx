@@ -151,22 +151,25 @@ async function getInvoiceSummary(
       const paidAmount = Number(row.paid_amount) || 0;
 
       countByStatus[status] = (countByStatus[status] || 0) + 1;
-      totalAmountNonComplimentary += amount;
 
       switch (status) {
         case "PAID":
+          totalAmountNonComplimentary += amount;
           totalPaid += amount;
           break;
         case "PARTIAL_PAID":
+          totalAmountNonComplimentary += amount;
           totalPartialPaid += paidAmount;
           totalUnpaid += amount - paidAmount;
           break;
         case "PARTIAL_LOSS":
+          totalAmountNonComplimentary += amount;
           // Partial loss = original total - what was actually received (after fees/commissions)
           totalPaid += paidAmount;
           totalPartialLoss += amount - paidAmount;
           break;
         case "OVERPAID":
+          totalAmountNonComplimentary += amount;
           totalPaid += paidAmount;
           totalOverpaid += paidAmount - amount;
           break;
@@ -175,6 +178,7 @@ async function getInvoiceSummary(
           break;
         case "OPEN":
         default:
+          totalAmountNonComplimentary += amount;
           totalUnpaid += amount;
           break;
       }
