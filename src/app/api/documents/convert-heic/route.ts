@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       quality: 0.9,
     });
 
-    return new NextResponse(outputBuffer, {
+    return new NextResponse(new Uint8Array(outputBuffer), {
       status: 200,
       headers: {
         "Content-Type": "image/jpeg",
