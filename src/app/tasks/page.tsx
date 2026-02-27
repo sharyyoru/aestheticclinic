@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import TaskEditModal from "@/components/TaskEditModal";
+import TaskCreateModal from "@/components/TaskCreateModal";
 import { useTasksNotifications } from "@/components/TasksNotificationsContext";
 
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -86,6 +87,9 @@ export default function TasksPage() {
   // Task edit modal
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TaskRow | null>(null);
+
+  // Task create modal
+  const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
 
   // Admin user selector
   const [allUsers, setAllUsers] = useState<PlatformUser[]>([]);
@@ -438,7 +442,7 @@ export default function TasksPage() {
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
           />
           {showPatientSuggestions && filteredPatientSuggestions.length > 0 ? (
-            <div className="absolute z-20 mt-1 max-h-60 w-full rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
               <button
                 type="button"
                 className="flex w-full items-center px-3 py-1.5 text-left text-slate-600 hover:bg-slate-50"
@@ -521,8 +525,9 @@ export default function TasksPage() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Link
-              href="/patients"
+            <button
+              type="button"
+              onClick={() => setCreateTaskModalOpen(true)}
               className="inline-flex items-center gap-1 rounded-full border border-sky-200/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700"
             >
               <span className="inline-flex h-3 w-3 items-center justify-center">
@@ -540,7 +545,7 @@ export default function TasksPage() {
                 </svg>
               </span>
               <span>Create Task</span>
-            </Link>
+            </button>
             <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/80 p-0.5 text-[11px] text-slate-600">
               <button
                 type="button"
@@ -679,6 +684,15 @@ export default function TasksPage() {
           </div>
         )}
       </div>
+
+      {/* Task Create Modal */}
+      <TaskCreateModal
+        open={createTaskModalOpen}
+        onClose={() => setCreateTaskModalOpen(false)}
+        onTaskCreated={(newTask) => {
+          setTasks((prev) => [newTask, ...prev]);
+        }}
+      />
 
       {/* Task Edit Modal */}
       <TaskEditModal
