@@ -130,6 +130,23 @@ export async function uploadInvoiceXml(
   const MAX_RETRIES = 3;
   const RETRY_DELAYS = [0, 2000, 5000]; // ms
 
+  // Log key XML elements before upload for debugging
+  console.log(`[uploadInvoiceXml] Uploading ${filename} (${xmlContent.length} chars)`);
+  const hasCopyToGuarantor = xmlContent.includes('print_copy_to_guarantor');
+  const hasOnline = xmlContent.includes('<invoice:online');
+  const hasPhone = xmlContent.includes('<invoice:phone');
+  const hasGuarantor = xmlContent.includes('<invoice:guarantor');
+  console.log(`[uploadInvoiceXml] XML flags: print_copy_to_guarantor=${hasCopyToGuarantor}, online/email=${hasOnline}, phone=${hasPhone}, guarantor=${hasGuarantor}`);
+  // Log processing section
+  const procMatch = xmlContent.match(/<invoice:processing[\s\S]*?<\/invoice:processing>/);
+  if (procMatch) console.log(`[uploadInvoiceXml] <processing>: ${procMatch[0].substring(0, 500)}`);
+  // Log patient section (first 500 chars)
+  const patMatch = xmlContent.match(/<invoice:patient[\s\S]*?<\/invoice:patient>/);
+  if (patMatch) console.log(`[uploadInvoiceXml] <patient>: ${patMatch[0].substring(0, 500)}`);
+  // Log guarantor section
+  const guarMatch = xmlContent.match(/<invoice:guarantor[\s\S]*?<\/invoice:guarantor>/);
+  if (guarMatch) console.log(`[uploadInvoiceXml] <guarantor>: ${guarMatch[0].substring(0, 500)}`);
+
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (attempt > 0) {
       console.log(`[uploadInvoiceXml] Retry ${attempt}/${MAX_RETRIES - 1} after ${RETRY_DELAYS[attempt]}ms…`);

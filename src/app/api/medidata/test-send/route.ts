@@ -250,6 +250,18 @@ export async function POST(request: NextRequest) {
             zip: patient.postal_code || "",
             city: patient.town || "",
             stateCode: canton,
+            email: patient.email || undefined,
+            phone: patient.phone || undefined,
+          },
+          guarantorAddress: {
+            familyName: patient.last_name || "Unknown",
+            givenName: patient.first_name || "",
+            street: patient.street_address || "",
+            zip: patient.postal_code || "",
+            city: patient.town || "",
+            stateCode: canton,
+            email: patient.email || undefined,
+            phone: patient.phone || undefined,
           },
           treatmentCanton: canton,
           treatmentDateBegin: treatmentDate,
@@ -261,6 +273,8 @@ export async function POST(request: NextRequest) {
           transportFrom: MEDIDATA_SENDER_GLN,
           transportViaGln: MEDIDATA_INTERMEDIATE_GLN,
           transportTo: transportToGln,
+          // Per MediData feedback: TP invoices must include print_copy_to_guarantor for patient copy
+          printCopyToGuarantor: tiersMode === TiersMode.Payant ? YesNo.Yes : (inv.copy_to_guarantor ? YesNo.Yes : YesNo.No),
         };
 
         let xmlContent: string;

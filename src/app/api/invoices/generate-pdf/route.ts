@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import QRCode from "qrcode";
 import { generateSwissReference } from "@/lib/swissQrBill";
 import type { Invoice, InvoiceLineItem } from "@/lib/invoiceTypes";
+import { createPayrexxGateway } from "@/lib/payrexx";
 import {
   buildInvoiceRequest,
   mapLawType as mapSumexLaw,
@@ -29,6 +30,8 @@ type PatientData = {
   postal_code: string | null;
   town: string | null;
   gender: string | null;
+  email?: string | null;
+  phone?: string | null;
 };
 
 type ProviderData = {
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest) {
     // Fetch patient
     const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
-      .select("first_name, last_name, dob, street_address, postal_code, town, gender")
+      .select("first_name, last_name, dob, street_address, postal_code, town, gender, email, phone")
       .eq("id", invoiceData.patient_id)
       .single();
 
@@ -288,6 +291,18 @@ export async function POST(request: NextRequest) {
           zip: patientData.postal_code || "",
           city: patientData.town || "",
           stateCode: provCanton,
+          email: patientData.email || undefined,
+          phone: patientData.phone || undefined,
+        },
+        guarantorAddress: {
+          familyName: patientData.last_name,
+          givenName: patientData.first_name,
+          street: patientData.street_address || "",
+          zip: patientData.postal_code || "",
+          city: patientData.town || "",
+          stateCode: provCanton,
+          email: patientData.email || undefined,
+          phone: patientData.phone || undefined,
         },
         treatmentCanton: provCanton,
         treatmentDateBegin: treatmentDate,
@@ -296,6 +311,7 @@ export async function POST(request: NextRequest) {
         services: sumexServices,
         transportFrom: provGln,
         transportTo: receiverGln || insurerGln || "",
+        printCopyToGuarantor: (invoiceData.billing_type === 'TP' || invoiceData.copy_to_guarantor) ? YesNo.Yes : YesNo.No,
       };
 
       // Generate XML + PDF via Sumex1 server
@@ -355,9 +371,54 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ── Try Sumex1 for cash/online invoices too (unified template) ──
+    // ── Try Sumex1 for cash/card/bank/online invoices too (unified template) ──
     {
-      console.log(`[GeneratePDF] Non-insurance invoice — attempting Sumex1 unified template (TG mode, no insurance)`);
+      console.log(`[GeneratePDF] Non-insurance invoice (${invoiceData.payment_method}) — attempting Sumex1 unified template (TG mode, no insurance)`);
+
+      // Auto-create Payrexx gateway for online/card/cash invoices that don't have one yet
+      const pmLower = (invoiceData.payment_method || "").toLowerCase();
+      const needsPayrexx = (pmLower.includes("online") || pmLower.includes("card") || pmLower.includes("cash")) && !invoiceData.payrexx_payment_link;
+      if (needsPayrexx) {
+        console.log(`[GeneratePDF] No Payrexx link for ${invoiceData.payment_method} invoice — auto-creating gateway`);
+        try {
+          const amount = Math.round((invoiceData.total_amount || 0) * 100);
+          if (amount > 0) {
+            const gatewayRes = await createPayrexxGateway({
+              amount,
+              currency: "CHF",
+              referenceId: invoiceData.invoice_number,
+              purpose: `Invoice ${invoiceData.invoice_number} - Medical Services`,
+              forename: patientData.first_name,
+              surname: patientData.last_name,
+              email: patientData.email || undefined,
+              phone: patientData.phone || undefined,
+              street: patientData.street_address || undefined,
+              postcode: patientData.postal_code || undefined,
+              place: patientData.town || undefined,
+              country: "CH",
+            });
+            const gwData = Array.isArray(gatewayRes.data) ? gatewayRes.data[0] : gatewayRes.data;
+            if (gatewayRes.status === "success" && gwData) {
+              const gw = gwData as { id: number; hash: string; link: string };
+              const paymentLink = gw.link || `https://aesthetics-ge.payrexx.com/?payment=${gw.hash}`;
+              await supabaseAdmin.from("invoices").update({
+                payrexx_gateway_id: gw.id,
+                payrexx_gateway_hash: gw.hash,
+                payrexx_payment_link: paymentLink,
+                payrexx_payment_status: "waiting",
+              }).eq("id", invoiceId);
+              // Update local copy so QR overlay picks it up
+              (invoiceData as any).payrexx_payment_link = paymentLink;
+              console.log(`[GeneratePDF] ✓ Payrexx gateway created: ${paymentLink}`);
+            } else {
+              console.warn(`[GeneratePDF] Payrexx gateway creation returned non-success:`, gatewayRes.status);
+            }
+          }
+        } catch (payrexxErr) {
+          console.error(`[GeneratePDF] ✗ Failed to auto-create Payrexx gateway:`, payrexxErr);
+          // Non-fatal — continue with bank QR instead
+        }
+      }
 
       const provGln = billingEntityData?.gln || invoiceData.provider_gln || "7601003000115";
       const provZsr = billingEntityData?.zsr || invoiceData.provider_zsr || "";
@@ -434,16 +495,31 @@ export async function POST(request: NextRequest) {
           city: provCity,
           stateCode: provCanton,
         },
+        // For non-insurance invoices (card/cash/bank), provide fallback address
+        // values to prevent Sumex1 SetPatient [622] "incomplete address" errors.
+        // These invoices won't be sent to insurance so placeholder values are fine.
         patientSex: mapSumexSex(patientData.gender || "male"),
         patientBirthdate: patientData.dob || "1990-01-01",
         patientSsn: "",
         patientAddress: {
-          familyName: patientData.last_name,
-          givenName: patientData.first_name,
-          street: patientData.street_address || "",
-          zip: patientData.postal_code || "",
-          city: patientData.town || "",
+          familyName: patientData.last_name || "Patient",
+          givenName: patientData.first_name || "Unknown",
+          street: patientData.street_address || provStreetFull || "N/A",
+          zip: patientData.postal_code || provZip || "0000",
+          city: patientData.town || provCity || "N/A",
           stateCode: provCanton,
+          email: patientData.email || "",
+          phone: patientData.phone || "",
+        },
+        guarantorAddress: {
+          familyName: patientData.last_name || "Patient",
+          givenName: patientData.first_name || "Unknown",
+          street: patientData.street_address || provStreetFull || "N/A",
+          zip: patientData.postal_code || provZip || "0000",
+          city: patientData.town || provCity || "N/A",
+          stateCode: provCanton,
+          email: patientData.email || "",
+          phone: patientData.phone || "",
         },
         treatmentCanton: provCanton,
         treatmentDateBegin: treatmentDate,
@@ -455,8 +531,9 @@ export async function POST(request: NextRequest) {
         const sumexResult2 = await buildInvoiceRequest(sumexInput2, { generatePdf: true });
 
         if (sumexResult2.success && sumexResult2.pdfContent) {
+          // Overlay Payrexx QR for Online and Card payments (both use Payrexx gateway)
           const hasPayrexxLink = !!invoiceData.payrexx_payment_link;
-          console.log(`[GeneratePDF] Sumex1 unified PDF generated: ${sumexResult2.pdfContent.length} bytes, hasPayrexxLink=${hasPayrexxLink}`);
+          console.log(`[GeneratePDF] Sumex1 unified PDF generated: ${sumexResult2.pdfContent.length} bytes, paymentMethod=${invoiceData.payment_method}, hasPayrexxLink=${hasPayrexxLink}`);
           
           let finalPdfBuffer = sumexResult2.pdfContent;
 

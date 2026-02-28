@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     // ── Fetch patient ──
     const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
-      .select("first_name, last_name, dob, street_address, postal_code, town, gender")
+      .select("first_name, last_name, dob, street_address, postal_code, town, gender, email, phone")
       .eq("id", patientId)
       .single();
 
@@ -291,18 +291,34 @@ export async function POST(request: NextRequest) {
       patientBirthdate: patient.dob || "1990-01-01",
       patientSsn: invoice.patient_ssn || "",
       patientAddress: {
-        familyName: patient.last_name,
-        givenName: patient.first_name,
-        street: patient.street_address || "",
-        zip: patient.postal_code || "",
-        city: patient.town || "",
+        familyName: patient.last_name || "Patient",
+        givenName: patient.first_name || "Unknown",
+        street: patient.street_address || provStreet || "N/A",
+        zip: patient.postal_code || provZip || "0000",
+        city: patient.town || provCity || "N/A",
         stateCode: provCanton,
+        email: patient.email || "",
+        phone: patient.phone || "",
       },
+      guarantorAddress: {
+        familyName: patient.last_name || "Patient",
+        givenName: patient.first_name || "Unknown",
+        street: patient.street_address || provStreet || "N/A",
+        zip: patient.postal_code || provZip || "0000",
+        city: patient.town || provCity || "N/A",
+        stateCode: provCanton,
+        email: patient.email || "",
+        phone: patient.phone || "",
+      },
+      printCopyToGuarantor: mapSumexTiers(invoice.billing_type || "TG") === 1 ? YesNo.Yes : undefined,
       treatmentCanton: invoice.treatment_canton || provCanton,
       treatmentDateBegin: treatmentDate,
       treatmentDateEnd: invoice.treatment_date_end?.split("T")[0] || treatmentDate,
       diagnoses: sumexDiagnoses,
       services: sumexServices,
+      softwarePackage: "AestheticsClinic",
+      softwareVersion: 100,
+      softwareId: 0,
       transportFrom: MEDIDATA_SENDER_GLN || provGln,
       transportViaGln: MEDIDATA_INTERMEDIATE_GLN,
       transportTo: receiverGln || insurerGln || provGln,

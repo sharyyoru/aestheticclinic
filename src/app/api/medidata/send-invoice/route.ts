@@ -45,6 +45,8 @@ type PatientData = {
   postal_code: string | null;
   town: string | null;
   avs_number?: string | null;
+  email?: string | null;
+  phone?: string | null;
 };
 
 type InsuranceData = {
@@ -381,6 +383,18 @@ export async function POST(request: NextRequest) {
         zip: patientData.postal_code || "",
         city: patientData.town || "",
         stateCode: canton,
+        email: patientData.email || undefined,
+        phone: patientData.phone || undefined,
+      },
+      guarantorAddress: {
+        familyName: patientData.last_name,
+        givenName: patientData.first_name,
+        street: patientData.street_address || "",
+        zip: patientData.postal_code || "",
+        city: patientData.town || "",
+        stateCode: canton,
+        email: patientData.email || undefined,
+        phone: patientData.phone || undefined,
       },
       treatmentCanton: canton,
       treatmentDateBegin: treatmentDate,
@@ -393,6 +407,8 @@ export async function POST(request: NextRequest) {
       transportViaGln: MEDIDATA_INTERMEDIATE_GLN,
       // Per MediData (Vladimir): TG uses GLN 2000000000008 (no direct transmission to insurance)
       transportTo: billingType === 'TG' ? TG_NO_TRANSMISSION_GLN : resolvedReceiverGln,
+      // Per MediData feedback: TP invoices must include print_copy_to_guarantor for patient copy
+      printCopyToGuarantor: billingType === 'TP' ? YesNo.Yes : (invoiceRecord?.copy_to_guarantor ? YesNo.Yes : YesNo.No),
     };
 
     // Generate XML + PDF via Sumex1 server (no fallback — this is the only path)

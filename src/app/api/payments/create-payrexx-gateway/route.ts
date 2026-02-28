@@ -38,11 +38,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Check if payment method contains 'cash' or 'online' (handles variations like 'mac cash', 'mac online')
+    // Check if payment method is eligible for Payrexx gateway (cash, online, or card)
     const paymentMethod = invoice.payment_method?.toLowerCase() || "";
-    if (!paymentMethod.includes("cash") && !paymentMethod.includes("online")) {
+    if (!paymentMethod.includes("cash") && !paymentMethod.includes("online") && !paymentMethod.includes("card")) {
       return NextResponse.json(
-        { error: "Invoice payment method must contain 'cash' or 'online'" },
+        { error: "Invoice payment method must be cash, online, or card" },
         { status: 400 }
       );
     }

@@ -453,6 +453,11 @@ export type SumexInvoiceInput = {
   transportTo?: string;
   transportViaGln?: string;
 
+  // Processing flags (per CHM: SetProcessing method)
+  printPatientInvoiceOnly?: YesNo;
+  printCopyToGuarantor?: YesNo;
+  trustCenterGLN?: string;
+
   // Modus
   modus?: ModusType;
 };
@@ -960,13 +965,19 @@ export async function buildInvoiceRequest(
     }
 
     // --- SetGuarantor (optional — auto-cloned from patient if omitted) ---
-    if (input.guarantorAddress) {
-      await setupAddress(addr, input.guarantorAddress);
-      await reqPost("IGeneralInvoiceRequest", "SetGuarantor", {
-        pIGeneralInvoiceRequest: req,
-        pIAddress: addr,
-      });
-    }
+    // Per CHM: "a clone of the patient's address is automatically assigned as guarantor address
+    // in the Finalize method should the SetGuarantor method not be called."
+    // Since our guarantor is always the patient, we let Sumex auto-clone it (no GLN needed).
+    // If we ever need a separate guarantor entity, uncomment and provide their real GLN:
+    // if (input.guarantorAddress) {
+    //   await setupAddress(addr, input.guarantorAddress);
+    //   await reqPost("IGeneralInvoiceRequest", "SetGuarantor", {
+    //     pIGeneralInvoiceRequest: req,
+    //     bstrGLN: input.guarantorGln || "",
+    //     bstrUID: input.guarantorUid || "",
+    //     pIAddress: addr,
+    //   });
+    // }
 
     // --- SetDebitor (required for schema compliance) ---
     // For TP: debtor = insurance company. For TG: debtor = patient.
@@ -1181,6 +1192,18 @@ export async function buildInvoiceRequest(
       }
     }
 
+    // --- SetProcessing (print flags — per CHM: ePrintPatientInvoiceOnly, ePrintCopyToGuarantor, bstrTrustCenterGLN) ---
+    try {
+      await reqPost("IGeneralInvoiceRequest", "SetProcessing", {
+        pIGeneralInvoiceRequest: req,
+        ePrintPatientInvoiceOnly: input.printPatientInvoiceOnly ?? YesNo.No,
+        ePrintCopyToGuarantor: input.printCopyToGuarantor ?? YesNo.No,
+        bstrTrustCenterGLN: input.trustCenterGLN ?? "",
+      });
+    } catch (procErr) {
+      console.warn(`${LOG_PREFIX} SetProcessing call failed (non-fatal):`, procErr instanceof Error ? procErr.message : procErr);
+    }
+
     // --- SetTransport (required for XML generation) ---
     await reqPost("IGeneralInvoiceRequest", "SetTransport", {
       pIGeneralInvoiceRequest: req,
@@ -1303,6 +1326,19 @@ export async function buildInvoiceRequest(
       } catch {
         // File download may not be available — caller can use the file path
       }
+    }
+
+    // Log key XML elements for debugging
+    if (xmlContent) {
+      const hasCopyToGuarantor = xmlContent.includes('print_copy_to_guarantor');
+      const hasEmail = xmlContent.includes('<invoice:online');
+      const hasPhone = xmlContent.includes('<invoice:phone');
+      console.log(`${LOG_PREFIX} XML generated (${xmlContent.length} chars): print_copy_to_guarantor=${hasCopyToGuarantor}, email/online=${hasEmail}, phone=${hasPhone}`);
+      // Log the processing and guarantor sections for inspection
+      const processingMatch = xmlContent.match(/<invoice:processing[\s\S]*?<\/invoice:processing>/);
+      if (processingMatch) console.log(`${LOG_PREFIX} XML <processing>: ${processingMatch[0].substring(0, 500)}`);
+      const guarantorMatch = xmlContent.match(/<invoice:guarantor[\s\S]*?<\/invoice:guarantor>/);
+      if (guarantorMatch) console.log(`${LOG_PREFIX} XML <guarantor>: ${guarantorMatch[0].substring(0, 500)}`);
     }
 
     const result: SumexBuildResult = {

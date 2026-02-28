@@ -302,7 +302,21 @@ async function handleBuildFromConsultation(body: Record<string, unknown>) {
       zip: patient.zip || patient.postal_code || "",
       city: patient.city || "",
       stateCode: patient.canton || patient.state || "",
+      email: patient.email || "",
+      phone: patient.phone || "",
     },
+    guarantorAddress: {
+      familyName: patient.last_name || patient.family_name || "",
+      givenName: patient.first_name || patient.given_name || "",
+      salutation: patient.salutation || "",
+      street: patient.street || patient.address || "",
+      zip: patient.zip || patient.postal_code || "",
+      city: patient.city || "",
+      stateCode: patient.canton || patient.state || "",
+      email: patient.email || "",
+      phone: patient.phone || "",
+    },
+    printCopyToGuarantor: tiersMode === TiersMode.Payant ? YesNo.Yes : undefined,
     treatmentCanton: canton,
     treatmentType: 0, // Ambulatory
     treatmentReason: 0, // Disease

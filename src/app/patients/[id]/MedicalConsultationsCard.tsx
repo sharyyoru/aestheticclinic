@@ -1286,10 +1286,10 @@ export default function MedicalConsultationsCard({
           .eq("id", installmentsTarget.invoice_id);
       }
 
-      // Create Payrexx gateways for Online/Cash installments that don't have one yet
+      // Create Payrexx gateways for Online/Card/Cash installments that don't have one yet
       for (const inst of savedInstallments) {
         const pm = (inst.payment_method || "").toLowerCase();
-        if ((pm.includes("online") || pm.includes("cash")) && !inst.payrexx_payment_link && inst.status !== "PAID") {
+        if ((pm.includes("online") || pm.includes("card") || pm.includes("cash")) && !inst.payrexx_payment_link && inst.status !== "PAID") {
           try {
             const res = await fetch("/api/payments/create-installment-gateway", {
               method: "POST",
@@ -1472,10 +1472,10 @@ export default function MedicalConsultationsCard({
     // For online payment, use existing Payrexx data from installment record
     let payrexxData: any = {};
     const instPaymentMethod = inst.payment_method || parentInvoice.payment_method;
-    const isOnlinePayment = instPaymentMethod === "Online Payment" || instPaymentMethod === "Online";
-    console.log(`[Installment Invoice] Payment method: "${instPaymentMethod}", isOnlinePayment: ${isOnlinePayment}`);
+    const isPayrexxPayment = instPaymentMethod === "Online Payment" || instPaymentMethod === "Online" || instPaymentMethod === "Card";
+    console.log(`[Installment Invoice] Payment method: "${instPaymentMethod}", isPayrexxPayment: ${isPayrexxPayment}`);
     
-    if (isOnlinePayment && inst.payrexx_payment_link) {
+    if (isPayrexxPayment && inst.payrexx_payment_link) {
       // Use existing Payrexx data from the installment record
       payrexxData = {
         payrexx_gateway_id: inst.payrexx_gateway_id,
@@ -3309,7 +3309,7 @@ export default function MedicalConsultationsCard({
                         // Save installments to DB if payment term is installment
                         if (invoicePaymentTerm === "installment" && invoiceInstallments.length > 0) {
                           const totalAmount = invoiceTotalAmountForInsert || 0;
-                          const isOnlinePayment = paymentMethod?.toLowerCase().includes("online");
+                          const isOnlinePayment = paymentMethod?.toLowerCase().includes("online") || paymentMethod?.toLowerCase() === "card";
                           
                           // Create Payrexx gateways for each installment if payment method is Online
                           const installmentRowsWithPayrexx = await Promise.all(
@@ -3378,7 +3378,7 @@ export default function MedicalConsultationsCard({
 
                         // Create Payrexx payment gateway if applicable
                         const pmLower = paymentMethod?.toLowerCase() || "";
-                        if (pmLower.includes("cash") || pmLower.includes("online")) {
+                        if (pmLower.includes("cash") || pmLower.includes("online") || pmLower.includes("card")) {
                           try {
                             const payrexxResponse = await fetch("/api/payments/create-payrexx-gateway", {
                               method: "POST",
@@ -5559,7 +5559,7 @@ export default function MedicalConsultationsCard({
                             </button>
 
                             {!row.invoice_is_paid && row.payment_method &&
-                              (row.payment_method.toLowerCase().includes("cash") || row.payment_method.toLowerCase().includes("online")) && (
+                              (row.payment_method.toLowerCase().includes("cash") || row.payment_method.toLowerCase().includes("online") || row.payment_method.toLowerCase().includes("card")) && (
                               <button
                                 type="button"
                                 onClick={() => {
