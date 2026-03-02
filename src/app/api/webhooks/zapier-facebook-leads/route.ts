@@ -287,14 +287,51 @@ export async function POST(request: NextRequest) {
     }
 
     // Get default deal stage for new leads
-    const { data: defaultStage } = await supabaseAdmin
+    let defaultStageId: string | undefined;
+
+    // Try: is_default=true AND type='lead' (exclude demo stages)
+    const { data: defaultLeadStage } = await supabaseAdmin
       .from("deal_stages")
       .select("id")
       .eq("is_default", true)
       .eq("type", "lead")
-      .single();
+      .eq("is_demo", false)
+      .limit(1)
+      .maybeSingle();
 
-    const defaultStageId = defaultStage?.id;
+    defaultStageId = defaultLeadStage?.id;
+
+    // Fallback: any non-demo stage with is_default=true
+    if (!defaultStageId) {
+      const { data: anyDefaultStage } = await supabaseAdmin
+        .from("deal_stages")
+        .select("id")
+        .eq("is_default", true)
+        .eq("is_demo", false)
+        .limit(1)
+        .maybeSingle();
+      defaultStageId = anyDefaultStage?.id;
+    }
+
+    // Fallback: first non-demo stage by sort_order
+    if (!defaultStageId) {
+      const { data: firstStage } = await supabaseAdmin
+        .from("deal_stages")
+        .select("id")
+        .eq("is_demo", false)
+        .order("sort_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      defaultStageId = firstStage?.id;
+    }
+
+    if (!defaultStageId) {
+      console.error("[Zapier Facebook Leads] No deal stages found in database");
+      return NextResponse.json(
+        { success: false, error: "No deal stages configured" },
+        { status: 500 }
+      );
+    }
 
     // Load HubSpot services for matching
     const { data: hubspotCategory } = await supabaseAdmin
