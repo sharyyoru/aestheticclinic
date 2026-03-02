@@ -841,6 +841,7 @@ export default function CalendarPage() {
   const [editCategorySearch, setEditCategorySearch] = useState("");
   const [editCategoryDropdownOpen, setEditCategoryDropdownOpen] = useState(false);
   const [editLocation, setEditLocation] = useState("");
+  const [editNotes, setEditNotes] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -2085,6 +2086,8 @@ export default function CalendarPage() {
     setEditCategory(categoryFromReason ?? "");
     setEditCategorySearch(categoryFromReason ?? "");
 
+    setEditNotes(getAppointmentNotes(appt) || "");
+
     setEditModalOpen(true);
   }
 
@@ -2180,9 +2183,6 @@ export default function CalendarPage() {
       const { serviceLabel } = getServiceAndStatusFromReason(existingReason);
       const doctorName = getDoctorNameFromReason(existingReason);
       
-      // Extract notes from old appointment (backward compatibility)
-      const existingNotes = getAppointmentNotes(editingAppointment);
-      
       let updatedReason = serviceLabel || "Appointment";
       if (doctorName) updatedReason += ` [Doctor: ${doctorName}]`;
       if (editCategory && editCategory !== "No selection") updatedReason += ` [Category: ${editCategory}]`;
@@ -2196,7 +2196,7 @@ export default function CalendarPage() {
           end_time: endIso,
           location: editLocation || null,
           reason: updatedReason,
-          notes: existingNotes || null,
+          notes: editNotes.trim() || null,
         })
         .eq("id", editingAppointment.id)
         .select(
@@ -3322,14 +3322,16 @@ export default function CalendarPage() {
                       )}
                     </div>
                   </div>
-                  {getAppointmentNotes(editingAppointment) && (
-                    <div className="mt-2 pt-2 border-t border-slate-200">
-                      <p className="text-[10px] text-slate-500">Notes</p>
-                      <p className="text-[11px] text-slate-800 whitespace-pre-wrap">
-                        {getAppointmentNotes(editingAppointment)}
-                      </p>
-                    </div>
-                  )}
+                  <div className="mt-2 pt-2 border-t border-slate-200">
+                    <p className="text-[10px] text-slate-500 mb-1">Notes</p>
+                    <textarea
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      rows={3}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      placeholder="Add notes for this appointment"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-1">
