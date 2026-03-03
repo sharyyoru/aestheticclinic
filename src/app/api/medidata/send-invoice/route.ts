@@ -205,6 +205,21 @@ export async function POST(request: NextRequest) {
       if (data) swissInsurer = data;
     }
 
+    // Fallback: look up swiss_insurers by GLN if no insurer_id resolved
+    if (!swissInsurer) {
+      const lookupGln = insurerGln || invoiceRecord?.insurance_gln || insuranceData?.gln;
+      if (lookupGln) {
+        const { data } = await supabaseAdmin
+          .from("swiss_insurers")
+          .select("name, receiver_gln, tp_allowed, address_street, address_postal_code, address_city, address_canton")
+          .eq("gln", lookupGln)
+          .limit(1)
+          .single();
+
+        if (data) swissInsurer = data;
+      }
+    }
+
     // Get sender GLN from medidata_config (only field needed from config)
     const { data: mdConfig } = await supabaseAdmin
       .from("medidata_config")
@@ -380,13 +395,13 @@ export async function POST(request: NextRequest) {
         stateCode: staffEntity?.canton || canton,
       },
       insuranceGln: resolvedInsurerGln,
-      insuranceAddress: {
+      insuranceAddress: resolvedInsurerGln ? {
         companyName: swissInsurer?.name || resolvedInsurerName,
-        street: swissInsurer?.address_street || "",
-        zip: swissInsurer?.address_postal_code || "",
-        city: swissInsurer?.address_city || "",
-        stateCode: swissInsurer?.address_canton || "",
-      },
+        street: swissInsurer?.address_street || "N/A",
+        zip: swissInsurer?.address_postal_code || "0000",
+        city: swissInsurer?.address_city || "N/A",
+        stateCode: swissInsurer?.address_canton || canton,
+      } : undefined,
       patientSex: mapSumexSex(patientData.gender || "male"),
       patientBirthdate: patientData.dob || "1990-01-01",
       patientSsn: avsNumber || insuranceData?.avs_number || "",
