@@ -20,10 +20,23 @@ function resolvePath(object: unknown, path: string): unknown {
   }, object);
 }
 
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&#123;/g, "{")
+    .replace(/&#125;/g, "}")
+    .replace(/&lbrace;/g, "{")
+    .replace(/&rbrace;/g, "}")
+    .replace(/&#x7b;/gi, "{")
+    .replace(/&#x7d;/gi, "}");
+}
+
 function renderTemplate(template: string, context: unknown): string {
   if (!template) return "";
 
-  return template.replace(/{{\s*([^}]+?)\s*}}/g, (_match, rawPath) => {
+  // First decode any HTML-encoded curly braces (from Unlayer or other editors)
+  const decoded = decodeHtmlEntities(template);
+
+  return decoded.replace(/{{\s*([^}]+?)\s*}}/g, (_match, rawPath) => {
     const value = resolvePath(context, String(rawPath));
     if (value === undefined || value === null) return "";
     return String(value);

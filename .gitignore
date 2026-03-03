@@ -43,3 +43,6 @@ next-env.d.ts
 # whatsapp-web.js session data
 .wwebjs_auth/
 .wwebjs_cache/
+
+#webstorm settings
+.idea

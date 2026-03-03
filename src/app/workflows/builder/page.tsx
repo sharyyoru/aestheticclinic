@@ -1029,7 +1029,18 @@ export default function WorkflowBuilderPage() {
           {!["is_empty", "is_not_empty"].includes(data.operator) && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Value</label>
-              {data.field === "deal.service" ? (
+              {data.field === "deal.stage" ? (
+                <select
+                  value={data.value}
+                  onChange={(e) => updateNodeData(selectedNode.id, { value: e.target.value })}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="">Select stage...</option>
+                  {stages.map((stage) => (
+                    <option key={stage.id} value={stage.name}>{stage.name}</option>
+                  ))}
+                </select>
+              ) : data.field === "deal.service" ? (
                 <div className="space-y-3">
                   {/* Service Match Mode */}
                   <div className="flex gap-3">
