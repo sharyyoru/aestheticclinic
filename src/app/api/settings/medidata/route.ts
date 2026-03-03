@@ -75,8 +75,6 @@ export async function POST(request: NextRequest) {
         .from("medidata_config")
         .insert({
           clinic_gln: senderGln,
-          clinic_zsr: "",
-          clinic_name: "",
           medidata_client_id: clientId || null,
           is_test_mode: false,
         });
