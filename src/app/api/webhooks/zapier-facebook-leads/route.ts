@@ -399,7 +399,7 @@ export async function POST(request: NextRequest) {
       // Trigger workflow for new lead
       if (dealId && defaultStageId) {
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
           await fetch(`${baseUrl}/api/workflows/deal-stage-changed`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
