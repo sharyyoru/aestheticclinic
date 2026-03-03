@@ -184,13 +184,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Get detailed Swiss insurer data if available
-    let swissInsurer: { receiver_gln: string | null; tp_allowed: boolean | null } | null = null;
+    let swissInsurer: {
+      receiver_gln: string | null;
+      tp_allowed: boolean | null;
+      name: string | null;
+      address_street: string | null;
+      address_postal_code: string | null;
+      address_city: string | null;
+      address_canton: string | null;
+    } | null = null;
 
-    if (insuranceData?.insurer_id) {
+    const resolvedInsurerId = invoiceRecord?.insurer_id || insuranceData?.insurer_id;
+    if (resolvedInsurerId) {
       const { data } = await supabaseAdmin
         .from("swiss_insurers")
-        .select("receiver_gln, tp_allowed")
-        .eq("id", insuranceData.insurer_id)
+        .select("name, receiver_gln, tp_allowed, address_street, address_postal_code, address_city, address_canton")
+        .eq("id", resolvedInsurerId)
         .single();
 
       if (data) swissInsurer = data;
@@ -372,11 +381,11 @@ export async function POST(request: NextRequest) {
       },
       insuranceGln: resolvedInsurerGln,
       insuranceAddress: {
-        companyName: resolvedInsurerName,
-        street: "",
-        zip: "",
-        city: "",
-        stateCode: "",
+        companyName: swissInsurer?.name || resolvedInsurerName,
+        street: swissInsurer?.address_street || "",
+        zip: swissInsurer?.address_postal_code || "",
+        city: swissInsurer?.address_city || "",
+        stateCode: swissInsurer?.address_canton || "",
       },
       patientSex: mapSumexSex(patientData.gender || "male"),
       patientBirthdate: patientData.dob || "1990-01-01",
