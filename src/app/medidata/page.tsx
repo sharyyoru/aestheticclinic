@@ -334,8 +334,8 @@ export default function MediDataDashboard() {
     setTimeout(() => setPollStatus(null), 8000);
   };
 
-  // ── Send invoices to MediData ──
-  const handleSendTest = async (flag?: string) => {
+  // ── Send invoices to MediData (production) ──
+  const handleSendInvoices = async () => {
     // Parse invoice IDs from the text input (comma/space/newline separated)
     const ids = sendInvoiceIds
       .split(/[,\s\n]+/)
@@ -350,15 +350,33 @@ export default function MediDataDashboard() {
 
     setSendTestStatus("Sending...");
     setSendTestResults(null);
+    const results: any[] = [];
+    let allSuccess = true;
     try {
-      const res = await fetch("/api/medidata/test-send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoiceIds: ids, simulatorFlag: flag || "" }),
-      });
-      const json = await res.json();
-      setSendTestResults(json.results || []);
-      setSendTestStatus(json.success ? "Sent successfully!" : json.error || "Some failed");
+      for (const invoiceId of ids) {
+        try {
+          const res = await fetch("/api/medidata/send-invoice", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ invoiceId }),
+          });
+          const json = await res.json();
+          results.push({
+            invoiceId,
+            success: json.success ?? false,
+            invoiceNumber: json.submission?.invoiceNumber || invoiceId,
+            status: json.submission?.status || "error",
+            messageId: json.submission?.messageId || null,
+            error: json.error || null,
+          });
+          if (!json.success) allSuccess = false;
+        } catch (err) {
+          results.push({ invoiceId, success: false, error: String(err) });
+          allSuccess = false;
+        }
+      }
+      setSendTestResults(results);
+      setSendTestStatus(allSuccess ? "Sent successfully!" : "Some failed");
       fetchSubmissions();
     } catch {
       setSendTestStatus("Send failed");
@@ -614,28 +632,14 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
             />
           </div>
           <button
-            onClick={() => handleSendTest()}
+            onClick={() => handleSendInvoices()}
             disabled={sendTestStatus === "Sending..."}
             className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
-            Send (Accepted)
-          </button>
-          <button
-            onClick={() => handleSendTest("ClinicalDatasetMissing")}
-            disabled={sendTestStatus === "Sending..."}
-            className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
-          >
-            Send (Pending)
-          </button>
-          <button
-            onClick={() => handleSendTest("InvalidSchema")}
-            disabled={sendTestStatus === "Sending..."}
-            className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-600 disabled:opacity-50"
-          >
-            Send (Rejected)
+            Send to MediData
           </button>
         </div>
       </div>
@@ -643,7 +647,7 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
       {/* Send test results */}
       {sendTestResults && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-2 text-sm font-medium text-slate-700">Test Invoice Results</h3>
+          <h3 className="mb-2 text-sm font-medium text-slate-700">Send Results</h3>
           <div className="space-y-2">
             {sendTestResults.map((r: any, i: number) => (
               <div key={i} className={`flex items-center justify-between rounded-lg p-3 text-sm ${

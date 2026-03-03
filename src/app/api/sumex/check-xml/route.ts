@@ -23,9 +23,6 @@ const FALLBACK_QR_IBAN = "CH0930788000050249289";
 // MediData intermediate (clearing house) GLN — required in XML transport <via>
 const MEDIDATA_INTERMEDIATE_GLN = "7601001304307";
 
-// MediData sender GLN — must match the GLN registered with MediData for routing
-// Test env: 2099988899483 (fictive); Production: your real clinic GLN
-const MEDIDATA_SENDER_GLN = process.env.MEDIDATA_SENDER_GLN || "";
 
 /** Strip spaces from IBAN and check it looks like a valid Swiss IBAN (CH + 19 digits) */
 function sanitizeIban(raw: string | null | undefined): string | null {
@@ -62,7 +59,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[CheckXML] Starting XML check for invoiceId=${resolvedInvoiceId}`);
+    // ── Fetch clinic config (sender GLN) from medidata_config ──
+    const { data: mdConfig } = await supabaseAdmin
+      .from("medidata_config")
+      .select("clinic_gln")
+      .limit(1)
+      .single();
+    const senderGln = mdConfig?.clinic_gln || "";
+
+    console.log(`[CheckXML] Starting XML check for invoiceId=${resolvedInvoiceId}, senderGln=${senderGln}`);
 
     // ── Fetch invoice from `invoices` table ──
     const { data: invoice, error: invoiceError } = await supabaseAdmin
@@ -319,7 +324,7 @@ export async function POST(request: NextRequest) {
       softwarePackage: "AestheticsClinic",
       softwareVersion: 100,
       softwareId: 0,
-      transportFrom: MEDIDATA_SENDER_GLN || provGln,
+      transportFrom: senderGln || provGln,
       transportViaGln: MEDIDATA_INTERMEDIATE_GLN,
       transportTo: receiverGln || insurerGln || provGln,
     };

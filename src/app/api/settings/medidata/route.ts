@@ -1,30 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 /**
  * GET /api/settings/medidata
  * Returns the current MediData connection configuration.
- * Values come from environment variables (masked for security).
+ * Only clinic_gln (sender GLN) and medidata_client_id are managed here.
+ * Clinic name/address/ZSR come from the providers table linked to each invoice.
  */
 export async function GET() {
-  const senderGln = process.env.MEDIDATA_SENDER_GLN || "";
-  const clientId = process.env.MEDIDATA_CLIENT_ID || "";
+  const { data: configData } = await supabaseAdmin
+    .from("medidata_config")
+    .select("clinic_gln, medidata_client_id, is_test_mode")
+    .limit(1)
+    .single();
+
   const proxyUrl = process.env.MEDIDATA_PROXY_URL || "";
   const hasApiKey = !!process.env.MEDIDATA_PROXY_API_KEY;
-  const isTestMode = senderGln.startsWith("209"); // Test GLNs start with 209
 
   return NextResponse.json({
-    senderGln,
-    clientId: clientId ? clientId.slice(0, 4) + "****" + clientId.slice(-4) : "",
+    senderGln: configData?.clinic_gln || "",
+    clientId: configData?.medidata_client_id || "",
     proxyUrl: proxyUrl || "(default)",
-    connected: hasApiKey && !!senderGln,
-    isTestMode,
+    connected: hasApiKey && !!configData?.clinic_gln,
+    isTestMode: configData?.is_test_mode ?? false,
   });
 }
 
 /**
  * POST /api/settings/medidata
- * Save MediData connection settings.
- * For now, this is a placeholder that validates input format.
+ * Save MediData sender GLN and client ID to medidata_config table.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -38,11 +42,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // In production, these would be saved to a secure store.
-    // For now, return success to indicate the UI works.
+    const { data: existing } = await supabaseAdmin
+      .from("medidata_config")
+      .select("id")
+      .limit(1)
+      .single();
+
+    const updates: Record<string, unknown> = {};
+    if (senderGln !== undefined) updates.clinic_gln = senderGln;
+    if (clientId !== undefined) updates.medidata_client_id = clientId;
+
+    if (existing) {
+      const { error } = await supabaseAdmin
+        .from("medidata_config")
+        .update(updates)
+        .eq("id", existing.id);
+
+      if (error) {
+        return NextResponse.json(
+          { error: `Failed to update settings: ${error.message}` },
+          { status: 500 },
+        );
+      }
+    } else {
+      if (!senderGln) {
+        return NextResponse.json(
+          { error: "Sender GLN is required" },
+          { status: 400 },
+        );
+      }
+      const { error } = await supabaseAdmin
+        .from("medidata_config")
+        .insert({
+          clinic_gln: senderGln,
+          clinic_zsr: "",
+          clinic_name: "",
+          medidata_client_id: clientId || null,
+          is_test_mode: false,
+        });
+
+      if (error) {
+        return NextResponse.json(
+          { error: `Failed to create settings: ${error.message}` },
+          { status: 500 },
+        );
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: "MediData settings updated. Restart may be required for changes to take effect.",
+      message: "MediData settings saved successfully.",
     });
   } catch (error) {
     return NextResponse.json(

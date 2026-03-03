@@ -63,44 +63,10 @@ type InsuranceData = {
   insurer_id: string | null;
 };
 
-type MediDataConfig = {
-  clinic_gln: string;
-  clinic_zsr: string;
-  clinic_name: string;
-  clinic_address_street: string | null;
-  clinic_address_postal_code: string | null;
-  clinic_address_city: string | null;
-  clinic_canton: string | null;
-  medidata_client_id: string | null;
-  medidata_endpoint_url: string | null;
-  medidata_username: string | null;
-  medidata_password_encrypted: string | null;
-  is_test_mode: boolean;
-};
-
 // MediData intermediate (clearing house) GLN — required in XML transport <via>
 const MEDIDATA_INTERMEDIATE_GLN = "7601001304307";
 // Per MediData: TG invoices must use this GLN as transport "To" (no transmission to insurance)
 const TG_NO_TRANSMISSION_GLN = "2000000000008";
-
-// MediData sender GLN — must match the GLN registered with MediData for routing
-const MEDIDATA_SENDER_GLN = process.env.MEDIDATA_SENDER_GLN || "";
-
-// Default clinic configuration (can be overridden from database)
-const DEFAULT_CLINIC_CONFIG: MediDataConfig = {
-  clinic_gln: "7601003000115",
-  clinic_zsr: "H123456",
-  clinic_name: "Aesthetics Clinic XT SA",
-  clinic_address_street: "chemin Rieu 18",
-  clinic_address_postal_code: "1208",
-  clinic_address_city: "Genève",
-  clinic_canton: "GE",
-  medidata_client_id: null,
-  medidata_endpoint_url: null, // e.g., "http://192.168.1.100:8100" for MediData Box
-  medidata_username: null,
-  medidata_password_encrypted: null,
-  is_test_mode: true,
-};
 
 export async function POST(request: NextRequest) {
   try {
@@ -230,14 +196,51 @@ export async function POST(request: NextRequest) {
       if (data) swissInsurer = data;
     }
 
-    // Get clinic configuration
-    const { data: configData } = await supabaseAdmin
+    // Get sender GLN from medidata_config (only field needed from config)
+    const { data: mdConfig } = await supabaseAdmin
       .from("medidata_config")
-      .select("*")
+      .select("clinic_gln")
       .limit(1)
       .single();
+    const senderGln = mdConfig?.clinic_gln || "";
 
-    const config = (configData as MediDataConfig) || DEFAULT_CLINIC_CONFIG;
+    // ── Fetch billing entity (provider) from providers table ──
+    let billingEntity: Record<string, any> | null = null;
+    if (invoiceRecord?.provider_id) {
+      const { data: provRow } = await supabaseAdmin
+        .from("providers")
+        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, phone, vatuid")
+        .eq("id", invoiceRecord.provider_id)
+        .single();
+      if (provRow) billingEntity = provRow;
+    }
+
+    // ── Fetch staff/doctor provider if different ──
+    let staffEntity: Record<string, any> | null = null;
+    if (invoiceRecord?.doctor_user_id && invoiceRecord.doctor_user_id !== invoiceRecord.provider_id) {
+      const { data: staffRow } = await supabaseAdmin
+        .from("providers")
+        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, salutation, title")
+        .eq("id", invoiceRecord.doctor_user_id)
+        .single();
+      if (staffRow) staffEntity = staffRow;
+    }
+
+    // ── Resolve provider fields with fallbacks (same pattern as check-xml) ──
+    const pickValidGln = (...candidates: (string | null | undefined)[]) => {
+      for (const c of candidates) if (c && /^\d{13}$/.test(c)) return c;
+      return "7601003000115"; // fallback
+    };
+    const provGln = pickValidGln(billingEntity?.gln, invoiceRecord?.provider_gln);
+    const provZsr = billingEntity?.zsr || invoiceRecord?.provider_zsr || "";
+    const provName = billingEntity?.name || invoiceRecord?.provider_name || "Aesthetics Clinic XT SA";
+    const provStreet = billingEntity?.street
+      ? `${billingEntity.street}${billingEntity.street_no ? " " + billingEntity.street_no : ""}`
+      : "";
+    const provZip = billingEntity?.zip_code || "";
+    const provCity = billingEntity?.city || "";
+    const provCanton = billingEntity?.canton || invoiceRecord?.treatment_canton || "GE";
+    const provIban = billingEntity?.iban || invoiceRecord?.provider_iban || "CH0930788000050249289";
 
     // Derive invoice metadata
     const invoiceNumber = invoiceRecord?.invoice_number || `INV-${Date.now().toString(36).toUpperCase()}`;
@@ -276,8 +279,8 @@ export async function POST(request: NextRequest) {
           unitPrice: item.unit_price || 0,
           total: item.total_price || 0,
           date: item.date_begin || treatmentDate,
-          providerId: item.provider_gln || config.clinic_gln,
-          providerGln: item.provider_gln || config.clinic_gln,
+          providerId: item.provider_gln || provGln,
+          providerGln: item.provider_gln || provGln,
           // ACF/TARDOC-specific fields
           externalFactor: (isAcf || isTardoc) ? (item.external_factor_mt ?? 1) : undefined,
           sideType: isAcf ? (item.side_type ?? 0) : undefined,
@@ -291,7 +294,7 @@ export async function POST(request: NextRequest) {
       services = generateTardocServicesFromDuration(
         duration,
         treatmentDate,
-        config.clinic_gln
+        provGln
       );
     }
 
@@ -312,8 +315,8 @@ export async function POST(request: NextRequest) {
       quantity: s.quantity,
       sessionNumber: s.sessionNumber ?? 1,
       dateBegin: s.date,
-      providerGln: s.providerGln || config.clinic_gln,
-      responsibleGln: s.providerGln || config.clinic_gln,
+      providerGln: s.providerGln || provGln,
+      responsibleGln: s.providerGln || provGln,
       side: (s.sideType as 0 | 1 | 2 | 3) ?? 0,
       serviceName: s.description || "",
       unit: s.unitPrice || 0,
@@ -329,7 +332,7 @@ export async function POST(request: NextRequest) {
       code,
     }));
 
-    const canton = config.clinic_canton || "GE";
+    const canton = provCanton;
     const sumexInput: SumexInvoiceInput = {
       language: 2,
       roleType: RoleType.Physician,
@@ -337,33 +340,35 @@ export async function POST(request: NextRequest) {
       requestType: RequestType.Invoice,
       requestSubtype: RequestSubtype.Normal,
       tiersMode: mapSumexTiers(billingType),
-      vatNumber: "",
+      vatNumber: billingEntity?.vatuid || "",
       invoiceId: invoiceNumber,
       invoiceDate,
       reminderLevel: reminderLevel || 0,
       lawType: mapSumexLaw(lawType),
       insuredId: insuranceData?.card_number || "",
       esrType: EsrType.QR,
-      iban: 'CH0930788000050249289',
+      iban: provIban,
       paymentPeriod: 30,
-      billerGln: config.clinic_gln,
-      billerZsr: config.clinic_zsr || undefined,
+      billerGln: provGln,
+      billerZsr: provZsr || undefined,
       billerAddress: {
-        companyName: config.clinic_name,
-        street: config.clinic_address_street || "",
-        zip: config.clinic_address_postal_code || "",
-        city: config.clinic_address_city || "",
+        companyName: provName,
+        street: provStreet,
+        zip: provZip,
+        city: provCity,
         stateCode: canton,
       },
-      providerGln: invoiceRecord?.doctor_gln || invoiceRecord?.provider_gln || config.clinic_gln,
-      providerZsr: invoiceRecord?.doctor_zsr || invoiceRecord?.provider_zsr || config.clinic_zsr || undefined,
+      providerGln: pickValidGln(staffEntity?.gln, invoiceRecord?.doctor_gln, provGln),
+      providerZsr: staffEntity?.zsr || invoiceRecord?.doctor_zsr || provZsr || undefined,
       providerAddress: {
-        familyName: invoiceRecord?.doctor_name || consultationData?.doctor_name || config.clinic_name,
+        familyName: staffEntity?.name || invoiceRecord?.doctor_name || consultationData?.doctor_name || provName,
         givenName: "",
-        street: config.clinic_address_street || "",
-        zip: config.clinic_address_postal_code || "",
-        city: config.clinic_address_city || "",
-        stateCode: canton,
+        salutation: staffEntity?.salutation || billingEntity?.salutation || "",
+        title: staffEntity?.title || billingEntity?.title || "",
+        street: staffEntity?.street ? `${staffEntity.street}${staffEntity.street_no ? " " + staffEntity.street_no : ""}` : provStreet,
+        zip: staffEntity?.zip_code || provZip,
+        city: staffEntity?.city || provCity,
+        stateCode: staffEntity?.canton || canton,
       },
       insuranceGln: resolvedInsurerGln,
       insuranceAddress: {
@@ -403,7 +408,7 @@ export async function POST(request: NextRequest) {
       ...(caseNumber ? { apid: caseNumber } : {}),
       diagnoses: sumexDiagnoses,
       services: sumexServices,
-      transportFrom: MEDIDATA_SENDER_GLN || config.clinic_gln,
+      transportFrom: senderGln || provGln,
       transportViaGln: MEDIDATA_INTERMEDIATE_GLN,
       // Per MediData (Vladimir): TG uses GLN 2000000000008 (no direct transmission to insurance)
       transportTo: billingType === 'TG' ? TG_NO_TRANSMISSION_GLN : resolvedReceiverGln,
@@ -504,7 +509,7 @@ export async function POST(request: NextRequest) {
           {
             source: "aestheticclinic",
             invoiceNumber,
-            senderGln: config.clinic_gln,
+            senderGln: senderGln || provGln,
             receiverGln: uploadReceiverGln,
             lawType,
             billingType,
@@ -550,7 +555,7 @@ export async function POST(request: NextRequest) {
                 const copyUpload = await uploadInvoiceXml(copyResult.xmlContent, `${invoiceNumber}-copy.xml`, {
                   source: "send-invoice-patient-copy",
                   invoiceNumber,
-                  senderGln: config.clinic_gln,
+                  senderGln: senderGln || provGln,
                   receiverGln: resolvedReceiverGln,
                   requestSubtype: "copy",
                 });

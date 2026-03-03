@@ -16,7 +16,6 @@ import {
   YesNo,
 } from "@/lib/sumexInvoice";
 
-const MEDIDATA_SENDER_GLN = process.env.MEDIDATA_SENDER_GLN || "2099988899483";
 const MEDIDATA_INTERMEDIATE_GLN = "7601001304307";
 const SIMULATOR_GLN = "2099988876514";
 // Per MediData: TG invoices must use this GLN as transport "To" (no transmission to insurance)
@@ -270,7 +269,7 @@ export async function POST(request: NextRequest) {
           ...(inv.medical_case_number ? { apid: inv.medical_case_number } : {}),
           diagnoses,
           services: sumexServices,
-          transportFrom: MEDIDATA_SENDER_GLN,
+          transportFrom: config.clinic_gln,
           transportViaGln: MEDIDATA_INTERMEDIATE_GLN,
           transportTo: transportToGln,
           // Per MediData feedback: TP invoices must include print_copy_to_guarantor for patient copy
@@ -367,7 +366,7 @@ export async function POST(request: NextRequest) {
         const uploadResult = await uploadInvoiceXml(xmlContent, `${inv.invoice_number}.xml`, {
           source: "test-send",
           invoiceNumber: inv.invoice_number,
-          senderGln: MEDIDATA_SENDER_GLN,
+          senderGln: config.clinic_gln,
           receiverGln: transportToGln,
           doctorGln: doctorGln,
           doctorName: inv.doctor_name,
@@ -409,7 +408,7 @@ export async function POST(request: NextRequest) {
                 const copyUpload = await uploadInvoiceXml(copyXml, `${inv.invoice_number}-copy.xml`, {
                   source: "test-send-patient-copy",
                   invoiceNumber: inv.invoice_number,
-                  senderGln: MEDIDATA_SENDER_GLN,
+                  senderGln: config.clinic_gln,
                   receiverGln: receiverGln,
                   requestSubtype: "copy",
                 });

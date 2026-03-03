@@ -238,7 +238,20 @@ export default function InsuranceBillingModal({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create invoice submission");
+        // Parse specific error types for user-friendly messages
+        const errMsg = data.error || "Unknown error";
+        const details = data.details || data.abortInfo || "";
+        if (errMsg.includes("Sumex") || errMsg.includes("XML")) {
+          throw new Error(`XML generation failed: ${details || errMsg}. Please check invoice line items and try again.`);
+        } else if (errMsg.includes("Patient not found")) {
+          throw new Error("Patient not found. Please verify the patient record exists.");
+        } else if (errMsg.includes("Invoice not found")) {
+          throw new Error("Invoice not found. The invoice may have been deleted.");
+        } else if (errMsg.includes("not configured") || errMsg.includes("PROXY")) {
+          throw new Error("MediData is not configured. Please check Settings → MediData Connection.");
+        } else {
+          throw new Error(details ? `${errMsg}: ${details}` : errMsg);
+        }
       }
 
       // Update the invoice record with insurance fields
@@ -261,7 +274,7 @@ export default function InsuranceBillingModal({
       setSuccess(data.submission);
       onSuccess?.(data.submission);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(err instanceof Error ? err.message : "An unexpected error occurred. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -299,41 +312,104 @@ export default function InsuranceBillingModal({
 
         {success ? (
           <div className="space-y-4">
-            <div className="rounded-xl bg-emerald-50 p-4">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">&#x2705;</span>
-                <div>
-                  <p className="font-medium text-emerald-800">Invoice Submitted Successfully</p>
-                  <p className="text-sm text-emerald-600">
-                    Invoice #{success.invoiceNumber} is ready for transmission
-                  </p>
+            {/* Main status banner */}
+            {success.transmitted ? (
+              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+                    <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-emerald-900">Invoice Sent to MediData</p>
+                    <p className="mt-0.5 text-sm text-emerald-700">
+                      Invoice <span className="font-mono font-medium">#{success.invoiceNumber}</span> has been transmitted successfully. The insurer will process it and respond via MediData.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : success.transmissionError ? (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                    <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-amber-900">Invoice Created — Transmission Failed</p>
+                    <p className="mt-0.5 text-sm text-amber-700">
+                      Invoice <span className="font-mono font-medium">#{success.invoiceNumber}</span> was generated but could not be sent to MediData.
+                    </p>
+                    <p className="mt-1 rounded-lg bg-amber-100 px-2 py-1 text-xs font-mono text-amber-800">
+                      {success.transmissionError}
+                    </p>
+                    <p className="mt-1.5 text-xs text-amber-600">
+                      You can retry from the MediData Dashboard.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-sky-50 border border-sky-200 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100">
+                    <svg className="h-5 w-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sky-900">Invoice Saved as Draft</p>
+                    <p className="mt-0.5 text-sm text-sky-700">
+                      Invoice <span className="font-mono font-medium">#{success.invoiceNumber}</span> has been created. MediData proxy is not configured — configure it in Settings to enable transmission.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
+            {/* Invoice details card */}
             <div className="rounded-xl border border-slate-200 p-4">
-              <h3 className="mb-3 text-sm font-medium text-slate-700">Invoice Details</h3>
-              <div className="space-y-2 text-sm">
+              <h3 className="mb-3 text-sm font-semibold text-slate-800">Submission Details</h3>
+              <div className="space-y-2.5 text-sm">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Invoice Number</span>
-                  <span className="font-medium">{success.invoiceNumber}</span>
+                  <span className="font-mono font-medium text-slate-900">{success.invoiceNumber}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Total Amount</span>
-                  <span className="font-medium">CHF {success.total?.toFixed(2)}</span>
+                  <span className="font-semibold text-slate-900">CHF {success.total?.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Status</span>
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${INVOICE_STATUS_CONFIG[success.status as MediDataInvoiceStatus]?.bgColor || "bg-slate-100"} ${INVOICE_STATUS_CONFIG[success.status as MediDataInvoiceStatus]?.color || "text-slate-600"}`}>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${INVOICE_STATUS_CONFIG[success.status as MediDataInvoiceStatus]?.bgColor || "bg-slate-100"} ${INVOICE_STATUS_CONFIG[success.status as MediDataInvoiceStatus]?.color || "text-slate-600"}`}>
                     {INVOICE_STATUS_CONFIG[success.status as MediDataInvoiceStatus]?.icon}
                     {INVOICE_STATUS_CONFIG[success.status as MediDataInvoiceStatus]?.labelFr || success.status}
                   </span>
                 </div>
+                {success.messageId && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Transmission Ref</span>
+                    <span className="font-mono text-xs text-slate-600">{success.messageId}</span>
+                  </div>
+                )}
+                {success.pdfGenerated && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">PDF Invoice</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Generated
+                    </span>
+                  </div>
+                )}
               </div>
 
               {success.services?.length > 0 && (
                 <div className="mt-4 border-t border-slate-100 pt-4">
-                  <h4 className="mb-2 text-xs font-medium text-slate-500">Service Lines</h4>
+                  <h4 className="mb-2 text-xs font-medium text-slate-500">Service Lines ({success.services.length})</h4>
                   <div className="space-y-1">
                     {success.services.map((service: any, idx: number) => (
                       <div key={idx} className="flex justify-between text-xs">
@@ -352,9 +428,9 @@ export default function InsuranceBillingModal({
             <div className="flex justify-end gap-2">
               <button
                 onClick={onClose}
-                className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                className="rounded-full bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800"
               >
-                Close
+                Done
               </button>
             </div>
           </div>
@@ -662,8 +738,27 @@ export default function InsuranceBillingModal({
 
             {/* Error Message */}
             {error && (
-              <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-                {error}
+              <div className="rounded-xl bg-red-50 border border-red-200 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100">
+                    <svg className="h-4 w-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-red-800">Failed to send invoice</p>
+                    <p className="mt-0.5 text-xs text-red-600 break-words">{error}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setError(null)}
+                    className="shrink-0 ml-auto rounded p-1 text-red-400 hover:text-red-600"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             )}
 

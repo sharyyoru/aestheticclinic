@@ -775,14 +775,21 @@ function MediDataConnectionTab() {
             </span>
           </div>
         </div>
-        {config?.isTestMode && (
+        {config?.isTestMode ? (
           <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
             <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
             </svg>
             <span className="text-xs font-medium text-amber-700">Test Mode — Using MediData ACC environment</span>
           </div>
-        )}
+        ) : config?.connected ? (
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+            <svg className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs font-medium text-emerald-700">Production Mode — Connected to MediData</span>
+          </div>
+        ) : null}
       </div>
 
       {/* Credentials */}
@@ -813,11 +820,11 @@ function MediDataConnectionTab() {
             type="text"
             value={mdClientId}
             onChange={(e) => setMdClientId(e.target.value)}
-            placeholder="e.g., abc1****def2"
+            placeholder="e.g., 1000030720_1200011781"
             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
           />
           <p className="mt-1 text-[10px] text-slate-400">
-            OAuth2 Client ID provided by MediData for API authentication.
+            Client ID provided by MediData for API authentication (configured on Railway proxy).
           </p>
         </div>
 
