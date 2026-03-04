@@ -92,20 +92,37 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Count appointments per 30-minute slot to determine which slots are full
-    // A slot is only "full" when it has MAX_CONCURRENT_APPOINTMENTS
+    // Count appointments per 30-minute slot using the SAME logic as booking API
+    // Booking API counts appointments that START within each 30-minute window
+    // We need to match this exactly to prevent showing slots that will fail on booking
     const slotCounts: Record<string, number> = {};
     
-    filteredAppointments.forEach((apt) => {
-      const aptStart = new Date(apt.start_time);
-      const aptEnd = apt.end_time ? new Date(apt.end_time) : new Date(aptStart.getTime() + 60 * 60 * 1000);
+    // Generate all 30-minute slots for the requested time range
+    const rangeStart = new Date(start);
+    const rangeEnd = new Date(end);
+    const allSlots: Date[] = [];
+    
+    let currentSlot = new Date(rangeStart);
+    // Round to nearest 30 minutes
+    currentSlot.setMinutes(Math.floor(currentSlot.getMinutes() / 30) * 30, 0, 0);
+    
+    while (currentSlot < rangeEnd) {
+      allSlots.push(new Date(currentSlot));
+      currentSlot = new Date(currentSlot.getTime() + 30 * 60 * 1000);
+    }
+    
+    // For each 30-minute slot, count appointments that START within that window
+    // This matches the booking API logic exactly
+    allSlots.forEach((slotStart) => {
+      const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
       
-      // Generate all 30-minute slots this appointment covers
-      let slotTime = new Date(aptStart);
-      while (slotTime < aptEnd) {
-        const slotKey = slotTime.toISOString();
-        slotCounts[slotKey] = (slotCounts[slotKey] || 0) + 1;
-        slotTime = new Date(slotTime.getTime() + 30 * 60 * 1000);
+      const appointmentsInSlot = filteredAppointments.filter((apt) => {
+        const aptStart = new Date(apt.start_time);
+        return aptStart >= slotStart && aptStart < slotEnd;
+      });
+      
+      if (appointmentsInSlot.length > 0) {
+        slotCounts[slotStart.toISOString()] = appointmentsInSlot.length;
       }
     });
 
