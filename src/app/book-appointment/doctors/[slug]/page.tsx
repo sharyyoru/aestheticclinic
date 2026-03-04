@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday } from "@/lib/swissTimezone";
+import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString } from "@/lib/swissTimezone";
 
 const DOCTORS: Record<string, {
   name: string;
@@ -172,7 +172,8 @@ function generateTimeSlots(doctorSlug: string, locationId: string, dateStr: stri
 
 // Check if a date has available slots for the doctor at the location
 function hasAvailabilityOnDate(doctorSlug: string, locationId: string, date: Date): boolean {
-  const dayOfWeek = date.getDay();
+  // Use Swiss timezone day of week to ensure consistency
+  const dayOfWeek = getSwissDayOfWeek(date);
   const availability = DOCTOR_AVAILABILITY[doctorSlug]?.[locationId]?.[dayOfWeek];
   return !!availability;
 }
@@ -307,20 +308,21 @@ function DoctorBookingContent() {
 
   async function checkAvailability(date: string) {
     try {
-      const start = new Date(date);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(date);
-      end.setHours(23, 59, 59, 999);
+      // Use Swiss timezone for the date range to ensure correct day boundaries
+      const { start, end } = getSwissDayRange(date);
+      
+      // Get the doctor name for filtering - each doctor has their own schedule
+      const doctorName = doctor?.name || "";
 
-      // Don't filter by doctor - the booking API blocks ANY appointment at that time
-      // So we need to show ALL booked slots to prevent users from selecting unavailable times
+      // Filter by the specific doctor to only show their booked slots
       const res = await fetch(
-        `/api/appointments/check-availability?start=${start.toISOString()}&end=${end.toISOString()}`
+        `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctorName)}`
       );
       const data = await res.json();
 
       if (data.appointments) {
-        // Calculate ALL blocked time slots based on appointment duration (start_time to end_time)
+        // Calculate blocked time slots based on appointment duration (start_time to end_time)
+        // Use Swiss timezone for slot calculations
         const blockedSlots: string[] = [];
         
         data.appointments.forEach((apt: { start_time: string; end_time?: string }) => {
@@ -329,12 +331,18 @@ function DoctorBookingContent() {
           const aptEnd = apt.end_time ? new Date(apt.end_time) : new Date(aptStart.getTime() + 60 * 60 * 1000);
           
           // Generate all 30-minute slots that overlap with this appointment
+          // Use Swiss timezone to calculate the slot strings
           let slotTime = new Date(aptStart);
-          // Round down to nearest 30 minutes
-          slotTime.setMinutes(Math.floor(slotTime.getMinutes() / 30) * 30, 0, 0);
+          
+          // Round down to nearest 30 minutes in Swiss time
+          const { hour, minute } = { 
+            hour: parseInt(getSwissSlotString(slotTime).split(":")[0], 10),
+            minute: Math.floor(parseInt(getSwissSlotString(slotTime).split(":")[1], 10) / 30) * 30
+          };
           
           while (slotTime < aptEnd) {
-            const slotStr = `${slotTime.getHours().toString().padStart(2, "0")}:${slotTime.getMinutes().toString().padStart(2, "0")}`;
+            // Use Swiss timezone slot string
+            const slotStr = getSwissSlotString(slotTime);
             if (!blockedSlots.includes(slotStr)) {
               blockedSlots.push(slotStr);
             }

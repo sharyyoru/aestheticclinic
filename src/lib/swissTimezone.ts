@@ -212,6 +212,70 @@ export function getSwissDayOfWeek(date: Date | string): number {
 }
 
 /**
+ * Get hour and minute in Swiss timezone from a Date
+ * Returns { hour: number, minute: number }
+ */
+export function getSwissHourMinute(date: Date | string): { hour: number; minute: number } {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return { hour: 0, minute: 0 };
+  
+  const timeStr = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: SWISS_TIMEZONE,
+  });
+  
+  const [hourStr, minuteStr] = timeStr.split(":");
+  return { hour: parseInt(hourStr, 10), minute: parseInt(minuteStr, 10) };
+}
+
+/**
+ * Get Swiss timezone slot string (HH:MM) from a Date
+ */
+export function getSwissSlotString(date: Date | string): string {
+  const { hour, minute } = getSwissHourMinute(date);
+  return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Create a Date object for a specific Swiss date and time
+ * @param dateStr YYYY-MM-DD format
+ * @param hour Hour (0-23)
+ * @param minute Minute (0-59)
+ */
+export function createSwissDateTime(dateStr: string, hour: number, minute: number): Date {
+  // Parse the date parts
+  const [year, month, day] = dateStr.split("-").map(Number);
+  
+  // Create date at noon in local time first
+  const localDate = new Date(year, month - 1, day, hour, minute, 0, 0);
+  
+  // Get the offset between local and Swiss timezone for this date
+  const localStr = localDate.toLocaleString("en-US", { timeZone: SWISS_TIMEZONE });
+  const swissDate = new Date(localStr);
+  const offset = localDate.getTime() - swissDate.getTime();
+  
+  // Adjust the date by the offset to get the correct UTC time
+  return new Date(localDate.getTime() + offset);
+}
+
+/**
+ * Get start and end of a day in Swiss timezone as ISO strings
+ */
+export function getSwissDayRange(dateStr: string): { start: string; end: string } {
+  const startDate = createSwissDateTime(dateStr, 0, 0);
+  const endDate = createSwissDateTime(dateStr, 23, 59);
+  endDate.setSeconds(59);
+  endDate.setMilliseconds(999);
+  
+  return {
+    start: startDate.toISOString(),
+    end: endDate.toISOString(),
+  };
+}
+
+/**
  * Format for appointment detail display (short weekday + date + time)
  */
 export function formatSwissAppointmentDateTime(date: Date | string): {

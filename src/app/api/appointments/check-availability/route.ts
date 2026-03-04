@@ -20,10 +20,28 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+    // If doctor name is provided, first look up the provider ID
+    let providerId: string | null = null;
+    if (doctorName) {
+      const doctorNameClean = doctorName.replace(/^Dr\.\s*/i, "").trim();
+      
+      // Try to find provider by name
+      const { data: provider } = await supabase
+        .from("providers")
+        .select("id")
+        .or(`name.ilike.%${doctorNameClean}%,name.ilike.%${doctorNameClean.split(" ")[0]}%`)
+        .limit(1)
+        .single();
+      
+      if (provider) {
+        providerId = provider.id;
+      }
+    }
+
     // Fetch appointments within the date range
     let query = supabase
       .from("appointments")
-      .select("id, start_time, end_time, status, reason, no_patient")
+      .select("id, start_time, end_time, status, reason, no_patient, provider_id")
       .gte("start_time", start)
       .lte("start_time", end)
       .neq("status", "cancelled");
@@ -39,17 +57,29 @@ export async function GET(request: NextRequest) {
     }
 
     // Exclude no_patient appointments (placeholder bookings that don't block real patients)
-    // Filter in JavaScript to ensure reliability
     let filteredAppointments = (appointments || []).filter(
       (apt) => apt.no_patient !== true
     );
+    
+    // Filter by doctor if specified
     if (doctorName) {
-      const doctorNameLower = doctorName.toLowerCase().replace("dr. ", "");
+      const doctorNameLower = doctorName.toLowerCase().replace(/^dr\.\s*/i, "");
+      
       filteredAppointments = filteredAppointments.filter((apt) => {
-        if (!apt.reason) return false;
-        const match = apt.reason.match(/\[Doctor:\s*(.+?)\s*]/i);
-        if (!match) return false;
-        return match[1].toLowerCase().includes(doctorNameLower);
+        // First, check by provider_id (most reliable)
+        if (providerId && apt.provider_id === providerId) {
+          return true;
+        }
+        
+        // Fallback: check the reason field for [Doctor: Name] pattern
+        if (apt.reason) {
+          const match = apt.reason.match(/\[Doctor:\s*(.+?)\s*\]/i);
+          if (match && match[1].toLowerCase().includes(doctorNameLower)) {
+            return true;
+          }
+        }
+        
+        return false;
       });
     }
 

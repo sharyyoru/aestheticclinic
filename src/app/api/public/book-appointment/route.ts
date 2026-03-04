@@ -258,24 +258,55 @@ export async function POST(request: Request) {
     const patientName = `${firstName} ${lastName}`;
     const appointmentDateObj = new Date(appointmentDate);
 
-    // Check if time slot is already booked
-    // Exclude no_patient appointments (placeholder bookings that don't block real patients)
+    // Look up the provider ID for this doctor to filter appointments correctly
+    let providerId: string | null = null;
+    const doctorNameClean = doctorName.replace(/^Dr\.\s*/i, "").trim();
+    
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("id")
+      .or(`name.ilike.%${doctorNameClean}%,name.ilike.%${doctorNameClean.split(" ")[0]}%`)
+      .limit(1)
+      .single();
+    
+    if (provider) {
+      providerId = provider.id;
+    }
+
+    // Check if time slot is already booked FOR THIS SPECIFIC DOCTOR
+    // Different doctors can have appointments at the same time
     const slotStart = new Date(appointmentDateObj);
     const slotEnd = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000); // 1 hour
 
     const { data: existingAppointments } = await supabase
       .from("appointments")
-      .select("id, no_patient")
+      .select("id, no_patient, provider_id, reason")
       .gte("start_time", slotStart.toISOString())
       .lt("start_time", slotEnd.toISOString())
       .neq("status", "cancelled");
 
-    // Filter out no_patient appointments in JavaScript for reliability
-    const realAppointments = (existingAppointments || []).filter(
-      (apt) => apt.no_patient !== true
-    );
+    // Filter to only this doctor's appointments
+    const doctorAppointments = (existingAppointments || []).filter((apt) => {
+      // Skip placeholder appointments
+      if (apt.no_patient === true) return false;
+      
+      // Check by provider_id first (most reliable)
+      if (providerId && apt.provider_id === providerId) {
+        return true;
+      }
+      
+      // Fallback: check the reason field for [Doctor: Name] pattern
+      if (apt.reason) {
+        const match = apt.reason.match(/\[Doctor:\s*(.+?)\s*\]/i);
+        if (match && match[1].toLowerCase().includes(doctorNameClean.toLowerCase())) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
 
-    if (realAppointments.length > 0) {
+    if (doctorAppointments.length > 0) {
       return NextResponse.json(
         { error: "This time slot is no longer available. Please choose another time." },
         { status: 409 }
@@ -322,20 +353,10 @@ export async function POST(request: Request) {
     // Calculate end time (1 hour duration)
     const endDateObj = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000);
 
-    // Look up provider by name to link to calendar
-    let providerId: string | null = null;
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("id")
-      .ilike("name", `%${doctorName.replace("Dr. ", "")}%`)
-      .single();
-    
-    if (provider) {
-      providerId = provider.id;
-      console.log("Found provider:", provider.id, "for doctor:", doctorName);
-    } else {
-      // Try to find by the slug-based name without "Dr." prefix
-      const simpleName = doctorName.replace("Dr. ", "");
+    // providerId was already looked up earlier for availability check
+    // If it wasn't found earlier, try one more lookup method
+    if (!providerId) {
+      const simpleName = doctorName.replace(/^Dr\.\s*/i, "");
       const { data: providerBySimpleName } = await supabase
         .from("providers")
         .select("id")
@@ -348,6 +369,8 @@ export async function POST(request: Request) {
       } else {
         console.log("Provider not found for doctor:", doctorName, "- appointment will not be linked to a specific provider");
       }
+    } else {
+      console.log("Using provider:", providerId, "for doctor:", doctorName);
     }
 
     // Build reason field - include [Doctor: Name] for calendar filtering
