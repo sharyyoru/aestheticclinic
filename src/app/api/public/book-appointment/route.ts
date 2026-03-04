@@ -238,7 +238,7 @@ export async function POST(request: Request) {
     } = body;
 
     // Validate required fields
-    if (!firstName || !lastName || !email || !appointmentDate || !service || !doctorSlug) {
+    if (!firstName || !lastName || !email || !appointmentDate || !service || !doctorSlug || !doctorName) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
@@ -265,7 +265,7 @@ export async function POST(request: Request) {
     const { data: provider } = await supabase
       .from("providers")
       .select("id")
-      .or(`name.ilike.%${doctorNameClean}%,name.ilike.%${doctorNameClean.split(" ")[0]}%`)
+      .or(`name.ilike.*${doctorNameClean}*,name.ilike.*${doctorNameClean.split(" ")[0]}*`)
       .limit(1)
       .single();
     

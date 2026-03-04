@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
-        .or(`name.ilike.%${doctorNameClean}%,name.ilike.%${doctorNameClean.split(" ")[0]}%`)
+        .or(`name.ilike.*${doctorNameClean}*,name.ilike.*${doctorNameClean.split(" ")[0]}*`)
         .limit(1)
         .single();
       
