@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString } from "@/lib/swissTimezone";
+import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString, createSwissDateTime } from "@/lib/swissTimezone";
 
 const DOCTORS: Record<string, {
   name: string;
@@ -391,6 +391,10 @@ function DoctorBookingContent() {
     setError(null);
 
     try {
+      // Create appointment date in Swiss timezone to ensure correct time
+      const [hour, minute] = selectedTime.split(":").map(Number);
+      const appointmentDateSwiss = createSwissDateTime(selectedDate, hour, minute);
+      
       const res = await fetch("/api/public/book-appointment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -399,7 +403,7 @@ function DoctorBookingContent() {
           lastName,
           email,
           phone,
-          appointmentDate: `${selectedDate}T${selectedTime}:00`,
+          appointmentDate: appointmentDateSwiss.toISOString(),
           service: selectedService,
           doctorSlug: slug,
           doctorName: doctor.name,
