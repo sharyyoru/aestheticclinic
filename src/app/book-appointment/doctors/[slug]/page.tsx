@@ -321,17 +321,27 @@ function DoctorBookingContent() {
       );
       const data = await res.json();
 
-      // The API now returns fullSlots - slots that have reached max capacity (3 appointments)
+      // The API now returns fullSlots - slots that have reached max capacity
       // Only these slots should be blocked, others still have capacity
+      let blockedSlots: string[] = [];
       if (data.fullSlots) {
         // Convert ISO timestamps to Swiss timezone slot strings (HH:MM)
-        const blockedSlots: string[] = data.fullSlots.map((isoTime: string) => {
+        blockedSlots = data.fullSlots.map((isoTime: string) => {
           return getSwissSlotString(new Date(isoTime));
         });
         
         setBookedSlots(blockedSlots);
       } else {
         setBookedSlots([]);
+      }
+      
+      // Auto-select the first available slot that isn't booked
+      const currentSlots = generateTimeSlots(slug, locationId || "", date);
+      const openSlots = currentSlots.filter(time => !blockedSlots.includes(time));
+      if (openSlots.length > 0) {
+        setSelectedTime(openSlots[0]);
+      } else {
+        setSelectedTime("");
       }
     } catch (err) {
       console.error("Error checking availability:", err);
@@ -687,40 +697,52 @@ function DoctorBookingContent() {
                   )}
                 </div>
 
-                {selectedDate && availableSlots.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-3">Available Time Slots *</label>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {availableSlots.map((time: string) => {
-                        const isBooked = bookedSlots.includes(time);
-                        return (
+                {selectedDate && availableSlots.length > 0 && (() => {
+                  // Filter out fully booked slots - only show slots that can actually be booked
+                  const openSlots = availableSlots.filter(time => !bookedSlots.includes(time));
+                  
+                  if (openSlots.length === 0) {
+                    return (
+                      <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                        <p className="text-sm text-amber-700 font-medium">
+                          All time slots for {doctor.name} at {locationLabel} are fully booked on this day. Please select another date.
+                        </p>
+                        <p className="text-sm text-amber-600 italic">
+                          Tous les créneaux pour {doctor.name.replace('Dr. ', 'Dr ')} à {locationLabel} sont complets à cette date. Veuillez choisir une autre date.
+                        </p>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-3">Available Time Slots *</label>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {openSlots.map((time: string) => (
                           <button
                             key={time}
-                            onClick={() => !isBooked && setSelectedTime(time)}
-                            disabled={isBooked}
+                            onClick={() => setSelectedTime(time)}
                             className={`py-3 rounded-xl text-sm font-medium transition-all ${
-                              isBooked
-                                ? "bg-slate-100 text-slate-400 cursor-not-allowed line-through"
-                                : selectedTime === time
+                              selectedTime === time
                                 ? "bg-slate-900 text-white"
                                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                             }`}
                           >
                             {time}
                           </button>
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {selectedDate && availableSlots.length === 0 && (
                   <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                     <p className="text-sm text-amber-700 font-medium">
-                      {doctor.name} is fully booked at {locationLabel} on this day. Please select another date.
+                      {doctor.name} is not available at {locationLabel} on this day. Please select another date.
                     </p>
                     <p className="text-sm text-amber-600 italic">
-                      Le {doctor.name.replace('Dr. ', 'Dr ')} est complet à {locationLabel} à cette date. Veuillez choisir une autre date.
+                      Le {doctor.name.replace('Dr. ', 'Dr ')} n&apos;est pas disponible à {locationLabel} à cette date. Veuillez choisir une autre date.
                     </p>
                   </div>
                 )}
