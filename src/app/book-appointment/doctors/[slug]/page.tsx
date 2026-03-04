@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday } from "@/lib/swissTimezone";
 
 const DOCTORS: Record<string, {
   name: string;
@@ -127,10 +128,9 @@ const LOCATION_LABELS: Record<string, string> = {
   montreux: "Montreux",
 };
 
-// Parse date string YYYY-MM-DD as local date (not UTC)
+// Parse date string YYYY-MM-DD as Swiss timezone date
 function parseLocalDate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0); // noon to avoid timezone issues
+  return parseSwissDate(dateStr);
 }
 
 // Generate 30-minute time slots based on doctor availability for a specific date
@@ -177,18 +177,14 @@ function hasAvailabilityOnDate(doctorSlug: string, locationId: string, date: Dat
   return !!availability;
 }
 
-// Format date to YYYY-MM-DD string in local timezone (not UTC)
+// Format date to YYYY-MM-DD string in Swiss timezone
 function formatDateLocal(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return formatSwissYmd(date);
 }
 
 // Find the nearest available date for the doctor at the location
 function findNearestAvailableDate(doctorSlug: string, locationId: string, maxDaysAhead: number = 90): string | null {
-  const today = new Date();
-  today.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+  const today = getSwissToday();
   
   for (let i = 1; i <= maxDaysAhead; i++) {
     const checkDate = new Date(today);
@@ -202,8 +198,7 @@ function findNearestAvailableDate(doctorSlug: string, locationId: string, maxDay
 
 // Get all available dates for the doctor at the location within a range
 function getAvailableDates(doctorSlug: string, locationId: string, maxDaysAhead: number = 90): string[] {
-  const today = new Date();
-  today.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+  const today = getSwissToday();
   
   const availableDates: string[] = [];
   for (let i = 1; i <= maxDaysAhead; i++) {
@@ -449,7 +444,7 @@ function DoctorBookingContent() {
           </p>
           <div className="bg-slate-50 rounded-xl p-4 mb-6 text-left">
             <p className="text-sm text-slate-600 mb-2">
-              <strong>Date:</strong> {new Date(selectedDate).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+              <strong>Date:</strong> {formatSwissDateWithWeekday(parseSwissDate(selectedDate))}
             </p>
             <p className="text-sm text-slate-600 mb-2">
               <strong>Time:</strong> {selectedTime}

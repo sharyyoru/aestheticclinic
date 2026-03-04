@@ -4,6 +4,15 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
+import {
+  formatSwissMonthYear,
+  formatSwissYmd,
+  formatSwissTime,
+  formatSwissTimeRange,
+  formatSwissDate,
+  SWISS_TIMEZONE,
+  SWISS_LOCALE,
+} from "@/lib/swissTimezone";
 
 type AppointmentStatus =
   | "scheduled"
@@ -357,42 +366,15 @@ function getCalendarColorForIndex(index: number): string {
 }
 
 function formatMonthYear(date: Date) {
-  return date.toLocaleDateString(undefined, {
-    month: "long",
-    year: "numeric",
-  });
+  return formatSwissMonthYear(date);
 }
 
 function formatYmd(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return formatSwissYmd(date);
 }
 
 function formatTimeRangeLabel(start: Date, end: Date | null): string {
-  if (Number.isNaN(start.getTime())) return "";
-
-  const startLabel = start.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  let endLabel: string;
-  if (end && !Number.isNaN(end.getTime())) {
-    endLabel = end.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } else {
-    const fallbackEnd = new Date(start.getTime() + DAY_VIEW_SLOT_MINUTES * 60 * 1000);
-    endLabel = fallbackEnd.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  return `${startLabel} - ${endLabel}`;
+  return formatSwissTimeRange(start, end, DAY_VIEW_SLOT_MINUTES);
 }
 
 function getServiceAndStatusFromReason(reason: string | null): {
@@ -585,11 +567,7 @@ async function sendAppointmentConfirmationEmail(
     const start = new Date(appointment.start_time);
     const end = appointment.end_time ? new Date(appointment.end_time) : null;
 
-    const dateLabel = start.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    const dateLabel = formatSwissDate(start);
     const timeLabel = formatTimeRangeLabel(start, end);
     const dateTimeLabel = `${dateLabel} ${timeLabel}`;
 

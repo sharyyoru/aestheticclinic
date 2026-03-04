@@ -6,6 +6,7 @@ import BeforeAfterEditorModal from "./BeforeAfterEditorModal";
 import PdfAnnotationEditor from "@/components/PdfAnnotationEditor";
 import DocumentTemplatesPanel from "@/components/DocumentTemplatesPanel";
 import EmailShareModal from "./EmailShareModal";
+import { formatSwissTime, formatSwissDateTime, SWISS_TIMEZONE } from "@/lib/swissTimezone";
 import dynamic from 'next/dynamic';
 
 // Dynamic import for docx-preview (client-side only)
@@ -82,20 +83,14 @@ function formatUploadDate(dateString: string | undefined | null): string {
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   
   if (diffDays === 0) {
-    return `Today at ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+    return `Today at ${formatSwissTime(date)}`;
   } else if (diffDays === 1) {
-    return `Yesterday at ${date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+    return `Yesterday at ${formatSwissTime(date)}`;
   } else if (diffDays < 7) {
     return `${diffDays} days ago`;
   }
   
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatSwissDateTime(date);
 }
 
 function getMimeType(name: string, metadata?: { mimetype?: string } | null): string {

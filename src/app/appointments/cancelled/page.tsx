@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { formatSwissDateTime } from "@/lib/swissTimezone";
 
 type CancelledAppointmentRow = {
   id: string;
@@ -127,16 +128,7 @@ export default function CancelledAppointmentsPage() {
                     ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() ||
                       "Unknown patient"
                     : "Unknown patient";
-                  const start = new Date(row.start_time);
-                  const startLabel = Number.isNaN(start.getTime())
-                    ? "—"
-                    : start.toLocaleString(undefined, {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      });
+                  const startLabel = formatSwissDateTime(row.start_time);
 
                   return (
                     <tr key={row.id} className="hover:bg-slate-50/70">

@@ -8,6 +8,7 @@ import { stripEmailSignature } from "@/utils/emailCleaner";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 import RichTextEditor from "@/components/RichTextEditor";
 import WhatsAppWebConversation from "@/components/WhatsAppWebConversation";
+import { formatSwissDateTime, formatSwissDate, formatSwissShortDate, formatSwissTime } from "@/lib/swissTimezone";
 
 type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals";
 
@@ -2430,7 +2431,7 @@ export default function PatientActivityCard({
             const { data: newTask } = await supabaseClient.from("tasks").insert({
               patient_id: patientId,
               name: `Follow up on: ${subject || "Email"}`,
-              content: `Follow up regarding email sent on ${new Date().toLocaleDateString()}`,
+              content: `Follow up regarding email sent on ${formatSwissDate(new Date())}`,
               type: "email",
               priority: "medium",
               status: "not_started",
@@ -2556,7 +2557,7 @@ export default function PatientActivityCard({
   const createdDate = createdAt ? new Date(createdAt) : null;
   const createdLabel =
     createdDate && !Number.isNaN(createdDate.getTime())
-      ? createdDate.toLocaleString()
+      ? formatSwissDateTime(createdDate)
       : null;
 
   const todayDateLabel = formatDateOnly(new Date());
@@ -2593,7 +2594,7 @@ export default function PatientActivityCard({
           const ts = viewEmail.sent_at ?? viewEmail.created_at;
           const date = ts ? new Date(ts) : null;
           if (!date || Number.isNaN(date.getTime())) return null;
-          return date.toLocaleString();
+          return formatSwissDateTime(date);
         })()
       : null;
 
@@ -2802,7 +2803,7 @@ export default function PatientActivityCard({
                         : null;
                       const noteLabel =
                         noteDate && !Number.isNaN(noteDate.getTime())
-                          ? noteDate.toLocaleString()
+                          ? formatSwissDateTime(noteDate)
                           : null;
 
                       const mentions = noteMentionsByNoteId[note.id] ?? [];
@@ -2862,7 +2863,7 @@ export default function PatientActivityCard({
                       const tsDate = timestampRaw ? new Date(timestampRaw) : null;
                       const tsLabel =
                         tsDate && !Number.isNaN(tsDate.getTime())
-                          ? tsDate.toLocaleString()
+                          ? formatSwissDateTime(tsDate)
                           : null;
 
                       const isOutbound = email.direction === "outbound";
@@ -2941,7 +2942,7 @@ export default function PatientActivityCard({
                         : null;
                       const dealLabel =
                         dealDate && !Number.isNaN(dealDate.getTime())
-                          ? dealDate.toLocaleString()
+                          ? formatSwissDateTime(dealDate)
                           : null;
 
                       const stage = dealStages.find(
@@ -3003,7 +3004,7 @@ export default function PatientActivityCard({
                       : null;
                     const taskLabel =
                       taskDate && !Number.isNaN(taskDate.getTime())
-                        ? taskDate.toLocaleString()
+                        ? formatSwissDateTime(taskDate)
                         : null;
 
                     const statusLabel =
@@ -3092,7 +3093,7 @@ export default function PatientActivityCard({
                     : null;
                   const noteLabel =
                     noteDate && !Number.isNaN(noteDate.getTime())
-                      ? noteDate.toLocaleString()
+                      ? formatSwissDateTime(noteDate)
                       : null;
 
                   const mentions = noteMentionsByNoteId[note.id] ?? [];
@@ -3280,7 +3281,7 @@ export default function PatientActivityCard({
                   const tsDate = timestampRaw ? new Date(timestampRaw) : null;
                   const tsLabel =
                     tsDate && !Number.isNaN(tsDate.getTime())
-                      ? tsDate.toLocaleString()
+                      ? formatSwissDateTime(tsDate)
                       : null;
 
                   // CRITICAL: direction field determines inbox vs outbox
@@ -3393,7 +3394,7 @@ export default function PatientActivityCard({
                         </span>
                         {email.read_at && (
                           <span className="text-[9px] text-emerald-600">
-                            Opened {new Date(email.read_at).toLocaleDateString()}
+                            Opened {formatSwissDate(email.read_at)}
                           </span>
                         )}
                       </div>
@@ -3518,7 +3519,7 @@ export default function PatientActivityCard({
                       : null;
                     const activityLabel =
                       activityDate && !Number.isNaN(activityDate.getTime())
-                        ? activityDate.toLocaleString()
+                        ? formatSwissDateTime(activityDate)
                         : null;
 
                     const statusLabel =
@@ -3717,7 +3718,7 @@ export default function PatientActivityCard({
                                   : null;
                                 const cLabel =
                                   cDate && !Number.isNaN(cDate.getTime())
-                                    ? cDate.toLocaleDateString()
+                                    ? formatSwissDate(cDate)
                                     : null;
 
                                 return (
@@ -3873,7 +3874,7 @@ export default function PatientActivityCard({
                     : null;
                   const createdLabelForDeal =
                     created && !Number.isNaN(created.getTime())
-                      ? created.toLocaleDateString()
+                      ? formatSwissDate(created)
                       : null;
 
                   return (
@@ -3938,16 +3939,9 @@ export default function PatientActivityCard({
                               <span className="text-[10px] font-semibold">Appointment Scheduled</span>
                             </div>
                             <p className="mt-1 text-[10px] text-emerald-600">
-                              {new Date(deal.appointment.start_time).toLocaleDateString("en-US", {
-                                weekday: "short",
-                                month: "short",
-                                day: "numeric",
-                              })}{" "}
+                              {formatSwissShortDate(deal.appointment.start_time)}{" "}
                               at{" "}
-                              {new Date(deal.appointment.start_time).toLocaleTimeString("en-US", {
-                                hour: "numeric",
-                                minute: "2-digit",
-                              })}
+                              {formatSwissTime(deal.appointment.start_time)}
                             </p>
                             {deal.appointment.location && (
                               <p className="text-[9px] text-emerald-500">
@@ -4611,7 +4605,7 @@ export default function PatientActivityCard({
                   <span className={`font-medium capitalize ${viewEmail.status === "read" ? "text-emerald-600" : viewEmail.status === "failed" ? "text-red-600" : ""}`}>{viewEmail.status}</span>
                   {viewEmail.read_at && (
                     <span className="ml-1 text-emerald-500">
-                      (opened {new Date(viewEmail.read_at).toLocaleDateString()} at {new Date(viewEmail.read_at).toLocaleTimeString()})
+                      (opened {formatSwissDateTime(viewEmail.read_at)})
                     </span>
                   )}
                 </p>

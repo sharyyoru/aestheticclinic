@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
+import { formatSwissAppointmentDateTime } from "@/lib/swissTimezone";
 
 type AppointmentStatus =
   | "scheduled"
@@ -175,21 +176,7 @@ function getStatusFromReason(reason: string | null): string | null {
 }
 
 function formatDateTime(dateStr: string): { date: string; time: string } {
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) {
-    return { date: "—", time: "—" };
-  }
-  const date = d.toLocaleDateString("fr-CH", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-  const time = d.toLocaleTimeString("fr-CH", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return { date, time };
+  return formatSwissAppointmentDateTime(dateStr);
 }
 
 function formatDuration(startTime: string, endTime: string | null): string {

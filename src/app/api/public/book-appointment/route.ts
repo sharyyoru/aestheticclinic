@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -57,20 +58,11 @@ async function sendEmail(to: string, subject: string, html: string) {
 }
 
 function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  return formatSwissDateWithWeekday(date);
 }
 
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  return formatSwissTimeAmPm(date);
 }
 
 function generatePatientConfirmationEmail(
