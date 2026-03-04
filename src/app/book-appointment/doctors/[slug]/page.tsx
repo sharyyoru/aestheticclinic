@@ -317,19 +317,38 @@ function DoctorBookingContent() {
       const end = new Date(date);
       end.setHours(23, 59, 59, 999);
 
-      // Pass doctor name to filter availability by specific doctor
-      const doctorNameParam = encodeURIComponent(doctor?.name || "");
+      // Don't filter by doctor - the booking API blocks ANY appointment at that time
+      // So we need to show ALL booked slots to prevent users from selecting unavailable times
       const res = await fetch(
-        `/api/appointments/check-availability?start=${start.toISOString()}&end=${end.toISOString()}&doctor=${doctorNameParam}`
+        `/api/appointments/check-availability?start=${start.toISOString()}&end=${end.toISOString()}`
       );
       const data = await res.json();
 
       if (data.appointments) {
-        const slots = data.appointments.map((apt: { start_time: string }) => {
-          const time = new Date(apt.start_time);
-          return `${time.getHours().toString().padStart(2, "0")}:${time.getMinutes().toString().padStart(2, "0")}`;
+        // Calculate ALL blocked time slots based on appointment duration (start_time to end_time)
+        const blockedSlots: string[] = [];
+        
+        data.appointments.forEach((apt: { start_time: string; end_time?: string }) => {
+          const aptStart = new Date(apt.start_time);
+          // Default to 1 hour if no end_time
+          const aptEnd = apt.end_time ? new Date(apt.end_time) : new Date(aptStart.getTime() + 60 * 60 * 1000);
+          
+          // Generate all 30-minute slots that overlap with this appointment
+          let slotTime = new Date(aptStart);
+          // Round down to nearest 30 minutes
+          slotTime.setMinutes(Math.floor(slotTime.getMinutes() / 30) * 30, 0, 0);
+          
+          while (slotTime < aptEnd) {
+            const slotStr = `${slotTime.getHours().toString().padStart(2, "0")}:${slotTime.getMinutes().toString().padStart(2, "0")}`;
+            if (!blockedSlots.includes(slotStr)) {
+              blockedSlots.push(slotStr);
+            }
+            // Move to next 30-minute slot
+            slotTime = new Date(slotTime.getTime() + 30 * 60 * 1000);
+          }
         });
-        setBookedSlots(slots);
+        
+        setBookedSlots(blockedSlots);
       }
     } catch (err) {
       console.error("Error checking availability:", err);

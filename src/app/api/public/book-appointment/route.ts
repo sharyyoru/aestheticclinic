@@ -267,17 +267,23 @@ export async function POST(request: Request) {
     const appointmentDateObj = new Date(appointmentDate);
 
     // Check if time slot is already booked
+    // Exclude no_patient appointments (placeholder bookings that don't block real patients)
     const slotStart = new Date(appointmentDateObj);
     const slotEnd = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000); // 1 hour
 
     const { data: existingAppointments } = await supabase
       .from("appointments")
-      .select("id")
+      .select("id, no_patient")
       .gte("start_time", slotStart.toISOString())
       .lt("start_time", slotEnd.toISOString())
       .neq("status", "cancelled");
 
-    if (existingAppointments && existingAppointments.length > 0) {
+    // Filter out no_patient appointments in JavaScript for reliability
+    const realAppointments = (existingAppointments || []).filter(
+      (apt) => apt.no_patient !== true
+    );
+
+    if (realAppointments.length > 0) {
       return NextResponse.json(
         { error: "This time slot is no longer available. Please choose another time." },
         { status: 409 }

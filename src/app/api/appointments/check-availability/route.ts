@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     // Fetch appointments within the date range
     let query = supabase
       .from("appointments")
-      .select("id, start_time, end_time, status, reason")
+      .select("id, start_time, end_time, status, reason, no_patient")
       .gte("start_time", start)
       .lte("start_time", end)
       .neq("status", "cancelled");
@@ -38,8 +38,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Filter by doctor name if provided (matches [Doctor: Name] in reason field)
-    let filteredAppointments = appointments || [];
+    // Exclude no_patient appointments (placeholder bookings that don't block real patients)
+    // Filter in JavaScript to ensure reliability
+    let filteredAppointments = (appointments || []).filter(
+      (apt) => apt.no_patient !== true
+    );
     if (doctorName) {
       const doctorNameLower = doctorName.toLowerCase().replace("dr. ", "");
       filteredAppointments = filteredAppointments.filter((apt) => {
