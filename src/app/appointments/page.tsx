@@ -12,6 +12,7 @@ import {
   formatSwissDate,
   SWISS_TIMEZONE,
   SWISS_LOCALE,
+  getSwissHourMinute,
 } from "@/lib/swissTimezone";
 
 type AppointmentStatus =
@@ -445,12 +446,14 @@ function calculateOverlapPositions(
     const start = new Date(appt.start_time);
     const end = appt.end_time ? new Date(appt.end_time) : new Date(start.getTime() + 30 * 60 * 1000);
     
-    let startMinutes = start.getHours() * 60 + start.getMinutes();
-    let endMinutes = end.getHours() * 60 + end.getMinutes();
+    // Use Swiss timezone for consistent display regardless of user's browser location
+    const { hour: startH, minute: startM } = getSwissHourMinute(start);
+    const { hour: endH, minute: endM } = getSwissHourMinute(end);
+    let startMinutes = startH * 60 + startM;
+    let endMinutes = endH * 60 + endM;
     
     // Handle appointments spanning midnight or with invalid end times
-    // If end is on a different day or endMinutes <= startMinutes, clamp to end of day view
-    if (end.getDate() !== start.getDate() || endMinutes <= startMinutes) {
+    if (endMinutes <= startMinutes) {
       endMinutes = DAY_VIEW_END_MINUTES;
     }
     
@@ -822,6 +825,8 @@ export default function CalendarPage() {
   const [editNotes, setEditNotes] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingAppointment, setDeletingAppointment] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Helper to close all edit modal dropdowns
   const closeEditModalDropdowns = () => {
@@ -831,9 +836,10 @@ export default function CalendarPage() {
 
   // Helper to close edit modal and reset state
   const closeEditModal = () => {
-    if (savingEdit) return;
+    if (savingEdit || deletingAppointment) return;
     setEditModalOpen(false);
     setEditingAppointment(null);
+    setShowDeleteConfirm(false);
     closeEditModalDropdowns();
   };
 
@@ -1365,13 +1371,16 @@ export default function CalendarPage() {
         const start = new Date(appt.start_time);
         if (Number.isNaN(start.getTime())) return false;
 
-        const rawStartMinutes = start.getHours() * 60 + start.getMinutes();
+        // Use Swiss timezone for consistent time calculations
+        const { hour: startH, minute: startM } = getSwissHourMinute(start);
+        const rawStartMinutes = startH * 60 + startM;
         let endMinutes = rawStartMinutes + 60;
 
         if (appt.end_time) {
           const end = new Date(appt.end_time);
           if (!Number.isNaN(end.getTime())) {
-            endMinutes = end.getHours() * 60 + end.getMinutes();
+            const { hour: endH, minute: endM } = getSwissHourMinute(end);
+            endMinutes = endH * 60 + endM;
           }
         }
 
@@ -1621,14 +1630,13 @@ export default function CalendarPage() {
     const endMin = Math.max(dragStartMinutes, dragEndMinutes);
     const durationMinutes = endMin - startMin;
 
-    const year = dragDate.getFullYear();
-    const month = `${dragDate.getMonth() + 1}`.padStart(2, "0");
-    const day = `${dragDate.getDate()}`.padStart(2, "0");
+    // Use Swiss timezone for consistent date
+    const dateStr = formatSwissYmd(dragDate);
     const hours = Math.floor(startMin / 60);
     const minutes = startMin % 60;
     const timeValue = `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 
-    setDraftDate(`${year}-${month}-${day}`);
+    setDraftDate(dateStr);
     setDraftTime(timeValue);
     // Set time search to display label
     setTimeSearch(formatTimeOptionLabel(startMin));
@@ -2030,13 +2038,11 @@ export default function CalendarPage() {
     const end = appt.end_time ? new Date(appt.end_time) : null;
 
     if (!Number.isNaN(start.getTime())) {
-      const year = start.getFullYear();
-      const month = `${start.getMonth() + 1}`.padStart(2, "0");
-      const day = `${start.getDate()}`.padStart(2, "0");
-      const hours = `${start.getHours()}`.padStart(2, "0");
-      const minutes = `${start.getMinutes()}`.padStart(2, "0");
-      setEditDate(`${year}-${month}-${day}`);
-      setEditTime(`${hours}:${minutes}`);
+      // Use Swiss timezone for consistent display
+      const swissDateStr = formatSwissYmd(start);
+      const { hour, minute } = getSwissHourMinute(start);
+      setEditDate(swissDateStr);
+      setEditTime(`${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`);
     } else {
       setEditDate("");
       setEditTime("");
@@ -2215,6 +2221,37 @@ export default function CalendarPage() {
     }
   }
 
+  async function handleDeleteAppointment() {
+    if (!editingAppointment || deletingAppointment) return;
+
+    try {
+      setDeletingAppointment(true);
+      setEditError(null);
+
+      const { error } = await supabaseClient
+        .from("appointments")
+        .delete()
+        .eq("id", editingAppointment.id);
+
+      if (error) {
+        setEditError(error.message ?? "Failed to delete appointment.");
+        setDeletingAppointment(false);
+        return;
+      }
+
+      // Remove from local state
+      setAppointments((prev) => prev.filter((a) => a.id !== editingAppointment.id));
+
+      setDeletingAppointment(false);
+      setShowDeleteConfirm(false);
+      setEditModalOpen(false);
+      setEditingAppointment(null);
+    } catch {
+      setEditError("Failed to delete appointment.");
+      setDeletingAppointment(false);
+    }
+  }
+
   function goToToday() {
     const now = new Date();
     setVisibleMonth(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -2264,10 +2301,8 @@ export default function CalendarPage() {
             type="button"
             onClick={() => {
               const baseDate = selectedDate ?? new Date();
-              const year = baseDate.getFullYear();
-              const month = `${baseDate.getMonth() + 1}`.padStart(2, "0");
-              const day = `${baseDate.getDate()}`.padStart(2, "0");
-              setDraftDate(`${year}-${month}-${day}`);
+              // Use Swiss timezone for consistent date
+              setDraftDate(formatSwissYmd(baseDate));
               setDraftTime("");
               setTimeSearch("");
               setDraftTitle("");
@@ -2422,7 +2457,7 @@ export default function CalendarPage() {
                         : "hover:bg-slate-100"
                   }`}
                 >
-                  {date.getDate()}
+                  {date.toLocaleDateString(SWISS_LOCALE, { day: "numeric", timeZone: SWISS_TIMEZONE })}
                 </button>
               );
             })}
@@ -2637,25 +2672,28 @@ export default function CalendarPage() {
               {view === "month" && formatMonthYear(visibleMonth)}
               {view === "day" &&
                 selectedDate &&
-                selectedDate.toLocaleDateString(undefined, {
+                selectedDate.toLocaleDateString(SWISS_LOCALE, {
                   weekday: "long",
                   year: "numeric",
                   month: "long",
                   day: "numeric",
+                  timeZone: SWISS_TIMEZONE,
                 })}
               {view === "range" && activeRangeDates.length > 0 && (
                 <>
-                  {activeRangeDates[0].toLocaleDateString(undefined, {
+                  {activeRangeDates[0].toLocaleDateString(SWISS_LOCALE, {
                     month: "short",
                     day: "numeric",
+                    timeZone: SWISS_TIMEZONE,
                   })}
                   {" – "}
                   {activeRangeDates[activeRangeDates.length - 1].toLocaleDateString(
-                    undefined,
+                    SWISS_LOCALE,
                     {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
+                      timeZone: SWISS_TIMEZONE,
                     },
                   )}
                 </>
@@ -2759,7 +2797,7 @@ export default function CalendarPage() {
                           isToday ? "bg-sky-600 text-white" : "text-slate-700"
                         }`}
                       >
-                        {date.getDate()}
+                        {date.toLocaleDateString(SWISS_LOCALE, { day: "numeric", timeZone: SWISS_TIMEZONE })}
                       </span>
                     </div>
                     <div className="space-y-0.5">
@@ -2848,10 +2886,10 @@ export default function CalendarPage() {
                     {/* Date header */}
                     <div className="px-2 py-1 text-center border-b border-slate-100">
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">
-                        {date.toLocaleDateString(undefined, { weekday: "short" })}
+                        {date.toLocaleDateString(SWISS_LOCALE, { weekday: "short", timeZone: SWISS_TIMEZONE })}
                       </div>
                       <div className="text-sm font-semibold text-slate-800">
-                        {date.getDate()}
+                        {date.toLocaleDateString(SWISS_LOCALE, { day: "numeric", timeZone: SWISS_TIMEZONE })}
                       </div>
                     </div>
                     {/* Doctor column headers - only show when multiple doctors selected */}
@@ -2897,7 +2935,9 @@ export default function CalendarPage() {
                   >
                     {/* Current time indicator line */}
                     {(() => {
-                      const nowMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+                      // Use Swiss timezone for consistent time display
+                      const { hour: nowH, minute: nowM } = getSwissHourMinute(currentTime);
+                      const nowMinutes = nowH * 60 + nowM;
                       const isToday = selectedDate && formatYmd(selectedDate) === formatYmd(currentTime);
                       const isInBounds = nowMinutes >= DAY_VIEW_START_MINUTES && nowMinutes <= DAY_VIEW_END_MINUTES;
                       
@@ -3009,16 +3049,20 @@ export default function CalendarPage() {
                                     const start = new Date(appt.start_time);
                                     if (Number.isNaN(start.getTime())) return null;
 
-                                    const rawStartMinutes = start.getHours() * 60 + start.getMinutes();
+                                    // Use Swiss timezone for consistent display
+                                    const { hour: startH, minute: startM } = getSwissHourMinute(start);
+                                    const rawStartMinutes = startH * 60 + startM;
                                     const topMinutes = Math.max(rawStartMinutes - DAY_VIEW_START_MINUTES, 0);
 
                                     let end = appt.end_time ? new Date(appt.end_time) : null;
-                                    let endMinutes = end && !Number.isNaN(end.getTime())
-                                      ? end.getHours() * 60 + end.getMinutes()
-                                      : rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
+                                    let endMinutes = rawStartMinutes + DAY_VIEW_SLOT_MINUTES * 2;
+                                    if (end && !Number.isNaN(end.getTime())) {
+                                      const { hour: endH, minute: endM } = getSwissHourMinute(end);
+                                      endMinutes = endH * 60 + endM;
+                                    }
 
-                                    if (end && !Number.isNaN(end.getTime()) && 
-                                        (end.getDate() !== start.getDate() || endMinutes <= rawStartMinutes)) {
+                                    // Handle appointments spanning midnight
+                                    if (endMinutes <= rawStartMinutes) {
                                       endMinutes = DAY_VIEW_END_MINUTES;
                                     }
 
@@ -3417,37 +3461,81 @@ export default function CalendarPage() {
               {editError ? (
                 <p className="mt-2 text-[11px] text-red-600">{editError}</p>
               ) : null}
-              <div className="mt-4 flex items-center justify-end gap-2">
+              
+              {/* Delete confirmation */}
+              {showDeleteConfirm && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-[11px] font-medium text-red-800 mb-2">
+                    Are you sure you want to delete this appointment? This action cannot be undone.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteAppointment()}
+                      disabled={deletingAppointment}
+                      className="inline-flex items-center rounded-full border border-red-500/80 bg-red-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingAppointment ? "Deleting..." : "Yes, delete"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={deletingAppointment}
+                      className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              <div className="mt-4 flex items-center justify-between">
+                {/* Delete button on left */}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (editingAppointment) {
-                      handleCopyAppointment(editingAppointment);
-                      closeEditModal();
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={savingEdit || deletingAppointment || showDeleteConfirm}
+                  className="inline-flex items-center gap-1 rounded-full border border-red-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
-                  Copy
+                  Delete
                 </button>
-                <button
-                  type="button"
-                  onClick={closeEditModal}
-                  className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveEditAppointment()}
-                  disabled={savingEdit}
-                  className="inline-flex items-center rounded-full border border-sky-500/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Save changes
-                </button>
+                
+                {/* Other buttons on right */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editingAppointment) {
+                        handleCopyAppointment(editingAppointment);
+                        closeEditModal();
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditModal}
+                    className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveEditAppointment()}
+                    disabled={savingEdit}
+                    className="inline-flex items-center rounded-full border border-sky-500/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Save changes
+                  </button>
+                </div>
               </div>
             </div>
           </div>
