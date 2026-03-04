@@ -315,8 +315,9 @@ function DoctorBookingContent() {
       const doctorName = doctor?.name || "";
 
       // Filter by the specific doctor to only show their booked slots
+      // Pass slug for doctor-specific capacity (XT/CR = 3, others = 1)
       const res = await fetch(
-        `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctorName)}`
+        `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctorName)}&slug=${slug}`
       );
       const data = await res.json();
 

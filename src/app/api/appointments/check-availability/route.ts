@@ -4,14 +4,20 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Maximum concurrent appointments per provider per time slot (like taxi with 3 passengers)
-const MAX_CONCURRENT_APPOINTMENTS = 3;
+// Doctor-specific capacity: XT and CR can have 3 concurrent, others have 1
+const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez"];
+
+function getMaxCapacity(doctorSlug: string | null): number {
+  if (!doctorSlug) return 1;
+  return MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 3 : 1;
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const start = searchParams.get("start");
   const end = searchParams.get("end");
   const doctorName = searchParams.get("doctor"); // Optional: filter by doctor name
+  const doctorSlug = searchParams.get("slug"); // Optional: doctor slug for capacity lookup
 
   if (!start || !end) {
     return NextResponse.json(
@@ -103,16 +109,19 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    // Get the max capacity for this doctor
+    const maxCapacity = getMaxCapacity(doctorSlug);
+
     // Return appointments, slot counts, and which slots are fully booked
     const fullSlots = Object.entries(slotCounts)
-      .filter(([_, count]) => count >= MAX_CONCURRENT_APPOINTMENTS)
+      .filter(([_, count]) => count >= maxCapacity)
       .map(([slot, _]) => slot);
 
     return NextResponse.json({ 
       appointments: filteredAppointments,
       slotCounts,
       fullSlots,
-      maxConcurrent: MAX_CONCURRENT_APPOINTMENTS
+      maxConcurrent: maxCapacity
     });
   } catch (error) {
     console.error("Error checking availability:", error);

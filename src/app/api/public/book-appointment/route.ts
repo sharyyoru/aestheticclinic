@@ -273,20 +273,31 @@ export async function POST(request: Request) {
       providerId = provider.id;
     }
 
-    // Maximum concurrent appointments per provider (like taxi with 3 passengers)
-    const MAX_CONCURRENT_APPOINTMENTS = 3;
+    // Doctor-specific capacity: XT and CR can have 3 concurrent, others have 1
+    const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez"];
+    const maxCapacity = MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 3 : 1;
 
     // Check if time slot has capacity for this doctor
-    // Each provider can have up to 3 concurrent appointments at the same time
+    // Use 30-minute slot window to match the check-availability logic
     const slotStart = new Date(appointmentDateObj);
-    const slotEnd = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000); // 1 hour
+    const slotEnd = new Date(appointmentDateObj.getTime() + 30 * 60 * 1000); // 30 minutes
 
-    const { data: existingAppointments } = await supabase
+    console.log(`[Booking] Checking availability for ${doctorName} (${doctorSlug}) at ${slotStart.toISOString()}`);
+    console.log(`[Booking] Max capacity for this doctor: ${maxCapacity}`);
+    console.log(`[Booking] Provider ID found: ${providerId}`);
+
+    const { data: existingAppointments, error: fetchError } = await supabase
       .from("appointments")
-      .select("id, no_patient, provider_id, reason")
+      .select("id, no_patient, provider_id, reason, start_time")
       .gte("start_time", slotStart.toISOString())
       .lt("start_time", slotEnd.toISOString())
       .neq("status", "cancelled");
+
+    if (fetchError) {
+      console.error("[Booking] Error fetching appointments:", fetchError);
+    }
+
+    console.log(`[Booking] Found ${existingAppointments?.length || 0} total appointments in time range`);
 
     // Filter to only this doctor's appointments
     const doctorAppointments = (existingAppointments || []).filter((apt) => {
@@ -309,13 +320,19 @@ export async function POST(request: Request) {
       return false;
     });
 
-    // Only block if provider has reached maximum capacity (3 concurrent appointments)
-    if (doctorAppointments.length >= MAX_CONCURRENT_APPOINTMENTS) {
+    console.log(`[Booking] Found ${doctorAppointments.length} appointments for ${doctorName}`);
+    console.log(`[Booking] Appointments:`, doctorAppointments.map(a => ({ id: a.id, provider_id: a.provider_id, reason: a.reason?.substring(0, 50) })));
+
+    // Only block if provider has reached maximum capacity
+    if (doctorAppointments.length >= maxCapacity) {
+      console.log(`[Booking] REJECTED: ${doctorAppointments.length} >= ${maxCapacity}`);
       return NextResponse.json(
-        { error: "This time slot is fully booked. Please choose another time." },
+        { error: `This time slot is fully booked (${doctorAppointments.length}/${maxCapacity}). Please choose another time.` },
         { status: 409 }
       );
     }
+
+    console.log(`[Booking] ALLOWED: ${doctorAppointments.length} < ${maxCapacity}`);
 
     // Check if patient exists or create new
     let patientId: string;
