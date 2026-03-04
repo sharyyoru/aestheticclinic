@@ -739,10 +739,10 @@ function DoctorBookingContent() {
                 {selectedDate && availableSlots.length === 0 && (
                   <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                     <p className="text-sm text-amber-700 font-medium">
-                      {doctor.name} is not available at {locationLabel} on this day. Please select another date.
+                      The doctor is fully booked on {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.
                     </p>
                     <p className="text-sm text-amber-600 italic">
-                      Le {doctor.name.replace('Dr. ', 'Dr ')} n&apos;est pas disponible à {locationLabel} à cette date. Veuillez choisir une autre date.
+                      Le médecin est complet le {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.
                     </p>
                   </div>
                 )}
