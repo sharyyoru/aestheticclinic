@@ -4,6 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+// Maximum concurrent appointments per provider per time slot (like taxi with 3 passengers)
+const MAX_CONCURRENT_APPOINTMENTS = 3;
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const start = searchParams.get("start");
@@ -83,7 +86,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ appointments: filteredAppointments });
+    // Count appointments per 30-minute slot to determine which slots are full
+    // A slot is only "full" when it has MAX_CONCURRENT_APPOINTMENTS
+    const slotCounts: Record<string, number> = {};
+    
+    filteredAppointments.forEach((apt) => {
+      const aptStart = new Date(apt.start_time);
+      const aptEnd = apt.end_time ? new Date(apt.end_time) : new Date(aptStart.getTime() + 60 * 60 * 1000);
+      
+      // Generate all 30-minute slots this appointment covers
+      let slotTime = new Date(aptStart);
+      while (slotTime < aptEnd) {
+        const slotKey = slotTime.toISOString();
+        slotCounts[slotKey] = (slotCounts[slotKey] || 0) + 1;
+        slotTime = new Date(slotTime.getTime() + 30 * 60 * 1000);
+      }
+    });
+
+    // Return appointments, slot counts, and which slots are fully booked
+    const fullSlots = Object.entries(slotCounts)
+      .filter(([_, count]) => count >= MAX_CONCURRENT_APPOINTMENTS)
+      .map(([slot, _]) => slot);
+
+    return NextResponse.json({ 
+      appointments: filteredAppointments,
+      slotCounts,
+      fullSlots,
+      maxConcurrent: MAX_CONCURRENT_APPOINTMENTS
+    });
   } catch (error) {
     console.error("Error checking availability:", error);
     return NextResponse.json(

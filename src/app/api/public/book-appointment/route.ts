@@ -273,8 +273,11 @@ export async function POST(request: Request) {
       providerId = provider.id;
     }
 
-    // Check if time slot is already booked FOR THIS SPECIFIC DOCTOR
-    // Different doctors can have appointments at the same time
+    // Maximum concurrent appointments per provider (like taxi with 3 passengers)
+    const MAX_CONCURRENT_APPOINTMENTS = 3;
+
+    // Check if time slot has capacity for this doctor
+    // Each provider can have up to 3 concurrent appointments at the same time
     const slotStart = new Date(appointmentDateObj);
     const slotEnd = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000); // 1 hour
 
@@ -306,9 +309,10 @@ export async function POST(request: Request) {
       return false;
     });
 
-    if (doctorAppointments.length > 0) {
+    // Only block if provider has reached maximum capacity (3 concurrent appointments)
+    if (doctorAppointments.length >= MAX_CONCURRENT_APPOINTMENTS) {
       return NextResponse.json(
-        { error: "This time slot is no longer available. Please choose another time." },
+        { error: "This time slot is fully booked. Please choose another time." },
         { status: 409 }
       );
     }

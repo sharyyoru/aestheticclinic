@@ -320,38 +320,17 @@ function DoctorBookingContent() {
       );
       const data = await res.json();
 
-      if (data.appointments) {
-        // Calculate blocked time slots based on appointment duration (start_time to end_time)
-        // Use Swiss timezone for slot calculations
-        const blockedSlots: string[] = [];
-        
-        data.appointments.forEach((apt: { start_time: string; end_time?: string }) => {
-          const aptStart = new Date(apt.start_time);
-          // Default to 1 hour if no end_time
-          const aptEnd = apt.end_time ? new Date(apt.end_time) : new Date(aptStart.getTime() + 60 * 60 * 1000);
-          
-          // Generate all 30-minute slots that overlap with this appointment
-          // Use Swiss timezone to calculate the slot strings
-          let slotTime = new Date(aptStart);
-          
-          // Round down to nearest 30 minutes in Swiss time
-          const { hour, minute } = { 
-            hour: parseInt(getSwissSlotString(slotTime).split(":")[0], 10),
-            minute: Math.floor(parseInt(getSwissSlotString(slotTime).split(":")[1], 10) / 30) * 30
-          };
-          
-          while (slotTime < aptEnd) {
-            // Use Swiss timezone slot string
-            const slotStr = getSwissSlotString(slotTime);
-            if (!blockedSlots.includes(slotStr)) {
-              blockedSlots.push(slotStr);
-            }
-            // Move to next 30-minute slot
-            slotTime = new Date(slotTime.getTime() + 30 * 60 * 1000);
-          }
+      // The API now returns fullSlots - slots that have reached max capacity (3 appointments)
+      // Only these slots should be blocked, others still have capacity
+      if (data.fullSlots) {
+        // Convert ISO timestamps to Swiss timezone slot strings (HH:MM)
+        const blockedSlots: string[] = data.fullSlots.map((isoTime: string) => {
+          return getSwissSlotString(new Date(isoTime));
         });
         
         setBookedSlots(blockedSlots);
+      } else {
+        setBookedSlots([]);
       }
     } catch (err) {
       console.error("Error checking availability:", err);
