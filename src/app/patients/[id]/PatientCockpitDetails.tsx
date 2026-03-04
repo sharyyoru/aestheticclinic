@@ -153,7 +153,9 @@ export default function PatientCockpitDetails({
             </p>
             <p className="text-slate-500">
               <span className="font-semibold text-slate-700">Country:</span>{" "}
-              <span className="text-slate-900">{patient.country ?? "N/A"}</span>
+              <span className="text-slate-900">{
+                ({ CH:"🇨🇭 Switzerland", DE:"🇩🇪 Germany", FR:"🇫🇷 France", AT:"🇦🇹 Austria", IT:"🇮🇹 Italy", LI:"🇱🇮 Liechtenstein", LU:"🇱🇺 Luxembourg", BE:"🇧🇪 Belgium", NL:"🇳🇱 Netherlands", ES:"🇪🇸 Spain", PT:"🇵🇹 Portugal", GB:"🇬🇧 United Kingdom", US:"🇺🇸 United States" } as Record<string,string>)[patient.country ?? ""] || patient.country || "N/A"
+              }</span>
             </p>
           </div>
 
@@ -290,12 +292,26 @@ export default function PatientCockpitDetails({
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-slate-600">Country</span>
-                    <input
-                      type="text"
+                    <select
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
                       className="mt-1 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
-                    />
+                    >
+                      <option value="">Select country</option>
+                      <option value="CH">🇨🇭 Switzerland (CH)</option>
+                      <option value="DE">🇩🇪 Germany (DE)</option>
+                      <option value="FR">🇫🇷 France (FR)</option>
+                      <option value="AT">🇦🇹 Austria (AT)</option>
+                      <option value="IT">🇮🇹 Italy (IT)</option>
+                      <option value="LI">🇱🇮 Liechtenstein (LI)</option>
+                      <option value="LU">🇱🇺 Luxembourg (LU)</option>
+                      <option value="BE">🇧🇪 Belgium (BE)</option>
+                      <option value="NL">🇳🇱 Netherlands (NL)</option>
+                      <option value="ES">🇪🇸 Spain (ES)</option>
+                      <option value="PT">🇵🇹 Portugal (PT)</option>
+                      <option value="GB">🇬🇧 United Kingdom (GB)</option>
+                      <option value="US">🇺🇸 United States (US)</option>
+                    </select>
                   </label>
                 </>
               )}
