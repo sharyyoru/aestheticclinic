@@ -294,28 +294,44 @@ async function handleBuildFromConsultation(body: Record<string, unknown>) {
     patientSex: mapSex(patient.sex || patient.gender || "male"),
     patientBirthdate: patient.date_of_birth || patient.birthdate || "1990-01-01",
     patientSsn: patient.avs_number || patient.ssn || "",
-    patientAddress: {
-      familyName: patient.last_name || patient.family_name || "",
-      givenName: patient.first_name || patient.given_name || "",
-      salutation: patient.salutation || "",
-      street: patient.street || patient.address || "",
-      zip: patient.zip || patient.postal_code || "",
-      city: patient.city || "",
-      stateCode: patient.canton || patient.state || "",
-      email: patient.email || "",
-      phone: patient.phone || "",
-    },
-    guarantorAddress: {
-      familyName: patient.last_name || patient.family_name || "",
-      givenName: patient.first_name || patient.given_name || "",
-      salutation: patient.salutation || "",
-      street: patient.street || patient.address || "",
-      zip: patient.zip || patient.postal_code || "",
-      city: patient.city || "",
-      stateCode: patient.canton || patient.state || "",
-      email: patient.email || "",
-      phone: patient.phone || "",
-    },
+    patientAddress: (() => {
+      const c = (patient.country || "").trim();
+      const isCH = !c || /^(ch|switzerland|suisse|schweiz|svizzera)$/i.test(c);
+      const CMAP: Record<string, string> = { france:"FR",frankreich:"FR",francia:"FR",germany:"DE",deutschland:"DE",allemagne:"DE",italia:"IT",italy:"IT",italien:"IT",italie:"IT",austria:"AT","österreich":"AT",autriche:"AT",liechtenstein:"LI",spain:"ES",espagne:"ES",portugal:"PT",belgium:"BE",belgique:"BE",netherlands:"NL","pays-bas":"NL","united kingdom":"GB",uk:"GB",luxembourg:"LU",luxemburg:"LU","united states":"US",usa:"US" };
+      const cc = isCH ? "" : (c.length === 2 ? c.toUpperCase() : (CMAP[c.toLowerCase()] || ""));
+      return {
+        familyName: patient.last_name || patient.family_name || "",
+        givenName: patient.first_name || patient.given_name || "",
+        salutation: patient.salutation || "",
+        street: patient.street || patient.address || "",
+        zip: patient.zip || patient.postal_code || "",
+        city: patient.city || "",
+        stateCode: isCH ? (patient.canton || patient.state || "") : "",
+        country: isCH ? undefined : (c || undefined),
+        countryCode: cc || undefined,
+        email: patient.email || "",
+        phone: patient.phone || "",
+      };
+    })(),
+    guarantorAddress: (() => {
+      const c = (patient.country || "").trim();
+      const isCH = !c || /^(ch|switzerland|suisse|schweiz|svizzera)$/i.test(c);
+      const CMAP: Record<string, string> = { france:"FR",frankreich:"FR",francia:"FR",germany:"DE",deutschland:"DE",allemagne:"DE",italia:"IT",italy:"IT",italien:"IT",italie:"IT",austria:"AT","österreich":"AT",autriche:"AT",liechtenstein:"LI",spain:"ES",espagne:"ES",portugal:"PT",belgium:"BE",belgique:"BE",netherlands:"NL","pays-bas":"NL","united kingdom":"GB",uk:"GB",luxembourg:"LU",luxemburg:"LU","united states":"US",usa:"US" };
+      const cc = isCH ? "" : (c.length === 2 ? c.toUpperCase() : (CMAP[c.toLowerCase()] || ""));
+      return {
+        familyName: patient.last_name || patient.family_name || "",
+        givenName: patient.first_name || patient.given_name || "",
+        salutation: patient.salutation || "",
+        street: patient.street || patient.address || "",
+        zip: patient.zip || patient.postal_code || "",
+        city: patient.city || "",
+        stateCode: isCH ? (patient.canton || patient.state || "") : "",
+        country: isCH ? undefined : (c || undefined),
+        countryCode: cc || undefined,
+        email: patient.email || "",
+        phone: patient.phone || "",
+      };
+    })(),
     printCopyToGuarantor: tiersMode === TiersMode.Payant ? YesNo.Yes : undefined,
     treatmentCanton: canton,
     treatmentType: 0, // Ambulatory

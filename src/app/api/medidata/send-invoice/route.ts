@@ -44,6 +44,7 @@ type PatientData = {
   street_address: string | null;
   postal_code: string | null;
   town: string | null;
+  country?: string | null;
   avs_number?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -87,6 +88,7 @@ export async function POST(request: NextRequest) {
       caseNumber,
       accidentDate,
       durationMinutes,
+      language,
     } = body as {
       invoiceId?: string;
       consultationId?: string;
@@ -103,6 +105,7 @@ export async function POST(request: NextRequest) {
       caseNumber?: string;
       accidentDate?: string;
       durationMinutes?: number;
+      language?: 1 | 2 | 3;
     };
 
     // ── Resolve the invoice (primary) or fall back to consultation ──
@@ -329,8 +332,6 @@ export async function POST(request: NextRequest) {
     const resolvedReceiverGln = swissInsurer?.receiver_gln || resolvedInsurerGln;
     const resolvedInsurerName = insurerName || invoiceRecord?.insurance_name || insuranceData?.provider_name || 'Unknown Insurer';
 
-    console.log(`[SendInvoice] Building Sumex1 invoice: id=${invoiceNumber}, patient=${patientData.first_name} ${patientData.last_name}, services=${services.length}, total=${total}`);
-
     // Build Sumex1 input — Sumex1 server is the ONLY XML generation path
     const sumexServices: SumexServiceInput[] = services.map(s => ({
       tariffType: s.tariffType || "999",
@@ -357,8 +358,39 @@ export async function POST(request: NextRequest) {
     }));
 
     const canton = provCanton;
+    // Detect non-Swiss patient for address handling
+    const patientCountry = patientData.country?.trim() || "";
+    const isSwissPatient = !patientCountry || /^(ch|switzerland|suisse|schweiz|svizzera)$/i.test(patientCountry);
+    // Map common country names to ISO 3166-1 alpha-2 codes
+    const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+      france: "FR", frankreich: "FR", francia: "FR",
+      germany: "DE", deutschland: "DE", allemagne: "DE", germania: "DE",
+      italy: "IT", italien: "IT", italie: "IT", italia: "IT",
+      austria: "AT", österreich: "AT", autriche: "AT",
+      liechtenstein: "LI",
+      spain: "ES", spanien: "ES", espagne: "ES", españa: "ES",
+      portugal: "PT",
+      belgium: "BE", belgien: "BE", belgique: "BE",
+      netherlands: "NL", niederlande: "NL", "pays-bas": "NL",
+      "united kingdom": "GB", uk: "GB", großbritannien: "GB", "royaume-uni": "GB",
+      "united states": "US", usa: "US",
+      luxembourg: "LU", luxemburg: "LU",
+    };
+    const resolveCountryCode = (c: string): string => {
+      if (!c || isSwissPatient) return "";
+      if (c.length === 2) return c.toUpperCase();
+      return COUNTRY_NAME_TO_CODE[c.toLowerCase()] || "";
+    };
+    const patientCountryCode = resolveCountryCode(patientCountry);
+    const patientCountryName = isSwissPatient ? "" : patientCountry;
+
+    console.log(`[SendInvoice] Building Sumex1 invoice: id=${invoiceNumber}, patient=${patientData.first_name} ${patientData.last_name}, services=${services.length}, total=${total}, country="${patientCountry}", isSwiss=${isSwissPatient}, countryCode="${patientCountryCode}", countryName="${patientCountryName}"`);
+
+    // For non-Swiss patients without SSN, use the unknownSSN per Sumex CHM docs
+    const patientSsn = avsNumber || insuranceData?.avs_number || (!isSwissPatient ? "7569999999991" : "");
+
     const sumexInput: SumexInvoiceInput = {
-      language: 2,
+      language: language || 2,
       roleType: RoleType.Physician,
       placeType: PlaceType.Practice,
       requestType: RequestType.Invoice,
@@ -404,14 +436,16 @@ export async function POST(request: NextRequest) {
       } : undefined,
       patientSex: mapSumexSex(patientData.gender || "male"),
       patientBirthdate: patientData.dob || "1990-01-01",
-      patientSsn: avsNumber || insuranceData?.avs_number || "",
+      patientSsn,
       patientAddress: {
         familyName: patientData.last_name,
         givenName: patientData.first_name,
         street: patientData.street_address || "",
         zip: patientData.postal_code || "",
         city: patientData.town || "",
-        stateCode: canton,
+        stateCode: isSwissPatient ? canton : "",
+        country: patientCountryName || undefined,
+        countryCode: patientCountryCode || undefined,
         email: patientData.email || undefined,
         phone: patientData.phone || undefined,
       },
@@ -421,7 +455,9 @@ export async function POST(request: NextRequest) {
         street: patientData.street_address || "",
         zip: patientData.postal_code || "",
         city: patientData.town || "",
-        stateCode: canton,
+        stateCode: isSwissPatient ? canton : "",
+        country: patientCountryName || undefined,
+        countryCode: patientCountryCode || undefined,
         email: patientData.email || undefined,
         phone: patientData.phone || undefined,
       },

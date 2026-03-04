@@ -63,6 +63,7 @@ export default function InsuranceBillingModal({
   const [policyNumber, setPolicyNumber] = useState("");
   const [caseNumber, setCaseNumber] = useState("");
   const [accidentDate, setAccidentDate] = useState("");
+  const [invoiceLanguage, setInvoiceLanguage] = useState<1 | 2 | 3>(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingXml, setIsCheckingXml] = useState(false);
   const [xmlPreview, setXmlPreview] = useState<string | null>(null);
@@ -232,6 +233,7 @@ export default function InsuranceBillingModal({
           avsNumber,
           caseNumber,
           accidentDate: lawType === 'UVG' ? accidentDate : undefined,
+          language: invoiceLanguage,
         }),
       });
 
@@ -506,8 +508,9 @@ export default function InsuranceBillingModal({
               </div>
             </div>
 
-            {/* Reminder Level */}
-            <div>
+            {/* Reminder Level + Language */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
                 <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
                   Document Type
                 </label>
@@ -522,9 +525,27 @@ export default function InsuranceBillingModal({
                   <option value={3}>3rd Reminder</option>
                 </select>
                 <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                  Select reminder level for follow-up invoices. Normal invoice = 0.
+                  Reminder level for follow-up invoices.
                 </p>
               </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Invoice Language
+                </label>
+                <select
+                  value={invoiceLanguage}
+                  onChange={(e) => setInvoiceLanguage(Number(e.target.value) as 1 | 2 | 3)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value={2}>Français</option>
+                  <option value={1}>Deutsch</option>
+                  <option value={3}>Italiano</option>
+                </select>
+                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                  Language of the printed invoice PDF.
+                </p>
+              </div>
+            </div>
             </div>
 
             {/* Insurance Selection */}

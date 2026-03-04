@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     // ── Fetch patient ──
     const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
-      .select("first_name, last_name, dob, street_address, postal_code, town, gender, email, phone")
+      .select("first_name, last_name, dob, street_address, postal_code, town, country, gender, email, phone")
       .eq("id", patientId)
       .single();
 
@@ -295,26 +295,42 @@ export async function POST(request: NextRequest) {
       patientSex: mapSumexSex(patient.gender || "male"),
       patientBirthdate: patient.dob || "1990-01-01",
       patientSsn: invoice.patient_ssn || "",
-      patientAddress: {
-        familyName: patient.last_name || "Patient",
-        givenName: patient.first_name || "Unknown",
-        street: patient.street_address || provStreet || "N/A",
-        zip: patient.postal_code || provZip || "0000",
-        city: patient.town || provCity || "N/A",
-        stateCode: provCanton,
-        email: patient.email || "",
-        phone: patient.phone || "",
-      },
-      guarantorAddress: {
-        familyName: patient.last_name || "Patient",
-        givenName: patient.first_name || "Unknown",
-        street: patient.street_address || provStreet || "N/A",
-        zip: patient.postal_code || provZip || "0000",
-        city: patient.town || provCity || "N/A",
-        stateCode: provCanton,
-        email: patient.email || "",
-        phone: patient.phone || "",
-      },
+      patientAddress: (() => {
+        const c = patient.country?.trim() || "";
+        const isCH = !c || /^(ch|switzerland|suisse|schweiz|svizzera)$/i.test(c);
+        const CMAP: Record<string, string> = { france:"FR",frankreich:"FR",francia:"FR",germany:"DE",deutschland:"DE",allemagne:"DE",italia:"IT",italy:"IT",italien:"IT",italie:"IT",austria:"AT","österreich":"AT",autriche:"AT",liechtenstein:"LI",spain:"ES",espagne:"ES",portugal:"PT",belgium:"BE",belgique:"BE",netherlands:"NL","pays-bas":"NL","united kingdom":"GB",uk:"GB",luxembourg:"LU",luxemburg:"LU","united states":"US",usa:"US" };
+        const cc = isCH ? "" : (c.length === 2 ? c.toUpperCase() : (CMAP[c.toLowerCase()] || ""));
+        return {
+          familyName: patient.last_name || "Patient",
+          givenName: patient.first_name || "Unknown",
+          street: patient.street_address || provStreet || "N/A",
+          zip: patient.postal_code || provZip || "0000",
+          city: patient.town || provCity || "N/A",
+          stateCode: isCH ? provCanton : "",
+          country: isCH ? undefined : (c || undefined),
+          countryCode: cc || undefined,
+          email: patient.email || "",
+          phone: patient.phone || "",
+        };
+      })(),
+      guarantorAddress: (() => {
+        const c = patient.country?.trim() || "";
+        const isCH = !c || /^(ch|switzerland|suisse|schweiz|svizzera)$/i.test(c);
+        const CMAP: Record<string, string> = { france:"FR",frankreich:"FR",francia:"FR",germany:"DE",deutschland:"DE",allemagne:"DE",italia:"IT",italy:"IT",italien:"IT",italie:"IT",austria:"AT","österreich":"AT",autriche:"AT",liechtenstein:"LI",spain:"ES",espagne:"ES",portugal:"PT",belgium:"BE",belgique:"BE",netherlands:"NL","pays-bas":"NL","united kingdom":"GB",uk:"GB",luxembourg:"LU",luxemburg:"LU","united states":"US",usa:"US" };
+        const cc = isCH ? "" : (c.length === 2 ? c.toUpperCase() : (CMAP[c.toLowerCase()] || ""));
+        return {
+          familyName: patient.last_name || "Patient",
+          givenName: patient.first_name || "Unknown",
+          street: patient.street_address || provStreet || "N/A",
+          zip: patient.postal_code || provZip || "0000",
+          city: patient.town || provCity || "N/A",
+          stateCode: isCH ? provCanton : "",
+          country: isCH ? undefined : (c || undefined),
+          countryCode: cc || undefined,
+          email: patient.email || "",
+          phone: patient.phone || "",
+        };
+      })(),
       printCopyToGuarantor: mapSumexTiers(invoice.billing_type || "TG") === 1 ? YesNo.Yes : undefined,
       treatmentCanton: invoice.treatment_canton || provCanton,
       treatmentDateBegin: treatmentDate,
