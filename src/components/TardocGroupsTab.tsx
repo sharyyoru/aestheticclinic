@@ -229,15 +229,6 @@ export default function TardocGroupsTab() {
         return;
       }
 
-      // Update validation status on the saved group
-      if (json.id || editingGroup?.id) {
-        await fetch("/api/tardoc/groups/validate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ groupId: json.id || editingGroup?.id }),
-        }).catch(() => {});
-      }
-
       setModalOpen(false);
       await loadGroups();
     } catch {
@@ -664,7 +655,7 @@ export default function TardocGroupsTab() {
                 disabled={saving || groupItems.length === 0}
                 className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
               >
-                {saving ? "Validating & Saving..." : editingGroup ? "Validate & Update" : "Validate & Create Group"}
+                {saving ? "Saving..." : editingGroup ? "Update Group" : "Create Group"}
               </button>
             </div>
           </div>
