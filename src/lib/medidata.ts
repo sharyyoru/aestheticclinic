@@ -132,7 +132,7 @@ export type InvoiceClinic = {
 // Service line for invoice
 export type InvoiceServiceLine = {
   code: string;
-  tariffType: string; // '001' for TARMED, '005' for ACF, '402' for drugs/GTIN
+  tariffType: string; // '007' for TARDOC, '005' for ACF, '402' for drugs/GTIN
   description: string;
   quantity: number;
   unitPrice: number;
@@ -410,7 +410,7 @@ export function generateTardocServicesFromDuration(
 
   return result.lines.map(line => ({
     code: line.code,
-    tariffType: '001', // TARMED tariff type
+    tariffType: '007', // TARDOC tariff type
     description: line.description,
     quantity: line.quantity,
     unitPrice: line.unitPrice,

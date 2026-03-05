@@ -151,9 +151,8 @@ export async function POST(request: NextRequest) {
         const treatmentDateEnd = inv.treatment_date_end ? new Date(inv.treatment_date_end).toISOString().split("T")[0] : treatmentDate;
 
         const sumexServices: SumexServiceInput[] = lineItems.map((li: any, idx: number) => {
-          const isAcf = li.tariff_code === 5 || li.catalog_name === "ACF";
-          const isTardoc = li.tariff_code === 7 || li.catalog_name === "TARDOC";
-          const tariffType = isAcf ? "005" : isTardoc ? "001" : "999";
+          // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
+          const tariffType = li.tariff_type || (li.tariff_code ? String(li.tariff_code).padStart(3, "0") : "999");
           // When tp_al is populated, use it with the real unitFactor.
           // When tp_al is 0, total_price already includes the factor → use unitFactor=1.
           const hasTpAl = Number(li.tp_al) > 0;

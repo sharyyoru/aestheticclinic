@@ -201,10 +201,8 @@ export async function POST(request: NextRequest) {
     const isValidGln = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
 
     const sumexServices: SumexServiceInput[] = (dbLineItems || []).map((item: any) => {
-      const isAcf = item.tariff_code === 5 || item.catalog_name === "ACF";
-      const isTardoc = item.tariff_code === 7 || item.catalog_name === "TARDOC";
-      // Use stored tariff_type if available, otherwise derive from tariff_code/catalog_name
-      const tariffType = item.tariff_type || (isAcf ? "005" : isTardoc ? "001" : "999");
+      // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
+      const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
       const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
       const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
       return {
@@ -220,7 +218,7 @@ export async function POST(request: NextRequest) {
         serviceName: item.name || "",
         unit: item.unit_price || 0,
         unitFactor: 1,
-        externalFactor: isAcf ? (item.external_factor_mt ?? 1) : 1,
+        externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : 1,
         amount: item.total_price || 0,
         vatRate: 0,
         ignoreValidate: YesNo.Yes,

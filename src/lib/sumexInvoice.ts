@@ -279,7 +279,7 @@ export type InvoiceAddress = {
 };
 
 export type InvoiceServiceInput = {
-  tariffType: string;    // "001" TARMED/TARDOC, "402" drugs, "005" ACF, etc.
+  tariffType: string;    // "007" TARDOC, "402" drugs, "005" ACF, etc.
   code: string;
   referenceCode?: string;
   quantity: number;
@@ -1039,11 +1039,11 @@ export async function buildInvoiceRequest(
     }
 
     // --- AddService / AddServiceEx (auto-route based on tariff type) ---
-    // Tariff "001" (TARDOC) MUST use AddServiceEx; others use AddService
+    // TARDOC (tariff_code=7, tariffType="007") MUST use AddServiceEx; others use AddService
     if (input.services && input.services.length > 0) {
-      const simpleServices = input.services.filter(s => s.tariffType !== "001");
-      const tardocServices = input.services.filter(s => s.tariffType === "001");
-      console.log(`${LOG_PREFIX} Services: ${input.services.length} total, ${simpleServices.length} simple, ${tardocServices.length} TARDOC(001). Types: [${input.services.map(s => s.tariffType).join(",")}]`);
+      const simpleServices = input.services.filter(s => s.tariffType !== "007");
+      const tardocServices = input.services.filter(s => s.tariffType === "007");
+      console.log(`${LOG_PREFIX} Services: ${input.services.length} total, ${simpleServices.length} simple, ${tardocServices.length} TARDOC. Types: [${input.services.map(s => s.tariffType).join(",")}]`);
 
       // Simple tariff services (ACF 005, drugs 402, other)
       for (const svc of simpleServices) {
@@ -1084,7 +1084,7 @@ export async function buildInvoiceRequest(
       // TARDOC services auto-promoted to AddServiceEx
       if (tardocServices.length > 0) {
         const svcInputRes = await reqGet<{ pIServiceExInput: number }>(
-          `IGeneralInvoiceRequest/GetCreateServiceExInput?pIGeneralInvoiceRequest=${req}&bstrTariffType=001`,
+          `IGeneralInvoiceRequest/GetCreateServiceExInput?pIGeneralInvoiceRequest=${req}&bstrTariffType=007`,
         );
         const svcInputHandle = svcInputRes.pIServiceExInput;
 

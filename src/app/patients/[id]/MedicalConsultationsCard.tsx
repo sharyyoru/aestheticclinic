@@ -122,6 +122,11 @@ type InvoiceServiceLine = {
   acfExternalFactor?: number; // multiplier (default 1.0)
   acfRefCode?: string; // ICD-10 reference code
   acfBaseTP?: number; // original catalog TP before any modifications
+  // TARDOC pricing variables (stored when code is added)
+  tardocTpMT?: number; // medical tax points
+  tardocTpTT?: number; // technical tax points
+  tardocRecordId?: number | null;
+  tardocSection?: string | null;
 };
 
 type InvoiceService = {
@@ -3086,15 +3091,17 @@ export default function MedicalConsultationsCard({
                               return Number.isFinite(base) && base > 0 ? base : 0;
                             })();
 
-                            // Find matching search result for TARDOC lines to get tax point breakdown
-                            const tardocResult = isTardocLine
-                              ? tardocSearchResults.find((r: any) => r.code === tardocCode)
-                              : null;
+                            // Use TARDOC TP data stored on the line itself (populated when code was added)
+                            // Fall back to search results only for legacy compatibility
+                            const tardocTpMT = isTardocLine ? (line.tardocTpMT ?? tardocSearchResults.find((r: any) => r.code === tardocCode)?.tpMT ?? 0) : 0;
+                            const tardocTpTT = isTardocLine ? (line.tardocTpTT ?? tardocSearchResults.find((r: any) => r.code === tardocCode)?.tpTT ?? 0) : 0;
+                            const tardocRecordId = isTardocLine ? (line.tardocRecordId ?? tardocSearchResults.find((r: any) => r.code === tardocCode)?.recordId ?? null) : null;
+                            const tardocSection = isTardocLine ? (line.tardocSection ?? tardocSearchResults.find((r: any) => r.code === tardocCode)?.section ?? null) : null;
 
-                            // Determine tariff code: 7=TARDOC, '005'=ACF Flat Rate, null=regular
+                            // Determine tariff code: 7=TARDOC, 5=ACF Flat Rate, null=regular
                             const tariffCode = isTardocLine ? 7 : isFlatRateLine ? ACF_TARIFF_CODE : null;
-                            // Sumex tariff type string: "001"=TARDOC, "005"=ACF
-                            const tariffType = isTardocLine ? "001" : isFlatRateLine ? "005" : null;
+                            // Derive tariff type string from tariff code (zero-padded to 3 digits)
+                            const tariffType = tariffCode != null ? String(tariffCode).padStart(3, "0") : null;
 
                             return {
                               name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : "Service"),
@@ -3106,22 +3113,22 @@ export default function MedicalConsultationsCard({
                               tariff_code: tariffCode,
                               tariff_type: tariffType,
                               tardoc_code: tardocCode,
-                              tp_al: isFlatRateLine ? (line.acfBaseTP ?? resolvedUnitPrice) : (tardocResult?.tpMT ?? 0),
-                              tp_tl: tardocResult?.tpTT ?? 0,
+                              tp_al: isFlatRateLine ? (line.acfBaseTP ?? resolvedUnitPrice) : tardocTpMT,
+                              tp_tl: tardocTpTT,
                               tp_al_value: isTardocLine ? taxPointValue : 1,
                               tp_tl_value: isTardocLine ? taxPointValue : 1,
                               tp_al_scale_factor: 1,
                               tp_tl_scale_factor: 1,
                               external_factor_mt: isFlatRateLine ? (line.acfExternalFactor ?? 1) : 1,
                               external_factor_tt: 1,
-                              price_al: isTardocLine ? Math.round((tardocResult?.tpMT ?? 0) * taxPointValue * 100) / 100 : 0,
-                              price_tl: isTardocLine ? Math.round((tardocResult?.tpTT ?? 0) * taxPointValue * 100) / 100 : 0,
+                              price_al: isTardocLine ? Math.round(tardocTpMT * taxPointValue * 100) / 100 : 0,
+                              price_tl: isTardocLine ? Math.round(tardocTpTT * taxPointValue * 100) / 100 : 0,
                               provider_gln: (isTardocLine || isFlatRateLine) ? selectedProviderGln : null,
                               responsible_gln: (isTardocLine || isFlatRateLine) ? selectedProviderGln : null,
                               billing_role: (isTardocLine || isFlatRateLine) ? "both" : null,
-                              record_id: tardocResult?.recordId ?? null,
+                              record_id: tardocRecordId,
                               ref_code: isFlatRateLine ? (line.acfRefCode || null) : (null as string | null),
-                              section_code: tardocResult?.section ?? null,
+                              section_code: tardocSection,
                               session_number: 1,
                               service_attributes: 0,
                               side_type: isFlatRateLine ? (line.acfSideType ?? 0) : 0,
@@ -3145,7 +3152,7 @@ export default function MedicalConsultationsCard({
 
                         // Validate TARDOC services with Sumex before creating invoice
                         if (isTardocInvoice) {
-                          const tardocItems = invoiceLines.filter((l) => l.tariff_type === "001");
+                          const tardocItems = invoiceLines.filter((l) => l.tariff_type === "007");
                           if (tardocItems.length > 0) {
                             try {
                               const valRes = await fetch("/api/tardoc/groups/validate", {
@@ -3320,6 +3327,7 @@ export default function MedicalConsultationsCard({
                             unit_price: line.unit_price,
                             total_price: line.total_price,
                             tariff_code: line.tariff_code,
+                            tariff_type: line.tariff_type,
                             tardoc_code: line.tardoc_code,
                             tp_al: line.tp_al,
                             tp_tl: line.tp_tl,
@@ -4284,6 +4292,10 @@ export default function MedicalConsultationsCard({
                                         groupId: null,
                                         discountPercent: null,
                                         customName: `${item.tardoc_code} - ${(item.description || "").substring(0, 80)}`,
+                                        tardocTpMT: item.tp_mt ?? 0,
+                                        tardocTpTT: item.tp_tt ?? 0,
+                                        tardocRecordId: null,
+                                        tardocSection: null,
                                       }));
                                       setInvoiceServiceLines((prev) => [...prev, ...newLines]);
                                       // Inject matching search results so save logic has tp_mt/tp_tt data
@@ -4422,6 +4434,10 @@ export default function MedicalConsultationsCard({
                                                 groupId: null,
                                                 discountPercent: null,
                                                 customName: `${svc.code} - ${(svc.name || "").substring(0, 80)}`,
+                                                tardocTpMT: svc.tpMT ?? 0,
+                                                tardocTpTT: svc.tpTT ?? 0,
+                                                tardocRecordId: svc.recordId ?? null,
+                                                tardocSection: svc.section ?? null,
                                               },
                                             ]);
                                           }}
@@ -4465,6 +4481,10 @@ export default function MedicalConsultationsCard({
                                         groupId: null,
                                         discountPercent: null,
                                         customName: `${svc.code} - ${(svc.name || "").substring(0, 80)}`,
+                                        tardocTpMT: svc.tpMT ?? 0,
+                                        tardocTpTT: svc.tpTT ?? 0,
+                                        tardocRecordId: svc.recordId ?? null,
+                                        tardocSection: svc.section ?? null,
                                       },
                                     ]);
                                   }}

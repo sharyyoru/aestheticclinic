@@ -294,10 +294,8 @@ export async function POST(request: NextRequest) {
     if (dbLineItems && dbLineItems.length > 0) {
       // Map actual line items to InvoiceServiceLine for XML generation
       services = dbLineItems.map((item: any) => {
-        const isAcf = item.tariff_code === 5 || item.catalog_name === "ACF";
-        const isTardoc = item.tariff_code === 7 || item.catalog_name === "TARDOC";
-        // Use stored tariff_type if available, otherwise derive from tariff_code/catalog_name
-        const tariffType = item.tariff_type || (isAcf ? "005" : isTardoc ? "001" : "999");
+        // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
+        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
         return {
           code: item.code || "",
           tariffType,
@@ -309,8 +307,8 @@ export async function POST(request: NextRequest) {
           providerId: item.provider_gln || provGln,
           providerGln: item.provider_gln || provGln,
           // ACF/TARDOC-specific fields
-          externalFactor: (isAcf || isTardoc) ? (item.external_factor_mt ?? 1) : undefined,
-          sideType: isAcf ? (item.side_type ?? 0) : undefined,
+          externalFactor: (item.tariff_code === 5 || item.tariff_code === 7) ? (item.external_factor_mt ?? 1) : undefined,
+          sideType: item.tariff_code === 5 ? (item.side_type ?? 0) : undefined,
           sessionNumber: item.session_number ?? 1,
           refCode: item.ref_code || undefined,
         };

@@ -207,7 +207,7 @@ async function handleBuildFromConsultation(body: Record<string, unknown>) {
   if (invoiceItems?.line_items && Array.isArray(invoiceItems.line_items)) {
     for (const item of invoiceItems.line_items as Array<Record<string, unknown>>) {
       services.push({
-        tariffType: (item.tariff_type as string) || (item.tariffType as string) || "001",
+        tariffType: (item.tariff_type as string) || (item.tariffType as string) || "007",
         code: (item.code as string) || (item.service_code as string) || "",
         referenceCode: (item.reference_code as string) || "",
         quantity: (item.quantity as number) || 1,
