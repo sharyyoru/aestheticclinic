@@ -390,19 +390,28 @@ export async function POST(request: Request) {
       const enrollmentId = enrollment?.id;
 
       // Support both old workflow_actions table and new config.nodes format
-      let actionsToRun: { action_type: string; config: any }[] = [];
+      // Include both action and delay nodes to properly handle delays between actions
+      let stepsToRun: { step_type: string; action_type: string; config: any }[] = [];
 
       // Check for new builder format (config.nodes)
       const workflowConfig = workflow.config as { nodes?: any[] } | null;
       if (workflowConfig?.nodes && Array.isArray(workflowConfig.nodes)) {
-        // Extract action nodes from the new format
-        actionsToRun = workflowConfig.nodes
-          .filter((node: any) => node.type === "action")
+        // Extract action AND delay nodes from the new format (preserving order)
+        stepsToRun = workflowConfig.nodes
+          .filter((node: any) => node.type === "action" || node.type === "delay")
           .map((node: any) => ({
-            action_type: node.data?.actionType || "",
-            config: node.data?.config || {},
+            step_type: node.type,
+            action_type: node.type === "delay" ? "delay" : (node.data?.actionType || ""),
+            // For delay nodes, data is directly in node.data (delayType, delayValue)
+            // For action nodes, data is in node.data.config
+            config: node.type === "delay" ? (node.data || {}) : (node.data?.config || {}),
           }));
       }
+      
+      // For backwards compatibility, convert to actionsToRun format (actions only)
+      let actionsToRun: { action_type: string; config: any }[] = stepsToRun
+        .filter(s => s.step_type === "action")
+        .map(s => ({ action_type: s.action_type, config: s.config }));
 
       // Fall back to old workflow_actions table if no nodes in config
       if (actionsToRun.length === 0) {
@@ -420,14 +429,57 @@ export async function POST(request: Request) {
         }
       }
 
-      if (actionsToRun.length === 0) {
+      // Use stepsToRun if available (includes delays), otherwise fall back to actionsToRun
+      const hasSteps = stepsToRun.length > 0;
+      if (!hasSteps && actionsToRun.length === 0) {
         console.log(`Workflow ${workflow.id} has no actions to run`);
         continue;
       }
 
-      console.log(`Running ${actionsToRun.length} actions for workflow ${workflow.id}`);
+      // Track cumulative delay in minutes for proper scheduling
+      let cumulativeDelayMinutes = 0;
 
-      for (const action of actionsToRun) {
+      console.log(`Running ${hasSteps ? stepsToRun.length : actionsToRun.length} steps for workflow ${workflow.id}`);
+
+      // Process all steps (including delays) if using new format
+      const stepsOrActions = hasSteps ? stepsToRun : actionsToRun.map(a => ({ step_type: "action", ...a }));
+      
+      for (const step of stepsOrActions) {
+        // Handle delay step type - accumulate delay for subsequent actions
+        if (step.step_type === "delay") {
+          // Delay nodes store: delayType ("minutes" | "hours" | "days") and delayValue (number)
+          const delayConfig = step.config as { delayType?: string; delayValue?: number };
+          const delayValue = delayConfig.delayValue || 0;
+          const delayType = delayConfig.delayType || "minutes";
+          
+          let delayMinutes = 0;
+          if (delayType === "minutes") {
+            delayMinutes = delayValue;
+          } else if (delayType === "hours") {
+            delayMinutes = delayValue * 60;
+          } else if (delayType === "days") {
+            delayMinutes = delayValue * 24 * 60;
+          }
+          
+          cumulativeDelayMinutes += delayMinutes;
+          console.log(`Delay step: adding ${delayMinutes} minutes (${delayValue} ${delayType}), cumulative delay now ${cumulativeDelayMinutes} minutes`);
+          
+          // Log delay step
+          if (enrollmentId) {
+            await supabaseAdmin.from("workflow_enrollment_steps").insert({
+              enrollment_id: enrollmentId,
+              step_type: "delay",
+              step_action: "delay",
+              step_config: step.config,
+              status: "completed",
+              executed_at: new Date().toISOString(),
+              result: { delay_minutes: delayMinutes, cumulative_delay_minutes: cumulativeDelayMinutes },
+            });
+          }
+          continue;
+        }
+
+        const action = { action_type: step.action_type, config: step.config };
         console.log(`Processing action: ${action.action_type}`, JSON.stringify(action.config));
         
         // Handle create_task action type
@@ -731,6 +783,35 @@ export async function POST(request: Request) {
               return;
             }
 
+            // Mailgun only allows scheduling up to 3 days (72 hours = 4320 minutes) in advance
+            // For longer delays, store in scheduled_emails table for cron job processing
+            const maxMailgunDelayMs = 72 * 60 * 60 * 1000; // 72 hours in ms
+            const delayMs = effectiveDate.getTime() - now.getTime();
+            const useDatabaseScheduling = isFuture && delayMs > maxMailgunDelayMs;
+
+            if (useDatabaseScheduling) {
+              // Store in scheduled_emails table for cron job to send later
+              console.log(`Delay exceeds Mailgun 72h limit (${Math.round(delayMs / 1000 / 60 / 60)} hours), using database scheduling`);
+              const { error: scheduleError } = await supabaseAdmin
+                .from("scheduled_emails")
+                .insert({
+                  patient_id: safePatient.id,
+                  recipient_type: "patient",
+                  recipient_email: recipientEmail,
+                  subject,
+                  body: bodyHtml,
+                  scheduled_for: effectiveDate.toISOString(),
+                  status: "pending",
+                });
+
+              if (scheduleError) {
+                console.error("Failed to schedule email for later:", scheduleError);
+              } else {
+                console.log(`Email scheduled for ${effectiveDate.toISOString()} via database`);
+              }
+              return;
+            }
+
             try {
               const domain = mailgunDomain as string;
               const emailId = (inserted as any).id as string;
@@ -749,7 +830,9 @@ export async function POST(request: Request) {
               }
 
               if (isFuture) {
+                // Use Mailgun scheduling for delays up to 72 hours
                 params.append("o:deliverytime", effectiveDate.toUTCString());
+                console.log(`Email scheduled via Mailgun for ${effectiveDate.toUTCString()}`);
               }
 
               const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
@@ -782,17 +865,26 @@ export async function POST(request: Request) {
             }
           }
 
+          // Apply cumulative delay from delay steps PLUS any action-specific delay
+          const baseCumulativeMs = cumulativeDelayMinutes * 60 * 1000;
+          
           if (sendMode === "recurring" && recurringEveryDays && recurringTimes) {
             const intervalMs = recurringEveryDays * 24 * 60 * 60 * 1000;
             for (let i = 0; i < recurringTimes; i += 1) {
-              const scheduledAt = new Date(now.getTime() + i * intervalMs);
+              const scheduledAt = new Date(now.getTime() + baseCumulativeMs + i * intervalMs);
               // eslint-disable-next-line no-await-in-loop
               await createAndSendEmail(scheduledAt);
             }
           } else if (sendMode === "delay" && delayMinutes) {
+            // Action-specific delay + cumulative workflow delay
             const scheduledAt = new Date(
-              now.getTime() + delayMinutes * 60 * 1000,
+              now.getTime() + baseCumulativeMs + delayMinutes * 60 * 1000,
             );
+            await createAndSendEmail(scheduledAt);
+          } else if (cumulativeDelayMinutes > 0) {
+            // No action-specific delay, but we have cumulative delay from delay steps
+            const scheduledAt = new Date(now.getTime() + baseCumulativeMs);
+            console.log(`Applying cumulative delay of ${cumulativeDelayMinutes} minutes, scheduled at: ${scheduledAt.toISOString()}`);
             await createAndSendEmail(scheduledAt);
           } else {
             await createAndSendEmail(null);
@@ -963,15 +1055,23 @@ export async function POST(request: Request) {
             }
           }
 
+          // Apply cumulative delay from delay steps PLUS any action-specific delay
+          const baseCumulativeMs = cumulativeDelayMinutes * 60 * 1000;
+          
           if (sendMode === "recurring" && recurringEveryDays && recurringTimes) {
             const intervalMs = recurringEveryDays * 24 * 60 * 60 * 1000;
             for (let i = 0; i < recurringTimes; i += 1) {
-              const scheduledAt = new Date(now.getTime() + i * intervalMs);
+              const scheduledAt = new Date(now.getTime() + baseCumulativeMs + i * intervalMs);
               // eslint-disable-next-line no-await-in-loop
               await sendWhatsAppMessage(scheduledAt);
             }
           } else if (sendMode === "delay" && delayHours) {
-            const scheduledAt = new Date(now.getTime() + delayHours * 60 * 60 * 1000);
+            const scheduledAt = new Date(now.getTime() + baseCumulativeMs + delayHours * 60 * 60 * 1000);
+            await sendWhatsAppMessage(scheduledAt);
+          } else if (cumulativeDelayMinutes > 0) {
+            // No action-specific delay, but we have cumulative delay from delay steps
+            const scheduledAt = new Date(now.getTime() + baseCumulativeMs);
+            console.log(`Applying cumulative delay of ${cumulativeDelayMinutes} minutes to WhatsApp, scheduled at: ${scheduledAt.toISOString()}`);
             await sendWhatsAppMessage(scheduledAt);
           } else {
             await sendWhatsAppMessage(null);
