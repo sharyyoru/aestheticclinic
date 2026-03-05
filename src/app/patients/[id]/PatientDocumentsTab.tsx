@@ -164,6 +164,9 @@ export default function PatientDocumentsTab({
   const [emailBody, setEmailBody] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
+  
+  // Download state
+  const [downloadingFiles, setDownloadingFiles] = useState(false);
 
   // State for files from patient-docs/5_Documents folder
   const [legacyDocsItems, setLegacyDocsItems] = useState<ListedItem[]>([]);
@@ -624,11 +627,76 @@ export default function PatientDocumentsTab({
       .filter(item => item.kind === "file")
       .map(item => item.path);
     setSelectedFilesForEmail(new Set(allFilePaths));
-  }
+  };
 
   function deselectAllFilesForEmail() {
     setSelectedFilesForEmail(new Set());
-  }
+  };
+
+  // Download selected files as ZIP
+  const downloadSelectedFiles = async () => {
+    if (selectedFilesForEmail.size === 0) return;
+    
+    setDownloadingFiles(true);
+    setError(null);
+    
+    try {
+      // Dynamic import JSZip only when needed
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      
+      // Fetch all selected files and add to ZIP
+      const filePromises = Array.from(selectedFilesForEmail).map(async (itemPath) => {
+        const item = items.find(i => i.path === itemPath);
+        if (!item || item.kind !== "file") return null;
+        
+        let fileUrl: string;
+        if (item.source === "patient-docs" && item.publicUrl) {
+          fileUrl = item.publicUrl;
+        } else {
+          const fullPath = [patientId, item.path].filter(Boolean).join("/");
+          const { data } = supabaseClient.storage
+            .from(BUCKET_NAME)
+            .getPublicUrl(fullPath);
+          fileUrl = data.publicUrl;
+        }
+        
+        const response = await fetch(fileUrl);
+        if (!response.ok) throw new Error(`Failed to fetch ${item.name}`);
+        const blob = await response.blob();
+        zip.file(item.name, blob);
+        return item.name;
+      });
+      
+      const fileNames = await Promise.all(filePromises);
+      const validFiles = fileNames.filter(name => name !== null);
+      
+      if (validFiles.length === 0) {
+        throw new Error("No valid files to download");
+      }
+      
+      // Generate ZIP file
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      
+      // Create download link
+      const zipName = `${patientName.replace(/\s+/g, '_')}_documents_${new Date().toISOString().split('T')[0]}.zip`;
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = zipName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      console.log(`Downloaded ${validFiles.length} files as ${zipName}`);
+    } catch (err: any) {
+      console.error('Download error:', err);
+      setError(err?.message || 'Failed to download files');
+    } finally {
+      setDownloadingFiles(false);
+    }
+  };
 
   async function handleSendEmail(event: React.FormEvent) {
     event.preventDefault();
@@ -948,16 +1016,29 @@ export default function PatientDocumentsTab({
             ))}
           </div>
           {selectedFilesForEmail.size > 0 && (
-            <button
-              type="button"
-              onClick={() => setEmailModalOpen(true)}
-              className="inline-flex h-7 items-center gap-1.5 rounded-full border border-emerald-500 bg-emerald-500 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-600 transition-colors"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              Share by Email ({selectedFilesForEmail.size})
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={downloadSelectedFiles}
+                disabled={downloadingFiles}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-sky-500 bg-sky-500 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {downloadingFiles ? 'Downloading...' : `Download (${selectedFilesForEmail.size})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmailModalOpen(true)}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-emerald-500 bg-emerald-500 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-600 transition-colors"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Share by Email ({selectedFilesForEmail.size})
+              </button>
+            </div>
           )}
         </div>
 
