@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { shouldCreateDeal } from "@/lib/dealDeduplication";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -43,14 +44,12 @@ export async function POST(request: Request) {
     // AUTO-CREATE DEAL UNDER "REQUEST FOR INFORMATION"
     // ========================================
     
-    // Check if patient already has a deal
-    const { data: existingDeals } = await supabaseAdmin
-      .from("deals")
-      .select("id")
-      .eq("patient_id", patient_id)
-      .limit(1);
+    // Check if patient already has a recent deal (within 6 hours) to avoid duplicates
+    const dealCheck = await shouldCreateDeal(supabaseAdmin, {
+      patientId: patient_id,
+    });
 
-    if (!existingDeals || existingDeals.length === 0) {
+    if (dealCheck.shouldCreate) {
       // Get "Request for Information" stage
       const { data: requestStage } = await supabaseAdmin
         .from("deal_stages")
@@ -81,6 +80,8 @@ export async function POST(request: Request) {
       } else {
         console.warn("Could not find 'Request for Information' stage");
       }
+    } else {
+      console.log(`Skipped deal creation for patient ${patient_id} — recent deal exists: ${dealCheck.existingDeal.id}`);
     }
 
     // ========================================

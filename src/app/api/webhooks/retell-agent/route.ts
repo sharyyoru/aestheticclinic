@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { shouldCreateDeal } from "@/lib/dealDeduplication";
 
 /**
  * Webhook endpoint for receiving Retell AI Agent call data
@@ -348,18 +349,15 @@ export async function POST(request: NextRequest) {
     const serviceId = matchedService?.id || null;
     const finalServiceInterest = matchedService?.name || serviceInterest || "General Inquiry";
 
-    // Check for existing deal
-    const { data: existingDeal } = await supabaseAdmin
-      .from("deals")
-      .select("id")
-      .eq("patient_id", patientId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Check for existing deal (within 6 hours)
+    const dealCheck = await shouldCreateDeal(supabaseAdmin, {
+      patientId,
+      serviceId: serviceId || undefined,
+    });
 
     let dealId: string;
 
-    if (!existingDeal) {
+    if (dealCheck.shouldCreate) {
       // Create new deal in "Request for Information" stage
       const { data: newDeal, error: dealError } = await supabaseAdmin
         .from("deals")
@@ -384,7 +382,8 @@ export async function POST(request: NextRequest) {
 
       dealId = newDeal.id;
     } else {
-      dealId = existingDeal.id;
+      dealId = dealCheck.existingDeal.id;
+      console.log(`[Retell Agent] Skipped deal creation — recent deal exists: ${dealId}`);
       
       // Update existing deal with call notes
       await supabaseAdmin

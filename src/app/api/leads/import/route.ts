@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { formatSwissPhone } from "@/lib/phoneFormatter";
+import { shouldCreateDeal } from "@/lib/dealDeduplication";
 
 type ImportLead = {
   rowNumber: number;
@@ -181,21 +182,42 @@ export async function POST(request: NextRequest) {
       hubspotServices = (services as HubspotService[]) || [];
     }
 
-    // Match the provided service to a HubSpot service
-    const matchedService = matchServiceToHubspot(service, hubspotServices);
-    const serviceId = matchedService?.id || null;
-    const finalServiceInterest = matchedService?.name || service;
+    // Build a cache of service name -> { id, name } for per-lead matching
+    // This avoids repeated DB lookups for the same service
+    const serviceCache = new Map<string, { id: string; name: string }>();
+    for (const svc of hubspotServices) {
+      serviceCache.set(svc.name.toLowerCase(), svc);
+    }
+
+    // Helper: resolve a service interest string to a HubSpot service (match only, never create)
+    function resolveService(serviceInterest: string): { id: string; name: string } {
+      // Check cache first
+      const cacheKey = serviceInterest.toLowerCase().trim();
+      const cached = serviceCache.get(cacheKey);
+      if (cached) return cached;
+
+      // Try fuzzy match against existing services
+      const matched = matchServiceToHubspot(serviceInterest, hubspotServices);
+      if (matched) {
+        serviceCache.set(cacheKey, matched);
+        return matched;
+      }
+
+      // No match — leave service_id blank, store the raw interest as the name
+      console.log(`No HubSpot service match for "${serviceInterest}" — leaving service_id blank`);
+      const fallback = { id: "", name: serviceInterest };
+      serviceCache.set(cacheKey, fallback);
+      return fallback;
+    }
 
     // Sort leads chronologically by created date (oldest first)
-    // This ensures leads are imported in the order they were created
     const sortedLeads = [...(leads as ImportLead[])].sort((a, b) => {
       const dateA = a.created ? new Date(a.created).getTime() : 0;
       const dateB = b.created ? new Date(b.created).getTime() : 0;
-      return dateA - dateB; // Oldest first
+      return dateA - dateB;
     });
 
     console.log(`Processing ${sortedLeads.length} leads in chronological order`);
-    console.log(`First lead date: ${sortedLeads[0]?.created}, Last lead date: ${sortedLeads[sortedLeads.length - 1]?.created}`);
 
     for (const lead of sortedLeads) {
       try {
@@ -208,6 +230,12 @@ export async function POST(request: NextRequest) {
         const formattedPhone = lead.bestPhone || formatSwissPhone(lead.phones.primary);
         const normalizedEmail = lead.email?.toLowerCase().trim() || null;
 
+        // Resolve per-lead service from detectedService (Form column), fallback to global service
+        const leadServiceInterest = lead.detectedService || service;
+        const resolvedService = resolveService(leadServiceInterest);
+        const serviceId = resolvedService.id || null;
+        const finalServiceInterest = resolvedService.name;
+
         // Check for existing patient (duplicate prevention)
         const existingPatient = await findExistingPatient(normalizedEmail, formattedPhone);
 
@@ -215,13 +243,11 @@ export async function POST(request: NextRequest) {
         let isNewPatient = false;
 
         if (existingPatient) {
-          // Patient already exists - update notes and skip creating new one
           patientId = existingPatient.id;
           duplicatePatientIds.push(patientId);
           skippedDuplicates++;
 
-          // Append import info to existing patient notes
-          const importNote = `\n\n[Lead Import ${new Date().toISOString().split('T')[0]}] Duplicate found during import from ${filename}. Original Stage: ${lead.stage}, Form: ${lead.form}`;
+          const importNote = `\n\n[Lead Import ${new Date().toISOString().split('T')[0]}] Duplicate found during import from ${filename}. Service: ${finalServiceInterest}, Form: ${lead.form}`;
           const existingNotes = existingPatient.notes || "";
 
           await supabaseAdmin
@@ -231,13 +257,8 @@ export async function POST(request: NextRequest) {
               updated_at: new Date().toISOString(),
             })
             .eq("id", patientId);
-
-          console.log(`Duplicate found for ${lead.name} (${normalizedEmail || formattedPhone}), patient ID: ${patientId}`);
         } else {
-          // Create new patient record
           isNewPatient = true;
-
-          // Use the original lead creation date for created_at if available
           const leadCreatedAt = lead.created ? new Date(lead.created).toISOString() : new Date().toISOString();
 
           const { data: patient, error: patientError } = await supabaseAdmin
@@ -249,7 +270,7 @@ export async function POST(request: NextRequest) {
               phone: formattedPhone,
               source: lead.source || "Lead Import",
               lifecycle_stage: "lead",
-              notes: `Imported from ${filename}\nOriginal Stage: ${lead.stage}\nForm: ${lead.form}\nChannel: ${lead.channel}`,
+              notes: `Imported from ${filename}\nService: ${finalServiceInterest}\nForm: ${lead.form}\nChannel: ${lead.channel}`,
               created_at: leadCreatedAt,
             })
             .select("id")
@@ -266,28 +287,17 @@ export async function POST(request: NextRequest) {
           importedPatientIds.push(patientId);
         }
 
-        // Check if deal already exists for this patient with same service
-        let existingDealQuery = supabaseAdmin
-          .from("deals")
-          .select("id")
-          .eq("patient_id", patientId);
-        
-        // If we matched a service, check by service_id, otherwise check by title
-        if (serviceId) {
-          existingDealQuery = existingDealQuery.eq("service_id", serviceId);
-        } else {
-          existingDealQuery = existingDealQuery.ilike("title", `%${service}%`);
-        }
-        
-        const { data: existingDeal } = await existingDealQuery.limit(1).maybeSingle();
+        // Check if deal already exists for this patient with same service (within 6 hours)
+        const dealCheck = await shouldCreateDeal(supabaseAdmin, {
+          patientId,
+          serviceId: serviceId || undefined,
+        });
 
         let dealId: string | null = null;
 
-        if (!existingDeal) {
-          // Use the original lead creation date for deal created_at if available
+        if (dealCheck.shouldCreate) {
           const dealCreatedAt = lead.created ? new Date(lead.created).toISOString() : new Date().toISOString();
 
-          // Create deal record with matched service
           const { data: deal, error: dealError } = await supabaseAdmin
             .from("deals")
             .insert({
@@ -322,13 +332,12 @@ export async function POST(request: NextRequest) {
                   pipeline: "Lead to Surgery",
                 }),
               });
-              console.log(`Workflow triggered for deal ${dealId}, patient ${patientId}`);
             } catch (workflowError) {
               console.error("Failed to trigger workflow:", workflowError);
             }
           }
         } else {
-          console.log(`Deal already exists for patient ${patientId} with service ${service}`);
+          console.log(`Skipped deal for ${lead.name} — recent deal exists: ${dealCheck.existingDeal.id}`);
         }
 
         if (isNewPatient) {
@@ -346,7 +355,7 @@ export async function POST(request: NextRequest) {
       .from("lead_imports")
       .insert({
         filename,
-        service: finalServiceInterest,
+        service: service,
         total_leads: leads.length,
         imported_count: imported,
         failed_count: failed,
@@ -363,7 +372,7 @@ export async function POST(request: NextRequest) {
       failed,
       skippedDuplicates,
       duplicatePatientIds: duplicatePatientIds.length > 0 ? duplicatePatientIds : undefined,
-      matchedService: matchedService?.name || null,
+      matchedService: service,
       importId: importRecord?.id,
       errors: errors.length > 0 ? errors : undefined,
       message: `Successfully imported ${imported} leads${skippedDuplicates > 0 ? `, ${skippedDuplicates} duplicates skipped` : ""}${failed > 0 ? `, ${failed} failed` : ""}`,

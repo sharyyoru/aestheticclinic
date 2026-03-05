@@ -25,6 +25,8 @@ export default function LeadImportPage() {
     "Wrinkle Treatment",
     "Blepharoplasty",
     "Liposuction",
+    "Hyperbaric Oxygen Therapy",
+    "Longevity",
     "IV Therapy",
     "Rhinoplasty",
     "Facelift",
@@ -32,6 +34,7 @@ export default function LeadImportPage() {
     "Lip Fillers",
     "Tummy Tuck",
     "Breast Lift",
+    "Consultation",
     "Custom (specify below)",
   ];
 
@@ -68,12 +71,7 @@ export default function LeadImportPage() {
   async function handleImport() {
     if (!file || leads.length === 0) return;
 
-    const finalService = confirmedService === "Custom (specify below)" ? customService : confirmedService;
-    
-    if (!finalService) {
-      setError("Please select or specify a service");
-      return;
-    }
+    const finalService = confirmedService || "General Inquiry";
 
     setStep("importing");
     setImporting(true);
@@ -96,28 +94,45 @@ export default function LeadImportPage() {
         };
       });
 
-      // Send to API
-      const response = await fetch("/api/leads/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          leads: leadsToImport,
-          service: finalService,
-          filename: file.name,
-        }),
-      });
+      // Process in batches with progress
+      const BATCH_SIZE = 25;
+      let totalImported = 0;
+      let totalFailed = 0;
+      let totalSkipped = 0;
 
-      const result = await response.json();
+      for (let i = 0; i < leadsToImport.length; i += BATCH_SIZE) {
+        const batch = leadsToImport.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(leadsToImport.length / BATCH_SIZE);
 
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to import leads");
+        const response = await fetch("/api/leads/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            leads: batch,
+            service: finalService,
+            filename: file.name,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || `Batch ${batchNum} failed`);
+        }
+
+        totalImported += result.imported || 0;
+        totalFailed += result.failed || 0;
+        totalSkipped += result.skippedDuplicates || 0;
+
+        setImportProgress(Math.round(((i + batch.length) / leadsToImport.length) * 100));
       }
 
       setImportResult({
-        success: result.imported || 0,
-        failed: result.failed || 0,
-        skippedDuplicates: result.skippedDuplicates || 0,
-        matchedService: result.matchedService || null,
+        success: totalImported,
+        failed: totalFailed,
+        skippedDuplicates: totalSkipped,
+        matchedService: finalService,
       });
       setStep("complete");
     } catch (err) {
@@ -248,52 +263,25 @@ export default function LeadImportPage() {
 
           <div className="rounded-xl border border-slate-200 bg-white p-6">
             <h2 className="mb-4 text-lg font-semibold text-slate-900">Service Detection</h2>
-            
-            {summary.detectedService && (
-              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                <div className="flex items-start gap-3">
-                  <svg className="h-5 w-5 flex-shrink-0 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div>
-                    <p className="text-sm font-medium text-blue-900">
-                      Detected Service: <strong>{summary.detectedService}</strong>
-                    </p>
-                    <p className="mt-1 text-xs text-blue-800">
-                      Based on filename: {file?.name}
-                    </p>
-                  </div>
+
+            {summary.serviceBreakdown && Object.keys(summary.serviceBreakdown).length > 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <p className="mb-2 text-xs font-semibold text-emerald-900">Detected Services (from Form column per lead):</p>
+                <div className="grid gap-1 text-xs text-emerald-800">
+                  {Object.entries(summary.serviceBreakdown)
+                    .sort(([, a], [, b]) => (b as number) - (a as number))
+                    .map(([svc, count]) => (
+                      <div key={svc} className="flex justify-between">
+                        <span>{svc}</span>
+                        <span className="font-mono font-semibold">{count as number}</span>
+                      </div>
+                    ))}
                 </div>
+                <p className="mt-2 text-[10px] text-emerald-700">
+                  Each lead will be matched to its existing HubSpot service. Unmatched leads will have no service linked.
+                </p>
               </div>
             )}
-
-            <div className="space-y-3">
-              <label className="block text-sm font-medium text-slate-700">
-                Confirm or Select Service
-              </label>
-              <select
-                value={confirmedService}
-                onChange={(e) => setConfirmedService(e.target.value)}
-                className="block w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:ring-2 focus:ring-sky-500"
-              >
-                <option value="">Select service...</option>
-                {serviceOptions.map((service) => (
-                  <option key={service} value={service}>
-                    {service}
-                  </option>
-                ))}
-              </select>
-
-              {confirmedService === "Custom (specify below)" && (
-                <input
-                  type="text"
-                  value={customService}
-                  onChange={(e) => setCustomService(e.target.value)}
-                  placeholder="Enter custom service name"
-                  className="block w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:ring-2 focus:ring-sky-500"
-                />
-              )}
-            </div>
           </div>
 
           {leadsWithPhoneIssues.length > 0 && (
@@ -412,9 +400,21 @@ export default function LeadImportPage() {
             <div className="h-16 w-16 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600"></div>
           </div>
           <h2 className="mb-2 text-xl font-semibold text-slate-900">Importing Leads...</h2>
-          <p className="text-sm text-slate-600">
-            Please wait while we process your leads and enroll them in workflows
+          <p className="mb-4 text-sm text-slate-600">
+            Processing {leads.length} leads in batches of 25
           </p>
+          <div className="mx-auto max-w-md">
+            <div className="mb-2 flex justify-between text-xs text-slate-600">
+              <span>Progress</span>
+              <span>{importProgress}%</span>
+            </div>
+            <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-3 rounded-full bg-sky-600 transition-all duration-300"
+                style={{ width: `${importProgress}%` }}
+              />
+            </div>
+          </div>
         </div>
       )}
 

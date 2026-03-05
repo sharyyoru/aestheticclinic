@@ -110,6 +110,29 @@ export type ParsedLead = {
 };
 
 /**
+ * Service detection patterns shared by filename and form detection
+ */
+const SERVICE_PATTERNS: { pattern: RegExp; service: string }[] = [
+  { pattern: /breast\s+augment/i, service: 'Breast Augmentation' },
+  { pattern: /full\s*face\s*fillers?/i, service: 'Face Fillers' },
+  { pattern: /face\s*fillers?/i, service: 'Face Fillers' },
+  { pattern: /traitement\s+de\s+rides/i, service: 'Wrinkle Treatment' },
+  { pattern: /wrinkles?\s+treatment/i, service: 'Wrinkle Treatment' },
+  { pattern: /blefaro|blephar/i, service: 'Blepharoplasty' },
+  { pattern: /liposuc/i, service: 'Liposuction' },
+  { pattern: /hyperbaric|hbot/i, service: 'Hyperbaric Oxygen Therapy' },
+  { pattern: /longevity/i, service: 'Longevity' },
+  { pattern: /iv\s+therapy/i, service: 'IV Therapy' },
+  { pattern: /rhinoplast/i, service: 'Rhinoplasty' },
+  { pattern: /facelift|face\s+lift/i, service: 'Facelift' },
+  { pattern: /botox/i, service: 'Botox' },
+  { pattern: /lip\s+filler/i, service: 'Lip Fillers' },
+  { pattern: /tummy\s+tuck/i, service: 'Tummy Tuck' },
+  { pattern: /breast\s+lift/i, service: 'Breast Lift' },
+  { pattern: /consultation/i, service: 'Consultation' },
+];
+
+/**
  * Detect service type from filename
  * Examples:
  * - "leads BREAST AUGMENT 2 January.csv" -> "Breast Augmentation"
@@ -117,30 +140,47 @@ export type ParsedLead = {
  * - "IV therapy 2 January.csv" -> "IV Therapy"
  */
 export function detectServiceFromFilename(filename: string): string | null {
-  const lower = filename.toLowerCase();
-  
-  // Service mapping
-  const servicePatterns: { pattern: RegExp; service: string }[] = [
-    { pattern: /breast\s+augment/i, service: 'Breast Augmentation' },
-    { pattern: /face\s+fillers/i, service: 'Face Fillers' },
-    { pattern: /wrinkles?\s+treatment/i, service: 'Wrinkle Treatment' },
-    { pattern: /blepharoplast/i, service: 'Blepharoplasty' },
-    { pattern: /liposuc/i, service: 'Liposuction' },
-    { pattern: /iv\s+therapy/i, service: 'IV Therapy' },
-    { pattern: /rhinoplast/i, service: 'Rhinoplasty' },
-    { pattern: /facelift/i, service: 'Facelift' },
-    { pattern: /botox/i, service: 'Botox' },
-    { pattern: /lip\s+filler/i, service: 'Lip Fillers' },
-    { pattern: /tummy\s+tuck/i, service: 'Tummy Tuck' },
-    { pattern: /breast\s+lift/i, service: 'Breast Lift' },
-  ];
-
-  for (const { pattern, service } of servicePatterns) {
+  for (const { pattern, service } of SERVICE_PATTERNS) {
     if (pattern.test(filename)) {
       return service;
     }
   }
+  return null;
+}
 
+/**
+ * Detect service type from the Form column value (per-lead)
+ * Examples:
+ * - "FACE FILLERS EN - cities Geneva|Montreux" -> "Face Fillers"
+ * - "Liposuccion FR+cities!" -> "Liposuction"
+ * - "TRAITEMENT DE RIDES FR" -> "Wrinkle Treatment"
+ * - "Hyperbaric Oxygen Therapy (HBOT)" -> "Hyperbaric Oxygen Therapy"
+ * - "longevity" -> "Longevity"
+ */
+// Form values that are NOT services (promos, junk, source column leaks)
+const IGNORED_FORM_PATTERNS: RegExp[] = [
+  /black\s*friday/i,
+  /untitled\s*form/i,
+  /^paid$/i,
+  /^платный$/i,
+  /^оплачено$/i,
+];
+
+export function detectServiceFromForm(form: string): string | null {
+  if (!form || !form.trim()) return null;
+
+  // Skip known junk / promo form values
+  for (const ignore of IGNORED_FORM_PATTERNS) {
+    if (ignore.test(form)) return null;
+  }
+
+  for (const { pattern, service } of SERVICE_PATTERNS) {
+    if (pattern.test(form)) {
+      return service;
+    }
+  }
+
+  // No pattern matched — return null (don't auto-create unknown services)
   return null;
 }
 
@@ -221,7 +261,7 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
     throw new Error('Missing contact information: Need at least Email or Phone column');
   }
 
-  const detectedService = detectServiceFromFilename(filename);
+  const filenameService = detectServiceFromFilename(filename);
   const leads: ParsedLead[] = [];
 
   // Parse data rows
@@ -263,6 +303,10 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
         ? rowData['Labels'].split(',').map(l => l.trim()).filter(Boolean)
         : [];
 
+      // Detect service per-lead from Form column, fallback to filename detection
+      const formService = detectServiceFromForm(rowData['Form'] || '');
+      const leadDetectedService = formService || filenameService;
+
       const lead: ParsedLead = {
         rowNumber: i,
         created: parseLeadDate(rowData['Created']),
@@ -279,7 +323,7 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
           secondary: rowData['Secondary phone number'] || null,
           whatsapp: rowData['WhatsApp number'] || null,
         },
-        detectedService,
+        detectedService: leadDetectedService,
         validationIssues,
       };
 
@@ -299,7 +343,7 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
         owner: 'Unassigned',
         labels: [],
         phones: { primary: null, secondary: null, whatsapp: null },
-        detectedService,
+        detectedService: filenameService,
         validationIssues: [`Failed to parse row: ${error}`],
       });
     }
@@ -402,6 +446,13 @@ export function generateLeadsSummary(leads: ParsedLead[]) {
   const withoutEmail = leads.filter(l => !l.email || !isValidEmail(l.email)).length;
   const detectedService = leads[0]?.detectedService;
 
+  // Per-service breakdown
+  const serviceBreakdown: Record<string, number> = {};
+  for (const lead of leads) {
+    const svc = lead.detectedService || 'Unknown';
+    serviceBreakdown[svc] = (serviceBreakdown[svc] || 0) + 1;
+  }
+
   return {
     total,
     valid: total - withIssues,
@@ -409,5 +460,6 @@ export function generateLeadsSummary(leads: ParsedLead[]) {
     withoutPhone,
     withoutEmail,
     detectedService,
+    serviceBreakdown,
   };
 }

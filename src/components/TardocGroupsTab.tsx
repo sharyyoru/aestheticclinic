@@ -189,45 +189,7 @@ export default function TardocGroupsTab() {
     setSaveError(null);
     setValidationResult(null);
 
-    // Step 1: Validate with Sumex first
-    try {
-      const valRes = await fetch("/api/tardoc/groups/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: groupItems.map((i) => ({
-            tardoc_code: i.tardoc_code,
-            quantity: i.quantity,
-            ref_code: i.ref_code,
-            side_type: i.side_type,
-            tp_mt: i.tp_mt,
-            tp_tt: i.tp_tt,
-            external_factor_mt: i.external_factor_mt,
-            external_factor_tt: i.external_factor_tt,
-          })),
-          canton: groupCanton,
-          law_type: groupLawType,
-        }),
-      });
-      const valJson = await valRes.json();
-      setValidationResult(valJson);
-
-      if (!valJson.valid) {
-        const errors = (valJson.services || [])
-          .filter((s: any) => !s.accepted)
-          .map((s: any) => `${s.code}: ${s.errorMessage}`)
-          .join("; ");
-        setSaveError(`Sumex validation failed — ${errors || valJson.error || "Unknown error"}`);
-        setSaving(false);
-        return;
-      }
-    } catch {
-      setSaveError("Sumex validation request failed. Please try again.");
-      setSaving(false);
-      return;
-    }
-
-    // Step 2: Save to DB (only if validation passed)
+    // Save to DB (Sumex validation only runs on the invoice tab modal, not here)
     try {
       const itemsPayload = groupItems.map((item, idx) => ({
         tardoc_code: item.tardoc_code,

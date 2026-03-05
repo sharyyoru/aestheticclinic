@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { shouldCreateDeal } from "@/lib/dealDeduplication";
 
 /**
  * Webhook endpoint for receiving Facebook Lead Ads via Zapier
@@ -357,24 +358,15 @@ export async function POST(request: NextRequest) {
 
     console.log(`Service interest "${serviceInterest}" matched to HubSpot service: ${matchedService?.name || "None"}`);
 
-    // Check if deal already exists for this patient with same service
-    let existingDealQuery = supabaseAdmin
-      .from("deals")
-      .select("id")
-      .eq("patient_id", patientId);
-    
-    // If we matched a service, check by service_id, otherwise check by title containing service interest
-    if (serviceId) {
-      existingDealQuery = existingDealQuery.eq("service_id", serviceId);
-    } else {
-      existingDealQuery = existingDealQuery.ilike("title", `%${serviceInterest}%`);
-    }
-    
-    const { data: existingDeal } = await existingDealQuery.limit(1).maybeSingle();
+    // Check if deal already exists for this patient with same service (within 6 hours)
+    const dealCheck = await shouldCreateDeal(supabaseAdmin, {
+      patientId,
+      serviceId: serviceId || undefined,
+    });
 
     let dealId: string | null = null;
 
-    if (!existingDeal) {
+    if (dealCheck.shouldCreate) {
       // Create new deal with matched service
       const { data: newDeal, error: dealError } = await supabaseAdmin
         .from("deals")
@@ -417,7 +409,8 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      dealId = existingDeal.id;
+      dealId = dealCheck.existingDeal.id;
+      console.log(`Skipped deal creation — recent deal exists: ${dealId}`);
     }
 
     console.log(`Facebook Lead processed: Patient ${patientId}, Deal ${dealId}, New: ${isNewPatient}`);
