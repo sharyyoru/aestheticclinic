@@ -325,6 +325,8 @@ export default function MedicalConsultationsCard({
   const [tardocChapters, setTardocChapters] = useState<{code:string;name:string}[]>([]);
   const [tardocSelectedChapter, setTardocSelectedChapter] = useState("");
   const [tardocDbInfo, setTardocDbInfo] = useState<{dbVersion:string;dbVersionDate:string}|null>(null);
+  const [tardocGroups, setTardocGroups] = useState<any[]>([]);
+  const [tardocGroupsLoaded, setTardocGroupsLoaded] = useState(false);
   const [invoiceGroupId, setInvoiceGroupId] = useState("");
   const [invoicePaymentTerm, setInvoicePaymentTerm] =
     useState<InvoicePaymentTerm>("full");
@@ -3141,6 +3143,52 @@ export default function MedicalConsultationsCard({
                           }
                         }
 
+                        // Validate TARDOC services with Sumex before creating invoice
+                        if (isTardocInvoice) {
+                          const tardocItems = invoiceLines.filter((l) => l.tariff_type === "001");
+                          if (tardocItems.length > 0) {
+                            try {
+                              const valRes = await fetch("/api/tardoc/groups/validate", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  items: tardocItems.map((l) => ({
+                                    tardoc_code: l.tardoc_code || l.code,
+                                    quantity: l.quantity,
+                                    ref_code: l.ref_code || "",
+                                    side_type: l.side_type ?? 0,
+                                    tp_mt: l.tp_al ?? 0,
+                                    tp_tt: l.tp_tl ?? 0,
+                                    external_factor_mt: l.external_factor_mt ?? 1,
+                                    external_factor_tt: l.external_factor_tt ?? 1,
+                                  })),
+                                  canton: invoiceCanton,
+                                  law_type: invoiceLawType,
+                                }),
+                              });
+                              const valJson = await valRes.json();
+                              if (!valJson.valid) {
+                                const errors = (valJson.services || [])
+                                  .filter((s: any) => !s.accepted)
+                                  .map((s: any) => `${s.code}: ${s.errorMessage}`)
+                                  .join("\n");
+                                setConsultationError(
+                                  `Sumex TARDOC validation failed:\n${errors || valJson.error || "Unknown validation error"}`,
+                                );
+                                setConsultationSaving(false);
+                                return;
+                              }
+                            } catch (valErr) {
+                              console.warn("TARDOC validation request failed:", valErr);
+                              setConsultationError(
+                                "TARDOC validation failed — could not reach Sumex server. Please try again.",
+                              );
+                              setConsultationSaving(false);
+                              return;
+                            }
+                          }
+                        }
+
                         // Fetch billing entity (clinic) data to get IBAN
                         let providerIban = null;
                         if (selectedProviderId) {
@@ -4204,6 +4252,74 @@ export default function MedicalConsultationsCard({
                                     <option value="VVG">VVG</option>
                                   </select>
                                 </div>
+                              </div>
+
+                              {/* Load TarDoc Group */}
+                              <div className="space-y-1">
+                                <span className="block text-[10px] font-medium text-slate-600">
+                                  Load TarDoc Group (Preset)
+                                </span>
+                                <div className="flex gap-1">
+                                  <select
+                                    value=""
+                                    onFocus={async () => {
+                                      if (tardocGroupsLoaded) return;
+                                      try {
+                                        const res = await fetch("/api/tardoc/groups");
+                                        const json = await res.json();
+                                        if (json.success) setTardocGroups(json.data || []);
+                                      } catch { /* ignore */ }
+                                      setTardocGroupsLoaded(true);
+                                    }}
+                                    onChange={(e) => {
+                                      const groupId = e.target.value;
+                                      if (!groupId) return;
+                                      const group = tardocGroups.find((g: any) => g.id === groupId);
+                                      if (!group) return;
+                                      const tpv = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                                      const newLines: InvoiceServiceLine[] = (group.tardoc_group_items || []).map((item: any) => ({
+                                        serviceId: `tardoc-${item.tardoc_code}`,
+                                        quantity: item.quantity || 1,
+                                        unitPrice: Math.round(((item.tp_mt || 0) + (item.tp_tt || 0)) * tpv * 100) / 100,
+                                        groupId: null,
+                                        discountPercent: null,
+                                        customName: `${item.tardoc_code} - ${(item.description || "").substring(0, 80)}`,
+                                      }));
+                                      setInvoiceServiceLines((prev) => [...prev, ...newLines]);
+                                      // Inject matching search results so save logic has tp_mt/tp_tt data
+                                      setTardocSearchResults((prev: any[]) => {
+                                        const existing = new Set(prev.map((r: any) => r.code));
+                                        const newResults = (group.tardoc_group_items || [])
+                                          .filter((item: any) => !existing.has(item.tardoc_code))
+                                          .map((item: any) => ({
+                                            code: item.tardoc_code,
+                                            name: item.description || "",
+                                            tpMT: item.tp_mt || 0,
+                                            tpTT: item.tp_tt || 0,
+                                            unitQuantity: item.quantity || 1,
+                                            internalFactorMT: item.internal_factor_mt ?? 1,
+                                            internalFactorTT: item.internal_factor_tt ?? 1,
+                                            recordId: 0,
+                                            priceCHF: Math.round(((item.tp_mt || 0) + (item.tp_tt || 0)) * tpv * 100) / 100,
+                                            section: "",
+                                          }));
+                                        return [...prev, ...newResults];
+                                      });
+                                    }}
+                                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                  >
+                                    <option value="">— Select a TarDoc group to load —</option>
+                                    {tardocGroups.map((g: any) => (
+                                      <option key={g.id} value={g.id}>
+                                        {g.name} ({(g.tardoc_group_items || []).length} codes)
+                                        {g.validation_status === "valid" ? " ✓" : g.validation_status === "invalid" ? " ✗" : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                {!tardocGroupsLoaded && (
+                                  <p className="text-[9px] text-slate-400">Click to load available groups</p>
+                                )}
                               </div>
 
                               {/* UVG: Accident Date */}
