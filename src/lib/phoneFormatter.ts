@@ -20,7 +20,7 @@ export function formatSwissPhone(phone: string | null | undefined): string | nul
   }
 
   // Remove all non-digit characters except leading +
-  let cleaned = phone.trim().replace(/[\s\-\(\)\.]/g, '');
+  let cleaned = phone.trim().replace(/[\s\-\(\)\.\'\u2019\u2018]/g, '');
   
   // Handle empty after cleaning
   if (!cleaned) {
@@ -82,6 +82,9 @@ export function formatSwissPhone(phone: string | null | undefined): string | nul
       // Assume it should be Swiss and convert
       return `+41${finalDigits.substring(0, 9)}`;
     }
+  } else if (!cleaned.startsWith('+') && cleaned.length === 11 && cleaned.startsWith('41')) {
+    // 11 digits starting with 41 (missing +)
+    return `+${cleaned}`;
   } else if (!cleaned.startsWith('+') && cleaned.length === 9) {
     // Just 9 digits, assume Swiss mobile without prefix
     return `+41${cleaned}`;

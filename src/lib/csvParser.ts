@@ -65,7 +65,7 @@ const COLUMN_MAPPINGS: { [key: string]: string[] } = {
     'tags', 'categories'
   ],
   'Secondary phone number': [
-    'secondary phone', 'другий номер', 'второй телефон',
+    'secondary phone', 'другий номер', 'другий номер телефону', 'второй телефон',
     'alternate phone', 'phone 2'
   ],
   'WhatsApp number': [
@@ -80,8 +80,16 @@ const COLUMN_MAPPINGS: { [key: string]: string[] } = {
 function mapColumnName(header: string): string | null {
   const normalized = header.trim().toLowerCase();
   
+  // First pass: exact matches only
   for (const [standardName, variations] of Object.entries(COLUMN_MAPPINGS)) {
-    if (variations.some(v => normalized === v || normalized.includes(v))) {
+    if (variations.some(v => normalized === v)) {
+      return standardName;
+    }
+  }
+  
+  // Second pass: partial matches (includes)
+  for (const [standardName, variations] of Object.entries(COLUMN_MAPPINGS)) {
+    if (variations.some(v => normalized.includes(v))) {
       return standardName;
     }
   }
@@ -240,6 +248,9 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
   const rawHeaders = lines[0].split(',').map(h => h.trim());
   const mappedHeaders = rawHeaders.map(h => mapColumnName(h) || h);
   
+  console.log('[CSV Parser] Raw headers:', rawHeaders);
+  console.log('[CSV Parser] Mapped headers:', mappedHeaders);
+  
   // Create a mapping of standard name to original header index
   const columnMap = new Map<string, number>();
   mappedHeaders.forEach((mapped, idx) => {
@@ -394,11 +405,26 @@ function normalizePhoneNumber(value: string): string {
     return '0' + digitsOnly;
   }
   
-  // If it's 10 digits starting with 41 (missing the +)
+  // If it's 11 digits starting with 41 (e.g., 41793953137 = +41 79 395 31 37)
   if (trimmed === digitsOnly && digitsOnly.length === 11 && digitsOnly.startsWith('41')) {
     return '+' + digitsOnly;
   }
   
+  // If it's 12 digits starting with 410 (e.g., 410794305878 = 41 + 079 + number, extra leading 0)
+  if (trimmed === digitsOnly && digitsOnly.length === 12 && digitsOnly.startsWith('410')) {
+    return '+41' + digitsOnly.substring(3);
+  }
+
+  // If it's 10 digits starting with 41 (e.g., 4179395313 = +41 79 395 31 3x, short but possible)
+  if (trimmed === digitsOnly && digitsOnly.length === 10 && digitsOnly.startsWith('41')) {
+    return '+' + digitsOnly;
+  }
+
+  // If it's 13-14 digits starting with 0041 (e.g., 0041793953137 or 00410793953137)
+  if (trimmed === digitsOnly && (digitsOnly.length === 13 || digitsOnly.length === 14) && digitsOnly.startsWith('0041')) {
+    return '+' + digitsOnly.substring(2);
+  }
+
   return trimmed;
 }
 

@@ -125,7 +125,7 @@ export async function POST(request: Request) {
         supabaseAdmin
           .from("deals")
           .select(
-            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, created_at, updated_at",
+            "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, owner_id, owner_name, created_at, updated_at",
           )
           .eq("id", dealId)
           .maybeSingle(),
@@ -490,6 +490,7 @@ export async function POST(request: Request) {
             assign_to_users?: string[];
             assignment_mode?: string;
             due_days?: number;
+            assign_deal_owner?: boolean;
           };
 
           console.log(`Task config.title: "${config.title}"`);
@@ -584,6 +585,28 @@ export async function POST(request: Request) {
           } else {
             console.log(`Created task: ${taskName}`);
             actionsRun += 1;
+
+            // Also assign the task assignee as deal owner if enabled
+            // Skip if deal already has an owner (e.g. manually created deals)
+            if (config.assign_deal_owner && assignedUserId && !deal.owner_id) {
+              const { error: ownerError } = await supabaseAdmin
+                .from("deals")
+                .update({
+                  owner_id: assignedUserId,
+                  owner_name: assignedUserName,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", safeDeal.id);
+
+              if (ownerError) {
+                console.error(`Failed to assign deal owner:`, ownerError);
+              } else {
+                console.log(`Assigned deal owner to ${assignedUserName} (${assignedUserId})`);
+              }
+            } else if (config.assign_deal_owner && deal.owner_id) {
+              console.log(`Skipped deal owner assignment — deal already has owner: ${deal.owner_name || deal.owner_id}`);
+            }
+
             // Log successful step
             if (enrollmentId) {
               await supabaseAdmin.from("workflow_enrollment_steps").insert({
@@ -593,7 +616,7 @@ export async function POST(request: Request) {
                 step_config: config,
                 status: "completed",
                 executed_at: new Date().toISOString(),
-                result: { task_name: taskName },
+                result: { task_name: taskName, deal_owner_assigned: config.assign_deal_owner && !!assignedUserId },
               });
             }
           }

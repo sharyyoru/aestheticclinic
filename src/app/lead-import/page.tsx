@@ -16,7 +16,7 @@ export default function LeadImportPage() {
   const [customService, setCustomService] = useState<string>("");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
-  const [importResult, setImportResult] = useState<{ success: number; failed: number; skippedDuplicates?: number; matchedService?: string } | null>(null);
+  const [importResult, setImportResult] = useState<{ success: number; failed: number; skippedDuplicates?: number; dealsCreated?: number; dealsSkipped?: number; matchedService?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const serviceOptions = [
@@ -99,6 +99,8 @@ export default function LeadImportPage() {
       let totalImported = 0;
       let totalFailed = 0;
       let totalSkipped = 0;
+      let totalDealsCreated = 0;
+      let totalDealsSkipped = 0;
 
       for (let i = 0; i < leadsToImport.length; i += BATCH_SIZE) {
         const batch = leadsToImport.slice(i, i + BATCH_SIZE);
@@ -124,6 +126,8 @@ export default function LeadImportPage() {
         totalImported += result.imported || 0;
         totalFailed += result.failed || 0;
         totalSkipped += result.skippedDuplicates || 0;
+        totalDealsCreated += result.dealsCreated || 0;
+        totalDealsSkipped += result.dealsSkipped || 0;
 
         setImportProgress(Math.round(((i + batch.length) / leadsToImport.length) * 100));
       }
@@ -132,6 +136,8 @@ export default function LeadImportPage() {
         success: totalImported,
         failed: totalFailed,
         skippedDuplicates: totalSkipped,
+        dealsCreated: totalDealsCreated,
+        dealsSkipped: totalDealsSkipped,
         matchedService: finalService,
       });
       setStep("complete");
@@ -433,21 +439,25 @@ export default function LeadImportPage() {
             Your leads have been successfully imported and enrolled in workflows
           </p>
 
-          <div className="mb-6 grid gap-4 md:grid-cols-3">
+          <div className="mb-6 grid gap-4 md:grid-cols-4">
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6 text-center">
               <div className="text-3xl font-bold text-emerald-900">{importResult.success}</div>
-              <div className="text-sm text-emerald-800">Successfully Imported</div>
+              <div className="text-sm text-emerald-800">New Patients</div>
+            </div>
+            <div className="rounded-lg border border-sky-200 bg-sky-50 p-6 text-center">
+              <div className="text-3xl font-bold text-sky-900">{importResult.dealsCreated ?? 0}</div>
+              <div className="text-sm text-sky-800">Deals Created</div>
             </div>
             {(importResult.skippedDuplicates ?? 0) > 0 && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center">
                 <div className="text-3xl font-bold text-amber-900">{importResult.skippedDuplicates}</div>
-                <div className="text-sm text-amber-800">Duplicates Skipped</div>
+                <div className="text-sm text-amber-800">Existing Patients</div>
               </div>
             )}
             {importResult.failed > 0 && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
                 <div className="text-3xl font-bold text-red-900">{importResult.failed}</div>
-                <div className="text-sm text-red-800">Failed to Import</div>
+                <div className="text-sm text-red-800">Failed</div>
               </div>
             )}
           </div>
@@ -463,8 +473,8 @@ export default function LeadImportPage() {
           {(importResult.skippedDuplicates ?? 0) > 0 && (
             <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
               <p className="text-xs text-amber-800">
-                <strong>Note:</strong> {importResult.skippedDuplicates} leads were identified as duplicates based on email or phone number matching existing patients. 
-                These patients were updated with import notes instead of creating new records.
+                <strong>Note:</strong> {importResult.skippedDuplicates} leads matched existing patients by email or phone. 
+                Deals were still created for these patients unless a duplicate deal already existed within the last 6 hours.
               </p>
             </div>
           )}

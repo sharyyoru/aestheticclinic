@@ -98,11 +98,11 @@ function matchServiceToHubspot(
 async function findExistingPatient(
   email: string | null,
   phone: string | null
-): Promise<{ id: string; notes: string | null } | null> {
+): Promise<{ id: string; notes: string | null; phone: string | null; email: string | null } | null> {
   if (email) {
     const { data: existingByEmail } = await supabaseAdmin
       .from("patients")
-      .select("id, notes")
+      .select("id, notes, phone, email")
       .ilike("email", email)
       .limit(1)
       .maybeSingle();
@@ -118,7 +118,7 @@ async function findExistingPatient(
     if (lastNineDigits.length >= 9) {
       const { data: existingByPhone } = await supabaseAdmin
         .from("patients")
-        .select("id, notes")
+        .select("id, notes, phone, email")
         .or(`phone.ilike.%${lastNineDigits}%`)
         .limit(1)
         .maybeSingle();
@@ -151,19 +151,49 @@ export async function POST(request: NextRequest) {
     let imported = 0;
     let failed = 0;
     let skippedDuplicates = 0;
+    let dealsCreated = 0;
+    let dealsSkipped = 0;
     const errors: string[] = [];
     const importedPatientIds: string[] = [];
     const duplicatePatientIds: string[] = [];
 
-    // Get default deal stage for new leads
-    const { data: defaultStage } = await supabaseAdmin
+    // Get default deal stage for new leads (with fallbacks)
+    let defaultStageId: string | undefined;
+
+    // Try: is_default=true AND type='lead' (exclude demo stages)
+    const { data: defaultLeadStage } = await supabaseAdmin
       .from("deal_stages")
       .select("id")
       .eq("is_default", true)
       .eq("type", "lead")
-      .single();
+      .eq("is_demo", false)
+      .limit(1)
+      .maybeSingle();
+    defaultStageId = defaultLeadStage?.id;
 
-    const defaultStageId = defaultStage?.id;
+    // Fallback: any non-demo stage with is_default=true
+    if (!defaultStageId) {
+      const { data: anyDefaultStage } = await supabaseAdmin
+        .from("deal_stages")
+        .select("id")
+        .eq("is_default", true)
+        .eq("is_demo", false)
+        .limit(1)
+        .maybeSingle();
+      defaultStageId = anyDefaultStage?.id;
+    }
+
+    // Fallback: first non-demo stage by sort_order
+    if (!defaultStageId) {
+      const { data: firstStage } = await supabaseAdmin
+        .from("deal_stages")
+        .select("id")
+        .eq("is_demo", false)
+        .order("sort_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      defaultStageId = firstStage?.id;
+    }
 
     // Load HubSpot services for matching
     const { data: hubspotCategory } = await supabaseAdmin
@@ -227,7 +257,18 @@ export async function POST(request: NextRequest) {
         const lastName = nameParts.slice(1).join(" ") || "";
 
         // Format phone number
-        const formattedPhone = lead.bestPhone || formatSwissPhone(lead.phones.primary);
+        let formattedPhone = lead.bestPhone || formatSwissPhone(lead.phones.primary);
+        
+        // Fallback: if no formatted phone, try the raw phone
+        if (!formattedPhone && lead.phones.primary) {
+          formattedPhone = lead.phones.primary;
+        }
+        
+        console.log(`[Lead Import] Row ${lead.rowNumber} - ${lead.name}:`);
+        console.log(`  Raw phone: ${lead.phones.primary}`);
+        console.log(`  Best phone: ${lead.bestPhone}`);
+        console.log(`  Final formatted: ${formattedPhone}`);
+        
         const normalizedEmail = lead.email?.toLowerCase().trim() || null;
 
         // Resolve per-lead service from detectedService (Form column), fallback to global service
@@ -250,12 +291,21 @@ export async function POST(request: NextRequest) {
           const importNote = `\n\n[Lead Import ${new Date().toISOString().split('T')[0]}] Duplicate found during import from ${filename}. Service: ${finalServiceInterest}, Form: ${lead.form}`;
           const existingNotes = existingPatient.notes || "";
 
+          // Update notes and fill in missing fields (phone, email) from CSV data
+          const updateFields: Record<string, string> = {
+            notes: (existingNotes + importNote).trim(),
+            updated_at: new Date().toISOString(),
+          };
+          if (formattedPhone && !existingPatient.phone) {
+            updateFields.phone = formattedPhone;
+          }
+          if (normalizedEmail && !existingPatient.email) {
+            updateFields.email = normalizedEmail;
+          }
+
           await supabaseAdmin
             .from("patients")
-            .update({
-              notes: (existingNotes + importNote).trim(),
-              updated_at: new Date().toISOString(),
-            })
+            .update(updateFields)
             .eq("id", patientId);
         } else {
           isNewPatient = true;
@@ -296,8 +346,7 @@ export async function POST(request: NextRequest) {
         let dealId: string | null = null;
 
         if (dealCheck.shouldCreate) {
-          const dealCreatedAt = lead.created ? new Date(lead.created).toISOString() : new Date().toISOString();
-
+          // Always use current date for deal creation so dedup window works correctly
           const { data: deal, error: dealError } = await supabaseAdmin
             .from("deals")
             .insert({
@@ -306,16 +355,17 @@ export async function POST(request: NextRequest) {
               pipeline: "Lead to Surgery",
               stage_id: defaultStageId,
               service_id: serviceId,
-              notes: `Source: ${lead.source || "Lead Import"}\nImported from ${filename}\nLabels: ${lead.labels.join(", ")}\nService Interest: ${finalServiceInterest}`,
-              created_at: dealCreatedAt,
+              notes: `Source: ${lead.source || "Lead Import"}\nImported from ${filename}\nLabels: ${lead.labels.join(", ")}\nService Interest: ${finalServiceInterest}${lead.created ? `\nOriginal lead date: ${lead.created}` : ""}`,
             })
             .select("id")
             .single();
 
           if (dealError) {
             console.error(`Failed to create deal for ${lead.name}:`, dealError);
+            errors.push(`Row ${lead.rowNumber}: Failed to create deal — ${dealError.message}`);
           } else {
             dealId = deal?.id || null;
+            dealsCreated++;
           }
 
           // Trigger workflow for "Request for Information" - only for new deals
@@ -337,6 +387,7 @@ export async function POST(request: NextRequest) {
             }
           }
         } else {
+          dealsSkipped++;
           console.log(`Skipped deal for ${lead.name} — recent deal exists: ${dealCheck.existingDeal.id}`);
         }
 
@@ -371,11 +422,13 @@ export async function POST(request: NextRequest) {
       imported,
       failed,
       skippedDuplicates,
+      dealsCreated,
+      dealsSkipped,
       duplicatePatientIds: duplicatePatientIds.length > 0 ? duplicatePatientIds : undefined,
       matchedService: service,
       importId: importRecord?.id,
       errors: errors.length > 0 ? errors : undefined,
-      message: `Successfully imported ${imported} leads${skippedDuplicates > 0 ? `, ${skippedDuplicates} duplicates skipped` : ""}${failed > 0 ? `, ${failed} failed` : ""}`,
+      message: `Imported ${imported} new patients, ${dealsCreated} deals created${skippedDuplicates > 0 ? `, ${skippedDuplicates} existing patients updated` : ""}${dealsSkipped > 0 ? `, ${dealsSkipped} duplicate deals skipped` : ""}${failed > 0 ? `, ${failed} failed` : ""}`,
     });
   } catch (error) {
     console.error("Lead import error:", error);
