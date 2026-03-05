@@ -1630,17 +1630,35 @@ export default function PatientDocumentsTab({
                 )}
               </div>
               <div className="flex items-center gap-2 ml-4">
-                <a
-                  href={previewModal.url}
-                  download={previewModal.name}
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      const response = await fetch(previewModal.url);
+                      if (!response.ok) throw new Error('Failed to download file');
+                      const blob = await response.blob();
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = previewModal.name;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(url);
+                    } catch (error) {
+                      console.error('Download failed:', error);
+                      // Fallback: open in new tab if download fails
+                      window.open(previewModal.url, '_blank');
+                    }
+                  }}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                  onClick={(e) => e.stopPropagation()}
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                   Download
-                </a>
+                </button>
                 <button
                   type="button"
                   onClick={() => setPreviewModal(null)}
@@ -1705,16 +1723,34 @@ export default function PatientDocumentsTab({
                       <p className="text-sm font-medium text-slate-700">Preview not available</p>
                       <p className="mt-1 text-[11px] text-slate-500">Download the file to view its contents</p>
                     </div>
-                    <a
-                      href={previewModal.url}
-                      download={previewModal.name}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const response = await fetch(previewModal.url);
+                          if (!response.ok) throw new Error('Failed to download file');
+                          const blob = await response.blob();
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = previewModal.name;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          URL.revokeObjectURL(url);
+                        } catch (error) {
+                          console.error('Download failed:', error);
+                          // Fallback: open in new tab if download fails
+                          window.open(previewModal.url, '_blank');
+                        }
+                      }}
                       className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 transition-colors"
                     >
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
                       Download File
-                    </a>
+                    </button>
                   </div>
                 )}
               </div>
