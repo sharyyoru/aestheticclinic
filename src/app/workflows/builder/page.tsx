@@ -1260,7 +1260,7 @@ export default function WorkflowBuilderPage() {
           </div>
 
           {/* Configuration Panel */}
-          <div className="xl:w-[320px] 2xl:w-[360px] shrink-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
+          <div className="w-full sm:w-[320px] lg:w-[360px] shrink-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
             <h2 className="mb-3 text-base font-semibold text-slate-900">Configuration</h2>
             {renderConfigPanel()}
           </div>

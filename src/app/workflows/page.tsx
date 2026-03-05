@@ -948,22 +948,23 @@ function WorkflowEnrollmentsModal({
                       </td>
                       <td className="py-3">
                         <div className="flex flex-wrap gap-1.5">
-                          {enrollment.steps.length === 0 ? (
-                            <span className="text-slate-400 text-xs">No steps recorded</span>
-                          ) : (
-                            enrollment.steps.map((step) => (
-                              <span
-                                key={step.id}
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${getStepStatusBadge(step.status)}`}
-                                title={step.error_message || (step.result ? JSON.stringify(step.result) : "")}
-                              >
-                                <span>{getActionIcon(step.step_action)}</span>
-                                {step.step_action?.replace("_", " ")}
-                                {step.status === "completed" && " ✓"}
-                                {step.status === "failed" && " ✗"}
-                              </span>
-                            ))
-                          )}
+                          {(() => {
+                            const completedSteps = enrollment.steps.filter((s) => s.status === "completed");
+                            return completedSteps.length === 0 ? (
+                              <span className="text-slate-400 text-xs">No steps completed</span>
+                            ) : (
+                              completedSteps.map((step) => (
+                                <span
+                                  key={step.id}
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${getStepStatusBadge(step.status)}`}
+                                  title={step.result ? JSON.stringify(step.result) : ""}
+                                >
+                                  <span>{getActionIcon(step.step_action)}</span>
+                                  {step.step_action?.replace("_", " ")} ✓
+                                </span>
+                              ))
+                            );
+                          })()}
                         </div>
                       </td>
                     </tr>

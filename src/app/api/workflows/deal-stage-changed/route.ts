@@ -766,16 +766,22 @@ export async function POST(request: Request) {
             }
 
             actionsRun += 1;
-            // Log successful step
+            // Log step - mark as "scheduled" for future emails, "completed" for immediate sends
+            const stepStatus = isFuture ? "scheduled" : "completed";
             if (enrollmentId) {
               await supabaseAdmin.from("workflow_enrollment_steps").insert({
                 enrollment_id: enrollmentId,
                 step_type: "action",
                 step_action: "send_email",
                 step_config: config,
-                status: "completed",
+                status: stepStatus,
                 executed_at: new Date().toISOString(),
-                result: { email_id: (inserted as any).id, subject, recipient: recipientEmail },
+                result: { 
+                  email_id: (inserted as any).id, 
+                  subject, 
+                  recipient: recipientEmail,
+                  scheduled_for: isFuture ? effectiveDate.toISOString() : null,
+                },
               });
             }
 
