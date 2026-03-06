@@ -108,12 +108,12 @@ export default function EmailTemplateBuilder({
     }
   }, [open]);
 
-  // Load images from Supabase email-assets bucket
+  // Load images from Supabase emailgallery bucket
   const loadGalleryImages = useCallback(async () => {
     try {
       setLoadingImages(true);
       const { data, error } = await supabaseClient.storage
-        .from("email-assets")
+        .from("emailgallery")
         .list("", { limit: 100, sortBy: { column: "created_at", order: "desc" } });
 
       if (error) throw error;
@@ -122,7 +122,7 @@ export default function EmailTemplateBuilder({
         .filter((file) => file.name && !file.name.endsWith("/"))
         .map((file) => {
           const { data: urlData } = supabaseClient.storage
-            .from("email-assets")
+            .from("emailgallery")
             .getPublicUrl(file.name);
           return {
             name: file.name,
@@ -147,13 +147,13 @@ export default function EmailTemplateBuilder({
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
       const { error: uploadError } = await supabaseClient.storage
-        .from("email-assets")
+        .from("emailgallery")
         .upload(fileName, file, { contentType: file.type });
 
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabaseClient.storage
-        .from("email-assets")
+        .from("emailgallery")
         .getPublicUrl(fileName);
 
       // Refresh the gallery
@@ -174,7 +174,7 @@ export default function EmailTemplateBuilder({
 
     try {
       const { error } = await supabaseClient.storage
-        .from("email-assets")
+        .from("emailgallery")
         .remove([imageName]);
 
       if (error) throw error;
@@ -381,30 +381,35 @@ export default function EmailTemplateBuilder({
         setSubjectTemplate(data.subject);
       }
 
-      if (data.html && emailEditorRef.current) {
-        // Create a simple design with the HTML content
-        const design = {
-          body: {
-            rows: [
-              {
-                cells: [1],
-                columns: [
-                  {
-                    contents: [
-                      {
-                        type: "html",
-                        values: {
-                          html: data.html,
+      if (emailEditorRef.current) {
+        // Use the Unlayer design from API (with text blocks) if available
+        if (data.design) {
+          emailEditorRef.current.editor.loadDesign(data.design);
+        } else if (data.html) {
+          // Fallback to HTML block if no design provided
+          const design = {
+            body: {
+              rows: [
+                {
+                  cells: [1],
+                  columns: [
+                    {
+                      contents: [
+                        {
+                          type: "html",
+                          values: {
+                            html: data.html,
+                          },
                         },
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        };
-        emailEditorRef.current.editor.loadDesign(design);
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          };
+          emailEditorRef.current.editor.loadDesign(design);
+        }
       }
 
       setAiPrompt("");
@@ -670,6 +675,7 @@ export default function EmailTemplateBuilder({
                 ref={emailEditorRef}
                 onLoad={onEditorLoad}
                 onReady={onEditorReady}
+                projectId={284973}
                 options={{
                   mergeTags: MERGE_TAGS,
                   features: {

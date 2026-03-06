@@ -268,6 +268,40 @@ type AxenitaPdfDocument = {
   lastName: string | null;
 };
 
+type MedProduct = {
+  id: string;
+  productName: string;
+  searchQuery: string;
+  searchResults: { label: string; productNumber: number }[];
+  searchLoading: boolean;
+  dropdownOpen: boolean;
+  productType: "MEDICATION" | "CONSUMABLE";
+  intakeKind: "ACUTE" | "FIXED";
+  amountMorning: string;
+  amountNoon: string;
+  amountEvening: string;
+  amountNight: string;
+  quantity: number | "";
+};
+
+function createEmptyMedProduct(): MedProduct {
+  return {
+    id: crypto.randomUUID(),
+    productName: "",
+    searchQuery: "",
+    searchResults: [],
+    searchLoading: false,
+    dropdownOpen: false,
+    productType: "MEDICATION",
+    intakeKind: "FIXED",
+    amountMorning: "",
+    amountNoon: "",
+    amountEvening: "",
+    amountNight: "",
+    quantity: 1,
+  };
+}
+
 export default function MedicalConsultationsCard({
   patientId,
   recordTypeFilter,
@@ -458,25 +492,24 @@ export default function MedicalConsultationsCard({
   const [labDropdownOpen, setLabDropdownOpen] = useState(false);
   const [patientDetails, setPatientDetails] = useState<{ dob: string | null; gender: string | null; street_address: string | null; postal_code: string | null; town: string | null; nationality: string | null } | null>(null);
 
-  // Medication form state
-  const [medProductName, setMedProductName] = useState("");
-  const [medSearchQuery, setMedSearchQuery] = useState("");
-  const [medSearchResults, setMedSearchResults] = useState<{ label: string; productNumber: number }[]>([]);
-  const [medSearchLoading, setMedSearchLoading] = useState(false);
-  const [medDropdownOpen, setMedDropdownOpen] = useState(false);
-  const medSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [medProductType, setMedProductType] = useState<"MEDICATION" | "CONSUMABLE">("MEDICATION");
-  const [medIntakeKind, setMedIntakeKind] = useState<"ACUTE" | "FIXED">("FIXED");
-  const [medAmountMorning, setMedAmountMorning] = useState("");
-  const [medAmountNoon, setMedAmountNoon] = useState("");
-  const [medAmountEvening, setMedAmountEvening] = useState("");
-  const [medAmountNight, setMedAmountNight] = useState("");
+  // Medication form state - supports multiple products
+  const [medProducts, setMedProducts] = useState<MedProduct[]>([createEmptyMedProduct()]);
+  const medSearchTimeoutRefs = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
   const [medIntakeNote, setMedIntakeNote] = useState("");
   const [medIntakeFromDate, setMedIntakeFromDate] = useState(formatLocalDateInputValue(new Date()));
   const [medDecisionSummary, setMedDecisionSummary] = useState("");
-  const [medQuantity, setMedQuantity] = useState<number | "">(1);
   const [medShowInMediplan, setMedShowInMediplan] = useState(true);
   const [medIsPrescription, setMedIsPrescription] = useState(false);
+
+  const updateMedProduct = (id: string, updates: Partial<MedProduct>) => {
+    setMedProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+  };
+  const addMedProduct = () => {
+    setMedProducts((prev) => [...prev, createEmptyMedProduct()]);
+  };
+  const removeMedProduct = (id: string) => {
+    setMedProducts((prev) => (prev.length > 1 ? prev.filter((p) => p.id !== id) : prev));
+  };
 
   const consultationRecordTypeOptions: {
     value: ConsultationRecordType;
@@ -2382,20 +2415,10 @@ export default function MedicalConsultationsCard({
                     setInvoiceServiceLines([]);
                     setInvoiceSelectedCategoryId("");
                     setInvoiceSelectedServiceId("");
-                    setMedProductName("");
-                    setMedSearchQuery("");
-                    setMedSearchResults([]);
-                    setMedDropdownOpen(false);
-                    setMedProductType("MEDICATION");
-                    setMedIntakeKind("FIXED");
-                    setMedAmountMorning("");
-                    setMedAmountNoon("");
-                    setMedAmountEvening("");
-                    setMedAmountNight("");
+                    setMedProducts([createEmptyMedProduct()]);
                     setMedIntakeNote("");
                     setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
                     setMedDecisionSummary("");
-                    setMedQuantity(1);
                     setMedShowInMediplan(true);
                     setMedIsPrescription(false);
                     if (currentUserId && recordTypeFilter !== "invoice") {
@@ -2625,9 +2648,10 @@ export default function MedicalConsultationsCard({
                 }
 
                 if (consultationRecordType === "medication") {
-                  if (!medProductName.trim()) {
+                  const validProducts = medProducts.filter((p) => p.productName.trim());
+                  if (validProducts.length === 0) {
                     setConsultationError(
-                      "Please enter a product name for the medication.",
+                      "Please enter at least one product name for the medication.",
                     );
                     return;
                   }
@@ -2901,30 +2925,35 @@ export default function MedicalConsultationsCard({
                     }
                     // Handle medication record type separately - insert into patient_prescriptions
                     if (consultationRecordType === "medication") {
-                      const medPayload: Record<string, unknown> = {
+                      const validProducts = medProducts.filter((p) => p.productName.trim());
+                      const sharedTherapyId = crypto.randomUUID();
+                      const sharedPrescriptionSheetId = medIsPrescription ? crypto.randomUUID() : null;
+                      const mandatorId = consultationDoctorId || crypto.randomUUID();
+
+                      const medPayloads = validProducts.map((product) => ({
                         patient_id: patientId,
                         journal_entry_id: crypto.randomUUID(),
-                        mandator_id: consultationDoctorId || crypto.randomUUID(),
-                        therapy_id: crypto.randomUUID(),
-                        product_name: medProductName.trim(),
-                        product_type: medProductType,
-                        intake_kind: medIntakeKind,
-                        amount_morning: medAmountMorning.trim() || null,
-                        amount_noon: medAmountNoon.trim() || null,
-                        amount_evening: medAmountEvening.trim() || null,
-                        amount_night: medAmountNight.trim() || null,
+                        mandator_id: mandatorId,
+                        therapy_id: sharedTherapyId,
+                        product_name: product.productName.trim(),
+                        product_type: product.productType,
+                        intake_kind: product.intakeKind,
+                        amount_morning: product.amountMorning.trim() || null,
+                        amount_noon: product.amountNoon.trim() || null,
+                        amount_evening: product.amountEvening.trim() || null,
+                        amount_night: product.amountNight.trim() || null,
                         intake_note: medIntakeNote.trim() || null,
                         intake_from_date: medIntakeFromDate || null,
                         decision_summary: medDecisionSummary.trim() || null,
-                        quantity: typeof medQuantity === "number" ? medQuantity : 1,
+                        quantity: typeof product.quantity === "number" ? product.quantity : 1,
                         show_in_mediplan: medShowInMediplan,
-                        prescription_sheet_id: medIsPrescription ? crypto.randomUUID() : null,
+                        prescription_sheet_id: sharedPrescriptionSheetId,
                         active: true,
-                      };
+                      }));
 
                       const { error: medError } = await supabaseClient
                         .from("patient_prescriptions")
-                        .insert(medPayload);
+                        .insert(medPayloads);
 
                       if (medError) {
                         setConsultationError(
@@ -2935,20 +2964,10 @@ export default function MedicalConsultationsCard({
                       }
 
                       // Reset medication form state
-                      setMedProductName("");
-                      setMedSearchQuery("");
-                      setMedSearchResults([]);
-                      setMedDropdownOpen(false);
-                      setMedProductType("MEDICATION");
-                      setMedIntakeKind("FIXED");
-                      setMedAmountMorning("");
-                      setMedAmountNoon("");
-                      setMedAmountEvening("");
-                      setMedAmountNight("");
+                      setMedProducts([createEmptyMedProduct()]);
                       setMedIntakeNote("");
                       setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
                       setMedDecisionSummary("");
-                      setMedQuantity(1);
                       setMedShowInMediplan(true);
                       setMedIsPrescription(false);
 
@@ -5033,174 +5052,196 @@ export default function MedicalConsultationsCard({
 
               {consultationRecordType === "medication" ? (
                 <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-                  <h4 className="text-[13px] font-semibold text-slate-900">
-                    New Medication
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[13px] font-semibold text-slate-900">
+                      New Medication
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={addMedProduct}
+                      className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-700 hover:bg-sky-100"
+                    >
+                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                      Add Product
+                    </button>
+                  </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-medium text-slate-700">
-                        Product Name *
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={medSearchQuery}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setMedSearchQuery(val);
-                            setMedProductName(val);
-                            setMedDropdownOpen(true);
-                            if (medSearchTimeoutRef.current) clearTimeout(medSearchTimeoutRef.current);
-                            if (val.trim().length < 2) {
-                              setMedSearchResults([]);
-                              return;
-                            }
-                            medSearchTimeoutRef.current = setTimeout(async () => {
-                              setMedSearchLoading(true);
-                              try {
-                                const res = await fetch(`/api/compendium/search?q=${encodeURIComponent(val.trim())}`);
-                                const data = await res.json();
-                                setMedSearchResults(data.products ?? []);
-                              } catch {
-                                setMedSearchResults([]);
-                              } finally {
-                                setMedSearchLoading(false);
-                              }
-                            }, 300);
-                          }}
-                          onFocus={() => setMedDropdownOpen(true)}
-                          onBlur={() => setTimeout(() => setMedDropdownOpen(false), 150)}
-                          placeholder="Type to search a medicine"
-                          autoComplete="off"
-                          className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 pr-7 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                        />
-                        {medSearchLoading ? (
-                          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
-                            <svg className="h-3.5 w-3.5 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                            </svg>
-                          </span>
-                        ) : medSearchQuery ? (
+                  {medProducts.map((product, index) => (
+                    <div key={product.id} className="space-y-2 rounded-md border border-slate-100 bg-slate-50 p-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-medium text-slate-500">Product {index + 1}</span>
+                        {medProducts.length > 1 && (
                           <button
                             type="button"
-                            onMouseDown={(e) => { e.preventDefault(); setMedSearchQuery(""); setMedProductName(""); setMedSearchResults([]); setMedDropdownOpen(false); }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            onClick={() => removeMedProduct(product.id)}
+                            className="rounded p-0.5 text-slate-400 hover:bg-red-50 hover:text-red-500"
                           >
-                            <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="2"><path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" /></svg>
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
-                        ) : null}
-                        {medDropdownOpen && (
-                          <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg text-xs">
-                            {medSearchResults.length > 0 ? (
-                              medSearchResults.map((item) => (
-                                <li key={item.productNumber}>
-                                  <button
-                                    type="button"
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      setMedProductName(item.label);
-                                      setMedSearchQuery(item.label);
-                                      setMedDropdownOpen(false);
-                                      setMedSearchResults([]);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-left text-slate-800 hover:bg-sky-50 hover:text-sky-700"
-                                  >
-                                    {item.label}
-                                  </button>
-                                </li>
-                              ))
-                            ) : (
-                              <li className="px-3 py-2 text-slate-400 italic">
-                                {medSearchLoading ? "Searching..." : medSearchQuery.trim().length < 2 ? "Type at least 2 characters to search..." : "No results found"}
-                              </li>
-                            )}
-                          </ul>
                         )}
                       </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-medium text-slate-700">
-                        Product Type
-                      </label>
-                      <select
-                        value={medProductType}
-                        onChange={(e) => setMedProductType(e.target.value as "MEDICATION" | "CONSUMABLE")}
-                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      >
-                        <option value="MEDICATION">Medication</option>
-                        <option value="CONSUMABLE">Consumable</option>
-                      </select>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-medium text-slate-700">
-                        Intake Kind
-                      </label>
-                      <select
-                        value={medIntakeKind}
-                        onChange={(e) => setMedIntakeKind(e.target.value as "ACUTE" | "FIXED")}
-                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      >
-                        <option value="FIXED">Fixed (F)</option>
-                        <option value="ACUTE">Acute (M)</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-medium text-slate-700">
-                        Quantity
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={medQuantity}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setMedQuantity(v === "" ? "" : parseInt(v, 10) || 1);
-                        }}
-                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      />
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-slate-700">
+                            Product Name *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={product.searchQuery}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateMedProduct(product.id, { searchQuery: val, productName: val, dropdownOpen: true });
+                                if (medSearchTimeoutRefs.current[product.id]) clearTimeout(medSearchTimeoutRefs.current[product.id]!);
+                                if (val.trim().length < 2) {
+                                  updateMedProduct(product.id, { searchResults: [] });
+                                  return;
+                                }
+                                medSearchTimeoutRefs.current[product.id] = setTimeout(async () => {
+                                  updateMedProduct(product.id, { searchLoading: true });
+                                  try {
+                                    const res = await fetch(`/api/compendium/search?q=${encodeURIComponent(val.trim())}`);
+                                    const data = await res.json();
+                                    updateMedProduct(product.id, { searchResults: data.products ?? [] });
+                                  } catch {
+                                    updateMedProduct(product.id, { searchResults: [] });
+                                  } finally {
+                                    updateMedProduct(product.id, { searchLoading: false });
+                                  }
+                                }, 300);
+                              }}
+                              onFocus={() => updateMedProduct(product.id, { dropdownOpen: true })}
+                              onBlur={() => setTimeout(() => updateMedProduct(product.id, { dropdownOpen: false }), 150)}
+                              placeholder="Type to search a medicine"
+                              autoComplete="off"
+                              className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 pr-7 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                            />
+                            {product.searchLoading ? (
+                              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                                <svg className="h-3.5 w-3.5 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                                </svg>
+                              </span>
+                            ) : product.searchQuery ? (
+                              <button
+                                type="button"
+                                onMouseDown={(e) => { e.preventDefault(); updateMedProduct(product.id, { searchQuery: "", productName: "", searchResults: [], dropdownOpen: false }); }}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                              >
+                                <svg viewBox="0 0 16 16" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="2"><path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" /></svg>
+                              </button>
+                            ) : null}
+                            {product.dropdownOpen && (
+                              <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg text-xs">
+                                {product.searchResults.length > 0 ? (
+                                  product.searchResults.map((item) => (
+                                    <li key={item.productNumber}>
+                                      <button
+                                        type="button"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          updateMedProduct(product.id, { productName: item.label, searchQuery: item.label, dropdownOpen: false, searchResults: [] });
+                                        }}
+                                        className="w-full px-3 py-1.5 text-left text-slate-800 hover:bg-sky-50 hover:text-sky-700"
+                                      >
+                                        {item.label}
+                                      </button>
+                                    </li>
+                                  ))
+                                ) : (
+                                  <li className="px-3 py-2 text-slate-400 italic">
+                                    {product.searchLoading ? "Searching..." : product.searchQuery.trim().length < 2 ? "Type at least 2 characters to search..." : "No results found"}
+                                  </li>
+                                )}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-slate-700">
+                            Product Type
+                          </label>
+                          <select
+                            value={product.productType}
+                            onChange={(e) => updateMedProduct(product.id, { productType: e.target.value as "MEDICATION" | "CONSUMABLE" })}
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          >
+                            <option value="MEDICATION">Medication</option>
+                            <option value="CONSUMABLE">Consumable</option>
+                          </select>
+                        </div>
+                      </div>
 
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-medium text-slate-700">
-                      Dosage (Morning - Noon - Evening - Night)
-                    </label>
-                    <div className="grid grid-cols-4 gap-2">
-                      <input
-                        type="text"
-                        value={medAmountMorning}
-                        onChange={(e) => setMedAmountMorning(e.target.value)}
-                        placeholder="Morning"
-                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      />
-                      <input
-                        type="text"
-                        value={medAmountNoon}
-                        onChange={(e) => setMedAmountNoon(e.target.value)}
-                        placeholder="Noon"
-                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      />
-                      <input
-                        type="text"
-                        value={medAmountEvening}
-                        onChange={(e) => setMedAmountEvening(e.target.value)}
-                        placeholder="Evening"
-                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      />
-                      <input
-                        type="text"
-                        value={medAmountNight}
-                        onChange={(e) => setMedAmountNight(e.target.value)}
-                        placeholder="Night"
-                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-slate-700">
+                            Intake Kind
+                          </label>
+                          <select
+                            value={product.intakeKind}
+                            onChange={(e) => updateMedProduct(product.id, { intakeKind: e.target.value as "ACUTE" | "FIXED" })}
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          >
+                            <option value="FIXED">Fixed (F)</option>
+                            <option value="ACUTE">Acute (M)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-slate-700">
+                            Quantity
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={product.quantity}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              updateMedProduct(product.id, { quantity: v === "" ? "" : parseInt(v, 10) || 1 });
+                            }}
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-medium text-slate-700">
+                          Dosage (Morning - Noon - Evening - Night)
+                        </label>
+                        <div className="grid grid-cols-4 gap-2">
+                          <input
+                            type="text"
+                            value={product.amountMorning}
+                            onChange={(e) => updateMedProduct(product.id, { amountMorning: e.target.value })}
+                            placeholder="Morning"
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                          <input
+                            type="text"
+                            value={product.amountNoon}
+                            onChange={(e) => updateMedProduct(product.id, { amountNoon: e.target.value })}
+                            placeholder="Noon"
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                          <input
+                            type="text"
+                            value={product.amountEvening}
+                            onChange={(e) => updateMedProduct(product.id, { amountEvening: e.target.value })}
+                            placeholder="Evening"
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                          <input
+                            type="text"
+                            value={product.amountNight}
+                            onChange={(e) => updateMedProduct(product.id, { amountNight: e.target.value })}
+                            placeholder="Night"
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
 
                   <div className="space-y-1">
                     <label className="block text-[11px] font-medium text-slate-700">
@@ -5333,6 +5374,12 @@ export default function MedicalConsultationsCard({
                     setInvoiceServiceLines([]);
                     setInvoiceSelectedCategoryId("");
                     setInvoiceSelectedServiceId("");
+                    setMedProducts([createEmptyMedProduct()]);
+                    setMedIntakeNote("");
+                    setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
+                    setMedDecisionSummary("");
+                    setMedShowInMediplan(true);
+                    setMedIsPrescription(false);
                   }}
                   className="inline-flex items-center rounded-full border border-slate-200/80 bg-slate-100 px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-200"
                 >
