@@ -33,6 +33,7 @@ type AcfAccordionTreeProps = {
   onAddService: (svc: AcfServiceWithVariables) => void;
   patientSex?: number; // 0=male, 1=female
   patientBirthdate?: string; // ISO date
+  existingTardocCodes?: Array<{ code: string; quantity: number; side?: number }>;
 };
 
 const SIDE_LABELS: Record<number, string> = {
@@ -58,7 +59,7 @@ const Spinner = ({ className = "h-3 w-3" }: { className?: string }) => (
   </svg>
 );
 
-export default function AcfAccordionTree({ onAddService, patientSex, patientBirthdate }: AcfAccordionTreeProps) {
+export default function AcfAccordionTree({ onAddService, patientSex, patientBirthdate, existingTardocCodes }: AcfAccordionTreeProps) {
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [nodes, setNodes] = useState<Map<string, TmaTreeNode>>(new Map());
@@ -189,11 +190,14 @@ export default function AcfAccordionTree({ onAddService, patientSex, patientBirt
           patientSex: stageSex,
           patientBirthdate: stageBirthdate,
           law: 0,
-          services: [{
-            code: staged.code,
-            side: stageSide,
-            quantity: 1,
-          }],
+          services: [
+            { code: staged.code, side: stageSide, quantity: 1 },
+            ...(existingTardocCodes || []).map((t) => ({
+              code: t.code,
+              side: t.side ?? 0,
+              quantity: t.quantity,
+            })),
+          ],
         }),
       });
       const json = await res.json();
@@ -210,7 +214,7 @@ export default function AcfAccordionTree({ onAddService, patientSex, patientBirt
       setGrouperError(e?.message || "Grouper request failed");
     }
     setGrouperLoading(false);
-  }, [staged, stageIcd, stageSide, stageSex, stageBirthdate]);
+  }, [staged, stageIcd, stageSide, stageSex, stageBirthdate, existingTardocCodes]);
 
   // ── Add resulting ACF code to invoice ──────────────────────────────────────
   // Standard: add TMA gesture line (TP=0) first, then the generated ACF flat rate line
@@ -354,6 +358,13 @@ export default function AcfAccordionTree({ onAddService, patientSex, patientBirt
               />
             </div>
           </div>
+
+          {/* TARDOC interaction notice */}
+          {existingTardocCodes && existingTardocCodes.length > 0 && (
+            <div className="rounded border border-sky-200 bg-sky-50 px-2 py-1 text-[9px] text-sky-700">
+              <span className="font-medium">TARDOC interaction:</span> {existingTardocCodes.length} TARDOC code{existingTardocCodes.length > 1 ? "s" : ""} ({existingTardocCodes.map(t => t.code).join(", ")}) will be included in the grouper to determine the correct ACF flat rate.
+            </div>
+          )}
 
           {/* Run Grouper button */}
           <div className="flex items-center justify-between pt-0.5">

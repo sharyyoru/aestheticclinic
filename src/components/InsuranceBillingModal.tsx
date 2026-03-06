@@ -66,6 +66,7 @@ export default function InsuranceBillingModal({
   const [invoiceLanguage, setInvoiceLanguage] = useState<1 | 2 | 3>(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingXml, setIsCheckingXml] = useState(false);
+  const [skipValidation, setSkipValidation] = useState(false);
   const [xmlPreview, setXmlPreview] = useState<string | null>(null);
   const [xmlError, setXmlError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -184,6 +185,7 @@ export default function InsuranceBillingModal({
           policyNumber,
           avsNumber,
           accidentDate: lawType === 'UVG' ? accidentDate : undefined,
+          skipValidation,
         }),
       });
 
@@ -234,6 +236,7 @@ export default function InsuranceBillingModal({
           caseNumber,
           accidentDate: lawType === 'UVG' ? accidentDate : undefined,
           language: invoiceLanguage,
+          skipValidation,
         }),
       });
 
@@ -661,24 +664,34 @@ export default function InsuranceBillingModal({
                   {lineItems.map((li) => {
                     const isTardoc = !!li.tardoc_code;
                     return (
-                      <div key={li.id} className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <code className="shrink-0 rounded bg-white px-1.5 py-0.5 text-xs text-slate-600 shadow-sm">
-                            {li.tardoc_code || li.code || "-"}
-                          </code>
-                          {isTardoc && (
-                            <span className="shrink-0 rounded bg-emerald-50 px-1 py-0.5 text-[9px] font-medium text-emerald-700">
-                              TARDOC
+                      <div key={li.id} className="space-y-0.5">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <code className="shrink-0 rounded bg-white px-1.5 py-0.5 text-xs text-slate-600 shadow-sm">
+                              {li.tardoc_code || li.code || "-"}
+                            </code>
+                            {isTardoc && (
+                              <span className="shrink-0 rounded bg-emerald-50 px-1 py-0.5 text-[9px] font-medium text-emerald-700">
+                                TARDOC
+                              </span>
+                            )}
+                            <span className="truncate text-xs text-slate-600">{li.name}</span>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span className="text-xs text-slate-400">&times;{li.quantity}</span>
+                            <span className="ml-2 text-xs font-medium text-slate-700">
+                              CHF {(li.total_price || 0).toFixed(2)}
                             </span>
-                          )}
-                          <span className="truncate text-xs text-slate-600">{li.name}</span>
+                          </div>
                         </div>
-                        <div className="shrink-0 text-right">
-                          <span className="text-xs text-slate-400">&times;{li.quantity}</span>
-                          <span className="ml-2 text-xs font-medium text-slate-700">
-                            CHF {(li.total_price || 0).toFixed(2)}
-                          </span>
-                        </div>
+                        {isTardoc && (
+                          <div className="flex items-center gap-3 pl-2 text-[9px] text-slate-400">
+                            <span>TP MT: <span className="font-mono font-medium text-slate-600">{(li.tp_al || 0).toFixed(2)}</span></span>
+                            <span>TP TT: <span className="font-mono font-medium text-slate-600">{(li.tp_tl || 0).toFixed(2)}</span></span>
+                            <span>Side: <span className="font-medium text-slate-600">{li.side_type === 1 ? "Left" : li.side_type === 2 ? "Right" : li.side_type === 3 ? "Both" : "None"}</span></span>
+                            {li.external_factor_mt !== 1 && <span>Ext.F: <span className="font-medium text-slate-600">{li.external_factor_mt}</span></span>}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -807,6 +820,20 @@ export default function InsuranceBillingModal({
                 <span className="font-medium">XML Check Failed:</span> {xmlError}
               </div>
             )}
+
+            {/* Skip Validation Override */}
+            <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={skipValidation}
+                onChange={(e) => setSkipValidation(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+              />
+              <div>
+                <span className="text-[11px] font-medium text-amber-800">Skip Sumex Validation</span>
+                <p className="text-[9px] text-amber-600">Override Sumex validation errors when sending to insurance</p>
+              </div>
+            </label>
 
             {/* Actions */}
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">

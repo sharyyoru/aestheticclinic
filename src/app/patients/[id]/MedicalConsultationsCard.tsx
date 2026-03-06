@@ -127,6 +127,9 @@ type InvoiceServiceLine = {
   tardocTpTT?: number; // technical tax points
   tardocRecordId?: number | null;
   tardocSection?: string | null;
+  tardocSideType?: number; // 0=none, 1=left, 2=right, 3=both
+  tardocExternalFactor?: number; // multiplier (default 1.0)
+  tardocRefCode?: string | null; // ICD-10 reference code
 };
 
 type InvoiceService = {
@@ -332,6 +335,7 @@ export default function MedicalConsultationsCard({
   const [tardocDbInfo, setTardocDbInfo] = useState<{dbVersion:string;dbVersionDate:string}|null>(null);
   const [tardocGroups, setTardocGroups] = useState<any[]>([]);
   const [tardocGroupsLoaded, setTardocGroupsLoaded] = useState(false);
+  const [skipSumexValidation, setSkipSumexValidation] = useState(false);
   const [invoiceGroupId, setInvoiceGroupId] = useState("");
   const [invoicePaymentTerm, setInvoicePaymentTerm] =
     useState<InvoicePaymentTerm>("full");
@@ -702,7 +706,7 @@ export default function MedicalConsultationsCard({
           const invoiceIds = invoicesWithoutContent.map((r) => r.invoice_id!);
           const { data: allLineItems } = await supabaseClient
             .from("invoice_line_items")
-            .select("invoice_id, name, code, quantity, unit_price, total_price, tariff_code, catalog_name")
+            .select("invoice_id, name, code, tardoc_code, quantity, unit_price, total_price, tariff_code, catalog_name, tp_al, tp_tl, tp_al_value, side_type, external_factor_mt, ref_code")
             .in("invoice_id", invoiceIds)
             .order("sort_order", { ascending: true });
 
@@ -723,12 +727,17 @@ export default function MedicalConsultationsCard({
                 .map((item) => {
                   const lineTotal = item.total_price || (item.unit_price || 0) * (item.quantity || 1);
                   totalAmount += lineTotal;
-                  const badge = item.tariff_code === 7 || item.catalog_name === "TARDOC"
+                  const isTardoc = item.tariff_code === 7 || item.catalog_name === "TARDOC";
+                  const badge = isTardoc
                     ? `<span class="ml-1 inline-flex rounded bg-red-50 px-1 text-[8px] font-medium text-red-600">TARDOC</span>`
                     : item.tariff_code === 5 || item.tariff_code === 590 || item.catalog_name === "ACF" || item.catalog_name === "SURGERY_FLAT_RATE"
                     ? `<span class="ml-1 inline-flex rounded bg-violet-50 px-1 text-[8px] font-medium text-violet-600">ACF</span>`
                     : "";
-                  return `<tr class="border-b border-slate-100"><td class="px-2 py-1">${item.code || "-"}${badge}</td><td class="px-2 py-1">${item.name || "Service"}</td><td class="px-2 py-1 text-right">${item.quantity || 1}</td><td class="px-2 py-1 text-right">CHF ${(item.unit_price || 0).toFixed(2)}</td><td class="px-2 py-1 text-right">CHF ${lineTotal.toFixed(2)}</td></tr>`;
+                  const sideLabel = item.side_type === 1 ? "Left" : item.side_type === 2 ? "Right" : item.side_type === 3 ? "Both" : "None";
+                  const tardocDetails = isTardoc
+                    ? `<tr class="border-b border-slate-50 bg-slate-50/50"><td colspan="5" class="px-2 py-0.5 text-[9px] text-slate-400">TP MT: <span class="font-mono font-medium text-slate-600">${(item.tp_al || 0).toFixed(2)}</span> &nbsp; TP TT: <span class="font-mono font-medium text-slate-600">${(item.tp_tl || 0).toFixed(2)}</span> &nbsp; TPV: <span class="font-mono font-medium text-slate-600">${(item.tp_al_value || 0).toFixed(2)}</span> &nbsp; Side: <span class="font-medium text-slate-600">${sideLabel}</span> &nbsp; Ext.F: <span class="font-mono font-medium text-slate-600">${(item.external_factor_mt ?? 1).toFixed(2)}</span>${item.ref_code ? ` &nbsp; Ref: <span class="font-medium text-slate-600">${item.ref_code}</span>` : ""}</td></tr>`
+                    : "";
+                  return `<tr class="border-b border-slate-100"><td class="px-2 py-1">${item.tardoc_code || item.code || "-"}${badge}</td><td class="px-2 py-1">${item.name || "Service"}</td><td class="px-2 py-1 text-right">${item.quantity || 1}</td><td class="px-2 py-1 text-right">CHF ${(item.unit_price || 0).toFixed(2)}</td><td class="px-2 py-1 text-right">CHF ${lineTotal.toFixed(2)}</td></tr>${tardocDetails}`;
                 })
                 .join("");
 
@@ -2959,12 +2968,14 @@ export default function MedicalConsultationsCard({
                     if (consultationRecordType === "invoice") {
                       // ── Invoice: insert ONLY into invoices + invoice_line_items ──
                       try {
-                        const isTardocInvoice = invoiceMode === "tardoc";
+                        const hasAcfLines = invoiceServiceLines.some((l) => l.serviceId.startsWith("flatrate-"));
+                        const hasTardocLines = invoiceServiceLines.some((l) => l.serviceId.startsWith("tardoc-"));
+                        const isTardocInvoice = hasTardocLines;
                         const taxPointValue = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
 
                         // ── ACF Validation: validate flat rate services before saving ──
                         let workingServiceLines = [...invoiceServiceLines];
-                        if (invoiceMode === "flatrate") {
+                        if (hasAcfLines) {
                           const acfLines = workingServiceLines.filter(
                             (l) => l.serviceId.startsWith("flatrate-"),
                           );
@@ -3119,7 +3130,7 @@ export default function MedicalConsultationsCard({
                               tp_tl_value: isTardocLine ? taxPointValue : 1,
                               tp_al_scale_factor: 1,
                               tp_tl_scale_factor: 1,
-                              external_factor_mt: isFlatRateLine ? (line.acfExternalFactor ?? 1) : 1,
+                              external_factor_mt: isFlatRateLine ? (line.acfExternalFactor ?? 1) : isTardocLine ? (line.tardocExternalFactor ?? 1) : 1,
                               external_factor_tt: 1,
                               price_al: isTardocLine ? Math.round(tardocTpMT * taxPointValue * 100) / 100 : 0,
                               price_tl: isTardocLine ? Math.round(tardocTpTT * taxPointValue * 100) / 100 : 0,
@@ -3127,31 +3138,34 @@ export default function MedicalConsultationsCard({
                               responsible_gln: (isTardocLine || isFlatRateLine) ? selectedProviderGln : null,
                               billing_role: (isTardocLine || isFlatRateLine) ? "both" : null,
                               record_id: tardocRecordId,
-                              ref_code: isFlatRateLine ? (line.acfRefCode || null) : (null as string | null),
+                              ref_code: isFlatRateLine ? (line.acfRefCode || null) : isTardocLine ? (line.tardocRefCode || null) : (null as string | null),
                               section_code: tardocSection,
                               session_number: 1,
                               service_attributes: 0,
-                              side_type: isFlatRateLine ? (line.acfSideType ?? 0) : 0,
+                              side_type: isFlatRateLine ? (line.acfSideType ?? 0) : isTardocLine ? (line.tardocSideType ?? 0) : 0,
                               date_begin: scheduledAtIso || null,
                               catalog_name: isTardocLine ? "TARDOC" : isFlatRateLine ? "ACF" : null,
                               catalog_nature: (isTardocLine || isFlatRateLine) ? "TARIFF_CATALOG" : null,
                             };
                           });
 
-                        // For TARDOC: set ref_code on additional services (services where code != first service code)
-                        if (isTardocInvoice && invoiceLines.length > 1) {
-                          const mainCode = invoiceLines[0]?.tardoc_code;
-                          if (mainCode) {
-                            for (let i = 1; i < invoiceLines.length; i++) {
-                              if (invoiceLines[i].tardoc_code && invoiceLines[i].tardoc_code !== mainCode) {
-                                invoiceLines[i].ref_code = mainCode;
+                        // For TARDOC: set ref_code on additional TARDOC services (reference to the first TARDOC code)
+                        if (isTardocInvoice) {
+                          const tardocOnlyLines = invoiceLines.filter((l) => !!l.tardoc_code);
+                          if (tardocOnlyLines.length > 1) {
+                            const mainCode = tardocOnlyLines[0]?.tardoc_code;
+                            if (mainCode) {
+                              for (let i = 1; i < tardocOnlyLines.length; i++) {
+                                if (tardocOnlyLines[i].tardoc_code !== mainCode) {
+                                  tardocOnlyLines[i].ref_code = mainCode;
+                                }
                               }
                             }
                           }
                         }
 
                         // Validate TARDOC services with Sumex before creating invoice
-                        if (isTardocInvoice) {
+                        if (isTardocInvoice && !skipSumexValidation) {
                           const tardocItems = invoiceLines.filter((l) => l.tariff_type === "007");
                           if (tardocItems.length > 0) {
                             try {
@@ -3288,9 +3302,8 @@ export default function MedicalConsultationsCard({
                           ];
                         }
 
-                        // Add ACF-specific invoice fields
-                        const isAcfInvoice = invoiceMode === "flatrate";
-                        if (isAcfInvoice) {
+                        // Add ACF/TARDOC-specific invoice fields (when ACF or TARDOC lines present)
+                        if (hasAcfLines || hasTardocLines) {
                           invoiceInsertPayload.treatment_canton = invoiceCanton;
                           invoiceInsertPayload.treatment_reason = invoiceLawType === "UVG" ? "accident" : "disease";
                           invoiceInsertPayload.treatment_date_end = scheduledAtIso;
@@ -3327,7 +3340,6 @@ export default function MedicalConsultationsCard({
                             unit_price: line.unit_price,
                             total_price: line.total_price,
                             tariff_code: line.tariff_code,
-                            tariff_type: line.tariff_type,
                             tardoc_code: line.tardoc_code,
                             tp_al: line.tp_al,
                             tp_tl: line.tp_tl,
@@ -4296,6 +4308,9 @@ export default function MedicalConsultationsCard({
                                         tardocTpTT: item.tp_tt ?? 0,
                                         tardocRecordId: null,
                                         tardocSection: null,
+                                        tardocSideType: item.side_type ?? 0,
+                                        tardocExternalFactor: item.external_factor_mt ?? 1,
+                                        tardocRefCode: item.ref_code || null,
                                       }));
                                       setInvoiceServiceLines((prev) => [...prev, ...newLines]);
                                       // Inject matching search results so save logic has tp_mt/tp_tt data
@@ -4491,6 +4506,20 @@ export default function MedicalConsultationsCard({
                                 />
                               </div>
 
+                              {/* Skip Sumex Validation */}
+                              <label className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={skipSumexValidation}
+                                  onChange={(e) => setSkipSumexValidation(e.target.checked)}
+                                  className="h-3.5 w-3.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                />
+                                <div>
+                                  <span className="text-[10px] font-medium text-amber-800">Skip Sumex Validation</span>
+                                  <p className="text-[9px] text-amber-600">Override validation errors when creating this invoice</p>
+                                </div>
+                              </label>
+
                               {/* DB info */}
                               <div className="flex items-center justify-between">
                                 <p className="text-[9px] text-slate-400">
@@ -4516,6 +4545,13 @@ export default function MedicalConsultationsCard({
                               <AcfAccordionTree
                                 patientSex={patientDetails?.gender?.toLowerCase() === "female" ? 1 : 0}
                                 patientBirthdate={patientDetails?.dob || undefined}
+                                existingTardocCodes={invoiceServiceLines
+                                  .filter((l) => l.serviceId.startsWith("tardoc-"))
+                                  .map((l) => ({
+                                    code: l.serviceId.replace("tardoc-", ""),
+                                    quantity: l.quantity > 0 ? l.quantity : 1,
+                                    side: l.tardocSideType ?? 0,
+                                  }))}
                                 onAddService={(svc: any) => {
                                   const ef = svc.externalFactor ?? 1.0;
                                   const adjustedPrice = svc.tp * ef;
@@ -4923,6 +4959,67 @@ export default function MedicalConsultationsCard({
                                       Remove
                                     </button>
                                   </div>
+                                  {/* TARDOC detail row: Side, TP MT, TP TT, Point Value */}
+                                  {isTardocLine && (
+                                    <div className="col-span-4 flex items-center gap-3 rounded-md bg-red-50/50 px-2 py-1 mt-0.5">
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[9px] text-slate-400">Side:</span>
+                                        <select
+                                          value={line.tardocSideType ?? 0}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value);
+                                            setInvoiceServiceLines((prev) => {
+                                              const next = [...prev];
+                                              next[index] = { ...next[index], tardocSideType: val };
+                                              return next;
+                                            });
+                                          }}
+                                          className="rounded border border-slate-200 px-1 py-0.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                                        >
+                                          <option value={0}>None</option>
+                                          <option value={1}>Left</option>
+                                          <option value={2}>Right</option>
+                                          <option value={3}>Both</option>
+                                        </select>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[9px] text-slate-400">TP MT:</span>
+                                        <span className="font-mono text-[10px] font-medium text-slate-700">{(line.tardocTpMT ?? 0).toFixed(2)}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[9px] text-slate-400">TP TT:</span>
+                                        <span className="font-mono text-[10px] font-medium text-slate-700">{(line.tardocTpTT ?? 0).toFixed(2)}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[9px] text-slate-400">TPV:</span>
+                                        <span className="font-mono text-[10px] font-medium text-slate-700">{(CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96).toFixed(2)}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[9px] text-slate-400">Ext.F:</span>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          step={0.01}
+                                          value={line.tardocExternalFactor ?? 1}
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 1;
+                                            setInvoiceServiceLines((prev) => {
+                                              const next = [...prev];
+                                              next[index] = { ...next[index], tardocExternalFactor: val };
+                                              return next;
+                                            });
+                                          }}
+                                          className="w-14 rounded border border-slate-200 px-1 py-0.5 text-center text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[9px] text-slate-400">Total:</span>
+                                        <span className="font-mono text-[10px] font-semibold text-slate-800">
+                                          {(((line.tardocTpMT ?? 0) + (line.tardocTpTT ?? 0)) * (CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96) * quantity * (line.tardocExternalFactor ?? 1)).toFixed(2)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}

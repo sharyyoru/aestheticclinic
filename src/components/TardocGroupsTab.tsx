@@ -169,9 +169,9 @@ export default function TardocGroupsTab() {
     setGroupItems((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  function updateItemQuantity(idx: number, qty: number) {
+  function updateItemField(idx: number, field: keyof GroupItem, value: number | string | null) {
     setGroupItems((prev) =>
-      prev.map((item, i) => (i === idx ? { ...item, quantity: qty } : item)),
+      prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item)),
     );
   }
 
@@ -563,35 +563,74 @@ export default function TardocGroupsTab() {
                 ) : (
                   <div className="rounded-lg border border-slate-200 divide-y divide-slate-100">
                     {groupItems.map((item, idx) => {
-                      const itemPrice = Math.round((item.tp_mt + item.tp_tt) * tpv * item.quantity * 100) / 100;
+                      const itemPrice = Math.round((item.tp_mt + item.tp_tt) * tpv * item.quantity * item.external_factor_mt * 100) / 100;
                       return (
-                        <div key={idx} className="flex items-center gap-2 px-2 py-1.5">
-                          <span className="text-[9px] text-slate-400 w-4 text-center">{idx + 1}</span>
-                          <span className="font-mono text-[10px] font-semibold text-slate-700 w-20">{item.tardoc_code}</span>
-                          <span className="flex-1 text-[10px] text-slate-500 line-clamp-1 min-w-0">{item.description || "—"}</span>
-                          <div className="flex items-center gap-1">
-                            <label className="text-[9px] text-slate-400">Qty:</label>
-                            <input
-                              type="number"
-                              min={1}
-                              step={1}
-                              value={item.quantity}
-                              onChange={(e) => updateItemQuantity(idx, Math.max(1, Number(e.target.value) || 1))}
-                              className="w-12 rounded border border-slate-200 px-1 py-0.5 text-center text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
-                            />
+                        <div key={idx} className="px-2 py-1.5 space-y-1">
+                          {/* Row 1: Code, description, price, remove */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] text-slate-400 w-4 text-center">{idx + 1}</span>
+                            <span className="font-mono text-[10px] font-semibold text-slate-700 w-20">{item.tardoc_code}</span>
+                            <span className="flex-1 text-[10px] text-slate-500 line-clamp-1 min-w-0">{item.description || "—"}</span>
+                            <span className="text-[10px] font-medium text-slate-700 w-16 text-right">
+                              {itemPrice.toFixed(2)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeItem(idx)}
+                              className="flex h-4 w-4 items-center justify-center rounded text-red-400 hover:bg-red-50 hover:text-red-600"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
                           </div>
-                          <span className="text-[10px] font-medium text-slate-700 w-16 text-right">
-                            {itemPrice.toFixed(2)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removeItem(idx)}
-                            className="flex h-4 w-4 items-center justify-center rounded text-red-400 hover:bg-red-50 hover:text-red-600"
-                          >
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          {/* Row 2: TP MT, TP TT, Point Value */}
+                          <div className="flex items-center gap-3 pl-6 text-[9px] text-slate-400">
+                            <span>TP MT: <span className="font-mono font-medium text-slate-600">{item.tp_mt.toFixed(2)}</span></span>
+                            <span>TP TT: <span className="font-mono font-medium text-slate-600">{item.tp_tt.toFixed(2)}</span></span>
+                            <span>TPV: <span className="font-mono font-medium text-slate-600">{tpv.toFixed(2)}</span></span>
+                          </div>
+                          {/* Row 3: Qty, Side, Ext Factor, Ref Code */}
+                          <div className="flex items-center gap-2 pl-6">
+                            <div className="flex items-center gap-1">
+                              <label className="text-[9px] text-slate-400">Qty:</label>
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={item.quantity}
+                                onChange={(e) => updateItemField(idx, "quantity", Math.max(1, Number(e.target.value) || 1))}
+                                className="w-12 rounded border border-slate-200 px-1 py-0.5 text-center text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <label className="text-[9px] text-slate-400">Side:</label>
+                              <select
+                                value={item.side_type}
+                                onChange={(e) => updateItemField(idx, "side_type", Number(e.target.value))}
+                                className="rounded border border-slate-200 px-1 py-0.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                              >
+                                <option value={0}>None</option>
+                                <option value={1}>Left</option>
+                                <option value={2}>Right</option>
+                                <option value={3}>Both</option>
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <label className="text-[9px] text-slate-400">Ext.F:</label>
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                value={item.external_factor_mt}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value) || 1;
+                                  updateItemField(idx, "external_factor_mt", v);
+                                }}
+                                className="w-14 rounded border border-slate-200 px-1 py-0.5 text-center text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                              />
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -599,7 +638,7 @@ export default function TardocGroupsTab() {
                     <div className="flex items-center justify-between px-2 py-1.5 bg-slate-50">
                       <span className="text-[10px] font-semibold text-slate-600">Total</span>
                       <span className="text-[11px] font-bold text-slate-800">
-                        CHF {groupItems.reduce((sum, item) => sum + Math.round((item.tp_mt + item.tp_tt) * tpv * item.quantity * 100) / 100, 0).toFixed(2)}
+                        CHF {groupItems.reduce((sum, item) => sum + Math.round((item.tp_mt + item.tp_tt) * tpv * item.quantity * item.external_factor_mt * 100) / 100, 0).toFixed(2)}
                       </span>
                     </div>
                   </div>
