@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import PatientMergeModal from "@/components/PatientMergeModal";
+import { useAuth } from "@/components/AuthContext";
 
 type PatientRow = {
   id: string;
@@ -24,22 +25,37 @@ type StatusFilter = "all" | "has_deal" | "no_deal";
 
 type DealStatusByPatient = Record<string, string | null>;
 
+const PAGE_SIZE = 50;
+
 export default function PatientsPage() {
+  const { user } = useAuth();
   const [patients, setPatients] = useState<PatientRow[]>([]);
   const [dealStatusByPatient, setDealStatusByPatient] = useState<DealStatusByPatient>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
 
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>("all");
   const [ownerNameFilter, setOwnerNameFilter] = useState<string | null>(null);
   const [createdFilter, setCreatedFilter] = useState<CreatedDateFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showMergeModal, setShowMergeModal] = useState(false);
 
   const [priorityMode, setPriorityMode] = useState<"crm" | "medical">("crm");
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     let isMounted = true;
@@ -49,54 +65,97 @@ export default function PatientsPage() {
         setLoading(true);
         setError(null);
 
-        const [patientsResult, dealsResult] = await Promise.all([
-          supabaseClient
-            .from("patients")
-            .select(
-              "id, first_name, last_name, email, phone, created_at, contact_owner_name, dob",
-            )
-            .order("created_at", { ascending: false }),
-          supabaseClient
-            .from("deals")
-            .select(
-              "id, patient_id, created_at, stage:deal_stages(name, sort_order)",
-            )
-            .order("created_at", { ascending: false }),
-        ]);
+        // Calculate pagination range
+        const from = (page - 1) * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+
+        // Build the patients query with server-side search and pagination
+        let patientsQuery = supabaseClient
+          .from("patients")
+          .select(
+            "id, first_name, last_name, email, phone, created_at, contact_owner_name, dob",
+            { count: "exact" }
+          );
+
+        // Apply server-side search filter
+        if (debouncedSearch.trim()) {
+          const searchTerm = `%${debouncedSearch.trim()}%`;
+          patientsQuery = patientsQuery.or(
+            `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`
+          );
+        }
+
+        // Apply owner filter
+        if (ownerFilter === "owner" && ownerNameFilter) {
+          patientsQuery = patientsQuery.eq("contact_owner_name", ownerNameFilter);
+        }
+
+        // Apply created date filter
+        if (createdFilter !== "all") {
+          const now = new Date();
+          let filterDate: Date;
+          if (createdFilter === "today") {
+            filterDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          } else if (createdFilter === "last_7_days") {
+            filterDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          } else {
+            filterDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          }
+          patientsQuery = patientsQuery.gte("created_at", filterDate.toISOString());
+        }
+
+        // Apply pagination and ordering
+        patientsQuery = patientsQuery
+          .order("created_at", { ascending: false })
+          .range(from, to);
+
+        const patientsResult = await patientsQuery;
 
         if (!isMounted) return;
 
-        const { data: patientsData, error: patientsError } = patientsResult;
-        const { data: dealsData, error: dealsError } = dealsResult;
+        const { data: patientsData, error: patientsError, count } = patientsResult;
 
         if (patientsError || !patientsData) {
           setError(patientsError?.message ?? "Failed to load patients.");
           setPatients([]);
           setDealStatusByPatient({});
+          setTotalCount(0);
           setLoading(false);
           return;
         }
 
         setPatients(patientsData as PatientRow[]);
+        setTotalCount(count ?? 0);
 
-        const statusMap: DealStatusByPatient = {};
-        if (!dealsError && dealsData) {
-          for (const row of dealsData as any[]) {
-            const pid = row.patient_id as string | null;
-            if (!pid) continue;
-            if (statusMap[pid] != null) continue;
-            const stage = row.stage as { name: string | null } | null;
-            statusMap[pid] = stage?.name ?? null;
+        // Only fetch deals for the patients we just loaded (much smaller query)
+        if (patientsData.length > 0) {
+          const patientIds = patientsData.map((p: any) => p.id);
+          const { data: dealsData } = await supabaseClient
+            .from("deals")
+            .select("patient_id, stage:deal_stages(name)")
+            .in("patient_id", patientIds);
+
+          if (isMounted && dealsData) {
+            const statusMap: DealStatusByPatient = {};
+            for (const row of dealsData as any[]) {
+              const pid = row.patient_id as string | null;
+              if (!pid || statusMap[pid] != null) continue;
+              const stage = row.stage as { name: string | null } | null;
+              statusMap[pid] = stage?.name ?? null;
+            }
+            setDealStatusByPatient(statusMap);
           }
+        } else {
+          setDealStatusByPatient({});
         }
 
-        setDealStatusByPatient(statusMap);
         setLoading(false);
       } catch {
         if (!isMounted) return;
         setError("Failed to load patients.");
         setPatients([]);
         setDealStatusByPatient({});
+        setTotalCount(0);
         setLoading(false);
       }
     }
@@ -106,33 +165,18 @@ export default function PatientsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [page, debouncedSearch, ownerFilter, ownerNameFilter, createdFilter]);
 
+  // Load priority mode from user metadata
   useEffect(() => {
-    let isMounted = true;
+    if (!user) return;
 
-    async function loadPriority() {
-      try {
-        const { data } = await supabaseClient.auth.getUser();
-        if (!isMounted) return;
-        const user = data.user;
-        if (!user) return;
-
-        const meta = (user.user_metadata || {}) as Record<string, unknown>;
-        const rawPriority = (meta["priority_mode"] as string) || "";
-        const next: "crm" | "medical" =
-          rawPriority === "medical" ? "medical" : "crm";
-        setPriorityMode(next);
-      } catch {
-      }
-    }
-
-    void loadPriority();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    const meta = (user.user_metadata || {}) as Record<string, unknown>;
+    const rawPriority = (meta["priority_mode"] as string) || "";
+    const next: "crm" | "medical" =
+      rawPriority === "medical" ? "medical" : "crm";
+    setPriorityMode(next);
+  }, [user]);
 
   const ownerOptions = useMemo(() => {
     const set = new Set<string>();
@@ -152,172 +196,30 @@ export default function PatientsPage() {
     return Array.from(set.values()).sort();
   }, [dealStatusByPatient]);
 
+  // Client-side filter for status (deal presence) - applied to already paginated results
   const filteredPatients = useMemo(() => {
-    const search = searchQuery.trim().toLowerCase();
-    const words = search.split(/\s+/).filter(w => w.length > 0);
-    const today = new Date();
-    const todayYmd = today.toISOString().slice(0, 10);
-    const weekAgoYmd = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-    const monthAgoYmd = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-
-    const filtered = patients.filter((patient) => {
-      const fullName = `${patient.first_name} ${patient.last_name}`
-        .trim()
-        .toLowerCase();
-      const email = (patient.email ?? "").toLowerCase();
-      const phone = (patient.phone ?? "").toLowerCase();
-      const dob = (patient.dob ?? "").toLowerCase();
-
-      if (search) {
-        // Check if search is DD/MM/YYYY format for birthday search
-        const ddmmyyyyMatch = search.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (ddmmyyyyMatch) {
-          // Convert DD/MM/YYYY to ISO format for matching
-          const day = ddmmyyyyMatch[1].padStart(2, "0");
-          const month = ddmmyyyyMatch[2].padStart(2, "0");
-          const year = ddmmyyyyMatch[3];
-          const isoDate = `${year}-${month}-${day}`;
-          if (dob !== isoDate) return false;
-        } else {
-          const haystack = `${fullName} ${email} ${phone} ${dob}`;
-          // For multi-word search, ensure ALL words match somewhere
-          if (words.length > 1) {
-            if (!words.every(word => haystack.includes(word))) return false;
-          } else {
-            if (!haystack.includes(search)) return false;
-          }
-        }
-      }
-
-      if (ownerFilter === "owner" && ownerNameFilter) {
-        if (patient.contact_owner_name !== ownerNameFilter) return false;
-      }
-
-      const createdRaw = patient.created_at;
-      let createdYmd: string | null = null;
-      if (createdRaw) {
-        const d = new Date(createdRaw);
-        if (!Number.isNaN(d.getTime())) {
-          createdYmd = d.toISOString().slice(0, 10);
-        }
-      }
-
-      if (createdFilter === "today") {
-        if (!createdYmd || createdYmd !== todayYmd) return false;
-      } else if (createdFilter === "last_7_days") {
-        if (!createdYmd || createdYmd < weekAgoYmd) return false;
-      } else if (createdFilter === "last_30_days") {
-        if (!createdYmd || createdYmd < monthAgoYmd) return false;
-      }
-
+    if (statusFilter === "all") {
+      return patients;
+    }
+    return patients.filter((patient) => {
       const dealStatus = dealStatusByPatient[patient.id] ?? null;
       if (statusFilter === "has_deal" && !dealStatus) return false;
       if (statusFilter === "no_deal" && dealStatus) return false;
-
       return true;
     });
+  }, [patients, statusFilter, dealStatusByPatient]);
 
-    // If no search query, return filtered results sorted by created_at (default)
-    if (!search) {
-      return filtered;
-    }
+  // Server-side pagination - totalPages based on server count
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
 
-    // Score and sort results by relevance when searching
-    const scored = filtered.map(patient => {
-      let score = 0;
-      const firstName = (patient.first_name ?? "").toLowerCase();
-      const lastName = (patient.last_name ?? "").toLowerCase();
-      const fullName = `${firstName} ${lastName}`.trim();
-      const email = (patient.email ?? "").toLowerCase();
-      const phone = (patient.phone ?? "").toLowerCase();
-
-      // Exact full name match = highest priority
-      if (fullName === search) {
-        score += 100;
-      }
-      // Exact first name or last name match
-      else if (firstName === search || lastName === search) {
-        score += 80;
-      }
-      // Name starts with query
-      else if (fullName.startsWith(search) || firstName.startsWith(search) || lastName.startsWith(search)) {
-        score += 60;
-      }
-      // For multi-word queries, check if each word starts a name part
-      else if (words.length > 1) {
-        const allWordsStartName = words.every(word => 
-          firstName.startsWith(word) || lastName.startsWith(word)
-        );
-        if (allWordsStartName) score += 50;
-      }
-      
-      // Contains query in name (additive)
-      if (fullName.includes(search)) {
-        score += 20;
-      }
-      
-      // Exact email match
-      if (email === search) {
-        score += 70;
-      }
-      // Email starts with query
-      else if (email.startsWith(search)) {
-        score += 40;
-      }
-      // Email contains query
-      else if (email.includes(search)) {
-        score += 15;
-      }
-
-      // Phone exact match (normalize digits)
-      const searchDigits = search.replace(/\D/g, "");
-      const phoneDigits = phone.replace(/\D/g, "");
-      if (phone === search || (searchDigits && phoneDigits === searchDigits)) {
-        score += 70;
-      }
-      // Phone contains query
-      else if (phone.includes(search) || (searchDigits && phoneDigits.includes(searchDigits))) {
-        score += 25;
-      }
-
-      return { ...patient, _score: score };
-    });
-
-    // Sort by score descending, then by name alphabetically for ties
-    scored.sort((a, b) => {
-      if (b._score !== a._score) return b._score - a._score;
-      const nameA = `${a.first_name ?? ""} ${a.last_name ?? ""}`.toLowerCase();
-      const nameB = `${b.first_name ?? ""} ${b.last_name ?? ""}`.toLowerCase();
-      return nameA.localeCompare(nameB);
-    });
-
-    return scored;
-  }, [
-    patients,
-    searchQuery,
-    ownerFilter,
-    ownerNameFilter,
-    createdFilter,
-    statusFilter,
-    dealStatusByPatient,
-  ]);
-
-  const pageSize = 15;
-  const totalPages = Math.max(1, Math.ceil(filteredPatients.length / pageSize));
-  const [page, setPage] = useState(1);
-
+  // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, ownerFilter, ownerNameFilter, createdFilter, statusFilter]);
+  }, [ownerFilter, ownerNameFilter, createdFilter, statusFilter]);
 
-  const currentPage = Math.min(page, totalPages);
-  const pageStart = (currentPage - 1) * pageSize;
-  const pageEnd = pageStart + pageSize;
-  const paginatedPatients = filteredPatients.slice(pageStart, pageEnd);
+  // For display - use filtered patients directly (already paginated from server)
+  const paginatedPatients = filteredPatients;
 
   function buildPatientHref(id: string) {
     if (priorityMode === "medical") {
@@ -359,7 +261,7 @@ export default function PatientsPage() {
             Patient contacts for all pipelines. Use filters to narrow down the list.
           </p>
           <p className="mt-1 text-xs font-medium text-sky-600">
-            Total Records: {patients.length.toLocaleString()}
+            Total Records: {totalCount.toLocaleString()}
           </p>
         </div>
       </div>

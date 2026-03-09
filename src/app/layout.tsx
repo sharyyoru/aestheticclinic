@@ -15,6 +15,7 @@ import { TasksNotificationsProvider } from "@/components/TasksNotificationsConte
 import { EmailNotificationsProvider } from "@/components/EmailNotificationsContext";
 import { PatientTabsProvider } from "@/components/PatientTabsContext";
 import PatientTabBar from "@/components/PatientTabBar";
+import { AuthProvider } from "@/components/AuthContext";
 import GlobalLoader from "@/components/GlobalLoader";
 import SidebarLeadImportDropdown from "@/components/SidebarLeadImportDropdown";
 
@@ -45,6 +46,7 @@ export default function RootLayout({
       >
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff,_#e0f2fe_40%,_#fdf2ff_80%)] px-4 py-6 sm:px-6 lg:px-8">
           <GlobalLoader />
+          <AuthProvider>
           <CommentsUnreadProvider>
           <TasksNotificationsProvider>
           <EmailNotificationsProvider>
@@ -481,6 +483,7 @@ export default function RootLayout({
           </EmailNotificationsProvider>
           </TasksNotificationsProvider>
           </CommentsUnreadProvider>
+          </AuthProvider>
         </div>
       </body>
     </html>

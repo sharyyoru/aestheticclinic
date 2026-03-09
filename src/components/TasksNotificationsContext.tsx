@@ -5,9 +5,11 @@ import {
   useContext,
   useEffect,
   useState,
+  useCallback,
   type ReactNode,
 } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useAuth } from "./AuthContext";
 
 type TasksNotificationsContextValue = {
   openTasksCount: number | null;
@@ -23,18 +25,16 @@ export function TasksNotificationsProvider({
 }: {
   children: ReactNode;
 }) {
+  const { user, loading: authLoading } = useAuth();
   const [openTasksCount, setOpenTasksCount] = useState<number | null>(null);
 
-  const refreshOpenTasksCount = async () => {
+  const refreshOpenTasksCount = useCallback(async () => {
+    if (!user) {
+      setOpenTasksCount(0);
+      return;
+    }
+
     try {
-      const { data: authData } = await supabaseClient.auth.getUser();
-      const user = authData?.user;
-
-      if (!user) {
-        setOpenTasksCount(0);
-        return;
-      }
-
       const { count, error } = await supabaseClient
         .from("tasks")
         .select("id", { count: "exact", head: true })
@@ -50,9 +50,12 @@ export function TasksNotificationsProvider({
     } catch {
       setOpenTasksCount(0);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
+    // Wait for auth to load before fetching
+    if (authLoading) return;
+
     let isMounted = true;
 
     async function load() {
@@ -71,7 +74,7 @@ export function TasksNotificationsProvider({
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [authLoading, refreshOpenTasksCount]);
 
   const setOpenTasksCountOptimistic = (updater: (prev: number) => number) => {
     setOpenTasksCount((prev) => {

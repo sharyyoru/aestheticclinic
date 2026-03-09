@@ -5,9 +5,11 @@ import {
   useContext,
   useEffect,
   useState,
+  useCallback,
   type ReactNode,
 } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useAuth } from "./AuthContext";
 
 type EmailNotification = {
   id: string;
@@ -45,22 +47,20 @@ const EmailNotificationsContext = createContext<EmailNotificationsContextValue |
 );
 
 export function EmailNotificationsProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<EmailNotification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refreshNotifications = async () => {
+  const refreshNotifications = useCallback(async () => {
+    if (!user) {
+      setUnreadCount(0);
+      setNotifications([]);
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { data: authData } = await supabaseClient.auth.getUser();
-      const user = authData?.user;
-
-      if (!user) {
-        setUnreadCount(0);
-        setNotifications([]);
-        setLoading(false);
-        return;
-      }
-
       // Fetch email reply notifications with simpler query
       const { data, error } = await supabaseClient
         .from("email_reply_notifications")
@@ -135,7 +135,7 @@ export function EmailNotificationsProvider({ children }: { children: ReactNode }
       setNotifications([]);
       setLoading(false);
     }
-  };
+  }, [user]);
 
   const markAsRead = async (id: string) => {
     try {
@@ -154,12 +154,10 @@ export function EmailNotificationsProvider({ children }: { children: ReactNode }
     }
   };
 
-  const markAllAsRead = async () => {
-    try {
-      const { data: authData } = await supabaseClient.auth.getUser();
-      const user = authData?.user;
-      if (!user) return;
+  const markAllAsRead = useCallback(async () => {
+    if (!user) return;
 
+    try {
       const nowIso = new Date().toISOString();
       await supabaseClient
         .from("email_reply_notifications")
@@ -174,9 +172,12 @@ export function EmailNotificationsProvider({ children }: { children: ReactNode }
     } catch {
       // Silent fail
     }
-  };
+  }, [user]);
 
   useEffect(() => {
+    // Wait for auth to load before fetching
+    if (authLoading) return;
+
     let isMounted = true;
 
     async function load() {
@@ -184,7 +185,7 @@ export function EmailNotificationsProvider({ children }: { children: ReactNode }
       await refreshNotifications();
     }
 
-    load();
+    void load();
 
     const intervalId = window.setInterval(() => {
       if (!isMounted) return;
@@ -195,7 +196,7 @@ export function EmailNotificationsProvider({ children }: { children: ReactNode }
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [authLoading, refreshNotifications]);
 
   const value: EmailNotificationsContextValue = {
     unreadCount,

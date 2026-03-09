@@ -5,9 +5,11 @@ import {
   useContext,
   useEffect,
   useState,
+  useCallback,
   type ReactNode,
 } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useAuth } from "./AuthContext";
 
 type CommentsUnreadContextValue = {
   unreadCount: number | null;
@@ -20,17 +22,16 @@ const CommentsUnreadContext = createContext<CommentsUnreadContextValue | undefin
 );
 
 export function CommentsUnreadProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
-  const refreshUnread = async () => {
-    try {
-      const { data: authData } = await supabaseClient.auth.getUser();
-      const user = authData?.user;
+  const refreshUnread = useCallback(async () => {
+    if (!user) {
+      setUnreadCount(0);
+      return;
+    }
 
-      if (!user) {
-        setUnreadCount(0);
-        return;
-      }
+    try {
 
       // Count unread patient note mentions
       const { count: noteCount, error: noteError } = await supabaseClient
@@ -62,9 +63,12 @@ export function CommentsUnreadProvider({ children }: { children: ReactNode }) {
     } catch {
       setUnreadCount(0);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
+    // Wait for auth to load before fetching
+    if (authLoading) return;
+
     let isMounted = true;
 
     async function load() {
@@ -72,7 +76,7 @@ export function CommentsUnreadProvider({ children }: { children: ReactNode }) {
       await refreshUnread();
     }
 
-    load();
+    void load();
 
     const intervalId = window.setInterval(() => {
       if (!isMounted) return;
@@ -83,7 +87,7 @@ export function CommentsUnreadProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [authLoading, refreshUnread]);
 
   const setUnreadCountOptimistic = (updater: (prev: number) => number) => {
     setUnreadCount((prev) => {
