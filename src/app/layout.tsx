@@ -13,6 +13,8 @@ import GlobalPatientSearch from "@/components/GlobalPatientSearch";
 import { CommentsUnreadProvider } from "@/components/CommentsUnreadContext";
 import { TasksNotificationsProvider } from "@/components/TasksNotificationsContext";
 import { EmailNotificationsProvider } from "@/components/EmailNotificationsContext";
+import { PatientTabsProvider } from "@/components/PatientTabsContext";
+import PatientTabBar from "@/components/PatientTabBar";
 import GlobalLoader from "@/components/GlobalLoader";
 import SidebarLeadImportDropdown from "@/components/SidebarLeadImportDropdown";
 
@@ -46,6 +48,7 @@ export default function RootLayout({
           <CommentsUnreadProvider>
           <TasksNotificationsProvider>
           <EmailNotificationsProvider>
+          <PatientTabsProvider>
           <ShellFrame>
           <div className="flex min-h-[80vh] flex-1 overflow-hidden">
             <input
@@ -467,12 +470,14 @@ export default function RootLayout({
                     </div>
                 </header>
                 </ShellHeader>
+                <PatientTabBar />
                 <div className="flex-1 px-4 py-4 sm:px-6 lg:px-8">{children}</div>
               </div>
               </RequireAuth>
             </main>
           </div>
           </ShellFrame>
+          </PatientTabsProvider>
           </EmailNotificationsProvider>
           </TasksNotificationsProvider>
           </CommentsUnreadProvider>

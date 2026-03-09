@@ -21,6 +21,7 @@ import MedicationCard from "./MedicationCard";
 import AgeBadge from "./AgeBadge";
 import PatientCockpitDetails from "./PatientCockpitDetails";
 import PatientPageClientWrapper from "./PatientPageClientWrapper";
+import PatientTabRegistrar from "./PatientTabRegistrar";
 
 export const dynamic = "force-dynamic";
 
@@ -312,6 +313,12 @@ export default async function PatientPage({
     <div className="space-y-6">
       <CollapseSidebarOnMount />
       <PatientModeInitializer patientId={patient.id} />
+      <PatientTabRegistrar
+        patientId={patient.id}
+        firstName={patient.first_name ?? ""}
+        lastName={patient.last_name ?? ""}
+        avatarUrl={(patient as any).avatar_url ?? null}
+      />
       <CrisalixPlayerModal
         patientId={patient.id}
         open={mode === "medical" && show3d}

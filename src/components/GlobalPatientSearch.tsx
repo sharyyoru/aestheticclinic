@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { usePatientTabs } from "./PatientTabsContext";
 
 type PatientResult = {
   id: string;
@@ -15,6 +16,7 @@ type PatientResult = {
 
 export default function GlobalPatientSearch() {
   const router = useRouter();
+  const { addTab } = usePatientTabs();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PatientResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -218,11 +220,18 @@ export default function GlobalPatientSearch() {
     return () => clearTimeout(debounce);
   }, [query]);
 
-  function handleSelect(patientId: string) {
+  function handleSelect(patient: PatientResult) {
+    // Add patient to tabs
+    addTab({
+      id: patient.id,
+      firstName: patient.first_name ?? "",
+      lastName: patient.last_name ?? "",
+    });
+    
     setQuery("");
     setResults([]);
     setIsOpen(false);
-    router.push(`/patients/${patientId}`);
+    router.push(`/patients/${patient.id}`);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -268,7 +277,7 @@ export default function GlobalPatientSearch() {
               <button
                 key={patient.id}
                 type="button"
-                onClick={() => handleSelect(patient.id)}
+                onClick={() => handleSelect(patient)}
                 className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 first:rounded-t-xl last:rounded-b-xl"
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-500 text-sm font-semibold text-white shadow-sm">
