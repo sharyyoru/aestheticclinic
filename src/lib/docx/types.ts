@@ -63,6 +63,19 @@ export type TableCellElement = {
   children: CustomElement[];
 };
 
+export type LinkElement = {
+  type: 'link';
+  url: string;
+  children: CustomText[];
+};
+
+export type ImageElement = {
+  type: 'image';
+  url: string;
+  alt?: string;
+  children: CustomText[];
+};
+
 export type CustomElement =
   | ParagraphElement
   | HeadingOneElement
@@ -73,13 +86,16 @@ export type CustomElement =
   | ListItemElement
   | TableElement
   | TableRowElement
-  | TableCellElement;
+  | TableCellElement
+  | LinkElement
+  | ImageElement;
 
 export type FormattedText = {
   text: string;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  fontSize?: 'small' | 'normal' | 'medium' | 'large' | 'xl';
 };
 
 export type CustomText = FormattedText;

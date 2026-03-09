@@ -2,7 +2,17 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { supabaseClient } from "@/lib/supabaseClient";
+
+const SignatureEditor = dynamic(() => import("@/components/SignatureEditor"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[120px] rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center text-xs text-slate-400">
+      Loading editor...
+    </div>
+  ),
+});
 
 interface ProfileState {
   firstName: string;
@@ -475,20 +485,13 @@ export default function ProfileSettingsForm() {
           HTML signature appended to emails sent from this account.
         </p>
         <form onSubmit={handleSignatureSubmit} className="mt-3 space-y-3">
-          <textarea
-            id="signature_html"
-            name="signature_html"
+          <SignatureEditor
             value={profile.signatureHtml}
-            onChange={(event) =>
+            onChange={(html) =>
               setProfile((prev) =>
-                prev
-                  ? { ...prev, signatureHtml: event.target.value }
-                  : prev
+                prev ? { ...prev, signatureHtml: html } : prev
               )
             }
-            rows={5}
-            className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-mono text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            placeholder="&lt;p&gt;Dr. Jane Doe&lt;br/&gt;Clinic Name&lt;br/&gt;&lt;a href='tel:+971...'&gt;+971 ...&lt;/a&gt;&lt;/p&gt;"
           />
 
           {error ? <p className="text-xs text-red-600">{error}</p> : null}
