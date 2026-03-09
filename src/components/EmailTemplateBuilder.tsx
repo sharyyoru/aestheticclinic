@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { Image, Upload, Trash2, X, Loader2 } from "lucide-react";
 
 // Dynamically import to avoid SSR issues
 const EmailEditor = dynamic(() => import("react-email-editor"), { ssr: false });
@@ -15,6 +16,12 @@ type EmailTemplate = {
   body_template: string;
   design_json: any;
   html_content: string | null;
+  created_at: string;
+};
+
+type GalleryImage = {
+  name: string;
+  url: string;
   created_at: string;
 };
 
@@ -88,11 +95,94 @@ export default function EmailTemplateBuilder({
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
 
+  // Image gallery state
+  const [showImageGallery, setShowImageGallery] = useState(false);
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
+  const [loadingImages, setLoadingImages] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageSelectDoneRef = useRef<((data: { url: string }) => void) | null>(null);
+
   useEffect(() => {
     if (open) {
       loadTemplates();
     }
   }, [open]);
+
+  // Load images from Supabase emailgallery bucket
+  const loadGalleryImages = useCallback(async () => {
+    try {
+      setLoadingImages(true);
+      const { data, error } = await supabaseClient.storage
+        .from("emailgallery")
+        .list("", { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+
+      if (error) throw error;
+
+      const images: GalleryImage[] = (data || [])
+        .filter((file) => file.name && !file.name.endsWith("/"))
+        .map((file) => {
+          const { data: urlData } = supabaseClient.storage
+            .from("emailgallery")
+            .getPublicUrl(file.name);
+          return {
+            name: file.name,
+            url: urlData.publicUrl,
+            created_at: file.created_at || new Date().toISOString(),
+          };
+        });
+
+      setGalleryImages(images);
+    } catch (err) {
+      console.error("Failed to load gallery images:", err);
+    } finally {
+      setLoadingImages(false);
+    }
+  }, []);
+
+  // Handle image upload to Supabase
+  async function handleImageUpload(file: File) {
+    try {
+      setUploadingImage(true);
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "png";
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+
+      const { error: uploadError } = await supabaseClient.storage
+        .from("emailgallery")
+        .upload(fileName, file, { contentType: file.type });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabaseClient.storage
+        .from("emailgallery")
+        .getPublicUrl(fileName);
+
+      // Refresh the gallery
+      await loadGalleryImages();
+
+      return urlData.publicUrl;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload image");
+      return null;
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  // Handle image deletion from Supabase
+  async function handleImageDelete(imageName: string) {
+    if (!confirm("Delete this image? This cannot be undone.")) return;
+
+    try {
+      const { error } = await supabaseClient.storage
+        .from("emailgallery")
+        .remove([imageName]);
+
+      if (error) throw error;
+      await loadGalleryImages();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete image");
+    }
+  }
 
   async function loadTemplates() {
     try {
@@ -132,6 +222,23 @@ export default function EmailTemplateBuilder({
     setSubjectTemplate("");
     setView("editor");
     setEditorReady(false);
+  }
+
+  // Called when editor iframe is created but before it's fully loaded
+  function onEditorLoad(unlayer: any) {
+    console.log("Unlayer onLoad - registering selectImage callback", unlayer);
+    
+    // Register custom image selection callback
+    unlayer.registerCallback(
+      "selectImage",
+      function (data: any, done: (data: { url: string }) => void) {
+        console.log("selectImage callback triggered!", data);
+        // Store the done callback and open the gallery
+        imageSelectDoneRef.current = done;
+        setShowImageGallery(true);
+        loadGalleryImages();
+      }
+    );
   }
 
   function onEditorReady() {
@@ -274,30 +381,35 @@ export default function EmailTemplateBuilder({
         setSubjectTemplate(data.subject);
       }
 
-      if (data.html && emailEditorRef.current) {
-        // Create a simple design with the HTML content
-        const design = {
-          body: {
-            rows: [
-              {
-                cells: [1],
-                columns: [
-                  {
-                    contents: [
-                      {
-                        type: "html",
-                        values: {
-                          html: data.html,
+      if (emailEditorRef.current) {
+        // Use the Unlayer design from API (with text blocks) if available
+        if (data.design) {
+          emailEditorRef.current.editor.loadDesign(data.design);
+        } else if (data.html) {
+          // Fallback to HTML block if no design provided
+          const design = {
+            body: {
+              rows: [
+                {
+                  cells: [1],
+                  columns: [
+                    {
+                      contents: [
+                        {
+                          type: "html",
+                          values: {
+                            html: data.html,
+                          },
                         },
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
-        };
-        emailEditorRef.current.editor.loadDesign(design);
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          };
+          emailEditorRef.current.editor.loadDesign(design);
+        }
       }
 
       setAiPrompt("");
@@ -493,12 +605,12 @@ export default function EmailTemplateBuilder({
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">
                     Email Subject
                   </label>
-                  <input
-                    type="text"
+                  <textarea
                     value={subjectTemplate}
                     onChange={(e) => setSubjectTemplate(e.target.value)}
                     placeholder="Enter subject line..."
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    rows={2}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 resize-y"
                   />
                   <p className="mt-1 text-[10px] text-slate-500">
                     Use {"{{patient.first_name}}"} etc. for variables
@@ -561,7 +673,9 @@ export default function EmailTemplateBuilder({
             <div className="flex-1">
               <EmailEditor
                 ref={emailEditorRef}
+                onLoad={onEditorLoad}
                 onReady={onEditorReady}
+                projectId={284973}
                 options={{
                   mergeTags: MERGE_TAGS,
                   features: {
@@ -578,6 +692,138 @@ export default function EmailTemplateBuilder({
           </div>
         )}
       </div>
+
+      {/* Image Gallery Modal */}
+      {showImageGallery && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-3xl max-h-[80vh] rounded-2xl bg-white shadow-2xl flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <Image className="h-5 w-5 text-sky-600" />
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Image Gallery</h3>
+                  <p className="text-sm text-slate-500">Select or upload an image for your email</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowImageGallery(false);
+                  imageSelectDoneRef.current = null;
+                }}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Upload Section */}
+            <div className="border-b border-slate-200 px-6 py-4">
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 hover:border-sky-400 hover:bg-sky-50 transition-colors">
+                {uploadingImage ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+                    <span className="text-sm font-medium text-slate-600">Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-5 w-5 text-slate-400" />
+                    <span className="text-sm font-medium text-slate-600">
+                      Click to upload a new image
+                    </span>
+                    <span className="text-xs text-slate-400">(JPG, PNG, GIF, WebP, SVG)</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                  className="hidden"
+                  disabled={uploadingImage}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const url = await handleImageUpload(file);
+                      if (url && imageSelectDoneRef.current) {
+                        imageSelectDoneRef.current({ url });
+                        imageSelectDoneRef.current = null;
+                        setShowImageGallery(false);
+                      }
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            {/* Gallery Grid */}
+            <div className="flex-1 overflow-auto p-6">
+              {loadingImages ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                </div>
+              ) : galleryImages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Image className="h-12 w-12 text-slate-300 mb-3" />
+                  <h4 className="font-medium text-slate-700">No images yet</h4>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Upload your first image to get started
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+                  {galleryImages.map((image) => (
+                    <div
+                      key={image.name}
+                      className="group relative aspect-square rounded-lg border border-slate-200 bg-slate-50 overflow-hidden hover:border-sky-400 hover:shadow-md transition-all cursor-pointer"
+                      onClick={() => {
+                        // Use the done callback if available (from selectImage)
+                        if (imageSelectDoneRef.current) {
+                          imageSelectDoneRef.current({ url: image.url });
+                          imageSelectDoneRef.current = null;
+                        }
+                        setShowImageGallery(false);
+                      }}
+                    >
+                      <img
+                        src={image.url}
+                        alt={image.name}
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p className="text-xs text-white truncate">{image.name}</p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleImageDelete(image.name);
+                        }}
+                        className="absolute top-2 right-2 rounded-full bg-white/90 p-1.5 text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                        title="Delete image"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-200 px-6 py-3 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowImageGallery(false);
+                  imageSelectDoneRef.current = null;
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
