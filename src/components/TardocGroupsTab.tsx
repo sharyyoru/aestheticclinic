@@ -151,7 +151,7 @@ export default function TardocGroupsTab() {
       {
         tardoc_code: svc.code,
         description: svc.name || null,
-        quantity: svc.unitQuantity || 1,
+        quantity: 1,
         ref_code: null,
         side_type: 0,
         tp_mt: svc.tpMT,

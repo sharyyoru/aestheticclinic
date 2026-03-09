@@ -336,6 +336,7 @@ export default function MedicalConsultationsCard({
   const [tardocGroups, setTardocGroups] = useState<any[]>([]);
   const [tardocGroupsLoaded, setTardocGroupsLoaded] = useState(false);
   const [skipSumexValidation, setSkipSumexValidation] = useState(false);
+  const [rerunGrouperLoading, setRerunGrouperLoading] = useState(false);
   const [invoiceGroupId, setInvoiceGroupId] = useState("");
   const [invoicePaymentTerm, setInvoicePaymentTerm] =
     useState<InvoicePaymentTerm>("full");
@@ -4444,7 +4445,7 @@ export default function MedicalConsultationsCard({
                                               ...prev,
                                               {
                                                 serviceId: `tardoc-${svc.code}`,
-                                                quantity: svc.unitQuantity || 1,
+                                                quantity: 1,
                                                 unitPrice: price,
                                                 groupId: null,
                                                 discountPercent: null,
@@ -4491,7 +4492,7 @@ export default function MedicalConsultationsCard({
                                       ...prev,
                                       {
                                         serviceId: `tardoc-${svc.code}`,
-                                        quantity: svc.unitQuantity || 1,
+                                        quantity: 1,
                                         unitPrice: price,
                                         groupId: null,
                                         discountPercent: null,
@@ -4798,6 +4799,107 @@ export default function MedicalConsultationsCard({
                             </span>
                           ) : null}
                         </div>
+
+                        {/* Re-run Grouper banner: shown when both ACF and TARDOC lines exist */}
+                        {(() => {
+                          const hasFlatRates = invoiceServiceLines.some((l) => l.serviceId.startsWith("flatrate-"));
+                          const hasTma = invoiceServiceLines.some((l) => l.serviceId.startsWith("tma-"));
+                          const hasTardoc = invoiceServiceLines.some((l) => l.serviceId.startsWith("tardoc-"));
+                          if ((hasFlatRates || hasTma) && hasTardoc) {
+                            const tmaLines = invoiceServiceLines.filter((l) => l.serviceId.startsWith("tma-"));
+                            const tardocLines = invoiceServiceLines.filter((l) => l.serviceId.startsWith("tardoc-"));
+                            const icdCode = tmaLines.find((l) => l.acfRefCode)?.acfRefCode || "";
+                            return (
+                              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-[10px] text-amber-800">
+                                    <span className="font-semibold">ACF + TARDOC detected:</span>{" "}
+                                    {tardocLines.length} TARDOC code{tardocLines.length > 1 ? "s" : ""} may affect which ACF flat rate applies.
+                                    Re-run the grouper to update flat rates.
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={rerunGrouperLoading || !icdCode}
+                                    onClick={async () => {
+                                      if (!icdCode) return;
+                                      setRerunGrouperLoading(true);
+                                      try {
+                                        const pSex = patientDetails?.gender?.toLowerCase() === "female" ? 1 : 0;
+                                        const pBirth = patientDetails?.dob || "1990-01-01";
+                                        const services = [
+                                          ...tmaLines.map((l) => ({
+                                            code: l.serviceId.replace("tma-", ""),
+                                            side: l.acfSideType ?? 0,
+                                            quantity: l.quantity > 0 ? l.quantity : 1,
+                                          })),
+                                          ...tardocLines.map((l) => ({
+                                            code: l.serviceId.replace("tardoc-", ""),
+                                            side: l.tardocSideType ?? 0,
+                                            quantity: l.quantity > 0 ? l.quantity : 1,
+                                          })),
+                                        ];
+                                        const res = await fetch("/api/acf/sumex", {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({
+                                            action: "runGrouper",
+                                            icdCode,
+                                            patientSex: pSex,
+                                            patientBirthdate: pBirth,
+                                            law: 0,
+                                            services,
+                                          }),
+                                        });
+                                        const json = await res.json();
+                                        if (json.success && json.data) {
+                                          const acfCodes: any[] = json.data.acfCodes || [];
+                                          if (acfCodes.length > 0) {
+                                            setInvoiceServiceLines((prev) => {
+                                              const nonFlatRate = prev.filter((l) => !l.serviceId.startsWith("flatrate-"));
+                                              const newFlatRates: InvoiceServiceLine[] = acfCodes.map((acf: any) => {
+                                                const sideLabel = (tmaLines[0]?.acfSideType ?? 0) === 1 ? " [L]" : (tmaLines[0]?.acfSideType ?? 0) === 2 ? " [R]" : (tmaLines[0]?.acfSideType ?? 0) === 3 ? " [B]" : "";
+                                                return {
+                                                  serviceId: `flatrate-${acf.code}`,
+                                                  quantity: 1,
+                                                  unitPrice: acf.tp ?? 0,
+                                                  groupId: null,
+                                                  discountPercent: null,
+                                                  customName: `[ACF] ${acf.code}${sideLabel} - ${(acf.name || "").substring(0, 70)}`,
+                                                  acfSideType: tmaLines[0]?.acfSideType ?? 0,
+                                                  acfExternalFactor: 1.0,
+                                                  acfRefCode: icdCode,
+                                                  acfBaseTP: acf.tp ?? 0,
+                                                };
+                                              });
+                                              return [...nonFlatRate, ...newFlatRates];
+                                            });
+                                          }
+                                          if (json.data.errors?.length > 0) {
+                                            console.warn("Grouper re-run warnings:", json.data.errors);
+                                          }
+                                        } else {
+                                          console.error("Grouper re-run failed:", json.error);
+                                        }
+                                      } catch (err) {
+                                        console.error("Grouper re-run request failed:", err);
+                                      }
+                                      setRerunGrouperLoading(false);
+                                    }}
+                                    className="shrink-0 rounded-md bg-amber-600 px-3 py-1 text-[10px] font-medium text-white shadow-sm hover:bg-amber-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                  >
+                                    {rerunGrouperLoading ? "Running..." : "Re-run Grouper"}
+                                  </button>
+                                </div>
+                                {!icdCode && (
+                                  <div className="text-[9px] text-amber-600">
+                                    No ICD-10 code found on TMA lines. Add flat rates with an ICD-10 code first.
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
 
                         {invoiceServiceLines.length === 0 ? (
                           <p className="text-[10px] text-slate-500">
