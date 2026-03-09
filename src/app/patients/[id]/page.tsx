@@ -20,6 +20,7 @@ import CrmTabDropdown from "./CrmTabDropdown";
 import MedicationCard from "./MedicationCard";
 import AgeBadge from "./AgeBadge";
 import PatientCockpitDetails from "./PatientCockpitDetails";
+import PatientPageClientWrapper from "./PatientPageClientWrapper";
 
 export const dynamic = "force-dynamic";
 
@@ -300,18 +301,6 @@ export default async function PatientPage({
       ? (rawMedicalTab as MedicalTab)
       : "cockpit";
 
-  const medicalTabs: { id: MedicalTab; label: string }[] = [
-    { id: "cockpit", label: "Cockpit" },
-    { id: "notes", label: "Consultations" },
-    { id: "invoice", label: "Invoice" },
-    { id: "medication", label: "Medication" },
-    { id: "3d", label: "3D" },
-    { id: "patient_information", label: "Patient Information" },
-    { id: "documents", label: "Documents" },
-    { id: "rendezvous", label: "Rendezvous" },
-    { id: "crm", label: "CRM" },
-  ];
-
   let genderClasses = "bg-slate-50 text-slate-700 border-slate-200";
   if (gender === "male") {
     genderClasses = "bg-sky-50 text-sky-700 border-sky-200";
@@ -397,41 +386,7 @@ export default async function PatientPage({
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="border-b border-slate-200">
-          <nav className="-mb-px flex flex-wrap items-center gap-4 text-xs font-medium text-slate-500">
-            {medicalTabs.map((tab) => {
-              const isActive = tab.id === medicalTab;
-
-              // Special rendering for CRM tab with dropdown
-              if (tab.id === "crm") {
-                return (
-                  <CrmTabDropdown
-                    key={tab.id}
-                    patientId={patient.id}
-                    isActive={isActive}
-                  />
-                );
-              }
-
-              return (
-                <Link
-                  key={tab.id}
-                  href={`/patients/${patient.id}?m_tab=${tab.id}`}
-                  className={
-                    (isActive
-                      ? "border-sky-500 text-sky-600"
-                      : "border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-700") +
-                    " inline-flex items-center border-b-2 px-1.5 py-1"
-                  }
-                >
-                  {tab.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-
+      <PatientPageClientWrapper patientId={patient.id} medicalTab={medicalTab}>
         {medicalTab === "cockpit" ? (
           <>
             <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
@@ -760,7 +715,7 @@ export default async function PatientPage({
             </p>
           </div>
         ) : null}
-      </div>
+      </PatientPageClientWrapper>
     </div>
   );
 }

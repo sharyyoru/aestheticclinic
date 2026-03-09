@@ -8,6 +8,7 @@ import DocumentTemplatesPanel from "@/components/DocumentTemplatesPanel";
 import EmailShareModal from "./EmailShareModal";
 import { formatSwissTime, formatSwissDateTime, SWISS_TIMEZONE } from "@/lib/swissTimezone";
 import dynamic from 'next/dynamic';
+import { useDocumentPreviewTabs } from "./DocumentPreviewTabsWrapper";
 
 // Dynamic import for docx-preview (client-side only)
 const DocxPreview = dynamic(() => import('@/components/DocxPreview'), {
@@ -123,6 +124,14 @@ export default function PatientDocumentsTab({
   patientId,
   patientName = "Patient",
 }: PatientDocumentsTabProps) {
+  // Try to use document preview tabs context (may not be available if not wrapped)
+  let documentPreviewTabs: ReturnType<typeof useDocumentPreviewTabs> | null = null;
+  try {
+    documentPreviewTabs = useDocumentPreviewTabs();
+  } catch {
+    // Context not available - that's fine, the button just won't appear
+  }
+
   const [items, setItems] = useState<ListedItem[]>([]);
   const [currentPrefix, setCurrentPrefix] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<ListedItem | null>(null);
@@ -1293,6 +1302,27 @@ export default function PatientDocumentsTab({
                           </svg>
                           Preview
                         </button>
+                        {/* Preview in Tab button - only show if context is available */}
+                        {documentPreviewTabs && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              documentPreviewTabs?.addTab({
+                                name: item.name,
+                                url: thumbUrl,
+                                mimeType,
+                              });
+                            }}
+                            className="flex-shrink-0 inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300 transition-colors"
+                            title="Preview in Tab"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                            </svg>
+                            Preview in Tab
+                          </button>
+                        )}
                         {/* Action buttons - show on hover (only for patient_document bucket files) */}
                         {item.source !== "patient-docs" && (
                           <div className="flex-shrink-0 hidden group-hover:flex items-center gap-1">
