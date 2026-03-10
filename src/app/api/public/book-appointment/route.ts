@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
+import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal } from "@/lib/swissTimezone";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -256,7 +256,8 @@ export async function POST(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const patientName = `${firstName} ${lastName}`;
-    const appointmentDateObj = new Date(appointmentDate);
+    // Parse the datetime-local string as Swiss timezone to ensure correct UTC time
+    const appointmentDateObj = parseSwissDateTimeLocal(appointmentDate);
 
     // Look up the provider ID for this doctor to filter appointments correctly
     let providerId: string | null = null;

@@ -276,6 +276,33 @@ export function getSwissDayRange(dateStr: string): { start: string; end: string 
 }
 
 /**
+ * Parse a datetime-local input value (YYYY-MM-DDTHH:MM) as Swiss timezone
+ * This is used when the user selects a date/time in the browser and we need
+ * to interpret it as Swiss time regardless of server timezone.
+ * @param datetimeLocal String in format "YYYY-MM-DDTHH:MM" from datetime-local input
+ * @returns Date object representing the correct UTC time for Swiss timezone
+ */
+export function parseSwissDateTimeLocal(datetimeLocal: string): Date {
+  // Parse the datetime-local format: "2024-03-11T11:00"
+  const [datePart, timePart] = datetimeLocal.split("T");
+  if (!datePart || !timePart) {
+    // Fallback: try to parse as-is if format is unexpected
+    return new Date(datetimeLocal);
+  }
+  
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute] = timePart.split(":").map(Number);
+  
+  if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour) || isNaN(minute)) {
+    // Fallback for invalid format
+    return new Date(datetimeLocal);
+  }
+  
+  // Use createSwissDateTime to get the correct UTC time
+  return createSwissDateTime(datePart, hour, minute);
+}
+
+/**
  * Format for appointment detail display (short weekday + date + time)
  */
 export function formatSwissAppointmentDateTime(date: Date | string): {

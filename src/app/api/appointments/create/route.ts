@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { parseSwissDateTimeLocal } from "@/lib/swissTimezone";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -317,7 +318,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const appointmentDateObj = new Date(appointmentDate);
+    // Parse the datetime-local string as Swiss timezone to ensure correct UTC time
+    // This fixes the 1-hour offset issue when server runs in UTC
+    const appointmentDateObj = parseSwissDateTimeLocal(appointmentDate);
 
     // Calculate end time from duration
     const endDateObj = new Date(appointmentDateObj.getTime() + durationMinutes * 60 * 1000);
