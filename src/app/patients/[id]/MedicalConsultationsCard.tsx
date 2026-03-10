@@ -85,12 +85,22 @@ type ConsultationRow = {
   is_archived: boolean;
   archived_at: string | null;
   reference_number: string | null;
+  // Consultation-specific diagnosis fields (set by doctor)
+  diagnosis_code: string | null;
+  ref_icd10: string | null;
+  // Linked invoice info (for non-invoice consultation records)
+  linked_invoice_id: string | null;
+  linked_invoice_status: InvoiceStatus | null;
+  linked_invoice_number: string | null;
+  // Insurance/MediData status (for invoice records OR consultations with linked invoices)
+  medidata_status: string | null;
 };
 
 type PlatformUser = {
   id: string;
   full_name: string | null;
   email: string | null;
+  provider_id: string | null;
 };
 
 type Provider = {
@@ -346,6 +356,10 @@ export default function MedicalConsultationsCard({
   const [consultationRecordType, setConsultationRecordType] =
     useState<ConsultationRecordType>(recordTypeFilter === "invoice" ? "invoice" : "notes");
   const [consultationContentHtml, setConsultationContentHtml] = useState("");
+  const [consultationDiagnosisCode, setConsultationDiagnosisCode] = useState("");
+  const [consultationRefIcd10, setConsultationRefIcd10] = useState("");
+  // When creating invoice from an existing consultation, store the source consultation ID
+  const [invoiceFromConsultationId, setInvoiceFromConsultationId] = useState<string | null>(null);
   const [consultationMentionActive, setConsultationMentionActive] = useState(false);
   const [consultationMentionQuery, setConsultationMentionQuery] = useState("");
   const [consultationMentionUserIds, setConsultationMentionUserIds] = useState<string[]>([]);
@@ -481,7 +495,14 @@ export default function MedicalConsultationsCard({
   const [editConsultationTarget, setEditConsultationTarget] = useState<ConsultationRow | null>(null);
   const [editConsultationTitle, setEditConsultationTitle] = useState("");
   const [editConsultationContent, setEditConsultationContent] = useState("");
+  const [editConsultationDoctorId, setEditConsultationDoctorId] = useState("");
+  const [editConsultationDate, setEditConsultationDate] = useState("");
+  const [editConsultationHour, setEditConsultationHour] = useState("");
+  const [editConsultationMinute, setEditConsultationMinute] = useState("");
+  const [editConsultationDiagnosisCode, setEditConsultationDiagnosisCode] = useState("");
+  const [editConsultationRefIcd10, setEditConsultationRefIcd10] = useState("");
   const [editConsultationSaving, setEditConsultationSaving] = useState(false);
+  const [invoiceFromConsultationSuccess, setInvoiceFromConsultationSuccess] = useState<string | null>(null);
 
   const [axenitaPdfDocs, setAxenitaPdfDocs] = useState<AxenitaPdfDocument[]>([]);
   const [axenitaPdfLoading, setAxenitaPdfLoading] = useState(false);
@@ -643,7 +664,7 @@ export default function MedicalConsultationsCard({
         const { data: consultData, error: consultError } = await supabaseClient
           .from("consultations")
           .select(
-            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+            "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at, diagnosis_code, ref_icd10",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -663,6 +684,12 @@ export default function MedicalConsultationsCard({
           ...r,
           invoice_id: null,
           reference_number: null,
+          diagnosis_code: r.diagnosis_code ?? null,
+          ref_icd10: r.ref_icd10 ?? null,
+          linked_invoice_id: null,
+          linked_invoice_status: null,
+          linked_invoice_number: null,
+          medidata_status: null,
         }));
 
         // 2) Load invoice records directly from invoices table
@@ -731,13 +758,73 @@ export default function MedicalConsultationsCard({
             is_archived: inv.is_archived ?? false,
             archived_at: null,
             reference_number: inv.reference_number ?? null,
+            diagnosis_code: null,
+            ref_icd10: null,
+            linked_invoice_id: null,
+            linked_invoice_status: null,
+            linked_invoice_number: null,
+            medidata_status: null,
           };
         });
 
-        // 4b) For invoices without content, fetch line items and generate HTML
-        const invoicesWithoutContent = invoiceRows.filter((r) => !r.content && r.invoice_id);
-        if (invoicesWithoutContent.length > 0) {
-          const invoiceIds = invoicesWithoutContent.map((r) => r.invoice_id!);
+        // 4a) Link consultations to their invoices (invoices.consultation_id → consultations.id)
+        const consultationIdsForLinking = nonInvoiceRows.map((r) => r.id);
+        if (consultationIdsForLinking.length > 0 && invoiceData && invoiceData.length > 0) {
+          const invoiceByConsultId = new Map<string, { id: string; status: string; invoice_number: string }>();
+          for (const inv of invoiceData as any[]) {
+            if (inv.consultation_id) {
+              invoiceByConsultId.set(inv.consultation_id, {
+                id: inv.id,
+                status: inv.status || "OPEN",
+                invoice_number: inv.invoice_number || inv.id,
+              });
+            }
+          }
+          for (const row of nonInvoiceRows) {
+            const linked = invoiceByConsultId.get(row.id);
+            if (linked) {
+              row.linked_invoice_id = linked.id;
+              row.linked_invoice_status = linked.status as InvoiceStatus;
+              row.linked_invoice_number = linked.invoice_number;
+            }
+          }
+        }
+
+        // 4a2) Fetch medidata submission status for all invoices
+        const allInvoiceIds = invoiceRows.map((r) => r.invoice_id).filter(Boolean) as string[];
+        const linkedInvoiceIds = nonInvoiceRows.map((r) => r.linked_invoice_id).filter(Boolean) as string[];
+        const allMedidataInvoiceIds = [...new Set([...allInvoiceIds, ...linkedInvoiceIds])];
+        if (allMedidataInvoiceIds.length > 0) {
+          const { data: medidataData } = await supabaseClient
+            .from("medidata_submissions")
+            .select("invoice_id, status")
+            .in("invoice_id", allMedidataInvoiceIds)
+            .order("created_at", { ascending: false });
+          if (medidataData && medidataData.length > 0) {
+            // Use latest submission status per invoice
+            const statusByInvoice = new Map<string, string>();
+            for (const ms of medidataData as any[]) {
+              if (ms.invoice_id && !statusByInvoice.has(ms.invoice_id)) {
+                statusByInvoice.set(ms.invoice_id, ms.status);
+              }
+            }
+            for (const row of invoiceRows) {
+              if (row.invoice_id && statusByInvoice.has(row.invoice_id)) {
+                row.medidata_status = statusByInvoice.get(row.invoice_id) || null;
+              }
+            }
+            for (const row of nonInvoiceRows) {
+              if (row.linked_invoice_id && statusByInvoice.has(row.linked_invoice_id)) {
+                row.medidata_status = statusByInvoice.get(row.linked_invoice_id) || null;
+              }
+            }
+          }
+        }
+
+        // 4b) Fetch line items for all invoices and generate HTML breakdown
+        const invoicesWithIds = invoiceRows.filter((r) => r.invoice_id);
+        if (invoicesWithIds.length > 0) {
+          const invoiceIds = invoicesWithIds.map((r) => r.invoice_id!);
           const { data: allLineItems } = await supabaseClient
             .from("invoice_line_items")
             .select("invoice_id, name, code, tardoc_code, quantity, unit_price, total_price, tariff_code, catalog_name, tp_al, tp_tl, tp_al_value, side_type, external_factor_mt, ref_code")
@@ -752,7 +839,7 @@ export default function MedicalConsultationsCard({
               lineItemsByInvoice.set(li.invoice_id, existing);
             }
 
-            for (const row of invoicesWithoutContent) {
+            for (const row of invoicesWithIds) {
               const items = lineItemsByInvoice.get(row.invoice_id!);
               if (!items || items.length === 0) continue;
 
@@ -775,7 +862,9 @@ export default function MedicalConsultationsCard({
                 })
                 .join("");
 
-              row.content = `<div class="mt-1"><table class="w-full border-collapse text-[11px]"><thead><tr class="bg-slate-50 text-slate-600"><th class="px-2 py-1 text-left font-semibold">Code</th><th class="px-2 py-1 text-left font-semibold">Service</th><th class="px-2 py-1 text-right font-semibold">Qty</th><th class="px-2 py-1 text-right font-semibold">Unit Price</th><th class="px-2 py-1 text-right font-semibold">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><p class="mt-1 text-[11px] text-slate-700"><strong>Total:</strong> CHF ${totalAmount.toFixed(2)}</p></div>`;
+              const lineItemsHtml = `<div class="mt-1"><table class="w-full border-collapse text-[11px]"><thead><tr class="bg-slate-50 text-slate-600"><th class="px-2 py-1 text-left font-semibold">Code</th><th class="px-2 py-1 text-left font-semibold">Service</th><th class="px-2 py-1 text-right font-semibold">Qty</th><th class="px-2 py-1 text-right font-semibold">Unit Price</th><th class="px-2 py-1 text-right font-semibold">Total</th></tr></thead><tbody>${itemsHtml}</tbody></table><p class="mt-1 text-[11px] text-slate-700"><strong>Total:</strong> CHF ${totalAmount.toFixed(2)}</p></div>`;
+              // Append line items after any existing consultation content
+              row.content = row.content ? `${row.content}${lineItemsHtml}` : lineItemsHtml;
             }
           }
         }
@@ -1154,6 +1243,21 @@ export default function MedicalConsultationsCard({
     setEditConsultationTarget(row);
     setEditConsultationTitle(row.title || "");
     setEditConsultationContent(row.content || "");
+    setEditConsultationDoctorId(row.doctor_user_id || "");
+    setEditConsultationDiagnosisCode(row.diagnosis_code || "");
+    setEditConsultationRefIcd10(row.ref_icd10 || "");
+    if (row.scheduled_at) {
+      const d = new Date(row.scheduled_at);
+      if (!isNaN(d.getTime())) {
+        setEditConsultationDate(d.toISOString().split("T")[0]);
+        setEditConsultationHour(d.getHours().toString().padStart(2, "0"));
+        setEditConsultationMinute(d.getMinutes().toString().padStart(2, "0"));
+      }
+    } else {
+      setEditConsultationDate("");
+      setEditConsultationHour("");
+      setEditConsultationMinute("");
+    }
     setEditConsultationModalOpen(true);
   }
 
@@ -1637,11 +1741,35 @@ export default function MedicalConsultationsCard({
 
     setEditConsultationSaving(true);
     try {
+      // Build scheduled_at from date/hour/minute
+      let scheduledAt: string | null = editConsultationTarget.scheduled_at;
+      if (editConsultationDate) {
+        const h = editConsultationHour || "00";
+        const m = editConsultationMinute || "00";
+        scheduledAt = new Date(`${editConsultationDate}T${h}:${m}:00`).toISOString();
+      }
+
+      // Find doctor name from userOptions
+      let doctorName: string | null = editConsultationTarget.doctor_name;
+      if (editConsultationDoctorId) {
+        const doctor = userOptions.find((u) => u.id === editConsultationDoctorId);
+        if (doctor) {
+          doctorName = (doctor.full_name || doctor.email || "Doctor") as string;
+        }
+      } else {
+        doctorName = null;
+      }
+
       const { error } = await supabaseClient
         .from("consultations")
         .update({
           title: editConsultationTitle,
           content: editConsultationContent,
+          doctor_user_id: editConsultationDoctorId || null,
+          doctor_name: doctorName,
+          scheduled_at: scheduledAt,
+          diagnosis_code: editConsultationDiagnosisCode.trim() || null,
+          ref_icd10: editConsultationRefIcd10.trim() || null,
         })
         .eq("id", editConsultationTarget.id);
 
@@ -1653,7 +1781,16 @@ export default function MedicalConsultationsCard({
       setConsultations((prev) =>
         prev.map((row) =>
           row.id === editConsultationTarget.id
-            ? { ...row, title: editConsultationTitle, content: editConsultationContent }
+            ? {
+                ...row,
+                title: editConsultationTitle,
+                content: editConsultationContent,
+                doctor_user_id: editConsultationDoctorId || null,
+                doctor_name: doctorName,
+                scheduled_at: scheduledAt || row.scheduled_at,
+                diagnosis_code: editConsultationDiagnosisCode.trim() || null,
+                ref_icd10: editConsultationRefIcd10.trim() || null,
+              }
             : row
         )
       );
@@ -2234,6 +2371,9 @@ export default function MedicalConsultationsCard({
                     setConsultationDoctorId("");
                     setConsultationError(null);
                     setConsultationTitle("");
+                    setConsultationDiagnosisCode("");
+                    setConsultationRefIcd10("");
+                    setInvoiceFromConsultationId(null);
                     setConsultationRecordType("prescription");
                     setConsultationContentHtml("");
                     setConsultationDurationSeconds(0);
@@ -2401,6 +2541,9 @@ export default function MedicalConsultationsCard({
                     setConsultationDoctorId("");
                     setConsultationError(null);
                     setConsultationTitle("");
+                    setConsultationDiagnosisCode("");
+                    setConsultationRefIcd10("");
+                    setInvoiceFromConsultationId(null);
                     setConsultationRecordType(recordTypeFilter || "notes");
                     setConsultationContentHtml("");
                     setConsultationDurationSeconds(0);
@@ -2988,7 +3131,7 @@ export default function MedicalConsultationsCard({
                     if (consultationRecordType === "invoice") {
                       // ── Invoice: insert ONLY into invoices + invoice_line_items ──
                       try {
-                        const hasAcfLines = invoiceServiceLines.some((l) => l.serviceId.startsWith("flatrate-"));
+                        const hasAcfLines = invoiceServiceLines.some((l) => l.serviceId.startsWith("flatrate-") || l.serviceId.startsWith("tma-"));
                         const hasTardocLines = invoiceServiceLines.some((l) => l.serviceId.startsWith("tardoc-"));
                         const isTardocInvoice = hasTardocLines;
                         const taxPointValue = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
@@ -3112,9 +3255,12 @@ export default function MedicalConsultationsCard({
                           .map((line, idx) => {
                             const isTardocLine = line.serviceId.startsWith("tardoc-");
                             const isFlatRateLine = line.serviceId.startsWith("flatrate-");
+                            const isTmaLine = line.serviceId.startsWith("tma-");
+                            const isAcfRelated = isFlatRateLine || isTmaLine;
                             const tardocCode = isTardocLine ? line.serviceId.replace("tardoc-", "") : null;
                             const flatRateCode = isFlatRateLine ? line.serviceId.replace("flatrate-", "") : null;
-                            const service = (isTardocLine || isFlatRateLine) ? null : invoiceServices.find((s) => s.id === line.serviceId);
+                            const tmaCode = isTmaLine ? line.serviceId.replace("tma-", "") : null;
+                            const service = (isTardocLine || isAcfRelated) ? null : invoiceServices.find((s) => s.id === line.serviceId);
                             const quantity = line.quantity > 0 ? line.quantity : 1;
                             const resolvedUnitPrice = (() => {
                               if (line.unitPrice !== null && Number.isFinite(line.unitPrice)) return Math.max(0, line.unitPrice);
@@ -3129,43 +3275,43 @@ export default function MedicalConsultationsCard({
                             const tardocRecordId = isTardocLine ? (line.tardocRecordId ?? tardocSearchResults.find((r: any) => r.code === tardocCode)?.recordId ?? null) : null;
                             const tardocSection = isTardocLine ? (line.tardocSection ?? tardocSearchResults.find((r: any) => r.code === tardocCode)?.section ?? null) : null;
 
-                            // Determine tariff code: 7=TARDOC, 5=ACF Flat Rate, null=regular
-                            const tariffCode = isTardocLine ? 7 : isFlatRateLine ? ACF_TARIFF_CODE : null;
+                            // Determine tariff code: 7=TARDOC, 5=ACF Flat Rate / TMA, null=regular
+                            const tariffCode = isTardocLine ? 7 : isAcfRelated ? ACF_TARIFF_CODE : null;
                             // Derive tariff type string from tariff code (zero-padded to 3 digits)
                             const tariffType = tariffCode != null ? String(tariffCode).padStart(3, "0") : null;
 
                             return {
-                              name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : "Service"),
-                              code: isTardocLine ? tardocCode : isFlatRateLine ? flatRateCode : (service as any)?.code || String(idx + 1).padStart(3, '0'),
-                              service_id: (isTardocLine || isFlatRateLine) ? null : line.serviceId,
+                              name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : tmaCode ? `TMA ${tmaCode}` : "Service"),
+                              code: isTardocLine ? tardocCode : isFlatRateLine ? flatRateCode : isTmaLine ? tmaCode : (service as any)?.code || String(idx + 1).padStart(3, '0'),
+                              service_id: (isTardocLine || isAcfRelated) ? null : line.serviceId,
                               quantity,
                               unit_price: resolvedUnitPrice,
                               total_price: resolvedUnitPrice * quantity,
                               tariff_code: tariffCode,
                               tariff_type: tariffType,
                               tardoc_code: tardocCode,
-                              tp_al: isFlatRateLine ? (line.acfBaseTP ?? resolvedUnitPrice) : tardocTpMT,
+                              tp_al: isAcfRelated ? (line.acfBaseTP ?? resolvedUnitPrice) : tardocTpMT,
                               tp_tl: tardocTpTT,
                               tp_al_value: isTardocLine ? taxPointValue : 1,
                               tp_tl_value: isTardocLine ? taxPointValue : 1,
                               tp_al_scale_factor: 1,
                               tp_tl_scale_factor: 1,
-                              external_factor_mt: isFlatRateLine ? (line.acfExternalFactor ?? 1) : isTardocLine ? (line.tardocExternalFactor ?? 1) : 1,
+                              external_factor_mt: isAcfRelated ? (line.acfExternalFactor ?? 1) : isTardocLine ? (line.tardocExternalFactor ?? 1) : 1,
                               external_factor_tt: 1,
                               price_al: isTardocLine ? Math.round(tardocTpMT * taxPointValue * 100) / 100 : 0,
                               price_tl: isTardocLine ? Math.round(tardocTpTT * taxPointValue * 100) / 100 : 0,
-                              provider_gln: (isTardocLine || isFlatRateLine) ? selectedProviderGln : null,
-                              responsible_gln: (isTardocLine || isFlatRateLine) ? selectedProviderGln : null,
-                              billing_role: (isTardocLine || isFlatRateLine) ? "both" : null,
+                              provider_gln: (isTardocLine || isAcfRelated) ? selectedProviderGln : null,
+                              responsible_gln: (isTardocLine || isAcfRelated) ? selectedProviderGln : null,
+                              billing_role: (isTardocLine || isAcfRelated) ? "both" : null,
                               record_id: tardocRecordId,
-                              ref_code: isFlatRateLine ? (line.acfRefCode || null) : isTardocLine ? (line.tardocRefCode || null) : (null as string | null),
+                              ref_code: isAcfRelated ? (line.acfRefCode || null) : isTardocLine ? (line.tardocRefCode || null) : (null as string | null),
                               section_code: tardocSection,
                               session_number: 1,
                               service_attributes: 0,
-                              side_type: isFlatRateLine ? (line.acfSideType ?? 0) : isTardocLine ? (line.tardocSideType ?? 0) : 0,
+                              side_type: isAcfRelated ? (line.acfSideType ?? 0) : isTardocLine ? (line.tardocSideType ?? 0) : 0,
                               date_begin: scheduledAtIso || null,
-                              catalog_name: isTardocLine ? "TARDOC" : isFlatRateLine ? "ACF" : null,
-                              catalog_nature: (isTardocLine || isFlatRateLine) ? "TARIFF_CATALOG" : null,
+                              catalog_name: isTardocLine ? "TARDOC" : isFlatRateLine ? "ACF" : isTmaLine ? "TMA" : null,
+                              catalog_nature: (isTardocLine || isAcfRelated) ? "TARIFF_CATALOG" : null,
                             };
                           });
 
@@ -3279,6 +3425,7 @@ export default function MedicalConsultationsCard({
                         // Build invoice insert payload
                         const invoiceInsertPayload: Record<string, unknown> = {
                             patient_id: patientId,
+                            consultation_id: invoiceFromConsultationId || null,
                             invoice_number: consultationId,
                             title: consultationTitle.trim() || consultationId,
                             invoice_date: consultationDate,
@@ -3511,9 +3658,41 @@ export default function MedicalConsultationsCard({
                           is_archived: false,
                           archived_at: null,
                           reference_number: generateSwissReference(consultationId),
+                          diagnosis_code: null,
+                          ref_icd10: null,
+                          linked_invoice_id: null,
+                          linked_invoice_status: null,
+                          linked_invoice_number: null,
+                          medidata_status: null,
                         };
 
-                        setConsultations((prev) => [inserted, ...prev]);
+                        setConsultations((prev) => {
+                          // Add the new invoice row
+                          const updated = [inserted, ...prev];
+                          // If this invoice was created from a consultation, update that consultation's linked fields
+                          if (invoiceFromConsultationId) {
+                            return updated.map((row) =>
+                              row.id === invoiceFromConsultationId
+                                ? {
+                                    ...row,
+                                    linked_invoice_id: invoiceRow.id,
+                                    linked_invoice_status: "OPEN" as InvoiceStatus,
+                                    linked_invoice_number: consultationId,
+                                  }
+                                : row
+                            );
+                          }
+                          return updated;
+                        });
+
+                        // Show success message when invoice created from consultation
+                        if (invoiceFromConsultationId) {
+                          setInvoiceFromConsultationSuccess(
+                            `Invoice #${consultationId} created successfully! Switch to the Invoice tab to view it.`
+                          );
+                          // Auto-dismiss after 8 seconds
+                          setTimeout(() => setInvoiceFromConsultationSuccess(null), 8000);
+                        }
                       } catch (invoiceErr) {
                         console.error("Error creating invoice:", invoiceErr);
                         setConsultationError("Failed to create invoice.");
@@ -3537,13 +3716,15 @@ export default function MedicalConsultationsCard({
                         created_by_name: createdByName,
                         is_archived: false,
                         archived_at: null,
+                        diagnosis_code: consultationDiagnosisCode.trim() || null,
+                        ref_icd10: consultationRefIcd10.trim() || null,
                       };
 
                       const { data, error } = await supabaseClient
                         .from("consultations")
                         .insert(insertPayload)
                         .select(
-                          "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at",
+                          "id, patient_id, consultation_id, title, content, record_type, doctor_user_id, doctor_name, scheduled_at, payment_method, duration_seconds, invoice_total_amount, invoice_is_complimentary, invoice_is_paid, invoice_status, invoice_paid_amount, cash_receipt_path, invoice_pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, archived_at, diagnosis_code, ref_icd10",
                         )
                         .single();
 
@@ -3555,7 +3736,17 @@ export default function MedicalConsultationsCard({
                         return;
                       }
 
-                      const inserted: ConsultationRow = { ...(data as any), invoice_id: null };
+                      const inserted: ConsultationRow = {
+                        ...(data as any),
+                        invoice_id: null,
+                        reference_number: null,
+                        diagnosis_code: (data as any).diagnosis_code ?? null,
+                        ref_icd10: (data as any).ref_icd10 ?? null,
+                        linked_invoice_id: null,
+                        linked_invoice_status: null,
+                        linked_invoice_number: null,
+                        medidata_status: null,
+                      };
                       setConsultations((prev) => [inserted, ...prev]);
                     }
 
@@ -3574,6 +3765,9 @@ export default function MedicalConsultationsCard({
                     setInvoiceServiceLines([]);
                     setInvoiceSelectedCategoryId("");
                     setInvoiceSelectedServiceId("");
+                    setConsultationDiagnosisCode("");
+                    setConsultationRefIcd10("");
+                    setInvoiceFromConsultationId(null);
                   } catch {
                     setConsultationError("Unexpected error creating consultation.");
                     setConsultationSaving(false);
@@ -3732,6 +3926,36 @@ export default function MedicalConsultationsCard({
                   </select>
                 </div>
               </div>
+
+              {/* Diagnosis fields — shown for notes and prescription record types */}
+              {(consultationRecordType === "notes" || consultationRecordType === "prescription") && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-medium text-slate-700">
+                      Diagnosis Code
+                    </label>
+                    <input
+                      type="text"
+                      value={consultationDiagnosisCode}
+                      onChange={(e) => setConsultationDiagnosisCode(e.target.value)}
+                      placeholder="e.g. L91.0"
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-medium text-slate-700">
+                      Ref ICD-10
+                    </label>
+                    <input
+                      type="text"
+                      value={consultationRefIcd10}
+                      onChange={(e) => setConsultationRefIcd10(e.target.value)}
+                      placeholder="e.g. Z42.1"
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                </div>
+              )}
 
               {consultationRecordType === "notes" ? (
                 <div className="space-y-1">
@@ -4565,6 +4789,7 @@ export default function MedicalConsultationsCard({
                               <AcfAccordionTree
                                 patientSex={patientDetails?.gender?.toLowerCase() === "female" ? 1 : 0}
                                 patientBirthdate={patientDetails?.dob || undefined}
+                                defaultIcd10={consultationRefIcd10}
                                 existingTardocCodes={invoiceServiceLines
                                   .filter((l) => l.serviceId.startsWith("tardoc-"))
                                   .map((l) => ({
@@ -4577,6 +4802,7 @@ export default function MedicalConsultationsCard({
                                   const adjustedPrice = svc.tp * ef;
                                   const sideLabel = svc.sideType === 1 ? " [L]" : svc.sideType === 2 ? " [R]" : svc.sideType === 3 ? " [B]" : "";
                                   const factorLabel = ef !== 1.0 ? ` x${ef}` : "";
+                                  const consultationIcd10 = consultationRefIcd10.trim();
                                   const isGesture = !!svc.isTmaGesture;
                                   const prefix = isGesture ? "tma" : "flatrate";
                                   const tariffTag = isGesture ? "TMA" : "ACF";
@@ -4591,7 +4817,7 @@ export default function MedicalConsultationsCard({
                                       customName: `[${tariffTag}] ${svc.code}${sideLabel}${factorLabel} - ${(svc.name || "").substring(0, 70)}`,
                                       acfSideType: svc.sideType ?? 0,
                                       acfExternalFactor: ef,
-                                      acfRefCode: svc.refCode || "",
+                                      acfRefCode: svc.refCode || consultationIcd10 || "",
                                       acfBaseTP: svc.tp,
                                     },
                                   ]);
@@ -4870,34 +5096,34 @@ export default function MedicalConsultationsCard({
                                           }),
                                         });
                                         const json = await res.json();
-                                        if (json.success && json.data) {
-                                          const acfCodes: any[] = json.data.acfCodes || [];
-                                          if (acfCodes.length > 0) {
-                                            setInvoiceServiceLines((prev) => {
-                                              const nonFlatRate = prev.filter((l) => !l.serviceId.startsWith("flatrate-"));
-                                              const newFlatRates: InvoiceServiceLine[] = acfCodes.map((acf: any) => {
-                                                const sideLabel = (tmaLines[0]?.acfSideType ?? 0) === 1 ? " [L]" : (tmaLines[0]?.acfSideType ?? 0) === 2 ? " [R]" : (tmaLines[0]?.acfSideType ?? 0) === 3 ? " [B]" : "";
-                                                return {
-                                                  serviceId: `flatrate-${acf.code}`,
-                                                  quantity: 1,
-                                                  unitPrice: acf.tp ?? 0,
-                                                  groupId: null,
-                                                  discountPercent: null,
-                                                  customName: `[ACF] ${acf.code}${sideLabel} - ${(acf.name || "").substring(0, 70)}`,
-                                                  acfSideType: tmaLines[0]?.acfSideType ?? 0,
-                                                  acfExternalFactor: 1.0,
-                                                  acfRefCode: icdCode,
-                                                  acfBaseTP: acf.tp ?? 0,
-                                                };
-                                              });
-                                              return [...nonFlatRate, ...newFlatRates];
+                                        const acfCodes: any[] = json.data?.acfCodes || [];
+                                        if (acfCodes.length > 0) {
+                                          setInvoiceServiceLines((prev) => {
+                                            const nonFlatRate = prev.filter((l) => !l.serviceId.startsWith("flatrate-"));
+                                            const newFlatRates: InvoiceServiceLine[] = acfCodes.map((acf: any) => {
+                                              const sideLabel = (tmaLines[0]?.acfSideType ?? 0) === 1 ? " [L]" : (tmaLines[0]?.acfSideType ?? 0) === 2 ? " [R]" : (tmaLines[0]?.acfSideType ?? 0) === 3 ? " [B]" : "";
+                                              return {
+                                                serviceId: `flatrate-${acf.code}`,
+                                                quantity: 1,
+                                                unitPrice: acf.tp ?? 0,
+                                                groupId: null,
+                                                discountPercent: null,
+                                                customName: `[ACF] ${acf.code}${sideLabel} - ${(acf.name || "").substring(0, 70)}`,
+                                                acfSideType: tmaLines[0]?.acfSideType ?? 0,
+                                                acfExternalFactor: 1.0,
+                                                acfRefCode: icdCode,
+                                                acfBaseTP: acf.tp ?? 0,
+                                              };
                                             });
-                                          }
-                                          if (json.data.errors?.length > 0) {
-                                            console.warn("Grouper re-run warnings:", json.data.errors);
-                                          }
-                                        } else {
-                                          console.error("Grouper re-run failed:", json.error);
+                                            return [...nonFlatRate, ...newFlatRates];
+                                          });
+                                        }
+                                        if (json.data?.errors?.length > 0) {
+                                          console.warn("Grouper re-run warnings:", json.data.errors);
+                                        }
+                                        if (!json.success && acfCodes.length === 0) {
+                                          const errMsg = json.error || json.errors?.join("; ") || json.data?.errors?.join("; ") || "Unknown grouper error";
+                                          console.error("Grouper re-run failed:", errMsg);
                                         }
                                       } catch (err) {
                                         console.error("Grouper re-run request failed:", err);
@@ -5476,6 +5702,9 @@ export default function MedicalConsultationsCard({
                     setInvoiceServiceLines([]);
                     setInvoiceSelectedCategoryId("");
                     setInvoiceSelectedServiceId("");
+                    setConsultationDiagnosisCode("");
+                    setConsultationRefIcd10("");
+                    setInvoiceFromConsultationId(null);
                     setMedProducts([createEmptyMedProduct()]);
                     setMedIntakeNote("");
                     setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
@@ -5565,6 +5794,20 @@ export default function MedicalConsultationsCard({
           </div>
         )}
 
+        {/* Success banner for invoice created from consultation */}
+        {invoiceFromConsultationSuccess && (
+          <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-medium text-emerald-800">
+            <span>{invoiceFromConsultationSuccess}</span>
+            <button
+              type="button"
+              onClick={() => setInvoiceFromConsultationSuccess(null)}
+              className="ml-2 text-emerald-500 hover:text-emerald-700"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="mt-3 space-y-2">
           {consultationsError ? (
             <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[11px] text-red-700">
@@ -5630,7 +5873,7 @@ export default function MedicalConsultationsCard({
                   row.payment_method === "Cash";
 
                 const cardClassName =
-                  "rounded-lg border border-slate-200 bg-white/80 px-3 py-3 text-xs shadow-sm";
+                  "group rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm shadow-[0_8px_24px_rgba(15,23,42,0.05)] transition-all duration-200 hover:border-slate-300 hover:shadow-[0_14px_30px_rgba(15,23,42,0.09)]";
 
                 const totalSeconds = row.duration_seconds ?? 0;
                 const displayDuration = formatDuration(totalSeconds);
@@ -5658,28 +5901,40 @@ export default function MedicalConsultationsCard({
 
                 return (
                   <div key={row.id} className={cardClassName}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2">
-                        <span
-                          className={
-                            "inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
-                          }
-                        >
-                          {recordTypeLabel}
-                        </span>
-                        <div className="text-[11px] text-slate-700">
-                          <div className="font-medium">
-                            {row.doctor_name ?? ""}
-                          </div>
-                          <div className="mt-0.5 text-[10px] text-slate-500">
-                            {scheduledLabel}
-                          </div>
+                    {/* Header Section */}
+                    <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3.5">
+                      <div className="flex-1 min-w-0">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span
+                            className={
+                              "inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700"
+                            }
+                          >
+                            {recordTypeLabel}
+                          </span>
+                          {displayDuration && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-600">
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              {displayDuration}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          {row.doctor_name && (
+                            <div className="text-[15px] font-semibold text-slate-900">
+                              {row.doctor_name}
+                            </div>
+                          )}
+                          {scheduledLabel && (
+                            <div className="inline-flex items-center rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                              {scheduledLabel}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-mono text-slate-700">
-                          {displayDuration}
-                        </span>
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
                         {is3d &&
                           threeDMeta?.player_id &&
                           threeDMeta.reconstruction_type ? (
@@ -5704,14 +5959,28 @@ export default function MedicalConsultationsCard({
                             const effectiveStatus: InvoiceStatus = row.invoice_status || (row.invoice_is_paid ? "PAID" : "OPEN");
                             const statusConfig = INVOICE_STATUS_DISPLAY[effectiveStatus];
                             return (
-                              <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
+                              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor}`}>
                                 {effectiveStatus === "PAID" && (
-                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                )}
+                                {effectiveStatus === "OPEN" && (
+                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
                                 )}
                                 {effectiveStatus === "CANCELLED" && (
-                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
                                 )}
-                                {statusConfig.label}
+                                {effectiveStatus === "PARTIAL_PAID" && (
+                                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                )}
+                                Payment: {statusConfig.label}
                               </span>
                             );
                           })()
@@ -5725,13 +5994,120 @@ export default function MedicalConsultationsCard({
                             Upload receipt
                           </button>
                         ) : null}
+                        {/* Linked invoice status badge on consultation records */}
+                        {!isInvoice && row.linked_invoice_id && row.linked_invoice_status && (() => {
+                          const linkedStatus = INVOICE_STATUS_DISPLAY[row.linked_invoice_status];
+                          return (
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${linkedStatus.bgColor} ${linkedStatus.color} ${linkedStatus.borderColor}`}>
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              Invoice: {linkedStatus.label}
+                            </span>
+                          );
+                        })()}
+                        {/* Insurance/MediData status badge */}
+                        {row.medidata_status && (() => {
+                          const mdStatus = row.medidata_status;
+                          const mdConfig: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+                            draft: { bg: "bg-slate-100", text: "text-slate-700", border: "border-slate-300", icon: "📝" },
+                            pending: { bg: "bg-yellow-100", text: "text-yellow-800", border: "border-yellow-300", icon: "⏳" },
+                            transmitted: { bg: "bg-blue-100", text: "text-blue-800", border: "border-blue-300", icon: "📤" },
+                            delivered: { bg: "bg-sky-100", text: "text-sky-800", border: "border-sky-300", icon: "✉️" },
+                            accepted: { bg: "bg-emerald-100", text: "text-emerald-800", border: "border-emerald-300", icon: "✅" },
+                            paid: { bg: "bg-green-100", text: "text-green-800", border: "border-green-300", icon: "💰" },
+                            partially_paid: { bg: "bg-cyan-100", text: "text-cyan-800", border: "border-cyan-300", icon: "💵" },
+                            rejected: { bg: "bg-red-100", text: "text-red-800", border: "border-red-300", icon: "❌" },
+                            disputed: { bg: "bg-orange-100", text: "text-orange-800", border: "border-orange-300", icon: "⚠️" },
+                            cancelled: { bg: "bg-slate-100", text: "text-slate-600", border: "border-slate-300", icon: "🚫" },
+                          };
+                          const config = mdConfig[mdStatus] || mdConfig.draft;
+                          const label = mdStatus.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                          return (
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${config.bg} ${config.text} ${config.border}`}>
+                              <span className="text-[11px] leading-none">{config.icon}</span>
+                              Insurance: {label}
+                            </span>
+                          );
+                        })()}
                         {!showArchived ? (
                           <>
+                            {row.record_type !== "invoice" && !row.linked_invoice_id && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  // Open new consultation form in invoice mode, prefilled from this consultation
+                                  setInvoiceFromConsultationId(row.id);
+                                  setConsultationRecordType("invoice");
+                                  setConsultationTitle(row.title || "");
+                                  setConsultationDoctorId("");
+                                  setInvoiceProviderId("");
+                                  setConsultationDiagnosisCode(row.diagnosis_code || "");
+                                  setConsultationRefIcd10(row.ref_icd10 || "");
+                                  // Use TODAY's date for the invoice (not the consultation's old date)
+                                  {
+                                    const now = new Date();
+                                    setConsultationDate(now.toISOString().split("T")[0]);
+                                    setConsultationHour(now.getHours().toString().padStart(2, "0"));
+                                    setConsultationMinute(now.getMinutes().toString().padStart(2, "0"));
+                                  }
+                                  // Prefill provider from doctor's provider_id mapping
+                                  if (row.doctor_user_id) {
+                                    let mappedProviderId =
+                                      userOptions.find((u) => u.id === row.doctor_user_id)
+                                        ?.provider_id ?? null;
+
+                                    // Fallback to DB in case user options are stale/not loaded yet
+                                    if (!mappedProviderId) {
+                                      const { data: userRow } = await supabaseClient
+                                        .from("users")
+                                        .select("provider_id")
+                                        .eq("id", row.doctor_user_id)
+                                        .maybeSingle();
+                                      mappedProviderId = userRow?.provider_id ?? null;
+                                    }
+
+                                    if (mappedProviderId) {
+                                      // In invoice mode, doctor selector expects a provider (medical staff) id
+                                      if (medicalStaffOptions.some((s) => s.id === mappedProviderId)) {
+                                        setConsultationDoctorId(mappedProviderId);
+                                      }
+
+                                      // Billing entity selector expects billing_entity role.
+                                      // If mapped provider is a doctor/nurse, resolve billing entity via shared GLN.
+                                      let billingProviderId = mappedProviderId;
+                                      if (!billingEntityOptions.some((p) => p.id === billingProviderId)) {
+                                        const sourceProvider = providerOptions.find(
+                                          (p) => p.id === mappedProviderId,
+                                        );
+                                        if (sourceProvider?.gln) {
+                                          const billingByGln = billingEntityOptions.find(
+                                            (p) => p.gln === sourceProvider.gln,
+                                          );
+                                          if (billingByGln) {
+                                            billingProviderId = billingByGln.id;
+                                          }
+                                        }
+                                      }
+
+                                      if (billingEntityOptions.some((p) => p.id === billingProviderId)) {
+                                        setInvoiceProviderId(billingProviderId);
+                                      }
+                                    }
+                                  }
+                                  setNewConsultationOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 shadow-sm hover:bg-emerald-100"
+                              >
+                                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                Create Invoice
+                              </button>
+                            )}
                             {row.record_type !== "invoice" && (
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditConsultation(row)}
-                                className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] text-sky-700 shadow-sm hover:bg-sky-100"
+                                className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700 shadow-sm hover:bg-sky-100"
                               >
                                 Edit
                               </button>
@@ -5741,7 +6117,7 @@ export default function MedicalConsultationsCard({
                               onClick={() => {
                                 void handleArchiveConsultation(row.id);
                               }}
-                              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] text-slate-600 shadow-sm hover:bg-slate-50"
+                              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm hover:bg-slate-50"
                             >
                               Archive
                             </button>
@@ -5752,7 +6128,7 @@ export default function MedicalConsultationsCard({
                             onClick={() => {
                               void handleDeleteConsultation(row.id);
                             }}
-                            className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] text-red-700 shadow-sm hover:bg-red-100"
+                            className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-700 shadow-sm hover:bg-red-100"
                           >
                             Delete
                           </button>
@@ -5760,30 +6136,65 @@ export default function MedicalConsultationsCard({
                       </div>
                     </div>
 
-                    <div className="mt-2 text-[11px] text-slate-800">
-                      {isInvoice ? (
-                        <div className="mb-2 text-[10px] text-slate-600">
-                          <span className="font-semibold">Invoice #:</span>{" "}
-                          <span className="font-mono text-slate-800">{row.consultation_id}</span>
-                        </div>
-                      ) : isNotes ? (
-                        <div className="mb-2 text-[10px] text-slate-600">
-                          <span className="font-semibold">Consultation ID:</span>{" "}
-                          <span className="font-mono text-slate-800">{row.consultation_id}</span>
-                        </div>
-                      ) : null}
+                    {/* Content Section */}
+                    <div className="mt-3.5 space-y-3">
+                      {/* Title */}
                       {displayTitle && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className={`font-semibold ${isInvoice ? "text-slate-900 text-[12px]" : ""}`}>
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <h4 className={`font-semibold leading-snug ${isInvoice ? "text-slate-900 text-[14px]" : "text-slate-800 text-[13px]"}`}>
                             {displayTitle}
-                          </div>
-                          {isComplimentaryInvoice ? (
-                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">
-                              Complimentary service
+                          </h4>
+                          {isComplimentaryInvoice && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800">
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Complimentary
                             </span>
-                          ) : null}
+                          )}
                         </div>
                       )}
+
+                      {/* Metadata Badges */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isInvoice && row.consultation_id && (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-700">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Consultation ID: <span className="font-mono">{row.consultation_id}</span>
+                          </span>
+                        )}
+                        {isNotes && row.consultation_id && (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-medium text-blue-700">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                            </svg>
+                            Record ID: <span className="font-mono">{row.consultation_id}</span>
+                          </span>
+                        )}
+                        {row.diagnosis_code && (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-[10px] font-medium text-purple-700">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            Diagnosis: <span className="font-mono">{row.diagnosis_code}</span>
+                          </span>
+                        )}
+                        {row.ref_icd10 && (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-medium text-indigo-700">
+                            ICD-10: <span className="font-mono">{row.ref_icd10}</span>
+                          </span>
+                        )}
+                        {row.linked_invoice_number && (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-medium text-amber-700">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Linked Invoice: <span className="font-mono">#{row.linked_invoice_number}</span>
+                          </span>
+                        )}
+                      </div>
                       {is3d && threeDMeta ? (
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-600">
                           <span>
@@ -5799,15 +6210,16 @@ export default function MedicalConsultationsCard({
                           ) : null}
                         </div>
                       ) : null}
+                      {/* Content/Notes */}
                       {isNotes && row.content ? (
                         <div
-                          className="mt-1 text-[11px] leading-relaxed text-slate-800"
+                          className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 text-[12px] leading-relaxed text-slate-700"
                           style={{ whiteSpace: "pre-wrap" }}
                           dangerouslySetInnerHTML={{ __html: row.content }}
                         />
                       ) : (isPrescription || isInvoice) && row.content ? (
                         <div
-                          className="mt-1 text-[11px] leading-relaxed text-slate-800"
+                          className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 text-[12px] leading-relaxed text-slate-700"
                           dangerouslySetInnerHTML={{ __html: row.content }}
                         />
                       ) : null}
@@ -6710,6 +7122,87 @@ export default function MedicalConsultationsCard({
                   placeholder="Consultation title"
                 />
               </div>
+
+              {/* Doctor */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-medium text-slate-700">Doctor</label>
+                <select
+                  value={editConsultationDoctorId}
+                  onChange={(e) => setEditConsultationDoctorId(e.target.value)}
+                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="">Select doctor</option>
+                  {userOptions.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.full_name || user.email || user.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date & Time */}
+              <div className="grid grid-cols-[1fr_0.5fr_0.5fr] gap-2">
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-medium text-slate-700">Date</label>
+                  <input
+                    type="date"
+                    value={editConsultationDate}
+                    onChange={(e) => setEditConsultationDate(e.target.value)}
+                    className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-medium text-slate-700">Hour</label>
+                  <select
+                    value={editConsultationHour}
+                    onChange={(e) => setEditConsultationHour(e.target.value)}
+                    className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  >
+                    <option value="">--</option>
+                    {Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, "0")).map((h) => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-medium text-slate-700">Min</label>
+                  <select
+                    value={editConsultationMinute}
+                    onChange={(e) => setEditConsultationMinute(e.target.value)}
+                    className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  >
+                    <option value="">--</option>
+                    {Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, "0")).map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Diagnosis & ICD-10 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-medium text-slate-700">Diagnosis Code</label>
+                  <input
+                    type="text"
+                    value={editConsultationDiagnosisCode}
+                    onChange={(e) => setEditConsultationDiagnosisCode(e.target.value)}
+                    placeholder="e.g. L91.0"
+                    className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-medium text-slate-700">Ref ICD-10</label>
+                  <input
+                    type="text"
+                    value={editConsultationRefIcd10}
+                    onChange={(e) => setEditConsultationRefIcd10(e.target.value)}
+                    placeholder="e.g. Z42.1"
+                    className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="block text-[11px] font-medium text-slate-700">Content / Notes</label>
                 <textarea

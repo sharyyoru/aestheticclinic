@@ -15,12 +15,16 @@ export async function GET() {
       );
     }
 
-    // Get existing users from public.users table
+    // Get existing users from public.users table (including provider_id for doctor-provider mapping)
     const { data: existingPublicUsers } = await supabaseAdmin
       .from("users")
-      .select("id");
+      .select("id, provider_id");
     
     const existingIds = new Set((existingPublicUsers || []).map((u) => u.id));
+    const providerIdMap = new Map<string, string | null>();
+    for (const u of existingPublicUsers || []) {
+      providerIdMap.set(u.id, u.provider_id ?? null);
+    }
 
     // Sync missing users to public.users table to satisfy foreign key constraints
     const usersToSync = data.users.filter((user) => !existingIds.has(user.id));
@@ -69,6 +73,7 @@ export async function GET() {
         last_name: lastName,
         designation: (meta["designation"] as string) ?? null,
         created_at: (user as any).created_at ?? null,
+        provider_id: providerIdMap.get(user.id) ?? null,
       };
     });
 

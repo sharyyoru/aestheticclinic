@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { formatChf } from "@/lib/tardoc";
 
 type TmaChapter = { code: string; name: string; count: number };
@@ -34,6 +34,7 @@ type AcfAccordionTreeProps = {
   patientSex?: number; // 0=male, 1=female
   patientBirthdate?: string; // ISO date
   existingTardocCodes?: Array<{ code: string; quantity: number; side?: number }>;
+  defaultIcd10?: string;
 };
 
 const SIDE_LABELS: Record<number, string> = {
@@ -59,7 +60,13 @@ const Spinner = ({ className = "h-3 w-3" }: { className?: string }) => (
   </svg>
 );
 
-export default function AcfAccordionTree({ onAddService, patientSex, patientBirthdate, existingTardocCodes }: AcfAccordionTreeProps) {
+export default function AcfAccordionTree({
+  onAddService,
+  patientSex,
+  patientBirthdate,
+  existingTardocCodes,
+  defaultIcd10,
+}: AcfAccordionTreeProps) {
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [nodes, setNodes] = useState<Map<string, TmaTreeNode>>(new Map());
@@ -71,7 +78,7 @@ export default function AcfAccordionTree({ onAddService, patientSex, patientBirt
   // Staging: selected TMA gesture code before running grouper
   const [staged, setStaged] = useState<any | null>(null);
   const [stageSide, setStageSide] = useState(0);
-  const [stageIcd, setStageIcd] = useState("");
+  const [stageIcd, setStageIcd] = useState((defaultIcd10 || "").trim());
   const [stageSex, setStageSex] = useState<number>(patientSex ?? 0);
   const [stageBirthdate, setStageBirthdate] = useState(patientBirthdate || "1990-01-01");
 
@@ -79,6 +86,13 @@ export default function AcfAccordionTree({ onAddService, patientSex, patientBirt
   const [grouperLoading, setGrouperLoading] = useState(false);
   const [grouperResult, setGrouperResult] = useState<any | null>(null);
   const [grouperError, setGrouperError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextIcd = (defaultIcd10 || "").trim();
+    if (!staged) {
+      setStageIcd(nextIcd);
+    }
+  }, [defaultIcd10, staged]);
 
   // ── Load TMA chapters ──────────────────────────────────────────────────────
   const loadChapters = useCallback(async () => {
@@ -164,10 +178,10 @@ export default function AcfAccordionTree({ onAddService, patientSex, patientBirt
   const handleSelectService = useCallback((svc: any) => {
     setStaged(svc);
     setStageSide(svc.hasSideDependency ? 1 : 0); // default to Left if side required
-    setStageIcd("");
+    setStageIcd((defaultIcd10 || "").trim());
     setGrouperResult(null);
     setGrouperError(null);
-  }, []);
+  }, [defaultIcd10]);
 
   // ── Run the grouper: TMA gesture + ICD → ACF flat rate code ────────────────
   const handleRunGrouper = useCallback(async () => {

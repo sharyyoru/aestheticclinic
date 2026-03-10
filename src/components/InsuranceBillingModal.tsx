@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import {
   INVOICE_STATUS_CONFIG,
@@ -8,7 +8,7 @@ import {
   type BillingType,
   type MediDataInvoiceStatus,
 } from "@/lib/medidata";
-import InsurerSearchSelect from "@/components/InsurerSearchSelect";
+import MedidataInsurerSearch, { type MedidataParticipant } from "@/components/MedidataInsurerSearch";
 
 type LineItem = {
   id: string;
@@ -28,6 +28,25 @@ type LineItem = {
   date_begin: string | null;
   provider_gln: string | null;
   catalog_name: string | null;
+};
+
+type PatientInsurance = {
+  id: string;
+  provider_name: string | null;
+  card_number: string | null;
+  insurance_type: string | null;
+  insurer_id: string | null;
+  insurer_gln: string | null;
+  gln: string | null;
+  avs_number: string | null;
+  policy_number: string | null;
+  law_type: string | null;
+  billing_type: string | null;
+  case_number: string | null;
+  accident_date: string | null;
+  is_primary: boolean;
+  valid_from: string | null;
+  valid_till: string | null;
 };
 
 type InsuranceBillingModalProps = {
@@ -75,7 +94,135 @@ export default function InsuranceBillingModal({
   // Real invoice line items loaded from DB
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [lineItemsLoading, setLineItemsLoading] = useState(false);
-  const [prefilled, setPrefilled] = useState(false);
+  const prefilledRef = useRef(false);
+
+  // Patient insurances (multiple)
+  const [patientInsurances, setPatientInsurances] = useState<PatientInsurance[]>([]);
+  const [selectedInsuranceIdx, setSelectedInsuranceIdx] = useState(0);
+  const [insuranceGlnWarning, setInsuranceGlnWarning] = useState<string | null>(null);
+  const [updatingInsurance, setUpdatingInsurance] = useState(false);
+
+  // Apply insurance fields from a selected patient insurance record
+  const applyInsuranceFields = (ins: PatientInsurance) => {
+    const gln = ins.insurer_gln || ins.gln || "";
+    if (gln) setSelectedInsurerGln(gln);
+    if (ins.provider_name) setSelectedInsurerName(ins.provider_name);
+    if (ins.avs_number) setAvsNumber(ins.avs_number);
+    if (ins.policy_number) setPolicyNumber(ins.policy_number);
+    if (ins.case_number) setCaseNumber(ins.case_number);
+    if (ins.law_type) setLawType(ins.law_type as SwissLawType);
+    if (ins.billing_type) setBillingType(ins.billing_type as BillingType);
+    if (ins.accident_date) setAccidentDate(ins.accident_date);
+  };
+
+  const LAW_TYPE_NUM_TO_STR: Record<number, SwissLawType> = { 1: "KVG", 2: "UVG", 3: "IVG", 4: "MVG", 5: "VVG" };
+
+  // Apply law type and billing type from a MediData participant
+  const applyParticipantDefaults = (participant: MedidataParticipant) => {
+    // Auto-set law type: if participant supports exactly one, use it; otherwise default to KVG if available
+    if (participant.lawTypes?.length === 1) {
+      const lt = LAW_TYPE_NUM_TO_STR[participant.lawTypes[0]];
+      if (lt) setLawType(lt);
+    } else if (participant.lawTypes?.length > 1) {
+      // Default to KVG if available, otherwise pick first
+      if (participant.lawTypes.includes(1)) {
+        setLawType("KVG");
+      } else {
+        const lt = LAW_TYPE_NUM_TO_STR[participant.lawTypes[0]];
+        if (lt) setLawType(lt);
+      }
+    }
+    // Auto-set billing type from tgAllowed
+    if (typeof participant.tgAllowed === "boolean") {
+      setBillingType(participant.tgAllowed ? "TG" : "TP");
+    }
+  };
+
+  // Validate a GLN against medidata participants list and apply defaults
+  const validateGlnAgainstMedidata = async (gln: string, applyDefaults = true) => {
+    try {
+      const res = await fetch(`/api/medidata/proxy-participants?glnparticipant=${encodeURIComponent(gln)}&limit=1`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.participants) && json.participants.length > 0) {
+        setInsuranceGlnWarning(null);
+        if (applyDefaults) {
+          applyParticipantDefaults(json.participants[0] as MedidataParticipant);
+        }
+      } else {
+        setInsuranceGlnWarning(
+          `Insurance GLN "${gln}" was not found in the MediData participants list. The patient's insurance record may need updating.`
+        );
+      }
+    } catch {
+      setInsuranceGlnWarning(null); // Don't block on network errors
+    }
+  };
+
+  // Handle switching between patient insurances
+  const handleInsuranceSwitch = (idx: number) => {
+    setSelectedInsuranceIdx(idx);
+    const ins = patientInsurances[idx];
+    if (ins) {
+      applyInsuranceFields(ins);
+      const gln = ins.insurer_gln || ins.gln || "";
+      if (gln) {
+        validateGlnAgainstMedidata(gln);
+      } else {
+        setInsuranceGlnWarning(null);
+      }
+    }
+  };
+
+  // Update patient insurance record when user picks a new insurer from medidata
+  const handleInsurerChange = async (gln: string, name: string, participant?: MedidataParticipant) => {
+    setSelectedInsurerGln(gln);
+    setSelectedInsurerName(name);
+    setInsuranceGlnWarning(null);
+
+    // Auto-set law type and billing type from participant data
+    if (participant) {
+      applyParticipantDefaults(participant);
+    }
+
+    // Update the patient insurance record in DB if we have a selected patient insurance
+    const currentIns = patientInsurances[selectedInsuranceIdx];
+    if (currentIns && gln && name) {
+      setUpdatingInsurance(true);
+      try {
+        const updatePayload: Record<string, any> = {
+          insurer_gln: gln,
+          provider_name: name,
+        };
+        // Try to find matching swiss_insurers record to keep insurer_id in sync
+        const { data: swissInsurer } = await supabaseClient
+          .from("swiss_insurers")
+          .select("id")
+          .eq("gln", gln)
+          .maybeSingle();
+        if (swissInsurer) {
+          updatePayload.insurer_id = swissInsurer.id;
+        }
+
+        await supabaseClient
+          .from("patient_insurances")
+          .update(updatePayload)
+          .eq("id", currentIns.id);
+
+        // Update local state
+        setPatientInsurances((prev) =>
+          prev.map((ins, i) =>
+            i === selectedInsuranceIdx
+              ? { ...ins, insurer_gln: gln, provider_name: name, insurer_id: swissInsurer?.id || ins.insurer_id }
+              : ins,
+          ),
+        );
+      } catch (err) {
+        console.error("Failed to update patient insurance:", err);
+      } finally {
+        setUpdatingInsurance(false);
+      }
+    }
+  };
 
   // Load invoice line items and patient insurance data when modal opens
   useEffect(() => {
@@ -96,24 +243,35 @@ export default function InsuranceBillingModal({
         setLineItems(items as LineItem[]);
       }
 
-      // Load patient's primary insurance to pre-fill fields
-      if (!prefilled) {
-        const { data: insurance } = await supabaseClient
+      // Load ALL patient insurances
+      if (!prefilledRef.current) {
+        const { data: insurances, error: insError } = await supabaseClient
           .from("patient_insurances")
-          .select("insurer_id, insurer_gln, provider_name, avs_number, policy_number, law_type, billing_type, case_number, card_number")
+          .select("id, insurer_id, insurer_gln, gln, provider_name, avs_number, policy_number, law_type, billing_type, case_number, card_number, insurance_type, accident_date, is_primary, valid_from, valid_till")
           .eq("patient_id", patientId)
-          .eq("is_primary", true)
-          .maybeSingle();
+          .order("is_primary", { ascending: false });
 
-        if (!cancelled && insurance) {
-          if (insurance.insurer_gln) setSelectedInsurerGln(insurance.insurer_gln);
-          if (insurance.provider_name) setSelectedInsurerName(insurance.provider_name);
-          if (insurance.avs_number) setAvsNumber(insurance.avs_number);
-          if (insurance.policy_number) setPolicyNumber(insurance.policy_number);
-          if (insurance.case_number) setCaseNumber(insurance.case_number);
-          if (insurance.law_type) setLawType(insurance.law_type as SwissLawType);
-          if (insurance.billing_type) setBillingType(insurance.billing_type as BillingType);
-          setPrefilled(true);
+        if (insError) {
+          console.error("[InsuranceBillingModal] Error loading patient insurances:", insError);
+        }
+        console.log("[InsuranceBillingModal] Patient insurances loaded:", { patientId, count: insurances?.length, insurances });
+
+        if (!cancelled && insurances && insurances.length > 0) {
+          setPatientInsurances(insurances as PatientInsurance[]);
+          // Auto-select primary or first
+          const primaryIdx = insurances.findIndex((i: any) => i.is_primary);
+          const idx = primaryIdx >= 0 ? primaryIdx : 0;
+          setSelectedInsuranceIdx(idx);
+          applyInsuranceFields(insurances[idx] as PatientInsurance);
+          prefilledRef.current = true;
+
+          // Validate GLN against medidata participants
+          const glnToCheck = insurances[idx].insurer_gln || insurances[idx].gln;
+          if (glnToCheck) {
+            validateGlnAgainstMedidata(glnToCheck);
+          }
+        } else {
+          prefilledRef.current = true;
         }
 
         // Also load invoice-level data (treatment_reason, diagnosis_codes, billing_type, etc.)
@@ -141,11 +299,17 @@ export default function InsuranceBillingModal({
 
     void loadData();
     return () => { cancelled = true; };
-  }, [isOpen, consultationId, patientId, prefilled]);
+  }, [isOpen, consultationId, patientId]);
 
-  // Reset prefilled flag when modal closes
+  // Reset state when modal closes
   useEffect(() => {
-    if (!isOpen) setPrefilled(false);
+    if (!isOpen) {
+      prefilledRef.current = false;
+      setPatientInsurances([]);
+      setSelectedInsuranceIdx(0);
+      setInsuranceGlnWarning(null);
+      setUpdatingInsurance(false);
+    }
   }, [isOpen]);
 
   const lineItemsTotal = lineItems.reduce((sum, li) => sum + (li.total_price || 0), 0);
@@ -555,17 +719,54 @@ export default function InsuranceBillingModal({
             <div className="rounded-xl border border-slate-200 p-4">
               <h3 className="mb-3 text-xs font-medium text-slate-700">Insurance Details</h3>
               <div className="space-y-3">
+                {/* Multiple insurances selector */}
+                {patientInsurances.length > 1 && (
+                  <div>
+                    <label className="mb-1 block text-[11px] font-medium text-slate-500">
+                      Patient Insurance
+                    </label>
+                    <select
+                      value={selectedInsuranceIdx}
+                      onChange={(e) => handleInsuranceSwitch(Number(e.target.value))}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    >
+                      {patientInsurances.map((ins, idx) => (
+                        <option key={ins.id} value={idx}>
+                          {ins.provider_name || "Unknown Insurer"}
+                          {ins.is_primary ? " (Primary)" : ""}
+                          {ins.law_type ? ` — ${ins.law_type}` : ""}
+                          {ins.insurance_type ? ` [${ins.insurance_type}]` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* GLN not found in MediData warning */}
+                {insuranceGlnWarning && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                    <div className="flex items-start gap-2">
+                      <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                      </svg>
+                      <div>
+                        <p className="text-[11px] font-semibold text-amber-800">Insurance Not Found in MediData</p>
+                        <p className="mt-0.5 text-[10px] text-amber-700">{insuranceGlnWarning}</p>
+                        <p className="mt-1 text-[10px] text-amber-600">Use the search below to select a valid insurer from the MediData participants list. This will also update the patient&apos;s insurance record.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="mb-1 block text-[11px] font-medium text-slate-500">
-                    Insurance Company
+                    Insurance Company {updatingInsurance && <span className="text-sky-500">(updating...)</span>}
                   </label>
-                  <InsurerSearchSelect
+                  <MedidataInsurerSearch
                     value={selectedInsurerGln}
-                    onChange={(gln, name) => {
-                      setSelectedInsurerGln(gln);
-                      setSelectedInsurerName(name || "");
-                    }}
-                    placeholder="Search insurer (e.g., CSS, Helsana, Swica)..."
+                    displayName={selectedInsurerName}
+                    onChange={handleInsurerChange}
+                    placeholder="Search insurer from MediData (e.g., CSS, Helsana, Swica)..."
                     inputClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                 </div>

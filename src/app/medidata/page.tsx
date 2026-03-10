@@ -44,6 +44,25 @@ type Submission = {
     notes: string | null;
     created_at: string;
   }>;
+  rejection_responses?: Array<{
+    id: string;
+    response_type: string | null;
+    explanation: string | null;
+    content: string | null;
+    status_in: string | null;
+    status_out: string | null;
+    sender_gln: string | null;
+    created_at: string;
+  }>;
+  error_notifications?: Array<{
+    id: string;
+    severity: string | null;
+    error_code: string | null;
+    message: string | null;
+    confirmed_at: string | null;
+    medidata_created_at: string | null;
+    created_at: string;
+  }>;
 };
 
 type DbResponse = {
@@ -250,7 +269,76 @@ export default function MediDataDashboard() {
         `)
         .order("created_at", { ascending: false })
         .limit(50);
-      setSubmissions((data as Submission[]) || []);
+
+      let subs = (data as Submission[]) || [];
+
+      // Fetch rejection responses and error notifications separately (no FK constraints)
+      if (subs.length > 0) {
+        const subIds = subs.map((s) => s.id);
+        const messageIds = subs.map((s) => s.medidata_message_id).filter(Boolean) as string[];
+
+        const respPromise = supabaseClient
+          .from("medidata_responses")
+          .select("id,response_type,explanation,content,status_in,status_out,sender_gln,created_at,submission_id")
+          .in("submission_id", subIds);
+
+        const notifBySubIdPromise = supabaseClient
+          .from("medidata_notifications_log")
+          .select("id,severity,error_code,message,confirmed_at,medidata_created_at,created_at,submission_id,transmission_reference")
+          .in("submission_id", subIds);
+
+        const notifByTransRefPromise = messageIds.length > 0
+          ? supabaseClient
+              .from("medidata_notifications_log")
+              .select("id,severity,error_code,message,confirmed_at,medidata_created_at,created_at,submission_id,transmission_reference")
+              .in("transmission_reference", messageIds)
+          : Promise.resolve({ data: [] as any[] });
+
+        const [respResult, notifBySubId, notifByTransRef] = await Promise.all([
+          respPromise, notifBySubIdPromise, notifByTransRefPromise,
+        ]);
+
+        const respMap = new Map<string, Submission["rejection_responses"]>();
+        if (respResult.data) {
+          for (const r of respResult.data) {
+            const sid = r.submission_id as string;
+            if (!respMap.has(sid)) respMap.set(sid, []);
+            respMap.get(sid)!.push(r as any);
+          }
+        }
+
+        // Build notification map: merge by submission_id + transmission_reference
+        const notifMap = new Map<string, Submission["error_notifications"]>();
+        const seenNotifIds = new Set<string>();
+
+        // Build reverse lookup: medidata_message_id -> submission id
+        const msgIdToSubId = new Map<string, string>();
+        for (const s of subs) {
+          if (s.medidata_message_id) msgIdToSubId.set(s.medidata_message_id, s.id);
+        }
+
+        const allNotifs = [...(notifBySubId.data || []), ...(notifByTransRef.data || [])];
+        for (const n of allNotifs) {
+          if (seenNotifIds.has(n.id)) continue;
+          seenNotifIds.add(n.id);
+          // Determine which submission this notification belongs to
+          let sid = n.submission_id as string | null;
+          if (!sid && n.transmission_reference) {
+            sid = msgIdToSubId.get(n.transmission_reference) || null;
+          }
+          if (!sid) continue;
+          if (!notifMap.has(sid)) notifMap.set(sid, []);
+          notifMap.get(sid)!.push(n as any);
+        }
+
+        subs = subs.map((s) => ({
+          ...s,
+          rejection_responses: respMap.get(s.id) || [],
+          error_notifications: notifMap.get(s.id) || [],
+        }));
+      }
+
+      setSubmissions(subs);
     } catch (e) {
       console.error("Error fetching submissions:", e);
     }
@@ -759,6 +847,265 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
 
                   {expandedSub === sub.id && (
                     <div className="border-t border-slate-100 p-4 space-y-4">
+                      {/* Error Notifications Alert (transmission errors) */}
+                      {sub.error_notifications && sub.error_notifications.length > 0 && (
+                        <div className="rounded-lg border-2 border-orange-200 bg-orange-50 p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0">
+                              <svg className="h-5 w-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="text-sm font-bold text-orange-900 mb-2">Transmission Errors</h4>
+                              {sub.error_notifications.map((notif, idx) => (
+                                <div key={notif.id} className={idx > 0 ? "mt-3 pt-3 border-t border-orange-200" : ""}>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {notif.severity && (
+                                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                        notif.severity === "ERROR" ? "bg-red-100 text-red-800" :
+                                        notif.severity === "WARNING" ? "bg-yellow-100 text-yellow-800" :
+                                        "bg-slate-100 text-slate-700"
+                                      }`}>
+                                        {notif.severity}
+                                      </span>
+                                    )}
+                                    {notif.error_code && (
+                                      <span className="inline-flex items-center rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-orange-800">
+                                        {notif.error_code}
+                                      </span>
+                                    )}
+                                    {notif.confirmed_at && (
+                                      <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                                        Confirmed
+                                      </span>
+                                    )}
+                                  </div>
+                                  {notif.message && (
+                                    <p className="text-xs text-orange-800 leading-relaxed whitespace-pre-wrap">
+                                      {notif.message}
+                                    </p>
+                                  )}
+                                  <p className="text-[10px] text-orange-600 mt-1">
+                                    {notif.medidata_created_at 
+                                      ? new Date(notif.medidata_created_at).toLocaleString("fr-CH")
+                                      : new Date(notif.created_at).toLocaleString("fr-CH")}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Insurer Responses (rejections, decisions, etc.) */}
+                      {sub.rejection_responses && sub.rejection_responses.length > 0 && (() => {
+                        const hasRejection = sub.rejection_responses!.some(
+                          (r) => r.response_type === "rejected" || r.status_out === "rejected"
+                        );
+                        const borderColor = hasRejection ? "border-red-200" : "border-blue-200";
+                        const bgColor = hasRejection ? "bg-red-50" : "bg-blue-50";
+                        const iconColor = hasRejection ? "text-red-600" : "text-blue-600";
+                        const titleColor = hasRejection ? "text-red-900" : "text-blue-900";
+                        const title = hasRejection ? "Insurer Rejection" : "Insurer Response";
+                        return (
+                          <div className={`rounded-lg border-2 ${borderColor} ${bgColor} p-4`}>
+                            <div className="flex items-start gap-3">
+                              <div className="flex-shrink-0">
+                                <svg className={`h-5 w-5 ${iconColor}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1">
+                                <h4 className={`text-sm font-bold ${titleColor} mb-3`}>{title}</h4>
+                                {sub.rejection_responses!.map((resp, idx) => {
+                                  const isRejected = resp.response_type === "rejected" || resp.status_out === "rejected";
+                                  const textColor = isRejected ? "text-red-800" : "text-blue-800";
+                                  const subTextColor = isRejected ? "text-red-700" : "text-blue-700";
+                                  const dateColor = isRejected ? "text-red-500" : "text-blue-500";
+                                  const dividerColor = isRejected ? "border-red-200" : "border-blue-200";
+
+                                  // Parse invoice XML response content
+                                  type ParsedResponse = {
+                                    errors: { code: string; text: string }[];
+                                    explanations: string[];
+                                    insurerName?: string;
+                                    contactName?: string;
+                                    contactPhone?: string;
+                                    contactEmail?: string;
+                                    patientName?: string;
+                                    treatmentDates?: string;
+                                    allowModification?: boolean;
+                                  };
+                                  const parsed: ParsedResponse = { errors: [], explanations: [] };
+                                  let hasParsedContent = false;
+
+                                  if (resp.content) {
+                                    const xml = resp.content;
+
+                                    // Extract error elements: <invoice:error code="13" text="..." />
+                                    const errorRegex = /<(?:invoice:)?error\s+[^>]*code="([^"]*)"[^>]*text="([^"]*)"[^>]*\/?>/gi;
+                                    let em;
+                                    while ((em = errorRegex.exec(xml)) !== null) {
+                                      parsed.errors.push({ code: em[1], text: em[2].trim() });
+                                      hasParsedContent = true;
+                                    }
+
+                                    // Extract explanations from XML
+                                    const explRegex = /<(?:invoice:)?explanation[^>]*>([\s\S]*?)<\/(?:invoice:)?explanation>/gi;
+                                    let exm;
+                                    while ((exm = explRegex.exec(xml)) !== null) {
+                                      const txt = exm[1].replace(/<[^>]+>/g, "").trim();
+                                      if (txt && !parsed.explanations.includes(txt)) {
+                                        parsed.explanations.push(txt);
+                                        hasParsedContent = true;
+                                      }
+                                    }
+
+                                    // Extract insurer/debitor name
+                                    const debitorMatch = xml.match(/<(?:invoice:)?debitor[^>]*>[\s\S]*?<(?:invoice:)?companyname>([\s\S]*?)<\/(?:invoice:)?companyname>/i);
+                                    if (debitorMatch) parsed.insurerName = debitorMatch[1].trim();
+
+                                    // Extract contact employee info
+                                    const contactBlock = xml.match(/<(?:invoice:)?contact[^>]*>([\s\S]*?)<\/(?:invoice:)?contact>/i);
+                                    if (contactBlock) {
+                                      const cb = contactBlock[1];
+                                      const famMatch = cb.match(/<(?:invoice:)?familyname>([\s\S]*?)<\/(?:invoice:)?familyname>/i);
+                                      const givMatch = cb.match(/<(?:invoice:)?givenname>([\s\S]*?)<\/(?:invoice:)?givenname>/i);
+                                      if (famMatch || givMatch) {
+                                        parsed.contactName = [givMatch?.[1]?.trim(), famMatch?.[1]?.trim()].filter(Boolean).join(" ");
+                                        if (parsed.contactName === ".") parsed.contactName = undefined;
+                                      }
+                                      const phoneMatch = cb.match(/<(?:invoice:)?phone>([\s\S]*?)<\/(?:invoice:)?phone>/i);
+                                      if (phoneMatch) parsed.contactPhone = phoneMatch[1].trim();
+                                      const emailMatch = cb.match(/<(?:invoice:)?email>([\s\S]*?)<\/(?:invoice:)?email>/i);
+                                      if (emailMatch) parsed.contactEmail = emailMatch[1].trim();
+                                      hasParsedContent = true;
+                                    }
+
+                                    // Extract patient name
+                                    const patientBlock = xml.match(/<(?:invoice:)?patient[^>]*>([\s\S]*?)<\/(?:invoice:)?patient>/i);
+                                    if (patientBlock) {
+                                      const pb = patientBlock[1];
+                                      const famMatch = pb.match(/<(?:invoice:)?familyname>([\s\S]*?)<\/(?:invoice:)?familyname>/i);
+                                      const givMatch = pb.match(/<(?:invoice:)?givenname>([\s\S]*?)<\/(?:invoice:)?givenname>/i);
+                                      if (famMatch || givMatch) {
+                                        parsed.patientName = [givMatch?.[1]?.trim(), famMatch?.[1]?.trim()].filter(Boolean).join(" ");
+                                      }
+                                    }
+
+                                    // Extract treatment dates
+                                    const treatMatch = xml.match(/<(?:invoice:)?treatment[^>]*date_begin="([^"]*)"[^>]*date_end="([^"]*)"[^>]*/i);
+                                    if (treatMatch) {
+                                      parsed.treatmentDates = treatMatch[1] === treatMatch[2] ? treatMatch[1] : `${treatMatch[1]} – ${treatMatch[2]}`;
+                                    }
+
+                                    // Check allowModification
+                                    const modMatch = xml.match(/allowModification="([^"]*)"/i);
+                                    if (modMatch) parsed.allowModification = modMatch[1] === "true";
+                                  }
+
+                                  return (
+                                    <div key={resp.id} className={idx > 0 ? `mt-3 pt-3 border-t ${dividerColor}` : ""}>
+                                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                                        {resp.response_type && (
+                                          <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                            isRejected ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"
+                                          }`}>
+                                            {resp.response_type}
+                                          </span>
+                                        )}
+                                        {resp.status_out && (
+                                          <span className={`text-xs font-semibold ${textColor}`}>
+                                            {resp.status_in ? `${resp.status_in} → ${resp.status_out}` : resp.status_out}
+                                          </span>
+                                        )}
+                                        {parsed.insurerName && (
+                                          <span className="text-[10px] font-medium text-slate-600">
+                                            from {parsed.insurerName}
+                                          </span>
+                                        )}
+                                        {parsed.allowModification === false && (
+                                          <span className="inline-flex items-center rounded-md bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                                            No modification allowed
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Parsed rejection errors — the actual reasons */}
+                                      {parsed.errors.length > 0 && (
+                                        <div className="mb-3 space-y-1.5">
+                                          {parsed.errors.map((err, ei) => (
+                                            <div key={ei} className={`flex items-start gap-2 rounded-md ${isRejected ? "bg-red-100/60" : "bg-blue-100/60"} p-2`}>
+                                              <span className={`mt-0.5 inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold ${
+                                                isRejected ? "bg-red-200 text-red-900" : "bg-blue-200 text-blue-900"
+                                              }`}>
+                                                Code {err.code}
+                                              </span>
+                                              <p className={`text-xs ${subTextColor} leading-relaxed flex-1`}>{err.text}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {/* Parsed XML explanations (if different from resp.explanation) */}
+                                      {parsed.explanations.length > 0 && parsed.errors.length === 0 && (
+                                        <div className="mb-2">
+                                          {parsed.explanations.map((expl, ei) => (
+                                            <p key={ei} className={`text-xs ${subTextColor} leading-relaxed`}>{expl}</p>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {/* Fallback: show resp.explanation if nothing was parsed */}
+                                      {!hasParsedContent && resp.explanation && (
+                                        <p className={`text-xs ${subTextColor} leading-relaxed mb-2`}>
+                                          {resp.explanation}
+                                        </p>
+                                      )}
+
+                                      {/* Patient & treatment info */}
+                                      {(parsed.patientName || parsed.treatmentDates) && (
+                                        <div className="flex flex-wrap items-center gap-3 mb-2 text-[11px] text-slate-600">
+                                          {parsed.patientName && (
+                                            <span>Patient: <strong>{parsed.patientName}</strong></span>
+                                          )}
+                                          {parsed.treatmentDates && (
+                                            <span>Treatment: <strong>{parsed.treatmentDates}</strong></span>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Insurer contact info */}
+                                      {(parsed.contactName || parsed.contactPhone || parsed.contactEmail) && (
+                                        <div className={`rounded-md ${isRejected ? "bg-red-100/40" : "bg-blue-100/40"} p-2 mb-2`}>
+                                          <span className={`text-[10px] font-bold uppercase tracking-wide ${textColor}`}>Insurer Contact</span>
+                                          <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-700">
+                                            {parsed.contactName && parsed.contactName !== "." && (
+                                              <span>{parsed.contactName}</span>
+                                            )}
+                                            {parsed.contactPhone && (
+                                              <a href={`tel:${parsed.contactPhone}`} className="text-sky-600 hover:underline">{parsed.contactPhone}</a>
+                                            )}
+                                            {parsed.contactEmail && (
+                                              <a href={`mailto:${parsed.contactEmail}`} className="text-sky-600 hover:underline">{parsed.contactEmail}</a>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      <p className={`text-[10px] ${dateColor} mt-1`}>
+                                        {new Date(resp.created_at).toLocaleString("fr-CH")}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Details grid */}
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
