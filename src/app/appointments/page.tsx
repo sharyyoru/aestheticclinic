@@ -610,7 +610,8 @@ async function sendAppointmentConfirmationEmail(
       <p>
         <strong>Aesthetics Clinic</strong><br />
         <strong>GENEVE</strong><br />
-        Rue du Rhône 17, 1204, Switzerland<br />
+        Chemin Rieu 18,1208, Switzerland<br />
+        Rue du Rhône 17, 1204 <br />
         📞 0227322223 ✉️ info@aesthetics-ge.ch<br /><br />
         <strong>GSTAAD</strong><br />
         Gsteigstrasse 70, 3780, Switzerland<br />
