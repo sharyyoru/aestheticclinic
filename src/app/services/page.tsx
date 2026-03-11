@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import TardocGroupsTab from "@/components/TardocGroupsTab";
+import MedicationTemplatesTab from "@/components/MedicationTemplatesTab";
 
 type ServiceCategory = {
   id: string;
@@ -72,7 +73,7 @@ export default function ServicesPage() {
   const [groupMessage, setGroupMessage] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    "categories" | "services" | "groups" | "tardoc_groups"
+    "categories" | "services" | "groups" | "tardoc_groups" | "med_templates"
   >("categories");
 
   const [categorySearch, setCategorySearch] = useState("");
@@ -768,6 +769,18 @@ export default function ServicesPage() {
           }
         >
           TarDoc Groups
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("med_templates")}
+          className={
+            "rounded-full px-2 py-0.5 text-[11px] " +
+            (activeTab === "med_templates"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "text-slate-600 hover:text-slate-900")
+          }
+        >
+          Medication Templates
         </button>
       </div>
 
@@ -1904,6 +1917,8 @@ export default function ServicesPage() {
         </div>
       ) : activeTab === "tardoc_groups" ? (
         <TardocGroupsTab />
+      ) : activeTab === "med_templates" ? (
+        <MedicationTemplatesTab />
       ) : null}
     </div>
   );

@@ -523,6 +523,30 @@ export default function MedicalConsultationsCard({
   const [medShowInMediplan, setMedShowInMediplan] = useState(true);
   const [medIsPrescription, setMedIsPrescription] = useState(false);
 
+  // Medication template state
+  const [medTemplates, setMedTemplates] = useState<{
+    id: string;
+    name: string;
+    service_id: string | null;
+    service_name: string | null;
+    medication_template_items: {
+      product_name: string;
+      product_number: number | null;
+      product_type: string;
+      intake_kind: string;
+      amount_morning: string | null;
+      amount_noon: string | null;
+      amount_evening: string | null;
+      amount_night: string | null;
+      quantity: number;
+      intake_note: string | null;
+    }[];
+  }[]>([]);
+  const [medTemplatesLoaded, setMedTemplatesLoaded] = useState(false);
+  const [medSelectedTemplateId, setMedSelectedTemplateId] = useState<string>("");
+  const [medTemplateFilter, setMedTemplateFilter] = useState<"all" | "service">("all");
+  const [medTemplateServiceFilter, setMedTemplateServiceFilter] = useState<string>("");
+
   const updateMedProduct = (id: string, updates: Partial<MedProduct>) => {
     setMedProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
   };
@@ -630,10 +654,24 @@ export default function MedicalConsultationsCard({
       } catch {}
     }
 
+    async function loadMedTemplates() {
+      try {
+        const res = await fetch("/api/medication-templates");
+        if (res.ok) {
+          const json = await res.json();
+          if (isMounted && json.success) {
+            setMedTemplates(json.data || []);
+            setMedTemplatesLoaded(true);
+          }
+        }
+      } catch {}
+    }
+
     void loadUsers();
     void loadProviders();
     void loadExternalLabs();
     void loadPatientDetails();
+    void loadMedTemplates();
 
     return () => {
       isMounted = false;
@@ -2565,6 +2603,9 @@ export default function MedicalConsultationsCard({
                     setMedDecisionSummary("");
                     setMedShowInMediplan(true);
                     setMedIsPrescription(false);
+                    setMedSelectedTemplateId("");
+                    setMedTemplateServiceFilter("");
+                    setMedTemplateFilter("all");
                     if (currentUserId && recordTypeFilter !== "invoice") {
                       setConsultationDoctorId(currentUserId);
                     }
@@ -3112,6 +3153,9 @@ export default function MedicalConsultationsCard({
                       setMedIntakeNote("");
                       setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
                       setMedDecisionSummary("");
+                      setMedSelectedTemplateId("");
+                      setMedTemplateServiceFilter("");
+                      setMedTemplateFilter("all");
                       setMedShowInMediplan(true);
                       setMedIsPrescription(false);
 
@@ -5394,6 +5438,97 @@ export default function MedicalConsultationsCard({
                     </button>
                   </div>
 
+                  {/* Medication Template Selector */}
+                  {medTemplatesLoaded && medTemplates.length > 0 && (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50/50 p-2.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium text-emerald-800">Load from template:</span>
+                        <div className="flex items-center gap-1 rounded-full bg-white border border-emerald-200 px-0.5 py-0.5">
+                          <button
+                            type="button"
+                            onClick={() => { setMedTemplateFilter("all"); setMedTemplateServiceFilter(""); setMedSelectedTemplateId(""); }}
+                            className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " + (medTemplateFilter === "all" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-100")}
+                          >
+                            By Name
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setMedTemplateFilter("service"); setMedSelectedTemplateId(""); }}
+                            className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " + (medTemplateFilter === "service" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-100")}
+                          >
+                            By Service
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {medTemplateFilter === "service" && (
+                          <select
+                            value={medTemplateServiceFilter}
+                            onChange={(e) => { setMedTemplateServiceFilter(e.target.value); setMedSelectedTemplateId(""); }}
+                            className="flex-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          >
+                            <option value="">— Select a service —</option>
+                            {(() => {
+                              const serviceIds = new Set(medTemplates.filter((t) => t.service_id).map((t) => t.service_id!));
+                              const uniqueServices = Array.from(serviceIds).map((sid) => {
+                                const tmpl = medTemplates.find((t) => t.service_id === sid);
+                                return { id: sid, name: tmpl?.service_name || sid };
+                              }).sort((a, b) => a.name.localeCompare(b.name));
+                              return uniqueServices.map((s) => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ));
+                            })()}
+                          </select>
+                        )}
+                        <select
+                          value={medSelectedTemplateId}
+                          onChange={(e) => {
+                            const templateId = e.target.value;
+                            setMedSelectedTemplateId(templateId);
+                            if (!templateId) return;
+                            const template = medTemplates.find((t) => t.id === templateId);
+                            if (!template || !template.medication_template_items?.length) return;
+                            const newProducts: MedProduct[] = template.medication_template_items.map((item) => ({
+                              id: crypto.randomUUID(),
+                              productName: item.product_name,
+                              searchQuery: item.product_name,
+                              searchResults: [],
+                              searchLoading: false,
+                              dropdownOpen: false,
+                              productType: (item.product_type === "CONSUMABLE" ? "CONSUMABLE" : "MEDICATION") as "MEDICATION" | "CONSUMABLE",
+                              intakeKind: (item.intake_kind === "ACUTE" ? "ACUTE" : "FIXED") as "ACUTE" | "FIXED",
+                              amountMorning: item.amount_morning || "",
+                              amountNoon: item.amount_noon || "",
+                              amountEvening: item.amount_evening || "",
+                              amountNight: item.amount_night || "",
+                              quantity: item.quantity || 1,
+                            }));
+                            setMedProducts(newProducts);
+                            if (template.medication_template_items[0]?.intake_note) {
+                              setMedIntakeNote(template.medication_template_items[0].intake_note);
+                            }
+                          }}
+                          className={"flex-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" + (medTemplateFilter === "service" && !medTemplateServiceFilter ? " opacity-50" : "")}
+                          disabled={medTemplateFilter === "service" && !medTemplateServiceFilter}
+                        >
+                          <option value="">— Select a template —</option>
+                          {medTemplates
+                            .filter((t) => {
+                              if (medTemplateFilter === "service") {
+                                return t.service_id === medTemplateServiceFilter;
+                              }
+                              return true;
+                            })
+                            .map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}{t.service_name ? ` (${t.service_name})` : ""}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
                   {medProducts.map((product, index) => (
                     <div key={product.id} className="space-y-2 rounded-md border border-slate-100 bg-slate-50 p-2">
                       <div className="flex items-center justify-between">
@@ -5711,6 +5846,9 @@ export default function MedicalConsultationsCard({
                     setMedDecisionSummary("");
                     setMedShowInMediplan(true);
                     setMedIsPrescription(false);
+                    setMedSelectedTemplateId("");
+                    setMedTemplateServiceFilter("");
+                    setMedTemplateFilter("all");
                   }}
                   className="inline-flex items-center rounded-full border border-slate-200/80 bg-slate-100 px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-200"
                 >
