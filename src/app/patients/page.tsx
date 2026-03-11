@@ -79,23 +79,10 @@ export default function PatientsPage() {
 
         // Apply server-side search filter
         if (debouncedSearch.trim()) {
-          const trimmed = debouncedSearch.trim();
-          const searchTerm = `%${trimmed}%`;
-          
-          // Build OR conditions for individual fields
-          let orConditions = `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`;
-          
-          // Split search into words for multi-word name searches
-          // This handles "Edita Ramadani" matching first_name="Edita" OR last_name="Ramadani"
-          const words = trimmed.split(/\s+/).filter(w => w.length > 0);
-          if (words.length > 1) {
-            for (const word of words) {
-              const wordTerm = `%${word}%`;
-              orConditions += `,first_name.ilike.${wordTerm},last_name.ilike.${wordTerm}`;
-            }
-          }
-          
-          patientsQuery = patientsQuery.or(orConditions);
+          const searchTerm = `%${debouncedSearch.trim()}%`;
+          patientsQuery = patientsQuery.or(
+            `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`
+          );
         }
 
         // Apply owner filter

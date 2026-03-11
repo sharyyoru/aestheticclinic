@@ -1178,6 +1178,7 @@ export default function DealsPage() {
               sendPatientEmail: data.sendPatientEmail,
               sendUserEmail: data.sendUserEmail,
               scheduleReminder: data.scheduleReminder,
+              appointmentType: data.appointmentType,
             }),
           });
 

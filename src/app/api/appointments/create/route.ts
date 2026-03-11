@@ -23,6 +23,7 @@ type CreateAppointmentPayload = {
   sendPatientEmail?: boolean;
   sendUserEmail?: boolean;
   scheduleReminder?: boolean;
+  appointmentType?: "appointment" | "operation";
 };
 
 // Mailgun only allows scheduling emails up to 24 hours in advance
@@ -256,6 +257,7 @@ export async function POST(request: Request) {
       sendPatientEmail = true,
       sendUserEmail = true,
       scheduleReminder = true,
+      appointmentType = "appointment",
     } = body;
 
     if (!patientId || !appointmentDate) {
@@ -332,6 +334,10 @@ export async function POST(request: Request) {
     }
     if (assignedUserName && assignedUserName !== "Staff Member") {
       reason += ` [Doctor: ${assignedUserName}]`;
+    }
+    // Add category for operation type appointments
+    if (appointmentType === "operation") {
+      reason += ` [Category: OP Surgery]`;
     }
 
     // Create the appointment using the existing schema

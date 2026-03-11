@@ -5260,6 +5260,7 @@ export default function PatientActivityCard({
               sendPatientEmail: data.sendPatientEmail,
               sendUserEmail: data.sendUserEmail,
               scheduleReminder: data.scheduleReminder,
+              appointmentType: data.appointmentType,
             }),
           });
 
