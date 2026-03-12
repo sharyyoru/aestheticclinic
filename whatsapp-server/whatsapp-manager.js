@@ -377,7 +377,7 @@ async function getChats(userId) {
 /**
  * Get messages from a chat
  */
-async function getMessages(userId, chatId, limit = 50) {
+async function getMessages(userId, chatId, limit = 100) {
   const client = clients.get(userId);
   
   if (!client) {
@@ -386,16 +386,109 @@ async function getMessages(userId, chatId, limit = 50) {
   
   const chat = await client.getChatById(chatId);
   const messages = await chat.fetchMessages({ limit });
-  
-  return messages.map(msg => ({
-    id: msg.id._serialized,
-    body: msg.body,
-    fromMe: msg.fromMe,
-    timestamp: msg.timestamp,
-    author: msg.author || msg.from,
-    hasMedia: msg.hasMedia,
-    type: msg.type
+
+  // Build a contact-name cache so we don't re-fetch the same contact
+  const nameCache = new Map();
+
+  // For group chats, pre-populate cache from participant list
+  // This resolves @lid IDs that getContactById cannot handle
+  if (chat.isGroup && chat.participants) {
+    for (const p of chat.participants) {
+      try {
+        const pid = p.id?._serialized || p.id;
+        if (pid) {
+          const contact = await client.getContactById(pid);
+          const name = contact.pushname || contact.name || contact.shortName || contact.number || null;
+          if (name) {
+            nameCache.set(pid, name);
+          }
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  // Also try to build a @lid -> name mapping from participants
+  // whatsapp-web.js group participants have id in @c.us format
+  // but msg.author in groups can be @lid format
+  // We build a reverse lookup by phone-number suffix
+  const lidLookup = new Map();
+  for (const [key, name] of nameCache.entries()) {
+    // Extract digits from the @c.us key
+    const digits = key.replace(/@.*$/, '');
+    if (digits) {
+      lidLookup.set(digits, name);
+      // Also store last 10 digits for fuzzy match
+      if (digits.length > 10) {
+        lidLookup.set(digits.slice(-10), name);
+      }
+    }
+  }
+
+  const resolveName = async (contactId) => {
+    if (!contactId) return null;
+    if (nameCache.has(contactId)) return nameCache.get(contactId);
+
+    // Try @lid -> phone-digit matching
+    if (contactId.includes('@lid') || contactId.includes('@g.us')) {
+      const digits = contactId.replace(/@.*$/, '');
+      const found = lidLookup.get(digits) || lidLookup.get(digits.slice(-10));
+      if (found) {
+        nameCache.set(contactId, found);
+        return found;
+      }
+    }
+
+    // Direct contact lookup (works for @c.us IDs)
+    try {
+      const contact = await client.getContactById(contactId);
+      const name = contact.pushname || contact.name || contact.shortName || null;
+      nameCache.set(contactId, name);
+      return name;
+    } catch {
+      nameCache.set(contactId, null);
+      return null;
+    }
+  };
+
+  const result = await Promise.all(messages.map(async (msg) => {
+    const authorId = msg.author || msg.from;
+    const authorName = msg.fromMe ? null : await resolveName(authorId);
+
+    // Try to download media
+    let mediaData = null;
+    if (msg.hasMedia) {
+      try {
+        const media = await msg.downloadMedia();
+        if (media) {
+          const isVisual = media.mimetype?.startsWith('image/') || media.mimetype?.startsWith('video/');
+          mediaData = {
+            mimetype: media.mimetype,
+            filename: media.filename || null,
+            // Inline base64 for images/videos under ~1MB
+            data: isVisual && media.data && media.data.length < 1_400_000
+              ? media.data : null,
+          };
+        }
+      } catch {
+        // Media download can fail for old messages
+        mediaData = { mimetype: null, filename: null, data: null };
+      }
+    }
+
+    return {
+      id: msg.id._serialized,
+      body: msg.body,
+      fromMe: msg.fromMe,
+      timestamp: msg.timestamp,
+      author: authorId,
+      authorName,
+      hasMedia: msg.hasMedia,
+      type: msg.type,
+      media: mediaData,
+    };
   }));
+
+  return result;
 }
 
 /**
