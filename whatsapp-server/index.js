@@ -17,6 +17,7 @@ const {
   getActiveClients
 } = require('./whatsapp-manager');
 const { getAllActiveSessions, getRecentLogs } = require('./db');
+const { startQueueProcessor, stopQueueProcessor, getQueueStats } = require('./queue-processor');
 
 const app = express();
 const server = http.createServer(app);
@@ -155,12 +156,24 @@ app.get('/admin/sessions', optionalAuth, (req, res) => {
   }
 });
 
+// Queue stats endpoint
+app.get('/queue/stats', optionalAuth, async (req, res) => {
+  try {
+    const stats = await getQueueStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Diagnostics endpoint
-app.get('/diagnostics', optionalAuth, (req, res) => {
+app.get('/diagnostics', optionalAuth, async (req, res) => {
+  const queueStats = await getQueueStats().catch(() => ({ error: 'unavailable' }));
   res.json({
     serverStatus: 'running',
     activeClients: getActiveClients(),
     activeSessions: getAllActiveSessions().length,
+    queueStats,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     nodeVersion: process.version,
@@ -236,13 +249,18 @@ server.listen(PORT, () => {
 ║               ✓ SQLite session storage                 ║
 ║               ✓ JWT authentication                     ║
 ║               ✓ Real-time WebSocket updates            ║
+║               ✓ Message queue processor                ║
 ╚════════════════════════════════════════════════════════╝
   `);
+
+  // Start queue processor after server is listening
+  startQueueProcessor();
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  stopQueueProcessor();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
