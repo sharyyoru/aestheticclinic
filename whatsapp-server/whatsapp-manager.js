@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
 const {
   getUserSession,
   upsertUserSession,
@@ -231,6 +232,10 @@ async function initializeWhatsApp(userId) {
     return { success: true, message: 'Already initializing' };
   }
 
+  // Check database for existing valid session
+  const dbSession = getUserSession(userId);
+  const hasValidSession = dbSession && (dbSession.status === 'ready' || dbSession.status === 'authenticated');
+
   // If there's an existing client, check if it's connected
   const existingClient = clients.get(userId);
   if (existingClient) {
@@ -244,6 +249,24 @@ async function initializeWhatsApp(userId) {
     clients.delete(userId);
     try { await existingClient.destroy(); } catch (e) {
       console.log(`Stale client destroy error (ignored):`, e.message);
+    }
+  }
+
+  // If no valid session in DB, delete the LocalAuth session directory to force fresh auth
+  // This prevents WhatsApp from reusing corrupted/expired session data
+  if (!hasValidSession) {
+    const sessionPath = path.join(
+      process.env.SESSION_DATA_PATH || path.join(__dirname, 'whatsapp-sessions'),
+      `session-${userId}`
+    );
+    if (fs.existsSync(sessionPath)) {
+      console.log(`Deleting corrupted session directory for user ${userId}: ${sessionPath}`);
+      try {
+        fs.rmSync(sessionPath, { recursive: true, force: true });
+        console.log(`Session directory deleted successfully for user ${userId}`);
+      } catch (err) {
+        console.error(`Failed to delete session directory for user ${userId}:`, err);
+      }
     }
   }
 
