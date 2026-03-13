@@ -32,7 +32,7 @@ function getWhatsAppClient(userId) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId,
-      dataPath: path.join(__dirname, 'whatsapp-sessions')
+      dataPath: process.env.SESSION_DATA_PATH || path.join(__dirname, 'whatsapp-sessions')
     }),
     puppeteer: {
       headless: true,
