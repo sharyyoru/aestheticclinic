@@ -5,18 +5,43 @@ const fs = require('fs');
 // Initialize SQLite database
 const dbPath = process.env.DB_PATH || path.join(__dirname, 'sessions.db');
 
+console.log('[DB] Initializing database at:', dbPath);
+
 // Ensure the directory exists before creating the database
 const dbDir = path.dirname(dbPath);
+console.log('[DB] Database directory:', dbDir);
+console.log('[DB] Directory exists before mkdir:', fs.existsSync(dbDir));
+
 if (!fs.existsSync(dbDir)) {
+  console.log('[DB] Creating directory...');
   fs.mkdirSync(dbDir, { recursive: true });
+  console.log('[DB] Directory created, exists after mkdir:', fs.existsSync(dbDir));
 }
 
-const db = new Database(dbPath);
-
-// Enable WAL mode for better concurrent access
-db.pragma('journal_mode = WAL');
+let db;
+try {
+  console.log('[DB] Opening database...');
+  db = new Database(dbPath);
+  console.log('[DB] Database opened successfully');
+  
+  // Test database operations
+  console.log('[DB] Testing database operations...');
+  const test = db.prepare('SELECT 1 as test').get();
+  console.log('[DB] Database test query result:', test);
+  
+  // Enable WAL mode for better concurrent access
+  console.log('[DB] Enabling WAL mode...');
+  db.pragma('journal_mode = WAL');
+  console.log('[DB] WAL mode enabled');
+} catch (error) {
+  console.error('[DB] Database initialization failed:', error);
+  console.error('[DB] Error details:', error.message);
+  console.error('[DB] Stack:', error.stack);
+  throw error;
+}
 
 // Create tables
+console.log('[DB] Creating tables...');
 db.exec(`
   CREATE TABLE IF NOT EXISTS user_sessions (
     user_id TEXT PRIMARY KEY,
@@ -42,6 +67,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_session_logs_user_id ON session_logs(user_id);
   CREATE INDEX IF NOT EXISTS idx_session_logs_timestamp ON session_logs(timestamp);
 `);
+console.log('[DB] Tables created successfully');
 
 // Prepared statements
 const statements = {

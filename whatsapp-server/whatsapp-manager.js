@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
 const {
   getUserSession,
   upsertUserSession,
@@ -27,12 +28,21 @@ function getWhatsAppClient(userId) {
     return clients.get(userId);
   }
 
-  console.log(`Creating new WhatsApp client for user: ${userId}`);
+  console.log(`[WA] Creating new WhatsApp client for user: ${userId}`);
+  
+  const sessionPath = process.env.SESSION_DATA_PATH || path.join(__dirname, 'whatsapp-sessions');
+  console.log(`[WA] Session data path: ${sessionPath}`);
+  
+  // Ensure session directory exists
+  if (!fs.existsSync(sessionPath)) {
+    console.log(`[WA] Creating session directory: ${sessionPath}`);
+    fs.mkdirSync(sessionPath, { recursive: true });
+  }
   
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId,
-      dataPath: process.env.SESSION_DATA_PATH || path.join(__dirname, 'whatsapp-sessions')
+      dataPath: sessionPath
     }),
     puppeteer: {
       headless: true,
