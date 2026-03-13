@@ -261,6 +261,8 @@ async function initializeWhatsApp(userId) {
   console.log(`Initializing WhatsApp for user: ${userId}`);
   initializingUsers.add(userId);
   
+  const sessionPath = process.env.SESSION_DATA_PATH || path.join(__dirname, 'whatsapp-sessions');
+  
   // If initialization hangs (Chromium stuck), cleanup so the user can retry.
   // This is common on low-memory instances.
   const existingWatchdog = initWatchdogs.get(userId);
