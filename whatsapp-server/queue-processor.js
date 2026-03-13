@@ -4,12 +4,8 @@
  * Polls the Supabase whatsapp_queue table for pending messages
  * and sends them via the appropriate user's WhatsApp session.
  * 
- * Statuses:
- *   pending          – waiting to be sent
- *   sending          – locked for processing (prevent duplicate)
- *   sent             – successfully delivered
- *   session_failed   – user's WhatsApp session is down; auto-retried on reconnect
- *   failed           – permanent delivery failure (bad number, send error after retries)
+ * If a user's session is disconnected, marks the message as failed
+ * and creates a notification for the user to reconnect.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -24,9 +20,6 @@ const BATCH_SIZE = 10;
 let supabase = null;
 let pollTimer = null;
 let isProcessing = false;
-
-// Track which users we already notified about session being down (avoid spam)
-const sessionDownNotified = new Set();
 
 /**
  * Initialize the Supabase client for queue processing
@@ -82,7 +75,7 @@ async function processQueue() {
     const { data: items, error } = await supabase
       .from('whatsapp_queue')
       .select('*')
-      .eq('status', 'pending')
+      .in('status', ['pending'])
       .lte('scheduled_at', now)
       .order('scheduled_at', { ascending: true })
       .limit(BATCH_SIZE);
@@ -133,21 +126,28 @@ async function processQueueItem(item) {
     const status = await getConnectionStatus(sender_user_id);
 
     if (!status || status.status !== 'ready') {
-      // Session not connected — mark as session_failed (will be auto-retried on reconnect)
+      // Session not connected — handle failure
+      const newRetryCount = retry_count + 1;
+      const isFinalFailure = newRetryCount >= max_retries;
+
       await supabase
         .from('whatsapp_queue')
         .update({
-          status: 'session_failed',
+          status: isFinalFailure ? 'failed' : 'pending',
+          retry_count: newRetryCount,
           error_message: `WhatsApp session not connected for user ${sender_user_id}`,
+          // Push scheduled_at forward by 2 minutes for retry
+          scheduled_at: isFinalFailure
+            ? item.scheduled_at
+            : new Date(Date.now() + 2 * 60 * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', id);
 
-      console.warn(`[Queue] Session not ready for user ${sender_user_id}, item ${id} — marked as session_failed`);
+      console.warn(`[Queue] Session not ready for user ${sender_user_id}, item ${id} — retry ${newRetryCount}/${max_retries}`);
 
-      // Notify user immediately (once per session-down episode)
-      if (!sessionDownNotified.has(sender_user_id)) {
-        sessionDownNotified.add(sender_user_id);
+      // Send notification to the user if final failure
+      if (isFinalFailure) {
         await notifySessionDown(sender_user_id, item);
       }
 
@@ -189,8 +189,6 @@ async function processQueueItem(item) {
     }
 
   } catch (err) {
-    // This is a SEND error (session is connected but message failed)
-    // e.g. invalid number, blocked, network error
     const newRetryCount = retry_count + 1;
     const isFinalFailure = newRetryCount >= max_retries;
 
@@ -200,20 +198,18 @@ async function processQueueItem(item) {
         status: isFinalFailure ? 'failed' : 'pending',
         retry_count: newRetryCount,
         error_message: err.message || 'Unknown send error',
-        // Push scheduled_at forward by 1 minute for retry
         scheduled_at: isFinalFailure
           ? item.scheduled_at
-          : new Date(Date.now() + 60 * 1000).toISOString(),
+          : new Date(Date.now() + 2 * 60 * 1000).toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('id', id);
 
-    console.error(`[Queue] Send error for item ${id} (retry ${newRetryCount}/${max_retries}):`, err.message);
+    console.error(`[Queue] Failed to send item ${id}:`, err.message);
     logEvent(sender_user_id, 'queue_message_failed', { queueId: id, error: err.message });
 
     if (isFinalFailure) {
-      // Notify about permanent send failure
-      await notifySendFailed(sender_user_id, item, err.message);
+      await notifySessionDown(sender_user_id, item);
 
       // Log failed step to workflow enrollment
       if (item.enrollment_id) {
@@ -232,77 +228,20 @@ async function processQueueItem(item) {
 }
 
 /**
- * Called when a user's WhatsApp session becomes ready.
- * Resets all their session_failed messages back to pending so they get retried.
- */
-async function retrySessionFailedMessages(userId) {
-  if (!supabase) return;
-
-  try {
-    // Clear the "already notified" flag so future disconnects will alert again
-    sessionDownNotified.delete(userId);
-
-    const { data, error } = await supabase
-      .from('whatsapp_queue')
-      .update({
-        status: 'pending',
-        error_message: null,
-        scheduled_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('sender_user_id', userId)
-      .eq('status', 'session_failed')
-      .select('id');
-
-    if (error) {
-      console.error(`[Queue] Error retrying session_failed messages for ${userId}:`, error.message);
-      return;
-    }
-
-    const count = data?.length || 0;
-    if (count > 0) {
-      console.log(`[Queue] User ${userId} reconnected — retrying ${count} session_failed message(s)`);
-      logEvent(userId, 'queue_session_retry', { count });
-
-      // Notify user their queued messages are being retried
-      broadcastToUser(userId, 'queue_alert', {
-        type: 'session_retry',
-        title: 'WhatsApp Reconnected',
-        message: `${count} queued message(s) are now being sent.`,
-      });
-
-      // Trigger immediate processing
-      processQueue();
-    }
-  } catch (err) {
-    console.error(`[Queue] Error in retrySessionFailedMessages:`, err.message);
-  }
-}
-
-/**
- * Notify user that their WhatsApp session is down and queued messages are waiting.
+ * Notify user that their WhatsApp session is down and queued messages are failing.
+ * Uses WebSocket broadcast (real-time) + stores in whatsapp_queue error for later visibility.
  */
 async function notifySessionDown(userId, queueItem) {
   try {
-    // Count total session_failed messages for this user
-    let waitingCount = 1;
-    if (supabase) {
-      const { count } = await supabase
-        .from('whatsapp_queue')
-        .select('*', { count: 'exact', head: true })
-        .eq('sender_user_id', userId)
-        .eq('status', 'session_failed');
-      waitingCount = Math.max(count || 1, 1);
-    }
-
-    const message = `Your WhatsApp session is disconnected. ${waitingCount} message(s) are waiting to be sent. Please reconnect by opening WhatsApp in the top menu and scanning the QR code. Messages will be sent automatically once you reconnect.`;
+    const patientName = queueItem.patient_id ? 'a patient' : 'a contact';
+    const message = `Your WhatsApp session is disconnected. A message to ${patientName} (${queueItem.to_phone}) could not be sent. Please reconnect by scanning the QR code.`;
 
     // Real-time WebSocket notification to the user's browser
     broadcastToUser(userId, 'queue_alert', {
       type: 'session_down',
-      title: 'WhatsApp Disconnected — Messages Queued',
+      title: 'WhatsApp Session Disconnected',
       message,
-      waitingCount,
+      queueId: queueItem.id,
       toPhone: queueItem.to_phone,
       patientId: queueItem.patient_id,
       dealId: queueItem.deal_id,
@@ -310,42 +249,12 @@ async function notifySessionDown(userId, queueItem) {
 
     // Also log the event in SQLite for persistence
     logEvent(userId, 'session_down_notification', {
+      queueId: queueItem.id,
       toPhone: queueItem.to_phone,
-      waitingCount,
       message,
     });
 
-    console.log(`[Queue] Sent session-down alert to user ${userId} (${waitingCount} messages waiting)`);
-  } catch (err) {
-    console.error(`[Queue] Failed to notify user ${userId}:`, err.message);
-  }
-}
-
-/**
- * Notify user that a message permanently failed to send (not a session issue).
- */
-async function notifySendFailed(userId, queueItem, errorMsg) {
-  try {
-    const message = `Failed to send WhatsApp message to ${queueItem.to_phone} after ${queueItem.max_retries} attempts: ${errorMsg}`;
-
-    broadcastToUser(userId, 'queue_alert', {
-      type: 'send_failed',
-      title: 'WhatsApp Message Failed',
-      message,
-      queueId: queueItem.id,
-      toPhone: queueItem.to_phone,
-      patientId: queueItem.patient_id,
-      dealId: queueItem.deal_id,
-      error: errorMsg,
-    });
-
-    logEvent(userId, 'queue_send_failed', {
-      queueId: queueItem.id,
-      toPhone: queueItem.to_phone,
-      error: errorMsg,
-    });
-
-    console.log(`[Queue] Sent permanent-failure alert to user ${userId} for ${queueItem.to_phone}`);
+    console.log(`[Queue] Sent session-down alert to user ${userId}`);
   } catch (err) {
     console.error(`[Queue] Failed to notify user ${userId}:`, err.message);
   }
@@ -358,33 +267,31 @@ async function getQueueStats() {
   if (!supabase) return { enabled: false };
 
   try {
-    const { count: pending } = await supabase
-      .from('whatsapp_queue')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending');
+    const { data: counts } = await supabase
+      .rpc('get_whatsapp_queue_stats')
+      .single();
 
-    const { count: sessionFailed } = await supabase
-      .from('whatsapp_queue')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'session_failed');
+    // Fallback: just count by status
+    if (!counts) {
+      const { count: pending } = await supabase
+        .from('whatsapp_queue')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
 
-    const { count: failed } = await supabase
-      .from('whatsapp_queue')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'failed');
+      const { count: failed } = await supabase
+        .from('whatsapp_queue')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'failed');
 
-    const { count: sent } = await supabase
-      .from('whatsapp_queue')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'sent');
+      const { count: sent } = await supabase
+        .from('whatsapp_queue')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'sent');
 
-    return {
-      enabled: true,
-      pending: pending || 0,
-      session_failed: sessionFailed || 0,
-      failed: failed || 0,
-      sent: sent || 0,
-    };
+      return { enabled: true, pending: pending || 0, failed: failed || 0, sent: sent || 0 };
+    }
+
+    return { enabled: true, ...counts };
   } catch (err) {
     return { enabled: true, error: err.message };
   }
@@ -395,5 +302,4 @@ module.exports = {
   stopQueueProcessor,
   processQueue,
   getQueueStats,
-  retrySessionFailedMessages,
 };

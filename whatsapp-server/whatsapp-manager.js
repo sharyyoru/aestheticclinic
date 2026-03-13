@@ -19,12 +19,6 @@ const initWatchdogs = new Map();
 // WebSocket clients per user for real-time updates
 const wsClientsByUser = new Map();
 
-// Callbacks to invoke when a user's session becomes ready (e.g. queue retry)
-const onReadyCallbacks = [];
-function onUserReady(callback) {
-  onReadyCallbacks.push(callback);
-}
-
 /**
  * Get or create WhatsApp client for a specific user
  */
@@ -145,11 +139,6 @@ function getWhatsAppClient(userId) {
       logEvent(userId, 'ready');
       
       broadcastToUser(userId, 'status', { status: 'ready' });
-    }
-
-    // Fire onReady callbacks (e.g. queue processor retries session_failed messages)
-    for (const cb of onReadyCallbacks) {
-      try { cb(userId); } catch (e) { console.error('onReady callback error:', e); }
     }
   });
 
@@ -613,6 +602,5 @@ module.exports = {
   registerWebSocket,
   unregisterWebSocket,
   broadcastToUser,
-  getActiveClients,
-  onUserReady
+  getActiveClients
 };
