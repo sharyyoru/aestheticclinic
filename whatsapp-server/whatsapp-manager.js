@@ -42,12 +42,23 @@ function getWhatsAppClient(userId) {
     
     // Clean up Chromium lock files that might prevent startup
     try {
-      const lockFiles = ['SingletonLock', 'SingletonSocket'];
-      for (const file of lockFiles) {
-        const lockPath = path.join(sessionPath, file);
-        if (fs.existsSync(lockPath)) {
-          console.log(`[WA] Removing Chromium lock file: ${file}`);
-          fs.unlinkSync(lockPath);
+      // WhatsApp Web.js stores sessions in user-specific subdirectories
+      const userSessionPath = path.join(sessionPath, `session-${userId}`);
+      const puppeteerDataPath = path.join(sessionPath, `puppeteer-${userId}`);
+      
+      // Clean lock files in all relevant directories
+      const dirsToClean = [sessionPath, userSessionPath, puppeteerDataPath];
+      
+      for (const dir of dirsToClean) {
+        if (fs.existsSync(dir)) {
+          const lockFiles = ['SingletonLock', 'SingletonSocket'];
+          for (const file of lockFiles) {
+            const lockPath = path.join(dir, file);
+            if (fs.existsSync(lockPath)) {
+              console.log(`[WA] Removing Chromium lock file: ${path.relative(sessionPath, lockPath)}`);
+              fs.unlinkSync(lockPath);
+            }
+          }
         }
       }
     } catch (err) {
@@ -63,6 +74,7 @@ function getWhatsAppClient(userId) {
     puppeteer: {
       headless: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      userDataDir: path.join(sessionPath, `puppeteer-${userId}`),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
