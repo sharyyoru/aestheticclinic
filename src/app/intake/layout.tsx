@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { GoogleTagManager, GoogleTagManagerNoScript } from "@/components/GoogleTagManager";
 
 export const metadata: Metadata = {
   title: "Patient Intake Form | Aesthetics Clinic",
@@ -12,5 +13,11 @@ export default function IntakeLayout({
 }) {
   // This layout bypasses the main app layout's sidebar/header
   // by rendering children directly without the shell components
-  return <>{children}</>;
+  return (
+    <>
+      <GoogleTagManager />
+      <GoogleTagManagerNoScript />
+      {children}
+    </>
+  );
 }
