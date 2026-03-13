@@ -284,7 +284,7 @@ async function initializeWhatsApp(userId) {
   }, 90000));
   
   // Start initialization in background (don't block the HTTP response)
-  const initClient = async () => {
+  const initClient = async (sessionPath) => {
     try {
       await client.initialize();
       console.log(`WhatsApp client initialized for user: ${userId}`);
@@ -348,7 +348,7 @@ async function initializeWhatsApp(userId) {
     }
   };
   
-  initClient();
+  initClient(sessionPath);
   
   return { success: true, message: 'Initialization started' };
 }
