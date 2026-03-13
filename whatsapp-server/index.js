@@ -14,10 +14,11 @@ const {
   getChatByPhoneNumber,
   registerWebSocket,
   unregisterWebSocket,
-  getActiveClients
+  getActiveClients,
+  onUserReady
 } = require('./whatsapp-manager');
 const { getAllActiveSessions, getRecentLogs } = require('./db');
-const { startQueueProcessor, stopQueueProcessor, getQueueStats } = require('./queue-processor');
+const { startQueueProcessor, stopQueueProcessor, getQueueStats, retrySessionFailedMessages } = require('./queue-processor');
 
 const app = express();
 const server = http.createServer(app);
@@ -255,6 +256,12 @@ server.listen(PORT, () => {
 
   // Start queue processor after server is listening
   startQueueProcessor();
+
+  // When a user reconnects WhatsApp, retry their session_failed queued messages
+  onUserReady((userId) => {
+    console.log(`[Queue] User ${userId} ready — retrying session_failed messages`);
+    retrySessionFailedMessages(userId);
+  });
 });
 
 // Graceful shutdown
