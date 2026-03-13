@@ -10,7 +10,6 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { getConnectionStatus, sendMessage, getChatByPhoneNumber, broadcastToUser } = require('./whatsapp-manager');
-const { logEvent } = require('./db');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -173,7 +172,6 @@ async function processQueueItem(item) {
       .eq('id', id);
 
     console.log(`[Queue] Sent message ${id} to ${to_phone} via user ${sender_user_id}`);
-    logEvent(sender_user_id, 'queue_message_sent', { queueId: id, to: to_phone });
 
     // Also log to workflow_enrollment_steps if enrollment_id is present
     if (item.enrollment_id) {
@@ -206,7 +204,6 @@ async function processQueueItem(item) {
       .eq('id', id);
 
     console.error(`[Queue] Failed to send item ${id}:`, err.message);
-    logEvent(sender_user_id, 'queue_message_failed', { queueId: id, error: err.message });
 
     if (isFinalFailure) {
       await notifySessionDown(sender_user_id, item);
@@ -247,13 +244,7 @@ async function notifySessionDown(userId, queueItem) {
       dealId: queueItem.deal_id,
     });
 
-    // Also log the event in SQLite for persistence
-    logEvent(userId, 'session_down_notification', {
-      queueId: queueItem.id,
-      toPhone: queueItem.to_phone,
-      message,
-    });
-
+    
     console.log(`[Queue] Sent session-down alert to user ${userId}`);
   } catch (err) {
     console.error(`[Queue] Failed to notify user ${userId}:`, err.message);

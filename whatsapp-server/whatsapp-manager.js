@@ -2,14 +2,6 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
-const {
-  getUserSession,
-  upsertUserSession,
-  updateSessionStatus,
-  updateSessionQR,
-  clearSessionQR,
-  logEvent
-} = require('./db');
 
 // Store active WhatsApp clients per user
 const clients = new Map();
@@ -36,7 +28,17 @@ function getWhatsAppClient(userId) {
   // Ensure session directory exists
   if (!fs.existsSync(sessionPath)) {
     console.log(`[WA] Creating session directory: ${sessionPath}`);
-    fs.mkdirSync(sessionPath, { recursive: true });
+    try {
+      fs.mkdirSync(sessionPath, { recursive: true });
+      console.log(`[WA] Session directory created successfully`);
+    } catch (err) {
+      console.error(`[WA] Failed to create session directory:`, err);
+      throw err;
+    }
+  } else {
+    console.log(`[WA] Session directory already exists`);
+    const stats = fs.statSync(sessionPath);
+    console.log(`[WA] Session directory permissions:`, stats.mode.toString(8));
   }
   
   const client = new Client({
@@ -79,16 +81,14 @@ function getWhatsAppClient(userId) {
       initWatchdogs.delete(userId);
     }
     try {
-      const qrDataUrl = await QRCode.toDataURL(qr, { width: 256, margin: 2 });
-      updateSessionQR(userId, qrDataUrl);
-      logEvent(userId, 'qr_generated');
+      const qrCodeDataUrl = await QRCode.toDataURL(qr);
+      broadcastToUser(userId, 'qr', { qrCode: qrCodeDataUrl });
       
       // Broadcast to user's WebSocket clients
       broadcastToUser(userId, 'qr', { qrDataUrl });
       broadcastToUser(userId, 'status', { status: 'qr_pending', qrCode: qrDataUrl });
     } catch (err) {
       console.error(`QR generation error for user ${userId}:`, err);
-      logEvent(userId, 'qr_error', { error: err.message });
     }
   });
 
@@ -102,10 +102,7 @@ function getWhatsAppClient(userId) {
       clearTimeout(watchdog);
       initWatchdogs.delete(userId);
     }
-    clearSessionQR(userId);
-    updateSessionStatus(userId, 'authenticated');
-    logEvent(userId, 'authenticated');
-    
+        
     broadcastToUser(userId, 'status', { status: 'authenticated' });
   });
 
@@ -125,15 +122,7 @@ function getWhatsAppClient(userId) {
       const phoneNumber = info?.wid?.user || 'Unknown';
       const displayName = info?.pushname || 'WhatsApp User';
       
-      upsertUserSession(userId, {
-        phoneNumber,
-        displayName,
-        status: 'ready',
-        connectedAt: new Date().toISOString()
-      });
-      
-      logEvent(userId, 'ready', { phoneNumber, displayName });
-      
+            
       console.log(`User ${userId} connected as: ${displayName} (${phoneNumber})`);
       
       broadcastToUser(userId, 'status', { 
@@ -145,8 +134,6 @@ function getWhatsAppClient(userId) {
       broadcastToUser(userId, 'ready', { message: 'WhatsApp is ready' });
     } catch (err) {
       console.error(`Error getting info for user ${userId}:`, err);
-      updateSessionStatus(userId, 'ready');
-      logEvent(userId, 'ready');
       
       broadcastToUser(userId, 'status', { status: 'ready' });
     }
@@ -241,9 +228,7 @@ async function initializeWhatsApp(userId) {
   
   console.log(`Initializing WhatsApp for user: ${userId}`);
   initializingUsers.add(userId);
-  updateSessionStatus(userId, 'launching');
-  logEvent(userId, 'initialize_start');
-
+  
   // If initialization hangs (Chromium stuck), cleanup so the user can retry.
   // This is common on low-memory instances.
   const existingWatchdog = initWatchdogs.get(userId);
@@ -254,9 +239,7 @@ async function initializeWhatsApp(userId) {
     console.error(`Initialization timeout for user ${userId} (no QR/auth/ready)`);
     initializingUsers.delete(userId);
     initWatchdogs.delete(userId);
-    logEvent(userId, 'initialize_timeout');
-    updateSessionStatus(userId, 'disconnected');
-
+    
     const clientToDestroy = clients.get(userId);
     clients.delete(userId);
     try {
@@ -305,9 +288,7 @@ async function disconnectWhatsApp(userId) {
     await client.destroy();
     clients.delete(userId);
     
-    updateSessionStatus(userId, 'disconnected');
-    logEvent(userId, 'disconnect');
-    
+        
     broadcastToUser(userId, 'status', { status: 'disconnected' });
     
     return { success: true, message: 'Disconnected successfully' };
@@ -315,7 +296,6 @@ async function disconnectWhatsApp(userId) {
     console.error(`Disconnect error for user ${userId}:`, err);
     // Force cleanup even on error
     clients.delete(userId);
-    updateSessionStatus(userId, 'disconnected');
     throw err;
   }
 }
@@ -324,7 +304,6 @@ async function disconnectWhatsApp(userId) {
  * Get connection status for a user
  */
 async function getConnectionStatus(userId) {
-  const session = getUserSession(userId);
   const client = clients.get(userId);
   
   let isReady = false;
@@ -340,19 +319,21 @@ async function getConnectionStatus(userId) {
     }
   }
   
-  // Use DB status, but if we know we're initializing, override
-  let status = session?.status || 'disconnected';
-  if (initializingUsers.has(userId) && status === 'disconnected') {
+  // Determine status based on client state and initialization
+  let status = 'disconnected';
+  if (initializingUsers.has(userId)) {
     status = 'launching';
+  } else if (isReady) {
+    status = 'ready';
   }
   
   return {
     status,
-    qrCode: session?.qr_code || null,
-    phoneNumber: session?.phone_number || null,
-    displayName: session?.display_name || null,
-    connectedAt: session?.connected_at || null,
-    lastActivity: session?.last_activity || null,
+    qrCode: null,
+    phoneNumber: null,
+    displayName: null,
+    connectedAt: null,
+    lastActivity: null,
     isReady,
     clientState
   };

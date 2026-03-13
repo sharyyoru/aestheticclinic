@@ -51,7 +51,6 @@ const {
   unregisterWebSocket,
   getActiveClients
 } = require('./whatsapp-manager');
-const { getAllActiveSessions, getRecentLogs } = require('./db');
 const { startQueueProcessor, stopQueueProcessor, getQueueStats } = require('./queue-processor');
 
 const app = express();
@@ -167,9 +166,7 @@ app.get('/chat-by-phone', requireAuth, async (req, res) => {
 // Get session logs for a user
 app.get('/logs', requireAuth, async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 50;
-    const logs = getRecentLogs(req.userId, limit);
-    res.json({ logs });
+    res.json({ logs: [] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -178,12 +175,11 @@ app.get('/logs', requireAuth, async (req, res) => {
 // Admin: Get all active sessions (requires admin auth)
 app.get('/admin/sessions', optionalAuth, (req, res) => {
   try {
-    const sessions = getAllActiveSessions();
     const activeClients = getActiveClients();
     res.json({ 
-      sessions,
+      sessions: [],
       activeClients,
-      totalSessions: sessions.length,
+      totalSessions: 0,
       totalActiveClients: activeClients.length
     });
   } catch (err) {
@@ -207,7 +203,7 @@ app.get('/diagnostics', optionalAuth, async (req, res) => {
   res.json({
     serverStatus: 'running',
     activeClients: getActiveClients(),
-    activeSessions: getAllActiveSessions().length,
+    activeSessions: 0,
     queueStats,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
