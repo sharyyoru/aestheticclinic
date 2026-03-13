@@ -292,6 +292,8 @@ type MedProduct = {
   amountEvening: string;
   amountNight: string;
   quantity: number | "";
+  intakeNote: string;
+  intakeFromDate: string;
 };
 
 function createEmptyMedProduct(): MedProduct {
@@ -309,6 +311,8 @@ function createEmptyMedProduct(): MedProduct {
     amountEvening: "",
     amountNight: "",
     quantity: 1,
+    intakeNote: "",
+    intakeFromDate: formatLocalDateInputValue(new Date()),
   };
 }
 
@@ -521,7 +525,7 @@ export default function MedicalConsultationsCard({
   const [medIntakeFromDate, setMedIntakeFromDate] = useState(formatLocalDateInputValue(new Date()));
   const [medDecisionSummary, setMedDecisionSummary] = useState("");
   const [medShowInMediplan, setMedShowInMediplan] = useState(true);
-  const [medIsPrescription, setMedIsPrescription] = useState(false);
+  const [medIsPrescription, setMedIsPrescription] = useState(true);
 
   // Medication template state
   const [medTemplates, setMedTemplates] = useState<{
@@ -547,6 +551,15 @@ export default function MedicalConsultationsCard({
   const [medTemplateFilter, setMedTemplateFilter] = useState<"all" | "service">("all");
   const [medTemplateServiceFilter, setMedTemplateServiceFilter] = useState<string>("");
 
+  // Medication creation success modal state
+  const [medCreationSuccessModal, setMedCreationSuccessModal] = useState<{
+    open: boolean;
+    prescriptionSheetId: string | null;
+    isMedication: boolean; // true = medicine tab type, false = prescription tab type
+  }>({ open: false, prescriptionSheetId: null, isMedication: true });
+  const [medPdfGenerating, setMedPdfGenerating] = useState(false);
+  const [medEmailSending, setMedEmailSending] = useState(false);
+
   const updateMedProduct = (id: string, updates: Partial<MedProduct>) => {
     setMedProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
   };
@@ -556,6 +569,131 @@ export default function MedicalConsultationsCard({
   const removeMedProduct = (id: string) => {
     setMedProducts((prev) => (prev.length > 1 ? prev.filter((p) => p.id !== id) : prev));
   };
+
+  // Handler for generating eMediplan PDF from success modal
+  async function handleMedSuccessGeneratePdf() {
+    try {
+      setMedPdfGenerating(true);
+      const tabType = medCreationSuccessModal.isMedication ? "medicine" : "prescription";
+      const prescriptionSheetId = medCreationSuccessModal.prescriptionSheetId;
+
+      const response = await fetch("/api/emediplan/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          patientId, 
+          tabType, 
+          prescriptionSheetId: tabType === "prescription" ? prescriptionSheetId : undefined 
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate eMediplan PDF");
+      }
+
+      // Download the PDF
+      const pdfBlob = new Blob(
+        [Uint8Array.from(atob(data.pdf), (c) => c.charCodeAt(0))],
+        { type: "application/pdf" }
+      );
+      const url = URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = data.filename || "emediplan.pdf";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error generating eMediplan PDF:", error);
+      alert(error instanceof Error ? error.message : "Failed to generate eMediplan PDF");
+    } finally {
+      setMedPdfGenerating(false);
+    }
+  }
+
+  // Handler for sending eMediplan email from success modal
+  async function handleMedSuccessSendEmail() {
+    if (!patientEmail) {
+      alert("Patient does not have an email address");
+      return;
+    }
+
+    try {
+      setMedEmailSending(true);
+      const tabType = medCreationSuccessModal.isMedication ? "medicine" : "prescription";
+      const prescriptionSheetId = medCreationSuccessModal.prescriptionSheetId;
+
+      // First generate the PDF
+      const pdfResponse = await fetch("/api/emediplan/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          patientId, 
+          tabType, 
+          prescriptionSheetId: tabType === "prescription" ? prescriptionSheetId : undefined 
+        }),
+      });
+
+      const pdfData = await pdfResponse.json();
+
+      if (!pdfResponse.ok) {
+        throw new Error(pdfData.error || "Failed to generate eMediplan PDF");
+      }
+
+      // Send email with attachment
+      const emailResponse = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId,
+          to: patientEmail,
+          subject: `Your Medication Plan`,
+          html: `<p>Hello,</p><p>Please find attached your medication plan (eMediplan).</p><p>Best regards,<br/>Your Medical Team</p>`,
+          inlineAttachments: [{
+            filename: pdfData.filename,
+            content: pdfData.pdf,
+            encoding: "base64",
+            contentType: "application/pdf",
+          }],
+        }),
+      });
+
+      const emailData = await emailResponse.json();
+
+      if (!emailResponse.ok) {
+        throw new Error(emailData.error || "Failed to send email");
+      }
+
+      // Update last_emailed_at for the medications that were sent
+      const now = new Date().toISOString();
+      if (tabType === "prescription" && prescriptionSheetId) {
+        await supabaseClient
+          .from("patient_prescriptions")
+          .update({ last_emailed_at: now })
+          .eq("prescription_sheet_id", prescriptionSheetId);
+      } else if (tabType === "medicine") {
+        // Update all medicine-type medications for this patient
+        await supabaseClient
+          .from("patient_prescriptions")
+          .update({ last_emailed_at: now })
+          .eq("patient_id", patientId)
+          .eq("active", true)
+          .eq("product_type", "MEDICATION")
+          .is("prescription_sheet_id", null);
+      }
+
+      alert("Email sent successfully to " + patientEmail);
+      setMedCreationSuccessModal({ open: false, prescriptionSheetId: null, isMedication: true });
+    } catch (error) {
+      console.error("Error sending eMediplan email:", error);
+      alert(error instanceof Error ? error.message : "Failed to send eMediplan email");
+    } finally {
+      setMedEmailSending(false);
+    }
+  }
 
   const consultationRecordTypeOptions: {
     value: ConsultationRecordType;
@@ -2602,7 +2740,7 @@ export default function MedicalConsultationsCard({
                     setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
                     setMedDecisionSummary("");
                     setMedShowInMediplan(true);
-                    setMedIsPrescription(false);
+                    setMedIsPrescription(true);
                     setMedSelectedTemplateId("");
                     setMedTemplateServiceFilter("");
                     setMedTemplateFilter("all");
@@ -3127,8 +3265,8 @@ export default function MedicalConsultationsCard({
                         amount_noon: product.amountNoon.trim() || null,
                         amount_evening: product.amountEvening.trim() || null,
                         amount_night: product.amountNight.trim() || null,
-                        intake_note: medIntakeNote.trim() || null,
-                        intake_from_date: medIntakeFromDate || null,
+                        intake_note: product.intakeNote.trim() || null,
+                        intake_from_date: product.intakeFromDate || null,
                         decision_summary: medDecisionSummary.trim() || null,
                         quantity: typeof product.quantity === "number" ? product.quantity : 1,
                         show_in_mediplan: medShowInMediplan,
@@ -3148,6 +3286,45 @@ export default function MedicalConsultationsCard({
                         return;
                       }
 
+                      // Also create a consultation record so it appears in cockpit/consultations list
+                      const productNames = validProducts.map((p) => p.productName.trim()).join(", ");
+                      const consultationTitle = medIsPrescription 
+                        ? `Prescription: ${productNames}`
+                        : `Medication: ${productNames}`;
+                      
+                      const consultationContent = `<div class="space-y-2">
+                        <p><strong>${medIsPrescription ? "Prescription" : "Medication"}</strong></p>
+                        <ul class="list-disc pl-4">
+                          ${validProducts.map((p) => `<li>${p.productName.trim()}${p.quantity ? ` (Qty: ${p.quantity})` : ""}</li>`).join("")}
+                        </ul>
+                        ${medDecisionSummary.trim() ? `<p><strong>Notes:</strong> ${medDecisionSummary.trim()}</p>` : ""}
+                      </div>`;
+
+                      const consultationPayload = {
+                        patient_id: patientId,
+                        consultation_id: sharedPrescriptionSheetId || sharedTherapyId,
+                        title: consultationTitle,
+                        content: consultationContent,
+                        record_type: "medication",
+                        doctor_user_id: consultationDoctorId || null,
+                        doctor_name: doctorName || null,
+                        scheduled_at: scheduledAtIso,
+                        is_archived: false,
+                      };
+
+                      const { error: consultError } = await supabaseClient
+                        .from("consultations")
+                        .insert(consultationPayload);
+
+                      if (consultError) {
+                        console.error("Failed to create consultation record for medication:", consultError);
+                        // Don't block - medication was created successfully
+                      }
+
+                      // Store data for success modal before resetting form
+                      const createdPrescriptionSheetId = sharedPrescriptionSheetId;
+                      const wasPrescription = medIsPrescription;
+
                       // Reset medication form state
                       setMedProducts([createEmptyMedProduct()]);
                       setMedIntakeNote("");
@@ -3157,10 +3334,18 @@ export default function MedicalConsultationsCard({
                       setMedTemplateServiceFilter("");
                       setMedTemplateFilter("all");
                       setMedShowInMediplan(true);
-                      setMedIsPrescription(false);
+                      setMedIsPrescription(true);
 
                       setConsultationSaving(false);
                       setNewConsultationOpen(false);
+                      
+                      // Show success modal with PDF/Email options
+                      setMedCreationSuccessModal({
+                        open: true,
+                        prescriptionSheetId: createdPrescriptionSheetId,
+                        isMedication: !wasPrescription, // if NOT prescription, it's medication type
+                      });
+                      
                       router.refresh();
                       return;
                     }
@@ -5495,18 +5680,17 @@ export default function MedicalConsultationsCard({
                               searchResults: [],
                               searchLoading: false,
                               dropdownOpen: false,
-                              productType: (item.product_type === "CONSUMABLE" ? "CONSUMABLE" : "MEDICATION") as "MEDICATION" | "CONSUMABLE",
-                              intakeKind: (item.intake_kind === "ACUTE" ? "ACUTE" : "FIXED") as "ACUTE" | "FIXED",
+                              productType: "MEDICATION" as "MEDICATION" | "CONSUMABLE",
+                              intakeKind: "FIXED" as "ACUTE" | "FIXED",
                               amountMorning: item.amount_morning || "",
                               amountNoon: item.amount_noon || "",
                               amountEvening: item.amount_evening || "",
                               amountNight: item.amount_night || "",
                               quantity: item.quantity || 1,
+                              intakeNote: item.intake_note || "",
+                              intakeFromDate: formatLocalDateInputValue(new Date()),
                             }));
                             setMedProducts(newProducts);
-                            if (template.medication_template_items[0]?.intake_note) {
-                              setMedIntakeNote(template.medication_template_items[0].intake_note);
-                            }
                           }}
                           className={"flex-1 rounded-lg border border-emerald-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500" + (medTemplateFilter === "service" && !medTemplateServiceFilter ? " opacity-50" : "")}
                           disabled={medTemplateFilter === "service" && !medTemplateServiceFilter}
@@ -5598,6 +5782,21 @@ export default function MedicalConsultationsCard({
                             ) : null}
                             {product.dropdownOpen && (
                               <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg text-xs">
+                                {/* Custom text option */}
+                                {product.searchQuery.trim().length >= 1 && (
+                                  <li>
+                                    <button
+                                      type="button"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        updateMedProduct(product.id, { productName: product.searchQuery, dropdownOpen: false, searchResults: [] });
+                                      }}
+                                      className="w-full px-3 py-1.5 text-left text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-b border-slate-100"
+                                    >
+                                      <span className="font-medium">Use custom text:</span> "{product.searchQuery}"
+                                    </button>
+                                  </li>
+                                )}
                                 {product.searchResults.length > 0 ? (
                                   product.searchResults.map((item) => (
                                     <li key={item.productNumber}>
@@ -5621,35 +5820,6 @@ export default function MedicalConsultationsCard({
                               </ul>
                             )}
                           </div>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-medium text-slate-700">
-                            Product Type
-                          </label>
-                          <select
-                            value={product.productType}
-                            onChange={(e) => updateMedProduct(product.id, { productType: e.target.value as "MEDICATION" | "CONSUMABLE" })}
-                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                          >
-                            <option value="MEDICATION">Medication</option>
-                            <option value="CONSUMABLE">Consumable</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-medium text-slate-700">
-                            Intake Kind
-                          </label>
-                          <select
-                            value={product.intakeKind}
-                            onChange={(e) => updateMedProduct(product.id, { intakeKind: e.target.value as "ACUTE" | "FIXED" })}
-                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                          >
-                            <option value="FIXED">Fixed (F)</option>
-                            <option value="ACUTE">Acute (M)</option>
-                          </select>
                         </div>
                         <div className="space-y-1">
                           <label className="block text-[11px] font-medium text-slate-700">
@@ -5703,33 +5873,34 @@ export default function MedicalConsultationsCard({
                           />
                         </div>
                       </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-slate-700">
+                            Intake Note / Instructions
+                          </label>
+                          <input
+                            type="text"
+                            value={product.intakeNote}
+                            onChange={(e) => updateMedProduct(product.id, { intakeNote: e.target.value })}
+                            placeholder="e.g. Take with food"
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-slate-700">
+                            Intake From Date
+                          </label>
+                          <input
+                            type="date"
+                            value={product.intakeFromDate}
+                            onChange={(e) => updateMedProduct(product.id, { intakeFromDate: e.target.value })}
+                            className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ))}
-
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-medium text-slate-700">
-                      Intake From Date
-                    </label>
-                    <input
-                      type="date"
-                      value={medIntakeFromDate}
-                      onChange={(e) => setMedIntakeFromDate(e.target.value)}
-                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-medium text-slate-700">
-                      Intake Note / Instructions
-                    </label>
-                    <input
-                      type="text"
-                      value={medIntakeNote}
-                      onChange={(e) => setMedIntakeNote(e.target.value)}
-                      placeholder="e.g. Take with food"
-                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                    />
-                  </div>
 
                   <div className="space-y-1">
                     <label className="block text-[11px] font-medium text-slate-700">
@@ -5845,7 +6016,7 @@ export default function MedicalConsultationsCard({
                     setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
                     setMedDecisionSummary("");
                     setMedShowInMediplan(true);
-                    setMedIsPrescription(false);
+                    setMedIsPrescription(true);
                     setMedSelectedTemplateId("");
                     setMedTemplateServiceFilter("");
                     setMedTemplateFilter("all");
@@ -7476,6 +7647,97 @@ export default function MedicalConsultationsCard({
               ) : (
                 <pre className="rounded-lg bg-slate-900 p-4 text-[11px] leading-relaxed text-emerald-300 font-mono whitespace-pre-wrap break-all">{xmlPreviewContent}</pre>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Medication Creation Success Modal */}
+      {medCreationSuccessModal.open && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
+                <svg className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">
+                  {medCreationSuccessModal.isMedication ? "Medication" : "Prescription"} Created
+                </h3>
+                <p className="text-xs text-slate-500">
+                  What would you like to do next?
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                onClick={() => void handleMedSuccessGeneratePdf()}
+                disabled={medPdfGenerating || medEmailSending}
+                className="flex w-full items-center gap-3 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-left transition-colors hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100">
+                  {medPdfGenerating ? (
+                    <svg className="h-4 w-4 animate-spin text-cyan-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-cyan-800">
+                    {medPdfGenerating ? "Generating..." : "Download PDF"}
+                  </p>
+                  <p className="text-[10px] text-cyan-600">
+                    Generate eMediplan PDF document
+                  </p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => void handleMedSuccessSendEmail()}
+                disabled={medPdfGenerating || medEmailSending || !patientEmail}
+                className="flex w-full items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-left transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title={patientEmail ? `Send to ${patientEmail}` : "Patient has no email address"}
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100">
+                  {medEmailSending ? (
+                    <svg className="h-4 w-4 animate-spin text-emerald-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-emerald-800">
+                    {medEmailSending ? "Sending..." : "Send to Email"}
+                  </p>
+                  <p className="text-[10px] text-emerald-600">
+                    {patientEmail ? `Send to ${patientEmail}` : "No email address available"}
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMedCreationSuccessModal({ open: false, prescriptionSheetId: null, isMedication: true })}
+                disabled={medPdfGenerating || medEmailSending}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

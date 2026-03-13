@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
-type MedicationSubTab = "medicine" | "prescription" | "consumables";
+type MedicationSubTab = "medicine" | "prescription";
 
 type PatientPrescription = {
     journal_entry_id: string;
@@ -29,7 +29,53 @@ type PatientPrescription = {
     decision_summary: string | null;
     show_in_mediplan: boolean | null;
     active: boolean | null;
+    last_emailed_at: string | null;
 };
+
+type NewPrescriptionProduct = {
+    id: string;
+    productName: string;
+    searchQuery: string;
+    searchResults: { label: string; productNumber: number }[];
+    searchLoading: boolean;
+    dropdownOpen: boolean;
+    productType: "MEDICATION" | "CONSUMABLE";
+    intakeKind: "ACUTE" | "FIXED";
+    amountMorning: string;
+    amountNoon: string;
+    amountEvening: string;
+    amountNight: string;
+    quantity: number | "";
+    intakeNote: string;
+    intakeFromDate: string;
+};
+
+function formatLocalDateInputValue(date: Date): string {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, "0");
+    const day = date.getDate().toString().padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function createEmptyProduct(): NewPrescriptionProduct {
+    return {
+        id: crypto.randomUUID(),
+        productName: "",
+        searchQuery: "",
+        searchResults: [],
+        searchLoading: false,
+        dropdownOpen: false,
+        productType: "MEDICATION",
+        intakeKind: "FIXED",
+        amountMorning: "",
+        amountNoon: "",
+        amountEvening: "",
+        amountNight: "",
+        quantity: 1,
+        intakeNote: "",
+        intakeFromDate: formatLocalDateInputValue(new Date()),
+    };
+}
 
 export default function MedicationCard({ patientId: propPatientId }: { patientId: string }) {
     const router = useRouter();
@@ -48,9 +94,20 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
 
     const rawSubTab = searchParams?.get("med_sub");
     const subTab: MedicationSubTab =
-        rawSubTab === "medicine" || rawSubTab === "prescription" || rawSubTab === "consumables"
+        rawSubTab === "medicine" || rawSubTab === "prescription"
             ? rawSubTab
             : "medicine";
+
+    // Create new prescription modal state
+    const [createPrescriptionModalOpen, setCreatePrescriptionModalOpen] = useState(false);
+    const [creatingPrescription, setCreatingPrescription] = useState(false);
+    const [newPrescriptionProducts, setNewPrescriptionProducts] = useState<NewPrescriptionProduct[]>([createEmptyProduct()]);
+    const [newPrescriptionIntakeNote, setNewPrescriptionIntakeNote] = useState("");
+    const [newPrescriptionIntakeFromDate, setNewPrescriptionIntakeFromDate] = useState(formatLocalDateInputValue(new Date()));
+    const [newPrescriptionDecisionSummary, setNewPrescriptionDecisionSummary] = useState("");
+    const [newPrescriptionShowInMediplan, setNewPrescriptionShowInMediplan] = useState(true);
+    const [newPrescriptionIsPrescription, setNewPrescriptionIsPrescription] = useState(true);
+    const searchTimeoutRefs = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
 
     useEffect(() => {
         loadMedications();
@@ -83,10 +140,6 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
     const filteredMedications = medications.filter((med) => {
         if (subTab === "prescription") {
             return med.prescription_sheet_id !== null;
-        } else if (subTab === "consumables") {
-            // Consumables: no prescription sheet AND not medication type
-            return med.prescription_sheet_id === null &&
-                (med.product_type === null || med.product_type !== "MEDICATION");
         } else {
             // medicine
             return med.prescription_sheet_id === null && med.product_type === "MEDICATION";
@@ -201,12 +254,135 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                 throw new Error(emailData.error || "Failed to send email");
             }
 
-            alert("email sent successfully to " + patientEmail);
+            // Update last_emailed_at for the medications that were sent
+            const now = new Date().toISOString();
+            if (tabType === "prescription" && prescriptionSheetId) {
+                await supabaseClient
+                    .from("patient_prescriptions")
+                    .update({ last_emailed_at: now })
+                    .eq("prescription_sheet_id", prescriptionSheetId);
+            } else if (tabType === "medicine") {
+                // Update all medicine-type medications for this patient
+                await supabaseClient
+                    .from("patient_prescriptions")
+                    .update({ last_emailed_at: now })
+                    .eq("patient_id", patientId)
+                    .eq("active", true)
+                    .eq("product_type", "MEDICATION")
+                    .is("prescription_sheet_id", null);
+            }
+
+            loadMedications();
+            alert("Email sent successfully to " + patientEmail);
         } catch (error) {
             console.error("Error sending eMediplan email:", error);
             alert(error instanceof Error ? error.message : "Failed to send eMediplan email");
         } finally {
             setSendingEmail(false);
+        }
+    }
+
+    // Helper functions for new prescription products
+    const updateNewPrescriptionProduct = (id: string, updates: Partial<NewPrescriptionProduct>) => {
+        setNewPrescriptionProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    };
+    const addNewPrescriptionProduct = () => {
+        setNewPrescriptionProducts((prev) => [...prev, createEmptyProduct()]);
+    };
+    const removeNewPrescriptionProduct = (id: string) => {
+        setNewPrescriptionProducts((prev) => (prev.length > 1 ? prev.filter((p) => p.id !== id) : prev));
+    };
+
+    // Create new prescription handler
+    async function handleCreatePrescription() {
+        const validProducts = newPrescriptionProducts.filter((p) => p.productName.trim());
+        if (validProducts.length === 0) {
+            alert("Please add at least one product");
+            return;
+        }
+
+        setCreatingPrescription(true);
+        try {
+            const sharedTherapyId = crypto.randomUUID();
+            const sharedPrescriptionSheetId = newPrescriptionIsPrescription ? crypto.randomUUID() : null;
+
+            const medPayloads = validProducts.map((product) => ({
+                patient_id: patientId,
+                journal_entry_id: crypto.randomUUID(),
+                mandator_id: crypto.randomUUID(),
+                therapy_id: sharedTherapyId,
+                product_name: product.productName.trim(),
+                product_type: product.productType,
+                intake_kind: product.intakeKind,
+                amount_morning: product.amountMorning.trim() || null,
+                amount_noon: product.amountNoon.trim() || null,
+                amount_evening: product.amountEvening.trim() || null,
+                amount_night: product.amountNight.trim() || null,
+                intake_note: product.intakeNote.trim() || null,
+                intake_from_date: product.intakeFromDate || null,
+                decision_summary: newPrescriptionDecisionSummary.trim() || null,
+                quantity: typeof product.quantity === "number" ? product.quantity : 1,
+                show_in_mediplan: newPrescriptionShowInMediplan,
+                prescription_sheet_id: sharedPrescriptionSheetId,
+                active: true,
+            }));
+
+            const { error } = await supabaseClient
+                .from("patient_prescriptions")
+                .insert(medPayloads);
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            // Also create a consultation record so it appears in cockpit/consultations
+            const productNames = validProducts.map((p) => p.productName.trim()).join(", ");
+            const consultationTitle = newPrescriptionIsPrescription 
+                ? `Prescription: ${productNames}`
+                : `Medication: ${productNames}`;
+            
+            const consultationContent = `<div class="space-y-2">
+                <p><strong>${newPrescriptionIsPrescription ? "Prescription" : "Medication"}</strong></p>
+                <ul class="list-disc pl-4">
+                    ${validProducts.map((p) => `<li>${p.productName.trim()}${p.quantity ? ` (Qty: ${p.quantity})` : ""}</li>`).join("")}
+                </ul>
+                ${newPrescriptionDecisionSummary.trim() ? `<p><strong>Notes:</strong> ${newPrescriptionDecisionSummary.trim()}</p>` : ""}
+            </div>`;
+
+            const consultationPayload = {
+                patient_id: patientId,
+                consultation_id: sharedPrescriptionSheetId || sharedTherapyId,
+                title: consultationTitle,
+                content: consultationContent,
+                record_type: "medication",
+                scheduled_at: new Date().toISOString(),
+                is_archived: false,
+            };
+
+            const { error: consultError } = await supabaseClient
+                .from("consultations")
+                .insert(consultationPayload);
+
+            if (consultError) {
+                console.error("Failed to create consultation record for medication:", consultError);
+                // Don't block - medication was created successfully
+            }
+
+            // Reset form
+            setNewPrescriptionProducts([createEmptyProduct()]);
+            setNewPrescriptionIntakeNote("");
+            setNewPrescriptionIntakeFromDate(formatLocalDateInputValue(new Date()));
+            setNewPrescriptionDecisionSummary("");
+            setNewPrescriptionShowInMediplan(true);
+            setNewPrescriptionIsPrescription(true);
+            setCreatePrescriptionModalOpen(false);
+            loadMedications();
+            router.refresh(); // Refresh to update cockpit/consultations tabs
+        } catch (error) {
+            console.error("Error creating prescription:", error);
+            alert(error instanceof Error ? error.message : "Failed to create prescription");
+        } finally {
+            setCreatingPrescription(false);
         }
     }
 
@@ -274,22 +450,24 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                     >
                         Prescription
                     </button>
-                    <button
-                        onClick={() => changeSubTab("consumables")}
-                        className={
-                            (subTab === "consumables"
-                                ? "border-sky-500 text-sky-600"
-                                : "border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-700") +
-                            " inline-flex items-center border-b-2 px-1.5 py-2"
-                        }
-                    >
-                        Consumables
-                    </button>
                 </nav>
                 
-                {/* Generate eMediplan PDF and Send to Email Buttons - Only for medicine tab */}
-                {subTab === "medicine" && filteredMedications.length > 0 && (
-                    <div className="mb-1 flex items-center gap-2">
+                {/* Right side buttons */}
+                <div className="mb-1 flex items-center gap-2">
+                    {/* Create New Prescription Button */}
+                    <button
+                        onClick={() => setCreatePrescriptionModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-sky-700"
+                    >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Create New Prescription
+                    </button>
+                    
+                    {/* Generate eMediplan PDF and Send to Email Buttons - Only for medicine tab */}
+                    {subTab === "medicine" && filteredMedications.length > 0 && (
+                        <>
                         <button
                             onClick={() => handleGenerateEmediplanPdf(subTab)}
                             disabled={generatingPdf || sendingEmail}
@@ -335,8 +513,9 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                                 </>
                             )}
                         </button>
-                    </div>
-                )}
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Content */}
@@ -359,6 +538,21 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                                         minute: "2-digit",
                                     })
                                     : "";
+                                
+                                // Get the most recent last_emailed_at from all items in this prescription
+                                const lastEmailedAt = items
+                                    .map(item => item.last_emailed_at)
+                                    .filter(Boolean)
+                                    .sort((a, b) => new Date(b!).getTime() - new Date(a!).getTime())[0];
+                                const lastEmailedDisplay = lastEmailedAt
+                                    ? new Date(lastEmailedAt).toLocaleDateString("fr-CH", {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        year: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                    })
+                                    : null;
 
                                 return (
                                     <div key={sheetId} className="rounded-lg border border-slate-200 bg-white">
@@ -369,9 +563,16 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                                     </svg>
                                                 </button>
-                                                <span className="text-xs font-semibold text-slate-700">
-                                                    {prescriptionDate.toUpperCase()} ORDONNANCE
-                                                </span>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-semibold text-slate-700">
+                                                        {prescriptionDate.toUpperCase()} ORDONNANCE
+                                                    </span>
+                                                    {lastEmailedDisplay && (
+                                                        <span className="text-[10px] text-emerald-600">
+                                                            Last sent: {lastEmailedDisplay}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div className="flex items-center gap-1">
                                                 <button
@@ -414,21 +615,12 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                         ) : (
                             <div className="py-8 text-center text-sm text-slate-500">No prescriptions found</div>
                         )
-                    ) : subTab === "medicine" ? (
+                    ) : (
                         // Medicine table view
                         filteredMedications.length > 0 ? (
                             <MedicationTable medications={filteredMedications} />
                         ) : (
                             <div className="py-8 text-center text-sm text-slate-500">No medicine found</div>
-                        )
-                    ) : (
-                        // Consumables table view
-                        filteredMedications.length > 0 ? (
-                            <MedicationTable medications={filteredMedications} />
-                        ) : (
-                            <div className="py-8 text-center text-sm text-slate-500">
-                                No consumables found
-                            </div>
                         )
                     )}
                 </div>
@@ -441,6 +633,258 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                     onClose={() => setEditingMedication(null)}
                     onSave={handleUpdateMedication}
                 />
+            )}
+
+            {/* Create New Prescription Modal */}
+            {createPrescriptionModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm py-6">
+                    <div className="w-full max-w-3xl max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border border-slate-200/80 bg-white/95 shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
+                        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+                            <h3 className="text-sm font-semibold text-slate-900">New Medication</h3>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={addNewPrescriptionProduct}
+                                    className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:text-sky-700"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    Add Product
+                                </button>
+                                <button
+                                    onClick={() => setCreatePrescriptionModalOpen(false)}
+                                    className="rounded-full p-1 hover:bg-slate-100"
+                                >
+                                    <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 p-6">
+                            {/* Products */}
+                            {newPrescriptionProducts.map((product, index) => (
+                                <div key={product.id} className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                                    <div className="mb-3 flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-slate-600">Product {index + 1}</span>
+                                        {newPrescriptionProducts.length > 1 && (
+                                            <button
+                                                onClick={() => removeNewPrescriptionProduct(product.id)}
+                                                className="text-red-500 hover:text-red-600"
+                                            >
+                                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-[1fr_120px] gap-3 mb-3">
+                                        <div>
+                                            <label className="mb-1 block text-[11px] font-medium text-slate-700">Product Name *</label>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={product.searchQuery || product.productName}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        updateNewPrescriptionProduct(product.id, { searchQuery: val, productName: val, dropdownOpen: true });
+                                                        
+                                                        if (searchTimeoutRefs.current[product.id]) clearTimeout(searchTimeoutRefs.current[product.id]!);
+                                                        if (val.trim().length < 2) {
+                                                            updateNewPrescriptionProduct(product.id, { searchResults: [] });
+                                                            return;
+                                                        }
+                                                        searchTimeoutRefs.current[product.id] = setTimeout(async () => {
+                                                            updateNewPrescriptionProduct(product.id, { searchLoading: true });
+                                                            try {
+                                                                const res = await fetch(`/api/compendium/search?q=${encodeURIComponent(val.trim())}`);
+                                                                const data = await res.json();
+                                                                updateNewPrescriptionProduct(product.id, { searchResults: data.products ?? [], searchLoading: false });
+                                                            } catch {
+                                                                updateNewPrescriptionProduct(product.id, { searchResults: [], searchLoading: false });
+                                                            }
+                                                        }, 300);
+                                                    }}
+                                                    onFocus={() => updateNewPrescriptionProduct(product.id, { dropdownOpen: true })}
+                                                    onBlur={() => setTimeout(() => updateNewPrescriptionProduct(product.id, { dropdownOpen: false }), 150)}
+                                                    placeholder="Type to search a medicine"
+                                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                                />
+                                                {product.dropdownOpen && (
+                                                    <ul className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg text-xs">
+                                                        {/* Custom text option */}
+                                                        {(product.searchQuery || "").trim().length >= 1 && (
+                                                            <li>
+                                                                <button
+                                                                    type="button"
+                                                                    onMouseDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        updateNewPrescriptionProduct(product.id, { 
+                                                                            productName: product.searchQuery || "", 
+                                                                            dropdownOpen: false, 
+                                                                            searchResults: [] 
+                                                                        });
+                                                                    }}
+                                                                    className="w-full px-3 py-2 text-left text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-b border-slate-100"
+                                                                >
+                                                                    <span className="font-medium">Use custom text:</span> "{product.searchQuery}"
+                                                                </button>
+                                                            </li>
+                                                        )}
+                                                        {product.searchResults.length > 0 ? (
+                                                            product.searchResults.map((item) => (
+                                                                <li key={item.productNumber}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            updateNewPrescriptionProduct(product.id, { 
+                                                                                productName: item.label, 
+                                                                                searchQuery: item.label,
+                                                                                dropdownOpen: false, 
+                                                                                searchResults: [] 
+                                                                            });
+                                                                        }}
+                                                                        className="w-full px-3 py-2 text-left text-slate-800 hover:bg-sky-50 hover:text-sky-700"
+                                                                    >
+                                                                        {item.label}
+                                                                    </button>
+                                                                </li>
+                                                            ))
+                                                        ) : (
+                                                            <li className="px-3 py-2 text-slate-400 italic">
+                                                                {product.searchLoading ? "Searching..." : (product.searchQuery || "").trim().length < 2 ? "Type at least 2 characters to search..." : "No results found"}
+                                                            </li>
+                                                        )}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-[11px] font-medium text-slate-700">Quantity</label>
+                                            <input
+                                                type="number"
+                                                value={product.quantity}
+                                                onChange={(e) => updateNewPrescriptionProduct(product.id, { quantity: parseInt(e.target.value) || "" })}
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-3">
+                                        <label className="mb-1 block text-[11px] font-medium text-slate-700">Dosage (Morning - Noon - Evening - Night)</label>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Morning"
+                                                value={product.amountMorning}
+                                                onChange={(e) => updateNewPrescriptionProduct(product.id, { amountMorning: e.target.value })}
+                                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-center focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Noon"
+                                                value={product.amountNoon}
+                                                onChange={(e) => updateNewPrescriptionProduct(product.id, { amountNoon: e.target.value })}
+                                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-center focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Evening"
+                                                value={product.amountEvening}
+                                                onChange={(e) => updateNewPrescriptionProduct(product.id, { amountEvening: e.target.value })}
+                                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-center focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Night"
+                                                value={product.amountNight}
+                                                onChange={(e) => updateNewPrescriptionProduct(product.id, { amountNight: e.target.value })}
+                                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-center focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="mb-1 block text-[11px] font-medium text-slate-700">Intake Note / Instructions</label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. Take with food"
+                                                value={product.intakeNote}
+                                                onChange={(e) => updateNewPrescriptionProduct(product.id, { intakeNote: e.target.value })}
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-[11px] font-medium text-slate-700">Intake From Date</label>
+                                            <input
+                                                type="date"
+                                                value={product.intakeFromDate}
+                                                onChange={(e) => updateNewPrescriptionProduct(product.id, { intakeFromDate: e.target.value })}
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* Shared fields */}
+                            <div>
+                                <label className="mb-1 block text-[11px] font-medium text-slate-700">Decision Summary / Reason</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Post-operative pain management"
+                                    value={newPrescriptionDecisionSummary}
+                                    onChange={(e) => setNewPrescriptionDecisionSummary(e.target.value)}
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-2 text-xs">
+                                    <input
+                                        type="checkbox"
+                                        checked={newPrescriptionIsPrescription}
+                                        onChange={(e) => setNewPrescriptionIsPrescription(e.target.checked)}
+                                        className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                                    />
+                                    <span className="text-slate-700">Save as Prescription</span>
+                                </label>
+                                <label className="flex items-center gap-2 text-xs">
+                                    <input
+                                        type="checkbox"
+                                        checked={newPrescriptionShowInMediplan}
+                                        onChange={(e) => setNewPrescriptionShowInMediplan(e.target.checked)}
+                                        className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                                    />
+                                    <span className="text-slate-700">Show in eMediplan</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setCreatePrescriptionModalOpen(false)}
+                                disabled={creatingPrescription}
+                                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleCreatePrescription()}
+                                disabled={creatingPrescription}
+                                className="rounded-lg bg-sky-600 px-4 py-2 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                            >
+                                {creatingPrescription ? "Creating..." : "Create"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

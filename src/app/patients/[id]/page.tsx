@@ -553,7 +553,7 @@ export default async function PatientPage({
         ) : null}
 
         {medicalTab === "notes" ? (
-          <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="notes" patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
+          <MedicalConsultationsCard patientId={patient.id} patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
         ) : null}
 
         {medicalTab === "invoice" ? (
