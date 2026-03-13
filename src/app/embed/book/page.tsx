@@ -256,10 +256,31 @@ export default function EmbedBookPage() {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
 
+  // Attribution tracking
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [referrer, setReferrer] = useState("");
+  const [utmParams, setUtmParams] = useState<Record<string, string>>({});
+
   const selectedService = "General Consultation";
   const doctor = DOCTORS[selectedDoctor];
   const locationName = LOCATION_NAMES[selectedLocation] || selectedLocation;
   const locationLabel = LOCATION_LABELS[selectedLocation] || selectedLocation;
+
+  // Capture attribution data on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setSourceUrl(window.location.href);
+      setReferrer(document.referrer);
+      const params = new URLSearchParams(window.location.search);
+      setUtmParams({
+        utm_source: params.get("utm_source") || "",
+        utm_medium: params.get("utm_medium") || "",
+        utm_campaign: params.get("utm_campaign") || "",
+        utm_term: params.get("utm_term") || "",
+        utm_content: params.get("utm_content") || "",
+      });
+    }
+  }, []);
 
   // Update available doctors when location changes
   useEffect(() => {
@@ -362,6 +383,32 @@ export default function EmbedBookPage() {
 
       if (!res.ok) {
         throw new Error(data.error || "Failed to book appointment");
+      }
+
+      // Save lead to embed_form_leads for tracking
+      try {
+        await fetch("/api/public/embed-lead", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName,
+            lastName,
+            email,
+            phone,
+            service: selectedService,
+            location: selectedLocation,
+            formType: "booking",
+            sourceUrl,
+            referrer,
+            utmSource: utmParams.utm_source,
+            utmMedium: utmParams.utm_medium,
+            utmCampaign: utmParams.utm_campaign,
+            utmTerm: utmParams.utm_term,
+            utmContent: utmParams.utm_content,
+          }),
+        });
+      } catch {
+        // Don't block on lead tracking failure
       }
 
       pushToDataLayer("aliice_form_submit");
