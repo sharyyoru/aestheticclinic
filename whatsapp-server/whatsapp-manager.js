@@ -44,10 +44,9 @@ function getWhatsAppClient(userId) {
     try {
       // WhatsApp Web.js stores sessions in user-specific subdirectories
       const userSessionPath = path.join(sessionPath, `session-${userId}`);
-      const puppeteerDataPath = path.join(sessionPath, `puppeteer-${userId}`);
       
-      // Clean lock files in all relevant directories
-      const dirsToClean = [sessionPath, userSessionPath, puppeteerDataPath];
+      // Clean lock files in both main session dir and user session dir
+      const dirsToClean = [sessionPath, userSessionPath];
       
       for (const dir of dirsToClean) {
         if (fs.existsSync(dir)) {
@@ -74,7 +73,6 @@ function getWhatsAppClient(userId) {
     puppeteer: {
       headless: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      userDataDir: path.join(sessionPath, `puppeteer-${userId}`),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -286,19 +284,71 @@ async function initializeWhatsApp(userId) {
   }, 90000));
   
   // Start initialization in background (don't block the HTTP response)
-  client.initialize().then(() => {
-    console.log(`WhatsApp client initialized for user: ${userId}`);
-    initializingUsers.delete(userId);
-  }).catch(err => {
-    console.error(`Initialization error for user ${userId}:`, err);
-    initializingUsers.delete(userId);
-    const watchdog = initWatchdogs.get(userId);
-    if (watchdog) {
-      clearTimeout(watchdog);
-      initWatchdogs.delete(userId);
+  const initClient = async () => {
+    try {
+      await client.initialize();
+      console.log(`WhatsApp client initialized for user: ${userId}`);
+      initializingUsers.delete(userId);
+    } catch (err) {
+      console.error(`Initialization error for user ${userId}:`, err);
+      
+      // If it's a profile lock error, try cleaning up and retry once
+      if (err.message.includes('profile appears to be in use')) {
+        console.log(`[WA] Profile lock detected, cleaning up and retrying...`);
+        
+        // Clean up all possible lock files
+        const dirsToClean = [
+          sessionPath,
+          path.join(sessionPath, `session-${userId}`),
+          path.join(sessionPath, 'Default'),
+          path.join(sessionPath, 'Profile 1')
+        ];
+        
+        for (const dir of dirsToClean) {
+          if (fs.existsSync(dir)) {
+            const lockFiles = ['SingletonLock', 'SingletonSocket', 'lockfile'];
+            for (const file of lockFiles) {
+              const lockPath = path.join(dir, file);
+              if (fs.existsSync(lockPath)) {
+                console.log(`[WA] Removing lock file: ${path.relative(sessionPath, lockPath)}`);
+                try {
+                  fs.unlinkSync(lockPath);
+                } catch (e) {
+                  // Ignore errors during cleanup
+                }
+              }
+            }
+          }
+        }
+        
+        // Wait a bit and retry
+        setTimeout(async () => {
+          try {
+            await client.initialize();
+            console.log(`WhatsApp client initialized for user: ${userId} (retry)`);
+            initializingUsers.delete(userId);
+          } catch (retryErr) {
+            console.error(`Retry failed for user ${userId}:`, retryErr);
+            cleanup();
+          }
+        }, 2000);
+      } else {
+        cleanup();
+      }
+      
+      function cleanup() {
+        initializingUsers.delete(userId);
+        const watchdog = initWatchdogs.get(userId);
+        if (watchdog) {
+          clearTimeout(watchdog);
+          initWatchdogs.delete(userId);
+        }
+        clients.delete(userId);
+      }
     }
-    clients.delete(userId);
-  });
+  };
+  
+  initClient();
   
   return { success: true, message: 'Initialization started' };
 }
