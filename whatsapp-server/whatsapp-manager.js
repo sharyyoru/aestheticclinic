@@ -39,6 +39,20 @@ function getWhatsAppClient(userId) {
     console.log(`[WA] Session directory already exists`);
     const stats = fs.statSync(sessionPath);
     console.log(`[WA] Session directory permissions:`, stats.mode.toString(8));
+    
+    // Clean up Chromium lock files that might prevent startup
+    try {
+      const lockFiles = ['SingletonLock', 'SingletonSocket'];
+      for (const file of lockFiles) {
+        const lockPath = path.join(sessionPath, file);
+        if (fs.existsSync(lockPath)) {
+          console.log(`[WA] Removing Chromium lock file: ${file}`);
+          fs.unlinkSync(lockPath);
+        }
+      }
+    } catch (err) {
+      console.warn(`[WA] Warning: Could not clean lock files:`, err.message);
+    }
   }
   
   const client = new Client({
@@ -56,7 +70,15 @@ function getWhatsAppClient(userId) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--enable-features=UseOzonePlatform',
+        '--ozone-platform=headless'
       ]
     }
   });
@@ -264,8 +286,6 @@ async function initializeWhatsApp(userId) {
       initWatchdogs.delete(userId);
     }
     clients.delete(userId);
-    updateSessionStatus(userId, 'disconnected');
-    logEvent(userId, 'initialize_error', { error: err.message });
   });
   
   return { success: true, message: 'Initialization started' };
