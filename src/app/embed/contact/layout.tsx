@@ -2,17 +2,15 @@ import type { Metadata } from "next";
 import { GoogleTagManager, GoogleTagManagerNoScript } from "@/components/GoogleTagManager";
 
 export const metadata: Metadata = {
-  title: "Patient Intake Form | Aesthetics Clinic",
-  description: "Complete your patient intake form for Aesthetics Clinic Geneva",
+  title: "Contact Us | Aesthetics Clinic",
+  description: "Get in touch with Aesthetics Clinic Geneva",
 };
 
-export default function IntakeLayout({
+export default function EmbedContactLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // This layout bypasses the main app layout's sidebar/header
-  // by rendering children directly without the shell components
   return (
     <>
       <GoogleTagManager />

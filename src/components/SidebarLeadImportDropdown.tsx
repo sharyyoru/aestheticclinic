@@ -86,6 +86,14 @@ export default function SidebarLeadImportDropdown() {
           >
             Retell AI Calls
           </Link>
+          <Link
+            href="/lead-import/embed-forms"
+            className={`block py-1.5 pl-3 text-xs hover:text-sky-600 ${
+              pathname === "/lead-import/embed-forms" ? "text-sky-600 font-medium" : "text-slate-500"
+            }`}
+          >
+            Embed Forms
+          </Link>
         </div>
       )}
     </div>
