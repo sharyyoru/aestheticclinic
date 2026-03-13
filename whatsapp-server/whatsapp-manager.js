@@ -1,7 +1,6 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
-const fs = require('fs');
 const {
   getUserSession,
   upsertUserSession,
@@ -232,45 +231,14 @@ async function initializeWhatsApp(userId) {
     return { success: true, message: 'Already initializing' };
   }
 
-  // Check database for existing valid session
-  const dbSession = getUserSession(userId);
-  const hasValidSession = dbSession && (dbSession.status === 'ready' || dbSession.status === 'authenticated');
-
-  // If there's an existing client, check if it's connected
-  const existingClient = clients.get(userId);
-  if (existingClient) {
-    const state = await existingClient.getState().catch(() => null);
-    if (state === 'CONNECTED') {
-      console.log(`WhatsApp already connected for user: ${userId}`);
-      return { success: true, message: 'Already connected' };
-    }
-    // Destroy stale client so we get a fresh one with new QR codes
-    console.log(`Destroying stale client for user ${userId} (state: ${state})`);
-    clients.delete(userId);
-    try { await existingClient.destroy(); } catch (e) {
-      console.log(`Stale client destroy error (ignored):`, e.message);
-    }
-  }
-
-  // If no valid session in DB, delete the LocalAuth session directory to force fresh auth
-  // This prevents WhatsApp from reusing corrupted/expired session data
-  if (!hasValidSession) {
-    const sessionPath = path.join(
-      process.env.SESSION_DATA_PATH || path.join(__dirname, 'whatsapp-sessions'),
-      `session-${userId}`
-    );
-    if (fs.existsSync(sessionPath)) {
-      console.log(`Deleting corrupted session directory for user ${userId}: ${sessionPath}`);
-      try {
-        fs.rmSync(sessionPath, { recursive: true, force: true });
-        console.log(`Session directory deleted successfully for user ${userId}`);
-      } catch (err) {
-        console.error(`Failed to delete session directory for user ${userId}:`, err);
-      }
-    }
-  }
-
   const client = getWhatsAppClient(userId);
+  
+  // Check if already initialized
+  const state = await client.getState().catch(() => null);
+  if (state === 'CONNECTED') {
+    console.log(`WhatsApp already connected for user: ${userId}`);
+    return { success: true, message: 'Already connected' };
+  }
   
   console.log(`Initializing WhatsApp for user: ${userId}`);
   initializingUsers.add(userId);
