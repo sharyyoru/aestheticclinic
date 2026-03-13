@@ -50,7 +50,7 @@ function getWhatsAppClient(userId) {
       
       for (const dir of dirsToClean) {
         if (fs.existsSync(dir)) {
-          const lockFiles = ['SingletonLock', 'SingletonSocket'];
+          const lockFiles = ['SingletonLock', 'SingletonSocket', 'lockfile'];
           for (const file of lockFiles) {
             const lockPath = path.join(dir, file);
             if (fs.existsSync(lockPath)) {
@@ -115,10 +115,7 @@ function getWhatsAppClient(userId) {
     try {
       const qrCodeDataUrl = await QRCode.toDataURL(qr);
       broadcastToUser(userId, 'qr', { qrCode: qrCodeDataUrl });
-      
-      // Broadcast to user's WebSocket clients
-      broadcastToUser(userId, 'qr', { qrDataUrl });
-      broadcastToUser(userId, 'status', { status: 'qr_pending', qrCode: qrDataUrl });
+      broadcastToUser(userId, 'status', { status: 'qr_pending', qrCode: qrCodeDataUrl });
     } catch (err) {
       console.error(`QR generation error for user ${userId}:`, err);
     }
@@ -298,7 +295,7 @@ async function initializeWhatsApp(userId) {
       if (err.message.includes('profile appears to be in use')) {
         console.log(`[WA] Profile lock detected, cleaning up and retrying...`);
         
-        // Clean up all possible lock files
+        // First try: clean up lock files
         const dirsToClean = [
           sessionPath,
           path.join(sessionPath, `session-${userId}`),
@@ -320,6 +317,18 @@ async function initializeWhatsApp(userId) {
                 }
               }
             }
+          }
+        }
+        
+        // If lock files cleanup doesn't work, remove entire user session
+        const userSessionPath = path.join(sessionPath, `session-${userId}`);
+        if (fs.existsSync(userSessionPath)) {
+          console.log(`[WA] Aggressive cleanup: removing entire user session directory`);
+          try {
+            fs.rmSync(userSessionPath, { recursive: true, force: true });
+            console.log(`[WA] User session directory removed successfully`);
+          } catch (e) {
+            console.warn(`[WA] Could not remove user session directory:`, e.message);
           }
         }
         
