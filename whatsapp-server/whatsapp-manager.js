@@ -231,14 +231,23 @@ async function initializeWhatsApp(userId) {
     return { success: true, message: 'Already initializing' };
   }
 
-  const client = getWhatsAppClient(userId);
-  
-  // Check if already initialized
-  const state = await client.getState().catch(() => null);
-  if (state === 'CONNECTED') {
-    console.log(`WhatsApp already connected for user: ${userId}`);
-    return { success: true, message: 'Already connected' };
+  // If there's an existing client, check if it's connected
+  const existingClient = clients.get(userId);
+  if (existingClient) {
+    const state = await existingClient.getState().catch(() => null);
+    if (state === 'CONNECTED') {
+      console.log(`WhatsApp already connected for user: ${userId}`);
+      return { success: true, message: 'Already connected' };
+    }
+    // Destroy stale client so we get a fresh one with new QR codes
+    console.log(`Destroying stale client for user ${userId} (state: ${state})`);
+    clients.delete(userId);
+    try { await existingClient.destroy(); } catch (e) {
+      console.log(`Stale client destroy error (ignored):`, e.message);
+    }
   }
+
+  const client = getWhatsAppClient(userId);
   
   console.log(`Initializing WhatsApp for user: ${userId}`);
   initializingUsers.add(userId);
