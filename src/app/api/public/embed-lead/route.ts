@@ -113,6 +113,9 @@ export async function POST(request: NextRequest) {
       .eq("email", email.trim().toLowerCase())
       .maybeSingle();
 
+    let patientId: string;
+    let isNewPatient = false;
+
     if (!existingPatient) {
       // Create new patient
       const { data: newPatient } = await supabase
@@ -128,6 +131,9 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (newPatient) {
+        patientId = newPatient.id;
+        isNewPatient = true;
+
         // Update lead with patient ID
         await supabase
           .from("embed_form_leads")
@@ -136,21 +142,13 @@ export async function POST(request: NextRequest) {
             status: "converted"
           })
           .eq("id", lead.id);
-
-        // Trigger patient_created workflow
-        try {
-          const url = new URL(request.url);
-          const baseUrl = `${url.protocol}//${url.host}`;
-          await fetch(`${baseUrl}/api/workflows/patient-created`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ patient_id: newPatient.id }),
-          });
-        } catch {
-          // Don't block on workflow failure
-        }
+      } else {
+        patientId = "";
       }
     } else {
+      // Existing patient - still need to create deal and task for new inquiry
+      patientId = existingPatient.id;
+      
       // Mark as existing patient
       await supabase
         .from("embed_form_leads")
@@ -159,6 +157,41 @@ export async function POST(request: NextRequest) {
           is_existing_patient: true
         })
         .eq("id", lead.id);
+    }
+
+    // Trigger workflow for BOTH new and existing patients
+    // This ensures deals and tasks are created for all embed form submissions
+    if (patientId) {
+      try {
+        const url = new URL(request.url);
+        const baseUrl = `${url.protocol}//${url.host}`;
+        
+        // For new patients, trigger the full patient_created workflow
+        // For existing patients, trigger deal creation via embed-lead-workflow
+        if (isNewPatient) {
+          await fetch(`${baseUrl}/api/workflows/patient-created`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ patient_id: patientId }),
+          });
+        } else {
+          // For existing patients, create deal and task directly
+          await fetch(`${baseUrl}/api/workflows/embed-lead-followup`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              patient_id: patientId,
+              lead_id: lead.id,
+              form_type: formType,
+              service: service || null,
+              location: location || null,
+            }),
+          });
+        }
+      } catch {
+        // Don't block on workflow failure
+        console.error("Failed to trigger workflow for embed lead");
+      }
     }
 
     return NextResponse.json({
