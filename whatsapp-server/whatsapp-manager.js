@@ -232,30 +232,45 @@ function cleanStaleLockFiles(userId) {
   const sessionBasePath = process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions');
   const sessionDir = path.join(sessionBasePath, `session-${userId}`);
 
-  if (!fs.existsSync(sessionDir)) return;
-
-  const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
-
-  // Walk into Default/ subdirectory too (Chromium may place locks there)
-  const dirsToCheck = [sessionDir];
-  const defaultDir = path.join(sessionDir, 'Default');
-  if (fs.existsSync(defaultDir)) {
-    dirsToCheck.push(defaultDir);
+  try {
+    fs.lstatSync(sessionDir);
+  } catch {
+    return; // session dir doesn't exist at all
   }
 
-  for (const dir of dirsToCheck) {
-    for (const lockFile of lockFiles) {
-      const lockPath = path.join(dir, lockFile);
-      try {
-        if (fs.existsSync(lockPath)) {
-          fs.unlinkSync(lockPath);
-          console.log(`[LockCleanup] Removed stale ${lockFile} for user ${userId} at ${lockPath}`);
+  // SingletonLock is a SYMLINK. When the old container dies the symlink becomes
+  // dangling/broken.  fs.existsSync() follows symlinks and returns false for
+  // broken ones, so we must use readdirSync (which lists broken symlinks) and
+  // lstatSync (which reads the link itself, not its target).
+  const removeLocks = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.startsWith('Singleton')) {
+        const fullPath = path.join(dir, entry);
+        try {
+          fs.unlinkSync(fullPath);
+          console.log(`[LockCleanup] Removed stale ${entry} for user ${userId} at ${fullPath}`);
+        } catch (err) {
+          console.warn(`[LockCleanup] Could not remove ${fullPath}:`, err.message);
         }
-      } catch (err) {
-        console.warn(`[LockCleanup] Could not remove ${lockPath}:`, err.message);
       }
     }
+  };
+
+  // Chromium puts lock files at the root of the user-data-dir
+  removeLocks(sessionDir);
+
+  // Also check common subdirectories
+  for (const sub of ['Default', 'chrome_crashpad_handler']) {
+    removeLocks(path.join(sessionDir, sub));
   }
+
+  console.log(`[LockCleanup] Lock file cleanup completed for user ${userId}`);
 }
 
 /**
