@@ -3,42 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const { WebSocketServer } = require('ws');
 const http = require('http');
-const path = require('path');
-const fs = require('fs');
 const { requireAuth, optionalAuth, extractUserId } = require('./auth');
-
-// Log startup environment
-console.log('='.repeat(60));
-console.log('WhatsApp Server Startup');
-console.log('='.repeat(60));
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('PORT:', process.env.PORT || '3001');
-console.log('DB_PATH:', process.env.DB_PATH || 'default (./sessions.db)');
-console.log('SESSION_DATA_PATH:', process.env.SESSION_DATA_PATH || 'default (./whatsapp-sessions)');
-console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'SET' : 'NOT SET');
-console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'NOT SET');
-console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'SET' : 'NOT SET');
-
-// Check if data directory exists
-if (process.env.DB_PATH) {
-  const dbDir = path.dirname(process.env.DB_PATH);
-  console.log('Database directory:', dbDir);
-  console.log('Database directory exists:', fs.existsSync(dbDir));
-  if (fs.existsSync(dbDir)) {
-    const stats = fs.statSync(dbDir);
-    console.log('Directory permissions:', stats.mode.toString(8));
-  }
-}
-
-if (process.env.SESSION_DATA_PATH) {
-  console.log('Session directory:', process.env.SESSION_DATA_PATH);
-  console.log('Session directory exists:', fs.existsSync(process.env.SESSION_DATA_PATH));
-  if (fs.existsSync(process.env.SESSION_DATA_PATH)) {
-    const stats = fs.statSync(process.env.SESSION_DATA_PATH);
-    console.log('Directory permissions:', stats.mode.toString(8));
-  }
-}
-console.log('='.repeat(60));
 const {
   initializeWhatsApp,
   disconnectWhatsApp,
@@ -51,6 +16,7 @@ const {
   unregisterWebSocket,
   getActiveClients
 } = require('./whatsapp-manager');
+const { getAllActiveSessions, getRecentLogs } = require('./db');
 const { startQueueProcessor, stopQueueProcessor, getQueueStats } = require('./queue-processor');
 
 const app = express();
@@ -166,7 +132,9 @@ app.get('/chat-by-phone', requireAuth, async (req, res) => {
 // Get session logs for a user
 app.get('/logs', requireAuth, async (req, res) => {
   try {
-    res.json({ logs: [] });
+    const limit = parseInt(req.query.limit) || 50;
+    const logs = getRecentLogs(req.userId, limit);
+    res.json({ logs });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -175,11 +143,12 @@ app.get('/logs', requireAuth, async (req, res) => {
 // Admin: Get all active sessions (requires admin auth)
 app.get('/admin/sessions', optionalAuth, (req, res) => {
   try {
+    const sessions = getAllActiveSessions();
     const activeClients = getActiveClients();
     res.json({ 
-      sessions: [],
+      sessions,
       activeClients,
-      totalSessions: 0,
+      totalSessions: sessions.length,
       totalActiveClients: activeClients.length
     });
   } catch (err) {
@@ -203,7 +172,7 @@ app.get('/diagnostics', optionalAuth, async (req, res) => {
   res.json({
     serverStatus: 'running',
     activeClients: getActiveClients(),
-    activeSessions: 0,
+    activeSessions: getAllActiveSessions().length,
     queueStats,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
@@ -267,7 +236,6 @@ app.use((err, req, res, next) => {
 
 // Start server
 server.listen(PORT, () => {
-  console.log('[SERVER] Server started successfully on port', PORT);
   console.log(`
 ╔════════════════════════════════════════════════════════╗
 ║     Aesthetics Clinic WhatsApp Server (Multi-User)     ║
@@ -286,25 +254,7 @@ server.listen(PORT, () => {
   `);
 
   // Start queue processor after server is listening
-  console.log('[SERVER] Starting queue processor...');
   startQueueProcessor();
-});
-
-server.on('error', (error) => {
-  console.error('[SERVER] Server error:', error);
-  if (error.code === 'EADDRINUSE') {
-    console.error(`[SERVER] Port ${PORT} is already in use`);
-  }
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  console.error('[SERVER] Uncaught Exception:', error);
-  console.error('[SERVER] Stack:', error.stack);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[SERVER] Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 // Graceful shutdown
