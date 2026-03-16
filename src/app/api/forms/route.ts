@@ -72,8 +72,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const formUrl = `${appUrl}/form/${formId}?token=${data.token}`;
+    // Get the host from request headers to generate correct URL
+    const host = request.headers.get("host") || "localhost:3000";
+    const protocol = host.includes("localhost") ? "http" : "https";
+    const formUrl = `${protocol}://${host}/form/${formId}?token=${data.token}`;
 
     return NextResponse.json({
       success: true,
