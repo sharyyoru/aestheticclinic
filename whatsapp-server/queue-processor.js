@@ -75,7 +75,7 @@ async function processQueue() {
     const { data: items, error } = await supabase
       .from('whatsapp_queue')
       .select('*')
-      .in('status', ['pending'])
+      .in('status', ['pending', 'session_failed'])
       .lte('scheduled_at', now)
       .order('scheduled_at', { ascending: true })
       .limit(BATCH_SIZE);
@@ -114,7 +114,7 @@ async function processQueueItem(item) {
     .from('whatsapp_queue')
     .update({ status: 'sending', updated_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('status', 'pending');
+    .in('status', ['pending', 'session_failed']);
 
   if (lockError) {
     console.error(`[Queue] Failed to lock item ${id}:`, lockError.message);
@@ -126,28 +126,28 @@ async function processQueueItem(item) {
     const status = await getConnectionStatus(sender_user_id);
 
     if (!status || status.status !== 'ready') {
-      // Session not connected — handle failure
+      // Session not connected — unlimited retries with increasing backoff
       const newRetryCount = retry_count + 1;
-      const isFinalFailure = newRetryCount >= max_retries;
+      // Backoff: 2min, 5min, 10min, then every 10min
+      const delayMs = newRetryCount <= 1 ? 2 * 60000
+        : newRetryCount <= 3 ? 5 * 60000
+        : 10 * 60000;
 
       await supabase
         .from('whatsapp_queue')
         .update({
-          status: isFinalFailure ? 'failed' : 'pending',
+          status: 'session_failed',
           retry_count: newRetryCount,
           error_message: `WhatsApp session not connected for user ${sender_user_id}`,
-          // Push scheduled_at forward by 2 minutes for retry
-          scheduled_at: isFinalFailure
-            ? item.scheduled_at
-            : new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+          scheduled_at: new Date(Date.now() + delayMs).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', id);
 
-      console.warn(`[Queue] Session not ready for user ${sender_user_id}, item ${id} — retry ${newRetryCount}/${max_retries}`);
+      console.warn(`[Queue] Session not ready for user ${sender_user_id}, item ${id} — session retry ${newRetryCount} (next in ${delayMs / 60000}min)`);
 
-      // Send notification to the user if final failure
-      if (isFinalFailure) {
+      // Notify user on first session failure and every 5th retry
+      if (newRetryCount === 1 || newRetryCount % 5 === 0) {
         await notifySessionDown(sender_user_id, item);
       }
 
