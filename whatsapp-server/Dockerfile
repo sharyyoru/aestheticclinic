@@ -25,11 +25,14 @@ RUN npm install --only=production
 # Copy all application files
 COPY . .
 
-# Create directories for WhatsApp session persistence and SQLite database
-RUN mkdir -p /app/whatsapp-sessions /app/data
+# Create persistent data directory (mount Railway volume here at /data)
+# - /data/whatsapp-sessions/ — WhatsApp Web auth data per user (LocalAuth)
+# - /data/sessions.db — SQLite session metadata & logs
+RUN mkdir -p /data/whatsapp-sessions
 
-# Set SQLite database path to persistent volume
-ENV DB_PATH=/app/data/sessions.db
+# Point session storage and SQLite DB to the persistent volume
+ENV WA_SESSION_PATH=/data/whatsapp-sessions
+ENV DB_PATH=/data/sessions.db
 
 EXPOSE 3001
 

@@ -97,6 +97,18 @@ const statements = {
     WHERE user_id = ? 
     ORDER BY timestamp DESC 
     LIMIT ?
+  `),
+
+  getReconnectableSessions: db.prepare(`
+    SELECT user_id, phone_number, display_name, status, connected_at
+    FROM user_sessions 
+    WHERE status IN ('ready', 'authenticated')
+  `),
+
+  markAllDisconnected: db.prepare(`
+    UPDATE user_sessions 
+    SET status = 'disconnected', updated_at = CURRENT_TIMESTAMP
+    WHERE status IN ('ready', 'authenticated', 'qr_pending', 'launching')
   `)
 };
 
@@ -154,6 +166,14 @@ function getRecentLogs(userId, limit = 50) {
 }
 
 // Cleanup old logs (keep last 30 days)
+function getReconnectableSessions() {
+  return statements.getReconnectableSessions.all();
+}
+
+function markAllDisconnected() {
+  return statements.markAllDisconnected.run();
+}
+
 function cleanupOldLogs() {
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   db.prepare('DELETE FROM session_logs WHERE timestamp < ?').run(thirtyDaysAgo);
@@ -173,5 +193,7 @@ module.exports = {
   getAllActiveSessions,
   logEvent,
   getRecentLogs,
+  getReconnectableSessions,
+  markAllDisconnected,
   cleanupOldLogs
 };

@@ -41,7 +41,7 @@ function getWhatsAppClient(userId) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId,
-      dataPath: path.join(__dirname, 'whatsapp-sessions')
+      dataPath: process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions')
     }),
     puppeteer: {
       headless: true,
@@ -602,6 +602,29 @@ function getActiveClients() {
   return Array.from(clients.keys());
 }
 
+/**
+ * Destroy all active clients for graceful shutdown.
+ * Uses destroy() NOT logout() — logout clears session auth data!
+ */
+async function destroyAllClients() {
+  const userIds = Array.from(clients.keys());
+  console.log(`[Shutdown] Destroying ${userIds.length} active WhatsApp client(s)...`);
+
+  for (const userId of userIds) {
+    try {
+      const client = clients.get(userId);
+      if (client) {
+        await client.destroy();
+        clients.delete(userId);
+        console.log(`[Shutdown] Destroyed client for user ${userId}`);
+      }
+    } catch (err) {
+      console.error(`[Shutdown] Error destroying client for ${userId}:`, err.message);
+      clients.delete(userId);
+    }
+  }
+}
+
 module.exports = {
   getWhatsAppClient,
   initializeWhatsApp,
@@ -614,5 +637,6 @@ module.exports = {
   registerWebSocket,
   unregisterWebSocket,
   broadcastToUser,
-  getActiveClients
+  getActiveClients,
+  destroyAllClients
 };
