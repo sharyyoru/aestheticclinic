@@ -21,6 +21,7 @@ import MedicationCard from "./MedicationCard";
 import AgeBadge from "./AgeBadge";
 import PatientCockpitDetails from "./PatientCockpitDetails";
 import PatientPageClientWrapper from "./PatientPageClientWrapper";
+import PatientFormsTab from "./PatientFormsTab";
 import PatientTabRegistrar from "./PatientTabRegistrar";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ type MedicalTab =
   | "patient_information"
   | "documents"
   | "rendezvous"
+  | "forms"
   | "crm"
   | "form_photos"
   | "medication";
@@ -296,6 +298,7 @@ export default async function PatientPage({
       rawMedicalTab === "patient_information" ||
       rawMedicalTab === "documents" ||
       rawMedicalTab === "rendezvous" ||
+      rawMedicalTab === "forms" ||
       rawMedicalTab === "crm" ||
       rawMedicalTab === "form_photos" ||
       rawMedicalTab === "medication"
@@ -694,6 +697,14 @@ export default async function PatientPage({
 
         {medicalTab === "rendezvous" ? (
           <PatientRendezvousTab patientId={patient.id} />
+        ) : null}
+
+        {medicalTab === "forms" ? (
+          <PatientFormsTab
+            patientId={patient.id}
+            patientEmail={(patient as any).email ?? null}
+            patientName={`${patient.first_name} ${patient.last_name}`}
+          />
         ) : null}
 
         {medicalTab === "crm" ? (

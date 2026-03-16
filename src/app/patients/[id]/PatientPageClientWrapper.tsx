@@ -16,6 +16,7 @@ type MedicalTab =
   | "patient_information"
   | "documents"
   | "rendezvous"
+  | "forms"
   | "crm"
   | "form_photos"
   | "medication";
@@ -40,6 +41,7 @@ export default function PatientPageClientWrapper({
     { id: "patient_information", label: "Patient Information" },
     { id: "documents", label: "Documents" },
     { id: "rendezvous", label: "Rendezvous" },
+    { id: "forms", label: "Forms" },
     { id: "crm", label: "CRM" },
   ];
 
