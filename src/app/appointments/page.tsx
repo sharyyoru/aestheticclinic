@@ -670,29 +670,20 @@ async function sendAppointmentConfirmationEmail(
     if (patientPhone && patientPhone.trim().length > 0) {
       const whatsappText = `Appointment confirmation on ${dateTimeLabel} for ${serviceLabel} with ${doctorName} at ${location}`;
 
-      const templateVariables = {
-        "1": dateTimeLabel,
-        "2": serviceLabel,
-        "3": doctorName,
-        "4": patientName || "patient",
-      };
-
       try {
-        await fetch("/api/whatsapp/send", {
+        await fetch("/api/whatsapp/queue", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            toPhone: patientPhone,
+            messageBody: whatsappText,
             patientId: appointment.patient_id,
-            to: patientPhone,
-            body: whatsappText,
-            templateSid: "HX6f50c6d2b3b2372a9c2145ebfc1b5911",
-            templateVariables,
           }),
         });
       } catch (error) {
-        console.error("Failed to send WhatsApp appointment notification", error);
+        console.error("Failed to enqueue WhatsApp appointment notification", error);
       }
     }
   } catch (error) {

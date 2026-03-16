@@ -9,6 +9,7 @@ import HeaderUser from "@/components/HeaderUser";
 import HeaderCommentsButton from "@/components/HeaderCommentsButton";
 import HeaderNotificationsButton from "@/components/HeaderNotificationsButton";
 import HeaderTasksButton from "@/components/HeaderTasksButton";
+import HeaderWhatsAppButton from "@/components/HeaderWhatsAppButton";
 import GlobalPatientSearch from "@/components/GlobalPatientSearch";
 import { CommentsUnreadProvider } from "@/components/CommentsUnreadContext";
 import { TasksNotificationsProvider } from "@/components/TasksNotificationsContext";
@@ -468,6 +469,7 @@ export default function RootLayout({
                       <HeaderTasksButton />
                       <HeaderNotificationsButton />
                       <HeaderCommentsButton />
+                      <HeaderWhatsAppButton />
                       <HeaderUser />
                     </div>
                 </header>

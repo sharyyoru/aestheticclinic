@@ -95,22 +95,22 @@ export default function WhatsAppConversation({
       setSending(true);
       setError(null);
 
-      const response = await fetch("/api/whatsapp/send", {
+      const response = await fetch("/api/whatsapp/queue", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          toPhone: patientPhone,
+          messageBody: body,
           patientId,
-          toNumber: patientPhone,
-          message: body,
         }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Failed to send message");
+        throw new Error(result.error || "Failed to enqueue message");
       }
 
       setMessageBody("");

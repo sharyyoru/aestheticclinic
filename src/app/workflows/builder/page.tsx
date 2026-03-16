@@ -92,7 +92,7 @@ const TRIGGER_OPTIONS: { value: TriggerType; label: string; description: string;
 // Action definitions
 const ACTION_OPTIONS: { value: ActionType; label: string; description: string; icon: string; color: string }[] = [
   { value: "send_email", label: "Send Email", description: "Send an email to patient or staff", icon: "📧", color: "emerald" },
-  { value: "send_whatsapp", label: "Send WhatsApp", description: "Send a WhatsApp message via Twilio", icon: "💬", color: "green" },
+  { value: "send_whatsapp", label: "Send WhatsApp", description: "Send a WhatsApp message via deal owner's session", icon: "💬", color: "green" },
   { value: "send_notification", label: "Send Notification", description: "Send in-app notification to user", icon: "🔔", color: "blue" },
   { value: "create_task", label: "Create Task", description: "Create a new task for a user", icon: "📋", color: "purple" },
   { value: "update_task", label: "Update Task", description: "Update an existing task", icon: "✏️", color: "purple" },
@@ -795,19 +795,54 @@ export default function WorkflowBuilderPage() {
             <>
               <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-3">
                 <label className="block text-xs font-semibold text-green-800 uppercase tracking-wide">WhatsApp Message</label>
-                <p className="text-xs text-green-700">Messages will be sent via Twilio to the patient&apos;s phone number.</p>
+                <p className="text-xs text-green-700">Messages will be sent via the deal owner&apos;s WhatsApp session to the patient&apos;s phone number.</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">Message Template</label>
                 <textarea
+                  id={`wa_msg_${selectedNode.id}`}
                   value={(data.config as { message_template?: string }).message_template || ""}
                   onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, message_template: e.target.value } })}
                   placeholder="Hi {{patient.first_name}}, we wanted to follow up on your inquiry..."
                   rows={4}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
                 />
-                <p className="mt-1 text-[10px] text-slate-500">Use {"{{patient.first_name}}"}, {"{{patient.last_name}}"}, {"{{deal.title}}"} for variables</p>
+                <p className="mt-1.5 mb-1 text-[10px] font-medium text-slate-500">Click to insert variable:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: "First Name", value: "{{patient.first_name}}" },
+                    { label: "Last Name", value: "{{patient.last_name}}" },
+                    { label: "Phone", value: "{{patient.phone}}" },
+                    { label: "Email", value: "{{patient.email}}" },
+                    { label: "Deal Title", value: "{{deal.title}}" },
+                    { label: "Deal Notes", value: "{{deal.notes}}" },
+                    { label: "Pipeline", value: "{{deal.pipeline}}" },
+                    { label: "From Stage", value: "{{from_stage}}" },
+                    { label: "To Stage", value: "{{to_stage}}" },
+                  ].map((v) => (
+                    <button
+                      key={v.value}
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById(`wa_msg_${selectedNode.id}`) as HTMLTextAreaElement | null;
+                        const current = (data.config as { message_template?: string }).message_template || "";
+                        if (el) {
+                          const start = el.selectionStart ?? current.length;
+                          const end = el.selectionEnd ?? current.length;
+                          const updated = current.slice(0, start) + v.value + current.slice(end);
+                          updateNodeData(selectedNode.id, { config: { ...data.config, message_template: updated } });
+                          setTimeout(() => { el.focus(); el.setSelectionRange(start + v.value.length, start + v.value.length); }, 0);
+                        } else {
+                          updateNodeData(selectedNode.id, { config: { ...data.config, message_template: current + v.value } });
+                        }
+                      }}
+                      className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-[10px] font-medium text-green-700 hover:bg-green-100 hover:border-green-300 transition-colors"
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Sending Behavior */}

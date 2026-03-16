@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { MessageSquare, Send, Loader2, Phone } from "lucide-react";
 import { supabaseClient } from '@/lib/supabaseClient';
+import ImagePreviewPortal from '@/components/ImagePreviewPortal';
 
 interface Chat {
   id: string;
@@ -13,14 +14,22 @@ interface Chat {
   timestamp?: number;
 }
 
+interface MediaData {
+  mimetype: string;
+  filename: string | null;
+  data: string | null;
+}
+
 interface Message {
   id: string;
   body: string;
   fromMe: boolean;
   timestamp: number;
   author: string;
+  authorName?: string | null;
   hasMedia?: boolean;
   type?: string;
+  media?: MediaData | null;
 }
 
 interface WhatsAppWebConversationProps {
@@ -61,6 +70,7 @@ export default function WhatsAppWebConversation({
   const [error, setError] = useState<string | null>(null);
   // true = patient has no existing chat yet (new conversation)
   const [isNewChat, setIsNewChat] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -468,7 +478,8 @@ export default function WhatsAppWebConversation({
   const chatSubtitle = patientPhone;
 
   return (
-    <div className="flex flex-col h-[600px] rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <>
+      <div className="flex flex-col h-[600px] rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       {header(<span className="flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />Connected</span>)}
 
       {/* Chat header */}
@@ -519,7 +530,51 @@ export default function WhatsAppWebConversation({
                       ? 'rounded-br-sm bg-[#dcf8c6] text-slate-900'
                       : 'rounded-bl-sm bg-white text-slate-900'
                   } ${msg.id.startsWith('optimistic-') ? 'opacity-70' : ''}`}>
-                    <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
+                    {/* Sender name */}
+                    {!msg.fromMe && msg.authorName && (
+                      <p className="mb-0.5 text-[10px] font-semibold text-emerald-700">{msg.authorName}</p>
+                    )}
+                    {!msg.fromMe && !msg.authorName && msg.author && (
+                      <p className="mb-0.5 text-[10px] font-medium text-slate-400">{msg.author.replace(/@(c\.us|lid|g\.us)$/g, '')}</p>
+                    )}
+                    {/* Media: image */}
+                    {msg.hasMedia && msg.media?.data && msg.media.mimetype?.startsWith('image/') && (
+                      <img
+                        src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                        alt=""
+                        className="mb-1 max-w-full cursor-pointer rounded-lg transition-opacity hover:opacity-90"
+                        style={{ maxHeight: 240 }}
+                        onClick={() => setPreviewImage(`data:${msg.media!.mimetype};base64,${msg.media!.data}`)}
+                      />
+                    )}
+                    {/* Media: video */}
+                    {msg.hasMedia && msg.media?.data && msg.media.mimetype?.startsWith('video/') && (
+                      <video
+                        src={`data:${msg.media.mimetype};base64,${msg.media.data}`}
+                        className="mb-1 max-w-full rounded-lg"
+                        style={{ maxHeight: 240 }}
+                        controls
+                        preload="metadata"
+                      />
+                    )}
+                    {/* Media placeholder */}
+                    {msg.hasMedia && !msg.media?.data && (
+                      <div className="mb-1.5 flex flex-col items-center justify-center gap-2 rounded-lg bg-slate-100/80 px-6 py-5 min-w-[160px]">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200">
+                          {msg.type === 'sticker' ? (
+                            <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z" /></svg>
+                          ) : msg.type === 'document' || msg.type === 'ptt' || msg.type === 'audio' ? (
+                            <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                          ) : (
+                            <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.41a2.25 2.25 0 013.182 0l2.909 2.91M3.75 21h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v13.5a1.5 1.5 0 001.5 1.5z" /></svg>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-500">
+                          {msg.media?.filename || (msg.type === 'sticker' ? 'Sticker' : msg.type === 'ptt' ? 'Voice message' : msg.type === 'audio' ? 'Audio' : msg.type === 'document' ? 'Document' : msg.type === 'video' ? 'Video' : 'Photo')}
+                        </span>
+                      </div>
+                    )}
+                    {msg.body && <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>}
                     <p className="text-[10px] mt-0.5 text-right text-slate-400">
                       {formatTime(msg.timestamp)}
                       {msg.fromMe && <span className="ml-1">{msg.id.startsWith('optimistic-') ? '🕐' : '✓'}</span>}
@@ -532,6 +587,7 @@ export default function WhatsAppWebConversation({
         )}
         <div ref={messagesEndRef} />
       </div>
+
 
       {/* Input */}
       <div className="border-t bg-white p-3 flex-shrink-0">
@@ -560,5 +616,8 @@ export default function WhatsAppWebConversation({
         <p className="mt-1 text-[10px] text-slate-400">Enter to send · Shift+Enter for new line</p>
       </div>
     </div>
+
+    <ImagePreviewPortal imageUrl={previewImage} onClose={() => setPreviewImage(null)} />
+    </>
   );
 }
