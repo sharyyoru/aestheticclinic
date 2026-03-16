@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
 const {
   getUserSession,
   upsertUserSession,
@@ -223,6 +224,41 @@ function getWhatsAppClient(userId) {
 const initializingUsers = new Set();
 
 /**
+ * Remove stale Chromium lock files from a user's session directory.
+ * When a container dies (redeploy), Chromium leaves SingletonLock/SingletonCookie/SingletonSocket
+ * in the profile dir. The new container's Chromium refuses to start with "profile in use" error.
+ */
+function cleanStaleLockFiles(userId) {
+  const sessionBasePath = process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions');
+  const sessionDir = path.join(sessionBasePath, `session-${userId}`);
+
+  if (!fs.existsSync(sessionDir)) return;
+
+  const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+
+  // Walk into Default/ subdirectory too (Chromium may place locks there)
+  const dirsToCheck = [sessionDir];
+  const defaultDir = path.join(sessionDir, 'Default');
+  if (fs.existsSync(defaultDir)) {
+    dirsToCheck.push(defaultDir);
+  }
+
+  for (const dir of dirsToCheck) {
+    for (const lockFile of lockFiles) {
+      const lockPath = path.join(dir, lockFile);
+      try {
+        if (fs.existsSync(lockPath)) {
+          fs.unlinkSync(lockPath);
+          console.log(`[LockCleanup] Removed stale ${lockFile} for user ${userId} at ${lockPath}`);
+        }
+      } catch (err) {
+        console.warn(`[LockCleanup] Could not remove ${lockPath}:`, err.message);
+      }
+    }
+  }
+}
+
+/**
  * Initialize WhatsApp for a user
  */
 async function initializeWhatsApp(userId) {
@@ -270,6 +306,9 @@ async function initializeWhatsApp(userId) {
     }
   }, 90000));
   
+  // Remove stale Chromium lock files left by previous container (persistent volume)
+  cleanStaleLockFiles(userId);
+
   // Start initialization in background (don't block the HTTP response)
   client.initialize().then(() => {
     console.log(`WhatsApp client initialized for user: ${userId}`);
