@@ -297,9 +297,43 @@ async function getQueueStats() {
   }
 }
 
+/**
+ * Called when a user's WhatsApp session becomes ready.
+ * Resets all their session_failed items to pending so they get sent immediately.
+ */
+async function resetSessionFailedItems(userId) {
+  if (!supabase) return;
+
+  try {
+    const { data, error } = await supabase
+      .from('whatsapp_queue')
+      .update({
+        status: 'pending',
+        scheduled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        error_message: null,
+      })
+      .eq('sender_user_id', userId)
+      .eq('status', 'session_failed')
+      .select('id');
+
+    if (error) {
+      console.error(`[Queue] Failed to reset session_failed items for user ${userId}:`, error.message);
+    } else if (data && data.length > 0) {
+      console.log(`[Queue] Session reconnected for user ${userId} — reset ${data.length} queued message(s) for immediate sending`);
+      logEvent(userId, 'session_reconnected_queue_reset', { count: data.length });
+      // Trigger immediate processing
+      processQueue();
+    }
+  } catch (err) {
+    console.error(`[Queue] Error resetting session_failed items:`, err.message);
+  }
+}
+
 module.exports = {
   startQueueProcessor,
   stopQueueProcessor,
   processQueue,
   getQueueStats,
+  resetSessionFailedItems,
 };

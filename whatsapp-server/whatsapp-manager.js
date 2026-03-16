@@ -10,6 +10,15 @@ const {
   logEvent
 } = require('./db');
 
+// Lazy-loaded to avoid circular dependency (queue-processor requires whatsapp-manager)
+let _resetSessionFailedItems = null;
+function getResetSessionFailed() {
+  if (!_resetSessionFailedItems) {
+    try { _resetSessionFailedItems = require('./queue-processor').resetSessionFailedItems; } catch { _resetSessionFailedItems = () => {}; }
+  }
+  return _resetSessionFailedItems;
+}
+
 // Store active WhatsApp clients per user
 const clients = new Map();
 
@@ -140,6 +149,9 @@ function getWhatsAppClient(userId) {
       
       broadcastToUser(userId, 'status', { status: 'ready' });
     }
+
+    // Auto-resend any queued messages that failed due to session disconnect
+    try { getResetSessionFailed()(userId); } catch {}
   });
 
   // Message event
