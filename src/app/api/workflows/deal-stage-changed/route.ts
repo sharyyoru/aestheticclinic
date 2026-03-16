@@ -605,6 +605,11 @@ export async function POST(request: Request) {
                 console.error(`Failed to assign deal owner:`, ownerError);
               } else {
                 console.log(`Assigned deal owner to ${assignedUserName} (${assignedUserId}) for deal ${safeDeal.id}`);
+                // Update in-memory deal so subsequent actions (e.g. send_whatsapp) see the new owner
+                (deal as Record<string, unknown>).owner_id = assignedUserId;
+                (deal as Record<string, unknown>).owner_name = assignedUserName;
+                safeDeal.owner_id = assignedUserId;
+                safeDeal.owner_name = assignedUserName;
               }
             } else if (config.assign_deal_owner && safeDeal.owner_id) {
               console.log(`Skipped deal owner assignment — deal already has owner: ${safeDeal.owner_name || safeDeal.owner_id}`);
