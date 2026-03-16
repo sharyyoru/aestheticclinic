@@ -43,6 +43,10 @@ export default function DocxPreviewEditor({
   const [error, setError] = useState<string | null>(null);
   const [placeholders, setPlaceholders] = useState<Map<string, string>>(new Map());
   const [originalBlob, setOriginalBlob] = useState<Blob | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const originalTextRef = useRef<string>('');
+  const textNodeMapRef = useRef<Map<number, string>>(new Map()); // Maps text index to original content
 
   // Render DOCX preview
   useEffect(() => {
@@ -71,6 +75,11 @@ export default function DocxPreviewEditor({
         setIsLoading(false);
         // Extract placeholders from rendered content
         extractPlaceholders();
+        // Store original text for comparison and mark text nodes with indices
+        if (containerRef.current) {
+          originalTextRef.current = containerRef.current.innerText;
+          markTextNodesWithIndices();
+        }
       })
       .catch((err) => {
         console.error('Error rendering DOCX:', err);
@@ -112,17 +121,165 @@ export default function DocxPreviewEditor({
       newMap.set(placeholder, value);
       return newMap;
     });
+    setHasChanges(true);
   };
 
-  // Save document with replaced placeholders
+  // Handle content editing
+  const handleContentChange = () => {
+    if (containerRef.current) {
+      const currentText = containerRef.current.innerText;
+      if (currentText !== originalTextRef.current) {
+        setHasChanges(true);
+      }
+    }
+  };
+
+  // Toggle edit mode - enable/disable contentEditable on individual text spans
+  const toggleEditMode = () => {
+    const newEditingState = !isEditing;
+    setIsEditing(newEditingState);
+    
+    // Toggle contentEditable on all marked text spans
+    if (containerRef.current) {
+      const markedSpans = containerRef.current.querySelectorAll('span[data-docx-text-idx]');
+      markedSpans.forEach(span => {
+        const htmlSpan = span as HTMLElement;
+        if (newEditingState) {
+          htmlSpan.contentEditable = 'true';
+          htmlSpan.style.outline = 'none';
+          htmlSpan.style.minWidth = '2px'; // Ensure empty spans are still clickable
+          
+          // Add event listeners to prevent structural changes
+          htmlSpan.addEventListener('keydown', handleSpanKeyDown);
+          htmlSpan.addEventListener('input', handleSpanInput);
+          htmlSpan.addEventListener('paste', handleSpanPaste);
+        } else {
+          htmlSpan.contentEditable = 'false';
+          htmlSpan.removeEventListener('keydown', handleSpanKeyDown);
+          htmlSpan.removeEventListener('input', handleSpanInput);
+          htmlSpan.removeEventListener('paste', handleSpanPaste);
+        }
+      });
+    }
+  };
+
+  // Prevent Enter key from creating new lines in spans
+  const handleSpanKeyDown = (e: Event) => {
+    const keyEvent = e as KeyboardEvent;
+    if (keyEvent.key === 'Enter') {
+      e.preventDefault();
+    }
+  };
+
+  // Handle input changes on spans
+  const handleSpanInput = () => {
+    setHasChanges(true);
+  };
+
+  // Handle paste - strip formatting and prevent structural changes
+  const handleSpanPaste = (e: Event) => {
+    e.preventDefault();
+    const pasteEvent = e as ClipboardEvent;
+    const text = pasteEvent.clipboardData?.getData('text/plain') || '';
+    // Remove newlines from pasted text
+    const cleanText = text.replace(/[\r\n]+/g, ' ');
+    document.execCommand('insertText', false, cleanText);
+    setHasChanges(true);
+  };
+
+  // Mark text nodes in the rendered HTML with indices that map to XML text nodes
+  const markTextNodesWithIndices = () => {
+    if (!containerRef.current) return;
+    
+    // Find all text-containing spans in the docx-preview output
+    // docx-preview creates spans for each text run
+    let textIndex = 0;
+    const textMap = new Map<number, string>();
+    
+    const walkTextNodes = (element: Element) => {
+      const childNodes = Array.from(element.childNodes);
+      
+      // Check if this is a leaf span (contains text but no child spans)
+      if (element.tagName === 'SPAN') {
+        const hasChildSpans = element.querySelector('span') !== null;
+        
+        if (!hasChildSpans) {
+          // This is a leaf span - mark it if it has text
+          const text = element.textContent || '';
+          if (text.length > 0) {
+            (element as HTMLElement).setAttribute('data-docx-text-idx', String(textIndex));
+            textMap.set(textIndex, text);
+            textIndex++;
+          }
+          return; // Don't recurse further
+        }
+      }
+      
+      // Recurse into children
+      childNodes.forEach(child => {
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          walkTextNodes(child as Element);
+        }
+      });
+    };
+    
+    walkTextNodes(containerRef.current);
+    textNodeMapRef.current = textMap;
+    console.log('[DocxEditor] Marked text nodes:', textIndex, 'Map size:', textMap.size);
+  };
+
+  // Collect changes from live DOM spans
+  const collectChangesFromDOM = (): Map<number, string> => {
+    const changes = new Map<number, string>();
+    if (!containerRef.current) return changes;
+    
+    const liveSpans = containerRef.current.querySelectorAll('span[data-docx-text-idx]');
+    console.log('[DocxEditor] Collecting changes from', liveSpans.length, 'live spans');
+    
+    liveSpans.forEach(span => {
+      const idx = parseInt(span.getAttribute('data-docx-text-idx') || '-1', 10);
+      if (idx >= 0) {
+        const currentText = span.textContent || '';
+        const originalText = textNodeMapRef.current.get(idx) || '';
+        
+        if (currentText !== originalText) {
+          console.log(`[DocxEditor] Change at index ${idx}: "${originalText}" -> "${currentText}"`);
+          changes.set(idx, currentText);
+        }
+      }
+    });
+    
+    console.log('[DocxEditor] Total changes collected:', changes.size);
+    return changes;
+  };
+
+  // Save document with replaced placeholders and edited content
   const handleSave = async () => {
     if (!originalBlob) return;
     
     setIsSaving(true);
     try {
-      // Replace placeholders in the original DOCX
-      const modifiedBlob = await replacePlaceholdersInDocx(originalBlob, placeholders);
+      // Collect changes directly from live DOM (more reliable than parsing innerHTML)
+      const domChanges = collectChangesFromDOM();
+      
+      console.log('[DocxEditor] Saving with hasChanges:', hasChanges, 'DOM changes:', domChanges.size);
+      
+      // Replace placeholders and apply DOM changes in the original DOCX
+      const modifiedBlob = await applyChangesToDocx(originalBlob, placeholders, domChanges);
       await onSave(modifiedBlob);
+      setHasChanges(false);
+      
+      // Update original text reference and text node map after save
+      if (containerRef.current) {
+        originalTextRef.current = containerRef.current.innerText;
+        const updatedSpans = containerRef.current.querySelectorAll('span[data-docx-text-idx]');
+        updatedSpans.forEach(span => {
+          const idx = parseInt(span.getAttribute('data-docx-text-idx') || '-1', 10);
+          if (idx >= 0) {
+            textNodeMapRef.current.set(idx, span.textContent || '');
+          }
+        });
+      }
     } catch (err) {
       console.error('Error saving document:', err);
       alert('Failed to save document');
@@ -131,10 +288,11 @@ export default function DocxPreviewEditor({
     }
   };
 
-  // Replace placeholders in DOCX XML
-  const replacePlaceholdersInDocx = async (
+  // Apply changes to DOCX XML using the changes map from DOM
+  const applyChangesToDocx = async (
     blob: Blob,
-    replacements: Map<string, string>
+    replacements: Map<string, string>,
+    changes: Map<number, string>
   ): Promise<Blob> => {
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(blob);
@@ -145,7 +303,7 @@ export default function DocxPreviewEditor({
       throw new Error('Invalid DOCX file');
     }
     
-    // Replace placeholders
+    // Replace placeholders first
     let modifiedXml = documentXml;
     replacements.forEach((value, placeholder) => {
       if (value) {
@@ -161,6 +319,11 @@ export default function DocxPreviewEditor({
       }
     });
     
+    // Apply text changes if any
+    if (changes.size > 0) {
+      modifiedXml = applyTextChangesToXml(modifiedXml, changes);
+    }
+    
     // Update the zip
     zip.file('word/document.xml', modifiedXml);
     
@@ -171,6 +334,58 @@ export default function DocxPreviewEditor({
     });
     
     return newBlob;
+  };
+  
+  // Apply text changes to XML using content-based matching
+  // Instead of relying on index matching (which can fail due to docx-preview rendering differences),
+  // we find XML text nodes by their original content and replace them
+  const applyTextChangesToXml = (originalXml: string, changes: Map<number, string>): string => {
+    // Build a map of original text -> new text for content-based matching
+    const contentChanges = new Map<string, string>();
+    changes.forEach((newText, idx) => {
+      const originalText = textNodeMapRef.current.get(idx);
+      if (originalText && originalText !== newText) {
+        contentChanges.set(originalText, newText);
+        console.log(`[DocxEditor] Content change: "${originalText}" -> "${newText}"`);
+      }
+    });
+    
+    if (contentChanges.size === 0) {
+      console.log('[DocxEditor] No content changes to apply');
+      return originalXml;
+    }
+    
+    // Parse XML
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(originalXml, 'application/xml');
+    
+    // Find all w:t elements (text runs in DOCX)
+    const textElements = xmlDoc.getElementsByTagNameNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 't');
+    console.log('[DocxEditor] XML text elements found:', textElements.length);
+    
+    let updatedCount = 0;
+    
+    // For each XML text element, check if its content matches any of our changes
+    for (let i = 0; i < textElements.length; i++) {
+      const textEl = textElements[i];
+      const text = textEl.textContent || '';
+      
+      if (contentChanges.has(text)) {
+        const newText = contentChanges.get(text) || '';
+        console.log(`[DocxEditor] Updating XML text: "${text}" -> "${newText}"`);
+        textEl.textContent = newText;
+        updatedCount++;
+        // Remove from map to avoid double-updating if same text appears multiple times
+        // (first match wins)
+        contentChanges.delete(text);
+      }
+    }
+    
+    console.log(`[DocxEditor] Updated ${updatedCount} XML text nodes`);
+    
+    // Serialize back to string
+    const serializer = new XMLSerializer();
+    return serializer.serializeToString(xmlDoc);
   };
 
   if (error) {
@@ -194,12 +409,33 @@ export default function DocxPreviewEditor({
       {/* Header */}
       <div className="bg-slate-800 text-white px-4 py-3 flex items-center justify-between shrink-0">
         <h2 className="text-lg font-semibold">{documentTitle}</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Edit mode toggle */}
+          <button
+            onClick={toggleEditMode}
+            className={`px-4 py-2 rounded flex items-center gap-2 transition-colors ${
+              isEditing 
+                ? 'bg-amber-500 text-white hover:bg-amber-600' 
+                : 'bg-slate-600 text-white hover:bg-slate-500'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            {isEditing ? 'Editing' : 'Edit'}
+          </button>
           <button
             onClick={handleSave}
-            disabled={isSaving}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            disabled={isSaving || !hasChanges}
+            className={`px-4 py-2 rounded flex items-center gap-2 ${
+              hasChanges 
+                ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                : 'bg-blue-400 text-white/70 cursor-not-allowed'
+            } disabled:opacity-50`}
           >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
             {isSaving ? 'Saving...' : 'Save'}
           </button>
           <button
@@ -246,9 +482,20 @@ export default function DocxPreviewEditor({
               </div>
             </div>
           )}
+          {/* Edit mode indicator */}
+          {isEditing && !isLoading && (
+            <div className="mb-4 mx-auto max-w-[850px] bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 flex items-center gap-2 text-amber-800 text-sm">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span><strong>Edit Mode:</strong> Click anywhere in the document to edit text directly. Changes are saved when you click Save.</span>
+            </div>
+          )}
           <div
             ref={containerRef}
-            className="mx-auto bg-white shadow-lg"
+            className={`mx-auto bg-white shadow-lg transition-all ${
+              isEditing ? 'ring-2 ring-amber-400' : ''
+            }`}
             style={{ 
               display: isLoading ? 'none' : 'block',
               maxWidth: '850px', // A4 width approximately
@@ -269,6 +516,18 @@ export default function DocxPreviewEditor({
         .docx-preview .docx-wrapper > section.docx {
           margin-bottom: 20px;
           box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        /* Editing styles for individual editable spans */
+        span[contenteditable="true"] {
+          cursor: text;
+          border-bottom: 1px dashed rgba(251, 191, 36, 0.6);
+        }
+        span[contenteditable="true"]:hover {
+          background-color: rgba(251, 191, 36, 0.15);
+        }
+        span[contenteditable="true"]:focus {
+          background-color: rgba(251, 191, 36, 0.2);
+          outline: none;
         }
       `}</style>
     </div>

@@ -472,22 +472,28 @@ export default function PatientDocumentsTab({
   const selectedFilePreviewUrl = useMemo(() => {
     if (!selectedFile || selectedFile.kind !== "file") return null;
 
+    let baseUrl: string;
+    
     // For patient-docs files, use the pre-fetched publicUrl
     if (selectedFile.source === "patient-docs" && selectedFile.publicUrl) {
-      return selectedFile.publicUrl;
+      baseUrl = selectedFile.publicUrl;
+    } else {
+      // For patient_document bucket files
+      const fullPath = [patientId, selectedFile.path]
+        .filter(Boolean)
+        .join("/");
+
+      const { data } = supabaseClient.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(fullPath);
+
+      baseUrl = data.publicUrl;
     }
 
-    // For patient_document bucket files
-    const fullPath = [patientId, selectedFile.path]
-      .filter(Boolean)
-      .join("/");
-
-    const { data } = supabaseClient.storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(fullPath);
-
-    return data.publicUrl ?? null;
-  }, [patientId, selectedFile]);
+    // Add cache-busting parameter to ensure fresh content after edits
+    const cacheBuster = `?v=${refreshKey}-${selectedFile.updated_at || Date.now()}`;
+    return baseUrl ? baseUrl + cacheBuster : null;
+  }, [patientId, selectedFile, refreshKey]);
 
   async function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
@@ -1203,6 +1209,9 @@ export default function PatientDocumentsTab({
                         .getPublicUrl(fullPath);
                       thumbUrl = data.publicUrl;
                     }
+                    // Add cache-busting parameter to ensure fresh content after edits
+                    const cacheBuster = `?v=${refreshKey}-${item.updated_at || Date.now()}`;
+                    const previewUrl = thumbUrl + cacheBuster;
                     const ext = getExtension(item.name);
                     const isImageThumb = [
                       "jpg",
@@ -1287,7 +1296,7 @@ export default function PatientDocumentsTab({
                           onClick={(e) => {
                             e.stopPropagation();
                             setPreviewModal({
-                              url: thumbUrl,
+                              url: previewUrl,
                               name: item.name,
                               mimeType,
                               uploadedAt: uploadDate || null,
@@ -1310,7 +1319,7 @@ export default function PatientDocumentsTab({
                               e.stopPropagation();
                               documentPreviewTabs?.addTab({
                                 name: item.name,
-                                url: thumbUrl,
+                                url: previewUrl,
                                 mimeType,
                               });
                             }}

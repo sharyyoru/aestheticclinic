@@ -19,8 +19,8 @@ export default function DocxPreview({ url, fileName }: DocxPreviewProps) {
     setIsLoading(true);
     setError(null);
 
-    // Fetch the document and render it
-    fetch(url)
+    // Fetch the document and render it (with cache-busting)
+    fetch(url, { cache: 'no-store' })
       .then(response => {
         if (!response.ok) throw new Error('Failed to fetch document');
         return response.blob();
