@@ -191,6 +191,10 @@ export default function DocxPreviewEditor({
   const markTextNodesWithIndices = () => {
     if (!containerRef.current) return;
     
+    // First, remove any existing data-docx-text-idx attributes to ensure clean state
+    const existingMarked = containerRef.current.querySelectorAll('[data-docx-text-idx]');
+    existingMarked.forEach(el => el.removeAttribute('data-docx-text-idx'));
+    
     // Find all text-containing spans in the docx-preview output
     // docx-preview creates spans for each text run
     let textIndex = 0;
@@ -225,44 +229,46 @@ export default function DocxPreviewEditor({
     
     walkTextNodes(containerRef.current);
     textNodeMapRef.current = textMap;
-    console.log('[DocxEditor] Marked text nodes:', textIndex, 'Map size:', textMap.size);
   };
 
-  // Collect changes from live DOM spans
+  // Collect changes by querying spans with data-docx-text-idx (set during initial render)
   const collectChangesFromDOM = (): Map<number, string> => {
     const changes = new Map<number, string>();
     if (!containerRef.current) return changes;
     
-    const liveSpans = containerRef.current.querySelectorAll('span[data-docx-text-idx]');
-    console.log('[DocxEditor] Collecting changes from', liveSpans.length, 'live spans');
+    const mapSize = textNodeMapRef.current.size;
     
-    liveSpans.forEach(span => {
+    // Query all spans that were marked during initial render
+    const markedSpans = containerRef.current.querySelectorAll('span[data-docx-text-idx]');
+    
+    markedSpans.forEach(span => {
       const idx = parseInt(span.getAttribute('data-docx-text-idx') || '-1', 10);
-      if (idx >= 0) {
+      
+      // Only process valid indices within the map range
+      if (idx >= 0 && idx < mapSize) {
         const currentText = span.textContent || '';
         const originalText = textNodeMapRef.current.get(idx) || '';
         
         if (currentText !== originalText) {
-          console.log(`[DocxEditor] Change at index ${idx}: "${originalText}" -> "${currentText}"`);
           changes.set(idx, currentText);
         }
       }
     });
     
-    console.log('[DocxEditor] Total changes collected:', changes.size);
     return changes;
   };
 
   // Save document with replaced placeholders and edited content
   const handleSave = async () => {
-    if (!originalBlob) return;
+    if (!originalBlob) {
+      console.error('[DocxEditor] No original blob to save');
+      return;
+    }
     
     setIsSaving(true);
     try {
       // Collect changes directly from live DOM (more reliable than parsing innerHTML)
       const domChanges = collectChangesFromDOM();
-      
-      console.log('[DocxEditor] Saving with hasChanges:', hasChanges, 'DOM changes:', domChanges.size);
       
       // Replace placeholders and apply DOM changes in the original DOCX
       const modifiedBlob = await applyChangesToDocx(originalBlob, placeholders, domChanges);
@@ -303,11 +309,13 @@ export default function DocxPreviewEditor({
       throw new Error('Invalid DOCX file');
     }
     
-    // Replace placeholders first
+    // Replace placeholders - handle fragmented placeholders in XML
+    // DOCX often splits text like ${placeholder} across multiple <w:t> elements
     let modifiedXml = documentXml;
+    
     replacements.forEach((value, placeholder) => {
       if (value) {
-        // Escape XML special characters
+        // Escape XML special characters in the replacement value
         const escapedValue = value
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
@@ -315,7 +323,21 @@ export default function DocxPreviewEditor({
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&apos;');
         
-        modifiedXml = modifiedXml.split(placeholder).join(escapedValue);
+        // First try simple replacement
+        if (modifiedXml.includes(placeholder)) {
+          modifiedXml = modifiedXml.split(placeholder).join(escapedValue);
+        } else {
+          // Handle fragmented placeholder - create regex that allows XML tags between characters
+          // e.g., ${name} might be stored as $</w:t><w:t>{</w:t><w:t>name}
+          const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const fragmentedPattern = escapedPlaceholder.split('').join('(?:</w:t>(?:<[^>]*>)*<w:t[^>]*>)?');
+          const fragmentedRegex = new RegExp(fragmentedPattern, 'g');
+          
+          const beforeLength = modifiedXml.length;
+          modifiedXml = modifiedXml.replace(fragmentedRegex, escapedValue);
+          
+          // Replacement happened if length changed
+        }
       }
     });
     
@@ -336,22 +358,9 @@ export default function DocxPreviewEditor({
     return newBlob;
   };
   
-  // Apply text changes to XML using content-based matching
-  // Instead of relying on index matching (which can fail due to docx-preview rendering differences),
-  // we find XML text nodes by their original content and replace them
+  // Apply text changes to XML using content-based matching with context for empty fields
   const applyTextChangesToXml = (originalXml: string, changes: Map<number, string>): string => {
-    // Build a map of original text -> new text for content-based matching
-    const contentChanges = new Map<string, string>();
-    changes.forEach((newText, idx) => {
-      const originalText = textNodeMapRef.current.get(idx);
-      if (originalText && originalText !== newText) {
-        contentChanges.set(originalText, newText);
-        console.log(`[DocxEditor] Content change: "${originalText}" -> "${newText}"`);
-      }
-    });
-    
-    if (contentChanges.size === 0) {
-      console.log('[DocxEditor] No content changes to apply');
+    if (changes.size === 0) {
       return originalXml;
     }
     
@@ -359,29 +368,93 @@ export default function DocxPreviewEditor({
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(originalXml, 'application/xml');
     
-    // Find all w:t elements (text runs in DOCX)
+    // Find all w:t elements
     const textElements = xmlDoc.getElementsByTagNameNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 't');
-    console.log('[DocxEditor] XML text elements found:', textElements.length);
+    const xmlTextArray = Array.from(textElements);
     
     let updatedCount = 0;
     
-    // For each XML text element, check if its content matches any of our changes
-    for (let i = 0; i < textElements.length; i++) {
-      const textEl = textElements[i];
-      const text = textEl.textContent || '';
+    // Sort changes by index to process in order
+    const sortedChanges = Array.from(changes.entries()).sort((a, b) => a[0] - b[0]);
+    
+    for (const [idx, newText] of sortedChanges) {
+      const originalText = textNodeMapRef.current.get(idx) || '';
       
-      if (contentChanges.has(text)) {
-        const newText = contentChanges.get(text) || '';
-        console.log(`[DocxEditor] Updating XML text: "${text}" -> "${newText}"`);
-        textEl.textContent = newText;
-        updatedCount++;
-        // Remove from map to avoid double-updating if same text appears multiple times
-        // (first match wins)
-        contentChanges.delete(text);
+      // Skip if no actual change
+      if (originalText === newText) continue;
+      
+      // Case 1: Original has content - use content-based matching
+      if (originalText.trim().length > 0) {
+        const matchingNodes = xmlTextArray.filter(el => el.textContent === originalText);
+        
+        if (matchingNodes.length === 1) {
+          matchingNodes[0].textContent = newText;
+          updatedCount++;
+        } else if (matchingNodes.length > 1 && originalText.length > 3) {
+          matchingNodes[0].textContent = newText;
+          updatedCount++;
+        }
+      }
+      // Case 2: Original is empty - user is adding text to an empty field
+      // Use preceding text as context to find the right position
+      else if (newText.trim().length > 0) {
+        // Find the preceding non-empty text in our map
+        let precedingText = '';
+        let precedingIdx = -1;
+        for (let i = idx - 1; i >= 0; i--) {
+          const prevText = textNodeMapRef.current.get(i) || '';
+          if (prevText.trim().length > 0) {
+            precedingText = prevText;
+            precedingIdx = i;
+            break;
+          }
+        }
+        
+        if (precedingText) {
+          
+          let inserted = false;
+          
+          // Strategy 1: Look for exact match then find empty slot
+          for (let i = 0; i < xmlTextArray.length && !inserted; i++) {
+            if (xmlTextArray[i].textContent === precedingText) {
+              // Look for the next empty or near-empty w:t element after this
+              for (let j = i + 1; j < xmlTextArray.length && j <= i + 5; j++) {
+                const nextEl = xmlTextArray[j];
+                const nextText = nextEl.textContent || '';
+                if (nextText.trim().length === 0) {
+                  nextEl.textContent = newText;
+                  updatedCount++;
+                  inserted = true;
+                  break;
+                }
+              }
+              
+              // Strategy 2: If no empty slot, append to the preceding text with a space
+              if (!inserted) {
+                xmlTextArray[i].textContent = precedingText + ' ' + newText;
+                updatedCount++;
+                inserted = true;
+              }
+              break;
+            }
+          }
+          
+          // Strategy 3: Try partial/contains match if exact match failed
+          if (!inserted) {
+            for (let i = 0; i < xmlTextArray.length && !inserted; i++) {
+              const xmlText = xmlTextArray[i].textContent || '';
+              // Check if XML contains the end of our preceding text (for split text)
+              if (xmlText.length > 3 && precedingText.includes(xmlText)) {
+                xmlTextArray[i].textContent = xmlText + ' ' + newText;
+                updatedCount++;
+                inserted = true;
+              }
+            }
+          }
+          
+        }
       }
     }
-    
-    console.log(`[DocxEditor] Updated ${updatedCount} XML text nodes`);
     
     // Serialize back to string
     const serializer = new XMLSerializer();
