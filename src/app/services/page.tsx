@@ -148,7 +148,7 @@ export default function ServicesPage() {
           .select(
             "id, category_id, name, code, description, is_active, base_price",
           )
-          .order("created_at", { ascending: true });
+          .order("name", { ascending: true });
 
         if (!isMounted) return;
 

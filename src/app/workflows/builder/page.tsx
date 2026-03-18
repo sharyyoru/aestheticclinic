@@ -245,7 +245,7 @@ export default function WorkflowBuilderPage() {
             .from("services")
             .select("id, name")
             .eq("category_id", categoryData.id)
-            .order("name");
+            .order("name", { ascending: true });
           if (servicesData) setServices(servicesData);
         }
 

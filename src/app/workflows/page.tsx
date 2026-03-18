@@ -604,7 +604,7 @@ function WorkflowEnrollmentsModal({
       .from("services")
       .select("id, name")
       .eq("is_active", true)
-      .order("name");
+      .order("name", { ascending: true });
     if (data) setServices(data);
   }
 

@@ -347,7 +347,8 @@ export async function POST(request: NextRequest) {
         .from("services")
         .select("id, name")
         .eq("category_id", hubspotCategory.id)
-        .eq("is_active", true);
+        .eq("is_active", true)
+        .order("name", { ascending: true });
       hubspotServices = (services as HubspotService[]) || [];
     }
 

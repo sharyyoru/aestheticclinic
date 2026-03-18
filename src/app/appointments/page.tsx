@@ -1007,13 +1007,33 @@ export default function CalendarPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Allowed calendar names - only these will be shown in the calendar sidebar
+  const ALLOWED_CALENDAR_NAMES = [
+    "Xavier Tenorio",
+    "Yulia Raspertova",
+    "Borhan Rosa",
+    "Rodrigues Cezar",
+    "Patricia Caballero",
+    "Laser& treatments aesthetics clinic",
+    "Gstaad",
+    "Montreux",
+    "Lily Radinova",
+    "Neyner Leon",
+    "Mounia Khedir",
+    "Vladimir Facturation",
+    "Liridona Demiri",
+    "Burbuqe Fazliu",
+    "Assistante",
+    "Yosra",
+  ];
+
   useEffect(() => {
     if (providers.length === 0) return;
 
     setDoctorCalendars((prev) => {
       if (prev.length > 0) return prev;
 
-      // Normalize name for deduplication - remove prefixes, normalize spelling
+      // Normalize name for deduplication and matching - remove prefixes, normalize spelling
       function normalizeName(name: string): string {
         return name
           .toLowerCase()
@@ -1038,11 +1058,33 @@ export default function CalendarPage() {
         }
       } catch {}
 
-      // Deduplicate providers by normalized name
+      // Normalize allowed names for matching
+      const normalizedAllowedNames = ALLOWED_CALENDAR_NAMES.map(name => normalizeName(name));
+      
+      // Check if a provider name matches any allowed name
+      function isAllowedProvider(providerName: string): boolean {
+        const normalized = normalizeName(providerName);
+        return normalizedAllowedNames.some(allowed => {
+          // Check for exact match or partial match (name contains allowed or allowed contains name)
+          return normalized === allowed || 
+                 normalized.includes(allowed) || 
+                 allowed.includes(normalized) ||
+                 // Also check individual words for flexibility
+                 normalized.split(' ').some(word => word.length > 2 && allowed.includes(word)) ||
+                 allowed.split(' ').some(word => word.length > 2 && normalized.includes(word));
+        });
+      }
+
+      // Deduplicate providers by normalized name and filter to allowed names only
       const seenNormalizedNames = new Map<string, typeof providers[0]>();
       const uniqueProviders = providers.filter((provider) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const normalized = normalizeName(rawName);
+        
+        // Skip if not in allowed list
+        if (!isAllowedProvider(rawName)) {
+          return false;
+        }
         
         if (seenNormalizedNames.has(normalized)) {
           return false; // Skip duplicate

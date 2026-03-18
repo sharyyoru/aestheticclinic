@@ -340,7 +340,8 @@ export async function POST(request: NextRequest) {
     // Load services for matching
     const { data: hubspotServices } = await supabaseAdmin
       .from("services")
-      .select("id, name");
+      .select("id, name")
+      .order("name", { ascending: true });
 
     const matchedService = matchServiceToHubspot(
       serviceInterest,
