@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback, useLayoutEffect } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
@@ -734,6 +734,31 @@ export default function CalendarPage() {
     slotHeight: number;
     startMinutesOffset: number;
   } | null>(null);
+
+  // iOS Safari viewport height fix
+  const [viewportHeight, setViewportHeight] = useState<string>("100vh");
+  
+  // Fix for iOS Safari dynamic viewport height
+  useLayoutEffect(() => {
+    function updateViewportHeight() {
+      // Use visualViewport for iOS Safari compatibility
+      const vh = window.visualViewport?.height || window.innerHeight;
+      setViewportHeight(`${vh}px`);
+    }
+    
+    updateViewportHeight();
+    
+    // Listen for resize and orientation changes
+    window.addEventListener("resize", updateViewportHeight);
+    window.addEventListener("orientationchange", updateViewportHeight);
+    window.visualViewport?.addEventListener("resize", updateViewportHeight);
+    
+    return () => {
+      window.removeEventListener("resize", updateViewportHeight);
+      window.removeEventListener("orientationchange", updateViewportHeight);
+      window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+    };
+  }, []);
   
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -1670,6 +1695,7 @@ export default function CalendarPage() {
   }
 
   // Touch event handlers for iPad/tablet drag-to-create
+  // Improved for better iPad Safari compatibility
   const handleTouchStart = useCallback((
     e: React.TouchEvent,
     date: Date,
@@ -1679,8 +1705,9 @@ export default function CalendarPage() {
   ) => {
     if (!slotElement) return;
     
-    // Prevent default to avoid scroll while dragging
-    e.preventDefault();
+    // For iPad: Use a small delay to distinguish between tap and drag
+    const touch = e.touches[0];
+    if (!touch) return;
     
     const rect = slotElement.getBoundingClientRect();
     const containerRect = slotElement.parentElement?.getBoundingClientRect();
@@ -1699,7 +1726,10 @@ export default function CalendarPage() {
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!isDraggingCreate || !touchDragInfoRef.current) return;
     
-    e.preventDefault();
+    // Prevent scrolling while dragging on iPad
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     
     const touch = e.touches[0];
     if (!touch) return;
@@ -1722,7 +1752,9 @@ export default function CalendarPage() {
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     if (!isDraggingCreate) return;
-    e.preventDefault();
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     handleDragCreateEnd();
   }, [isDraggingCreate, dragStartMinutes, dragEndMinutes, dragDate, dragDoctorCalendarId, doctorCalendars]);
 
@@ -2285,9 +2317,16 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
+    <div 
+      className="flex gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2"
+      style={{ 
+        height: `calc(${viewportHeight} - 96px)`,
+        minHeight: '400px',
+        WebkitOverflowScrolling: 'touch',
+      } as React.CSSProperties}
+    >
       {/* Left sidebar similar to Google Calendar */}
-      <aside className="hidden w-64 flex-shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex">
+      <aside className="hidden w-64 shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
         <div className="mb-3">
           <button
             type="button"
@@ -2751,15 +2790,15 @@ export default function CalendarPage() {
           </div>
         </div>
         {view === "month" ? (
-          <div className="flex-1 flex flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
-            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium uppercase tracking-wide text-slate-500 sticky top-0 z-10">
+          <div className="flex-1 flex flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium uppercase tracking-wide text-slate-500 sticky top-0 z-10" style={{ position: '-webkit-sticky' } as React.CSSProperties}>
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
                 <div key={label} className="px-3 py-2">
                   {label}
                 </div>
               ))}
             </div>
-            <div className="grid flex-1 grid-cols-7 text-[11px] overflow-y-auto">
+            <div className="grid flex-1 grid-cols-7 text-[11px] overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
               {gridDates.map((date) => {
                 const ymd = formatYmd(date);
                 const isToday = ymd === todayYmd;
@@ -2902,7 +2941,7 @@ export default function CalendarPage() {
                 ))}
               </div>
               {/* Scrollable content area with time axis and day columns */}
-              <div className="flex-1 overflow-auto">
+              <div className="flex-1 overflow-auto" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 <div className="flex">
                   {/* Time axis - scrolls with content */}
                   <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0">
@@ -3164,16 +3203,28 @@ export default function CalendarPage() {
         )}
         {editModalOpen && editingAppointment ? (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              // iOS Safari fix: prevent body scroll when modal is open
+              touchAction: 'none',
+            } as React.CSSProperties}
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 closeEditModal();
               }
             }}
           >
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)]" style={{ touchAction: 'auto' } as React.CSSProperties}>
-              <div className="flex items-start justify-between gap-2">
+            <div 
+              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)] max-h-[85vh] overflow-hidden flex flex-col"
+              style={{ 
+                touchAction: 'auto',
+                // iOS Safari safe area
+                paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+              } as React.CSSProperties}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-2 shrink-0">
                 <h2 className="text-sm font-semibold text-slate-900">Edit appointment</h2>
                 <button
                   type="button"
@@ -3195,7 +3246,7 @@ export default function CalendarPage() {
                   </svg>
                 </button>
               </div>
-              <div className="mt-3 space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              <div className="mt-3 space-y-3 flex-1 overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {/* Patient Information */}
                 <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                   <p className="text-[11px] font-semibold text-slate-700">Patient Information</p>
@@ -3534,8 +3585,11 @@ export default function CalendarPage() {
         ) : null}
         {createModalOpen ? (
           <div 
-            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              touchAction: 'none',
+            } as React.CSSProperties}
             onClick={(e) => {
               if (e.target === e.currentTarget && !savingCreate) {
                 setCreateModalOpen(false);
@@ -3543,8 +3597,11 @@ export default function CalendarPage() {
             }}
           >
             <div 
-              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]" 
-              style={{ touchAction: 'auto' } as React.CSSProperties}
+              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)] max-h-[85vh] overflow-hidden flex flex-col" 
+              style={{ 
+                touchAction: 'auto',
+                paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+              } as React.CSSProperties}
               onClick={(e) => {
                 // Close dropdowns only if clicking on the modal background, not on inputs
                 if ((e.target as HTMLElement).tagName !== 'INPUT' && 
@@ -3580,7 +3637,7 @@ export default function CalendarPage() {
                   </svg>
                 </button>
               </div>
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 space-y-3 flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-slate-600">Patient</p>
@@ -4066,15 +4123,24 @@ export default function CalendarPage() {
         ) : null}
         {newPatientModalOpen ? (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              touchAction: 'none',
+            } as React.CSSProperties}
             onClick={(e) => {
               if (e.target === e.currentTarget && !savingNewPatient) {
                 setNewPatientModalOpen(false);
               }
             }}
           >
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)]" style={{ touchAction: 'auto' } as React.CSSProperties}>
+            <div 
+              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)] max-h-[85vh] overflow-hidden flex flex-col" 
+              style={{ 
+                touchAction: 'auto',
+                paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+              } as React.CSSProperties}
+            >
               <div className="flex items-start justify-between gap-2">
                 <h2 className="text-sm font-semibold text-slate-900">New patient</h2>
                 <button
