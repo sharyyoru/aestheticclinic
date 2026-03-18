@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { CANTON_TAX_POINT_VALUES, DEFAULT_CANTON, type SwissCanton } from "@/lib/tardoc";
 import TardocAccordionTree from "@/components/TardocAccordionTree";
+import AcfAccordionTree, { type AcfServiceWithVariables } from "@/components/AcfAccordionTree";
 
 type GroupItem = {
   id?: string;
@@ -69,6 +70,16 @@ export default function TardocGroupsTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+
+  // Manual flat rate / TMA entry
+  const [manualItemType, setManualItemType] = useState<"acf" | "tma">("acf");
+  const [manualCode, setManualCode] = useState("");
+  const [manualDescription, setManualDescription] = useState("");
+  const [manualTpMt, setManualTpMt] = useState("");
+  const [manualQty, setManualQty] = useState("1");
+
+  // Rerun grouper state
+  const [rerunGrouperLoading, setRerunGrouperLoading] = useState(false);
 
   // Validation state
   const [validating, setValidating] = useState<string | null>(null);
@@ -167,6 +178,151 @@ export default function TardocGroupsTab() {
 
   function removeItem(idx: number) {
     setGroupItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  /** Detect item type from the stored tardoc_code value */
+  function getItemType(code: string): "tardoc" | "acf" | "tma" {
+    if (code.startsWith("acf:")) return "acf";
+    if (code.startsWith("tma:")) return "tma";
+    return "tardoc";
+  }
+
+  /** Strip prefix from stored code for display */
+  function displayCode(code: string): string {
+    if (code.startsWith("acf:")) return code.slice(4);
+    if (code.startsWith("tma:")) return code.slice(4);
+    return code;
+  }
+
+  function addManualItem() {
+    const code = manualCode.trim();
+    if (!code) return;
+    const prefix = manualItemType === "acf" ? "acf:" : "tma:";
+    const storedCode = `${prefix}${code}`;
+    // Prevent duplicates
+    if (groupItems.some((i) => i.tardoc_code === storedCode)) return;
+    const tp = parseFloat(manualTpMt) || 0;
+    setGroupItems((prev) => [
+      ...prev,
+      {
+        tardoc_code: storedCode,
+        description: manualDescription.trim() || code,
+        quantity: Math.max(1, parseInt(manualQty) || 1),
+        ref_code: null,
+        side_type: 0,
+        tp_mt: tp,
+        tp_tt: 0,
+        internal_factor_mt: 1,
+        internal_factor_tt: 1,
+        external_factor_mt: 1,
+        external_factor_tt: 1,
+        sort_order: prev.length,
+      },
+    ]);
+    setManualCode("");
+    setManualDescription("");
+    setManualTpMt("");
+    setManualQty("1");
+  }
+
+  /** Handle adding a service from AcfAccordionTree (TMA gesture or ACF flat rate) */
+  function addAcfServiceToGroup(svc: AcfServiceWithVariables) {
+    const isGesture = !!svc.isTmaGesture;
+    const prefix = isGesture ? "tma:" : "acf:";
+    const storedCode = `${prefix}${svc.code}`;
+    // Prevent duplicates
+    if (groupItems.some((i) => i.tardoc_code === storedCode)) return;
+    const ef = svc.externalFactor ?? 1.0;
+    const sideLabel = svc.sideType === 1 ? " [L]" : svc.sideType === 2 ? " [R]" : svc.sideType === 3 ? " [B]" : "";
+    const factorLabel = ef !== 1.0 ? ` x${ef}` : "";
+    setGroupItems((prev) => [
+      ...prev,
+      {
+        tardoc_code: storedCode,
+        description: `[${isGesture ? "TMA" : "ACF"}] ${svc.code}${sideLabel}${factorLabel} - ${(svc.name || "").substring(0, 80)}`,
+        quantity: 1,
+        ref_code: svc.refCode || null,
+        side_type: svc.sideType ?? 0,
+        tp_mt: svc.tp ?? 0,
+        tp_tt: 0,
+        internal_factor_mt: 1,
+        internal_factor_tt: 1,
+        external_factor_mt: ef,
+        external_factor_tt: 1,
+        sort_order: prev.length,
+      },
+    ]);
+  }
+
+  /** Re-run the TMA grouper with current TMA + TARDOC codes in the group, replacing existing ACF flat rate items */
+  async function handleRerunGrouper() {
+    const tmaItems = groupItems.filter((i) => i.tardoc_code.startsWith("tma:"));
+    const tardocItems = groupItems.filter((i) => !i.tardoc_code.startsWith("acf:") && !i.tardoc_code.startsWith("tma:"));
+    const icdCode = tmaItems.find((i) => i.ref_code)?.ref_code || "";
+    if (!icdCode) return;
+
+    setRerunGrouperLoading(true);
+    try {
+      const services = [
+        ...tmaItems.map((i) => ({
+          code: i.tardoc_code.slice(4),
+          side: i.side_type ?? 0,
+          quantity: i.quantity > 0 ? i.quantity : 1,
+        })),
+        ...tardocItems.map((i) => ({
+          code: i.tardoc_code,
+          side: i.side_type ?? 0,
+          quantity: i.quantity > 0 ? i.quantity : 1,
+        })),
+      ];
+      const res = await fetch("/api/acf/sumex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "runGrouper",
+          icdCode,
+          patientSex: 0,
+          patientBirthdate: "1990-01-01",
+          law: 0,
+          services,
+        }),
+      });
+      const json = await res.json();
+      const acfCodes: any[] = json.data?.acfCodes || [];
+      if (acfCodes.length > 0) {
+        setGroupItems((prev) => {
+          const nonAcf = prev.filter((i) => !i.tardoc_code.startsWith("acf:"));
+          const sideType = tmaItems[0]?.side_type ?? 0;
+          const sideLabel = sideType === 1 ? " [L]" : sideType === 2 ? " [R]" : sideType === 3 ? " [B]" : "";
+          const newAcfItems: GroupItem[] = acfCodes.map((acf: any, idx: number) => ({
+            tardoc_code: `acf:${acf.code}`,
+            description: `[ACF] ${acf.code}${sideLabel} - ${(acf.name || "").substring(0, 80)}`,
+            quantity: 1,
+            ref_code: icdCode,
+            side_type: sideType,
+            tp_mt: acf.tp ?? 0,
+            tp_tt: 0,
+            internal_factor_mt: 1,
+            internal_factor_tt: 1,
+            external_factor_mt: 1,
+            external_factor_tt: 1,
+            sort_order: nonAcf.length + idx,
+          }));
+          return [...nonAcf, ...newAcfItems];
+        });
+      }
+      if (json.data?.errors?.length > 0) {
+        console.warn("Grouper re-run warnings:", json.data.errors);
+      }
+      if (!json.success && acfCodes.length === 0) {
+        const errMsg = json.error || json.errors?.join("; ") || json.data?.errors?.join("; ") || "Unknown grouper error";
+        setSaveError(`Grouper re-run failed: ${errMsg}`);
+      }
+    } catch (err) {
+      console.error("Grouper re-run request failed:", err);
+      setSaveError("Grouper re-run request failed");
+    }
+    setRerunGrouperLoading(false);
   }
 
   function updateItemField(idx: number, field: keyof GroupItem, value: number | string | null) {
@@ -349,15 +505,21 @@ export default function TardocGroupsTab() {
                       </div>
                       {/* Show codes preview */}
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        {(group.tardoc_group_items || []).slice(0, 6).map((item, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[9px] text-slate-600"
-                          >
-                            {item.tardoc_code}
-                            {item.quantity > 1 && <span className="ml-0.5 text-slate-400">×{item.quantity}</span>}
-                          </span>
-                        ))}
+                        {(group.tardoc_group_items || []).slice(0, 6).map((item, idx) => {
+                          const type = item.tardoc_code.startsWith("acf:") ? "acf" : item.tardoc_code.startsWith("tma:") ? "tma" : "tardoc";
+                          const code = type !== "tardoc" ? item.tardoc_code.slice(4) : item.tardoc_code;
+                          const bgClass = type === "acf" ? "bg-violet-100 text-violet-700" : type === "tma" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600";
+                          return (
+                            <span
+                              key={idx}
+                              className={`inline-flex items-center rounded px-1.5 py-0.5 font-mono text-[9px] ${bgClass}`}
+                            >
+                              {type !== "tardoc" && <span className="mr-0.5 text-[8px] font-semibold uppercase opacity-70">{type === "acf" ? "ACF" : "TMA"}</span>}
+                              {code}
+                              {item.quantity > 1 && <span className="ml-0.5 opacity-60">×{item.quantity}</span>}
+                            </span>
+                          );
+                        })}
                         {itemCount > 6 && (
                           <span className="text-[9px] text-slate-400">+{itemCount - 6} more</span>
                         )}
@@ -551,6 +713,141 @@ export default function TardocGroupsTab() {
                 />
               </div>
 
+              {/* Browse ACF / Flat Rate Catalog (TMA Gestures → Grouper → ACF Flat Rates) */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-medium text-slate-600">Browse ACF Flat Rates (TMA Grouper)</label>
+                <p className="text-[9px] text-slate-400 mb-1">
+                  Select a TMA gesture code → enter ICD-10 → run grouper → add the resulting ACF flat rate codes to the group.
+                </p>
+                <AcfAccordionTree
+                  onAddService={addAcfServiceToGroup}
+                  existingTardocCodes={groupItems
+                    .filter((item) => !item.tardoc_code.startsWith("acf:") && !item.tardoc_code.startsWith("tma:"))
+                    .map((item) => ({
+                      code: item.tardoc_code,
+                      quantity: item.quantity,
+                      side: item.side_type,
+                    }))}
+                />
+              </div>
+
+              {/* Manual Flat Rate / TMA quick-add (fallback) */}
+              <details className="group">
+                <summary className="cursor-pointer text-[10px] font-medium text-slate-500 hover:text-slate-700">
+                  Manual flat rate / TMA entry (advanced)
+                </summary>
+                <div className="mt-1.5 rounded-lg border border-violet-200 bg-violet-50/40 p-3 space-y-2">
+                  <div className="flex gap-2">
+                    <select
+                      value={manualItemType}
+                      onChange={(e) => setManualItemType(e.target.value as "acf" | "tma")}
+                      className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                    >
+                      <option value="acf">ACF Flat Rate</option>
+                      <option value="tma">TMA Gesture</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Code (e.g. C09.60B)"
+                      value={manualCode}
+                      onChange={(e) => setManualCode(e.target.value)}
+                      className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Description"
+                      value={manualDescription}
+                      onChange={(e) => setManualDescription(e.target.value)}
+                      className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <div className="flex items-center gap-1">
+                      <label className="text-[9px] text-slate-500">TP:</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={manualTpMt}
+                        onChange={(e) => setManualTpMt(e.target.value)}
+                        className="w-20 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <label className="text-[9px] text-slate-500">Qty:</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={manualQty}
+                        onChange={(e) => setManualQty(e.target.value)}
+                        className="w-14 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addManualItem}
+                      disabled={!manualCode.trim()}
+                      className="ml-auto shrink-0 rounded-lg border border-violet-300 bg-violet-600 px-3 py-1.5 text-[10px] font-medium text-white shadow-sm hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      + Add {manualItemType === "acf" ? "Flat Rate" : "TMA"}
+                    </button>
+                  </div>
+                </div>
+              </details>
+
+              {/* Re-run Grouper banner: shown when ACF/TMA + TARDOC items coexist in the group */}
+              {(() => {
+                const hasAcf = groupItems.some((i) => i.tardoc_code.startsWith("acf:"));
+                const hasTma = groupItems.some((i) => i.tardoc_code.startsWith("tma:"));
+                const hasTardoc = groupItems.some((i) => !i.tardoc_code.startsWith("acf:") && !i.tardoc_code.startsWith("tma:"));
+                if ((hasAcf || hasTma) && groupItems.length > 0) {
+                  const tmaItems = groupItems.filter((i) => i.tardoc_code.startsWith("tma:"));
+                  const tardocItems = groupItems.filter((i) => !i.tardoc_code.startsWith("acf:") && !i.tardoc_code.startsWith("tma:"));
+                  const icdCode = tmaItems.find((i) => i.ref_code)?.ref_code || "";
+                  return (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[10px] text-amber-800">
+                          <span className="font-semibold">
+                            {hasTardoc ? "ACF + TARDOC detected:" : "ACF flat rates detected:"}
+                          </span>{" "}
+                          {hasTardoc
+                            ? `${tardocItems.length} TARDOC code${tardocItems.length > 1 ? "s" : ""} may affect which ACF flat rate applies.`
+                            : "TARDOC codes may affect flat rates."
+                          }
+                          {" "}Re-run the grouper to update flat rates.
+                        </div>
+                        <button
+                          type="button"
+                          disabled={rerunGrouperLoading || !icdCode}
+                          onClick={() => void handleRerunGrouper()}
+                          className="shrink-0 rounded-md bg-amber-600 px-3 py-1 text-[10px] font-medium text-white shadow-sm hover:bg-amber-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                        >
+                          {rerunGrouperLoading ? "Running..." : "Re-run Grouper"}
+                        </button>
+                      </div>
+                      {!icdCode && (
+                        <div className="text-[9px] text-amber-600">
+                          No ICD-10 code found on TMA items. Add flat rates via the TMA grouper above (with an ICD-10 code) first.
+                        </div>
+                      )}
+                      {icdCode && (
+                        <div className="text-[9px] text-amber-600">
+                          ICD-10: <span className="font-mono font-medium">{icdCode}</span>
+                          {hasTardoc && (
+                            <span className="ml-2">
+                              TARDOC codes: {tardocItems.map((i) => i.tardoc_code).join(", ")}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               {/* Current items in group */}
               <div className="space-y-1">
                 <label className="block text-[11px] font-medium text-slate-600">
@@ -569,7 +866,12 @@ export default function TardocGroupsTab() {
                           {/* Row 1: Code, description, price, remove */}
                           <div className="flex items-center gap-2">
                             <span className="text-[9px] text-slate-400 w-4 text-center">{idx + 1}</span>
-                            <span className="font-mono text-[10px] font-semibold text-slate-700 w-20">{item.tardoc_code}</span>
+                            {getItemType(item.tardoc_code) !== "tardoc" && (
+                              <span className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase ${getItemType(item.tardoc_code) === "acf" ? "bg-violet-100 text-violet-600" : "bg-amber-100 text-amber-600"}`}>
+                                {getItemType(item.tardoc_code) === "acf" ? "ACF" : "TMA"}
+                              </span>
+                            )}
+                            <span className="font-mono text-[10px] font-semibold text-slate-700 w-20">{displayCode(item.tardoc_code)}</span>
                             <span className="flex-1 text-[10px] text-slate-500 line-clamp-1 min-w-0">{item.description || "—"}</span>
                             <span className="text-[10px] font-medium text-slate-700 w-16 text-right">
                               {itemPrice.toFixed(2)}
