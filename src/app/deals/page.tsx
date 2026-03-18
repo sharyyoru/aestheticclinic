@@ -33,6 +33,7 @@ type DealPatient = {
 type DealService = {
   id: string;
   name: string | null;
+  base_price: number | null;
 };
 
 type DealAppointment = {
@@ -141,7 +142,7 @@ export default function DealsPage() {
           supabaseClient
             .from("deals")
             .select(
-              "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, owner_id, owner_name, created_at, updated_at, patient:patients(id, first_name, last_name, contact_owner_name), service:services(id, name)",
+              "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, owner_id, owner_name, created_at, updated_at, patient:patients(id, first_name, last_name, contact_owner_name), service:services(id, name, base_price)",
             )
             .order("created_at", { ascending: false }),
         ]);
@@ -487,17 +488,26 @@ export default function DealsPage() {
 
   const totalDeals = deals.length;
 
+  // Helper to get deal value: use deal.value if set, otherwise fall back to service base_price
+  function getDealValue(deal: DealRow): number {
+    if (deal.value !== null && deal.value !== undefined && deal.value > 0) {
+      return deal.value;
+    }
+    // Fall back to service base_price
+    return deal.service?.base_price ?? 0;
+  }
+
   // Calculate metrics
   const metrics = useMemo(() => {
-    // Total Deal Amount: sum of all deal values
+    // Total Deal Amount: sum of all deal values (using service base_price as fallback)
     const totalDealAmount = deals.reduce((sum, deal) => {
-      return sum + (deal.value || 0);
+      return sum + getDealValue(deal);
     }, 0);
 
     // Weighted Deal: sum of deals that have been invoiced
     const weightedDeal = deals
       .filter(deal => invoicedDealIds.has(deal.id))
-      .reduce((sum, deal) => sum + (deal.value || 0), 0);
+      .reduce((sum, deal) => sum + getDealValue(deal), 0);
 
     // Find "Closed Won" stage
     const closedWonStage = dealStages.find(
@@ -510,7 +520,7 @@ export default function DealsPage() {
         if (!closedWonStage) return true;
         return deal.stage_id !== closedWonStage.id;
       })
-      .reduce((sum, deal) => sum + (deal.value || 0), 0);
+      .reduce((sum, deal) => sum + getDealValue(deal), 0);
 
     // Closed Deal Amount: deals in Closed Won stage
     const closedDealAmount = deals
@@ -518,7 +528,7 @@ export default function DealsPage() {
         if (!closedWonStage) return 0;
         return deal.stage_id === closedWonStage.id;
       })
-      .reduce((sum, deal) => sum + (deal.value || 0), 0);
+      .reduce((sum, deal) => sum + getDealValue(deal), 0);
 
     return {
       totalDealAmount,
@@ -794,7 +804,6 @@ export default function DealsPage() {
                           <th className="py-2 pr-3 font-medium">Stage</th>
                           <th className="py-2 pr-3 font-medium">Service</th>
                           <th className="py-2 pr-3 font-medium">Patient</th>
-                          <th className="py-2 pr-3 font-medium">Contact Owner</th>
                           <th className="py-2 pr-3 font-medium">Deal Owner</th>
                           <th className="py-2 pr-3 font-medium">Created</th>
                         </tr>
@@ -860,9 +869,6 @@ export default function DealsPage() {
                                 <span className="text-sky-700 underline-offset-2 hover:underline">
                                   {patientName}
                                 </span>
-                              </td>
-                              <td className="py-2 pr-3 align-top text-slate-600">
-                                {deal.patient?.contact_owner_name || "—"}
                               </td>
                               <td className="py-2 pr-3 align-top text-slate-600">
                                 {deal.owner_name || "—"}
