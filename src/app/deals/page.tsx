@@ -90,6 +90,10 @@ export default function DealsPage() {
   const [patientSearch, setPatientSearch] = useState("");
   const [userOptions, setUserOptions] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
 
+  // Date range filter
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+
   // List view pagination
   const [listPage, setListPage] = useState(1);
   const LIST_ITEMS_PER_PAGE = 25;
@@ -328,8 +332,26 @@ export default function DealsPage() {
       });
     }
 
+    // Date range filter
+    if (dateFrom) {
+      const fromDate = new Date(dateFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      filtered = filtered.filter((deal) => {
+        const dealDate = new Date(deal.created_at);
+        return dealDate >= fromDate;
+      });
+    }
+    if (dateTo) {
+      const toDate = new Date(dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((deal) => {
+        const dealDate = new Date(deal.created_at);
+        return dealDate <= toDate;
+      });
+    }
+
     return filtered;
-  }, [deals, normalizedSearch, normalizedPatientSearch, serviceFilter, stageFilter, contactOwnerFilter, dealOwnerFilter, userOptions]);
+  }, [deals, normalizedSearch, normalizedPatientSearch, serviceFilter, stageFilter, contactOwnerFilter, dealOwnerFilter, userOptions, dateFrom, dateTo]);
 
   const uniqueServices = useMemo(() => {
     const map = new Map<string, string>();
@@ -486,7 +508,7 @@ export default function DealsPage() {
     }
   }
 
-  const totalDeals = deals.length;
+  const totalDeals = filteredDeals.length;
 
   // Helper to get deal value: use deal.value if set, otherwise fall back to service base_price
   function getDealValue(deal: DealRow): number {
@@ -497,15 +519,15 @@ export default function DealsPage() {
     return deal.service?.base_price ?? 0;
   }
 
-  // Calculate metrics
+  // Calculate metrics based on filtered deals (respects all filters including date range)
   const metrics = useMemo(() => {
-    // Total Deal Amount: sum of all deal values (using service base_price as fallback)
-    const totalDealAmount = deals.reduce((sum, deal) => {
+    // Total Deal Amount: sum of all filtered deal values (using service base_price as fallback)
+    const totalDealAmount = filteredDeals.reduce((sum, deal) => {
       return sum + getDealValue(deal);
     }, 0);
 
-    // Weighted Deal: sum of deals that have been invoiced
-    const weightedDeal = deals
+    // Weighted Deal: sum of filtered deals that have been invoiced
+    const weightedDeal = filteredDeals
       .filter(deal => invoicedDealIds.has(deal.id))
       .reduce((sum, deal) => sum + getDealValue(deal), 0);
 
@@ -514,16 +536,16 @@ export default function DealsPage() {
       stage => stage.name.toLowerCase().includes("closed won")
     );
 
-    // Open Deal Amount: deals in stages before Closed Won
-    const openDealAmount = deals
+    // Open Deal Amount: filtered deals in stages before Closed Won
+    const openDealAmount = filteredDeals
       .filter(deal => {
         if (!closedWonStage) return true;
         return deal.stage_id !== closedWonStage.id;
       })
       .reduce((sum, deal) => sum + getDealValue(deal), 0);
 
-    // Closed Deal Amount: deals in Closed Won stage
-    const closedDealAmount = deals
+    // Closed Deal Amount: filtered deals in Closed Won stage
+    const closedDealAmount = filteredDeals
       .filter(deal => {
         if (!closedWonStage) return 0;
         return deal.stage_id === closedWonStage.id;
@@ -536,7 +558,7 @@ export default function DealsPage() {
       openDealAmount,
       closedDealAmount,
     };
-  }, [deals, dealStages, invoicedDealIds]);
+  }, [filteredDeals, dealStages, invoicedDealIds]);
 
   return (
     <div className="space-y-6">
@@ -585,28 +607,28 @@ export default function DealsPage() {
               <div className="rounded-xl border border-slate-200/80 bg-white/90 p-3 text-xs shadow-sm">
                 <p className="text-[11px] font-medium text-slate-500">Total Deal Amount</p>
                 <p className="mt-2 text-lg font-semibold text-slate-900">
-                  {metrics.totalDealAmount.toLocaleString('en-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
+                  {metrics.totalDealAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
                 </p>
                 <p className="mt-1 text-[11px] text-slate-400">Sum of all deal values</p>
               </div>
               <div className="rounded-xl border border-slate-200/80 bg-white/90 p-3 text-xs shadow-sm">
                 <p className="text-[11px] font-medium text-slate-500">Weighted Deal</p>
                 <p className="mt-2 text-lg font-semibold text-slate-900">
-                  {metrics.weightedDeal.toLocaleString('en-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
+                  {metrics.weightedDeal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
                 </p>
                 <p className="mt-1 text-[11px] text-slate-400">Invoiced deals only</p>
               </div>
               <div className="rounded-xl border border-slate-200/80 bg-white/90 p-3 text-xs shadow-sm">
                 <p className="text-[11px] font-medium text-slate-500">Open Deal Amount</p>
                 <p className="mt-2 text-lg font-semibold text-slate-900">
-                  {metrics.openDealAmount.toLocaleString('en-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
+                  {metrics.openDealAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
                 </p>
                 <p className="mt-1 text-[11px] text-slate-400">Before Closed Won</p>
               </div>
               <div className="rounded-xl border border-slate-200/80 bg-white/90 p-3 text-xs shadow-sm">
                 <p className="text-[11px] font-medium text-slate-500">Closed Deal Amount</p>
                 <p className="mt-2 text-lg font-semibold text-slate-900">
-                  {metrics.closedDealAmount.toLocaleString('en-CH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
+                  {metrics.closedDealAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CHF
                 </p>
                 <p className="mt-1 text-[11px] text-slate-400">{totalDeals} total deals</p>
               </div>
@@ -746,6 +768,35 @@ export default function DealsPage() {
                   placeholder="Search patient..."
                   className="w-48 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
+
+                {/* Date Range Filter */}
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(event) => setDateFrom(event.target.value)}
+                    className="w-32 rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    title="From date"
+                  />
+                  <span className="text-[10px] text-slate-400">to</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(event) => setDateTo(event.target.value)}
+                    className="w-32 rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    title="To date"
+                  />
+                  {(dateFrom || dateTo) && (
+                    <button
+                      type="button"
+                      onClick={() => { setDateFrom(""); setDateTo(""); }}
+                      className="ml-1 text-slate-400 hover:text-slate-600 text-[11px]"
+                      title="Clear date filter"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
