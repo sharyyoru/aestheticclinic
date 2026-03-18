@@ -2657,7 +2657,8 @@ export default function CalendarPage() {
             <button
               type="button"
               onClick={goToToday}
-              className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              style={{ touchAction: 'manipulation' }}
+              className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:bg-slate-100"
             >
               Today
             </button>
@@ -2665,7 +2666,8 @@ export default function CalendarPage() {
               <button
                 type="button"
                 onClick={goPrevMonth}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50"
+                style={{ touchAction: 'manipulation' }}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50 active:bg-slate-100"
                 aria-label="Previous month"
               >
                 <svg
@@ -2683,7 +2685,8 @@ export default function CalendarPage() {
               <button
                 type="button"
                 onClick={goNextMonth}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50"
+                style={{ touchAction: 'manipulation' }}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50 active:bg-slate-100"
                 aria-label="Next month"
               >
                 <svg
@@ -2736,7 +2739,8 @@ export default function CalendarPage() {
               <button
                 type="button"
                 onClick={() => setViewMenuOpen((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                style={{ touchAction: 'manipulation' }}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:bg-slate-100"
               >
                 {view === "month"
                   ? "Month"
@@ -2756,29 +2760,40 @@ export default function CalendarPage() {
                 </svg>
               </button>
               {viewMenuOpen ? (
-                <div className="absolute right-0 z-20 mt-1 min-w-[120px] rounded-xl border border-slate-200 bg-white py-1 text-xs shadow-lg">
-                  <button
-                    type="button"
-                    onClick={handleSelectDayView}
-                    className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50"
-                  >
-                    Day
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSelectWeekView}
-                    className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50"
-                  >
-                    Week
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSelectMonthView}
-                    className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50"
-                  >
-                    Month
-                  </button>
-                </div>
+                <>
+                  {/* Invisible backdrop to close menu on touch/click outside */}
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setViewMenuOpen(false)}
+                    onTouchEnd={() => setViewMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 z-20 mt-1 min-w-[120px] rounded-xl border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                    <button
+                      type="button"
+                      onClick={handleSelectDayView}
+                      style={{ touchAction: 'manipulation' }}
+                      className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                    >
+                      Day
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectWeekView}
+                      style={{ touchAction: 'manipulation' }}
+                      className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                    >
+                      Week
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectMonthView}
+                      style={{ touchAction: 'manipulation' }}
+                      className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                    >
+                      Month
+                    </button>
+                  </div>
+                </>
               ) : null}
             </div>
             <Link
@@ -2815,9 +2830,27 @@ export default function CalendarPage() {
                     onClick={() => handleMonthDayClick(date)}
                     onMouseDown={() => handleMiniDayMouseDown(date)}
                     onMouseEnter={() => handleMiniDayMouseEnter(date)}
-                    onTouchStart={() => handleMiniDayMouseDown(date)}
+                    onTouchStart={(e) => {
+                      // Prevent default to avoid scroll interference on iPad
+                      if (e.cancelable) e.preventDefault();
+                      handleMiniDayMouseDown(date);
+                    }}
+                    onTouchMove={(e) => {
+                      // Handle touch move for range selection on iPad
+                      if (!isDraggingRange) return;
+                      const touch = e.touches[0];
+                      if (!touch) return;
+                      const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                      const dateAttr = element?.closest('[data-month-date]')?.getAttribute('data-month-date');
+                      if (dateAttr) {
+                        const [year, month, day] = dateAttr.split('-').map(Number);
+                        const touchedDate = new Date(year, month - 1, day);
+                        handleMiniDayMouseEnter(touchedDate);
+                      }
+                    }}
                     onTouchEnd={() => setIsDraggingRange(false)}
                     data-month-date={ymd}
+                    style={{ touchAction: 'manipulation' }}
                     className={`flex min-h-[96px] flex-col border-b border-r border-slate-100 px-2 py-1 text-left last:border-r-0 ${
                       isCurrentMonth ? "bg-white" : "bg-slate-50/80 text-slate-400"
                     } ${inRange ? "bg-sky-50" : ""}`}
@@ -2871,6 +2904,11 @@ export default function CalendarPage() {
                                 event.stopPropagation();
                                 openEditModalForAppointment(appt);
                               }}
+                              onTouchEnd={(event) => {
+                                // Ensure touch works reliably on iPad
+                                event.stopPropagation();
+                              }}
+                              style={{ touchAction: 'manipulation' }}
                               className={`w-full rounded-md px-1 py-0.5 text-[10px] text-left ${getAppointmentStatusColorClasses(
                                 appt.status,
                               )} ${getCategoryColor(category)}`}
@@ -3149,6 +3187,8 @@ export default function CalendarPage() {
                                         <button
                                           type="button"
                                           onClick={() => openEditModalForAppointment(appt)}
+                                          onTouchEnd={(e) => e.stopPropagation()}
+                                          style={{ touchAction: 'manipulation' }}
                                           className={`w-full h-full rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)}`}
                                         >
                                           <div className="flex items-center gap-1 truncate font-medium text-slate-800">
