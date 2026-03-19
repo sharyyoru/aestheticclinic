@@ -1025,6 +1025,7 @@ export default function CalendarPage() {
     "Burbuqe Fazliu",
     "Assistante",
     "Yosra",
+    "Ngadande Vera",
   ];
 
   useEffect(() => {
