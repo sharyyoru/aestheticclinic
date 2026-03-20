@@ -492,7 +492,19 @@ export default function PatientDocumentsTab({
 
     // Add cache-busting parameter to ensure fresh content after edits
     const cacheBuster = `?v=${refreshKey}-${selectedFile.updated_at || Date.now()}`;
-    return baseUrl ? baseUrl + cacheBuster : null;
+    const urlWithCache = baseUrl ? baseUrl + cacheBuster : null;
+    
+    // For regular images (not HEIC/TIFF which have their own handlers), use proxy API
+    // This ensures proper CORS handling and content-type headers
+    if (urlWithCache) {
+      const ext = getExtension(selectedFile.name);
+      const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
+      if (isRegularImage) {
+        return `/api/documents/proxy-image?url=${encodeURIComponent(urlWithCache)}`;
+      }
+    }
+    
+    return urlWithCache;
   }, [patientId, selectedFile, refreshKey]);
 
   async function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1223,6 +1235,12 @@ export default function PatientDocumentsTab({
                       "heic",
                       "heif",
                     ].includes(ext);
+                    
+                    // For regular images, use proxy API to ensure proper loading
+                    const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
+                    const thumbnailSrc = isRegularImage 
+                      ? `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`
+                      : previewUrl;
                     const uploadDate = item.created_at || item.updated_at;
                     const mimeType = getMimeType(item.name, item.metadata);
 
@@ -1255,7 +1273,7 @@ export default function PatientDocumentsTab({
                           {isImageThumb && thumbUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={thumbUrl}
+                              src={thumbnailSrc}
                               alt={item.name}
                               className="h-full w-full object-cover"
                             />
