@@ -445,7 +445,7 @@ export default function PatientDocumentsTab({
         .filter(
           (item) =>
             item.kind === "file" &&
-            ["jpg", "jpeg", "png", "gif", "webp"].includes(
+            ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"].includes(
               getExtension(item.name),
             ),
         )
@@ -454,14 +454,30 @@ export default function PatientDocumentsTab({
           const { data } = supabaseClient.storage
             .from(BUCKET_NAME)
             .getPublicUrl(fullPath);
-          const url = data.publicUrl ?? null;
-          return url
-            ? {
-                url,
-                name: item.name,
-                created_at: item.created_at || item.updated_at || undefined,
-              }
-            : null;
+          const baseUrl = data.publicUrl ?? null;
+          if (!baseUrl) return null;
+          
+          // Determine the correct URL based on file type
+          const ext = getExtension(item.name);
+          const isHeic = ["heic", "heif"].includes(ext);
+          const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+          
+          let url: string;
+          if (isHeic) {
+            // HEIC files need server-side conversion
+            url = `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
+          } else if (isRegularImage) {
+            // Regular images use proxy for CORS handling
+            url = `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
+          } else {
+            url = baseUrl;
+          }
+          
+          return {
+            url,
+            name: item.name,
+            created_at: item.created_at || item.updated_at || undefined,
+          };
         })
         .filter(
           (image): image is { url: string; name: string; created_at: string | undefined } => image !== null,
