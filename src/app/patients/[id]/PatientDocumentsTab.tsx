@@ -510,13 +510,17 @@ export default function PatientDocumentsTab({
     const cacheBuster = `?v=${refreshKey}-${selectedFile.updated_at || Date.now()}`;
     const urlWithCache = baseUrl ? baseUrl + cacheBuster : null;
     
-    // For regular images (not HEIC/TIFF which have their own handlers), use proxy API
-    // This ensures proper CORS handling and content-type headers
+    // Use appropriate API for each image type to ensure proper display
     if (urlWithCache) {
       const ext = getExtension(selectedFile.name);
       const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
+      const isHeicImage = ["heic", "heif"].includes(ext);
+      
       if (isRegularImage) {
         return `/api/documents/proxy-image?url=${encodeURIComponent(urlWithCache)}`;
+      } else if (isHeicImage) {
+        // HEIC files need server-side conversion for all display contexts (preview, enlarge, etc.)
+        return `/api/documents/convert-heic?url=${encodeURIComponent(urlWithCache)}`;
       }
     }
     
@@ -1258,14 +1262,16 @@ export default function PatientDocumentsTab({
                     
                     // For regular images: use proxy API
                     // For HEIC: use conversion API (browsers can't display HEIC directly)
-                    let thumbnailSrc: string;
+                    // This converted URL is used for thumbnails, previews, and modals
+                    let convertedUrl: string;
                     if (isRegularImage) {
-                      thumbnailSrc = `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`;
+                      convertedUrl = `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`;
                     } else if (isHeicImage) {
-                      thumbnailSrc = `/api/documents/convert-heic?url=${encodeURIComponent(previewUrl)}`;
+                      convertedUrl = `/api/documents/convert-heic?url=${encodeURIComponent(previewUrl)}`;
                     } else {
-                      thumbnailSrc = previewUrl;
+                      convertedUrl = previewUrl;
                     }
+                    const thumbnailSrc = convertedUrl;
                     const uploadDate = item.created_at || item.updated_at;
                     const mimeType = getMimeType(item.name, item.metadata);
 
@@ -1339,7 +1345,7 @@ export default function PatientDocumentsTab({
                           onClick={(e) => {
                             e.stopPropagation();
                             setPreviewModal({
-                              url: previewUrl,
+                              url: convertedUrl,
                               name: item.name,
                               mimeType,
                               uploadedAt: uploadDate || null,

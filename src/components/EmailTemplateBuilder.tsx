@@ -129,15 +129,26 @@ export default function EmailTemplateBuilder({
           // Filter out placeholder files and non-image files
           if (file.name.startsWith(".")) return false;
           const ext = file.name.split(".").pop()?.toLowerCase();
-          return ["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext || "");
+          return ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"].includes(ext || "");
         })
         .map((file) => {
           const { data: urlData } = supabaseClient.storage
             .from("emailgallery")
             .getPublicUrl(file.name);
+          const baseUrl = urlData.publicUrl;
+          const ext = file.name.split(".").pop()?.toLowerCase() || "";
+          
+          // Use appropriate API for image display
+          let displayUrl = baseUrl;
+          if (["heic", "heif"].includes(ext)) {
+            displayUrl = `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
+          } else if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
+            displayUrl = `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
+          }
+          
           return {
             name: file.name,
-            url: urlData.publicUrl,
+            url: displayUrl,
             created_at: file.created_at || new Date().toISOString(),
           };
         });

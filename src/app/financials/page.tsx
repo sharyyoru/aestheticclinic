@@ -849,6 +849,14 @@ function fileExt(name: string) {
 }
 
 function isImage(name: string) {
+  return ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"].includes(fileExt(name));
+}
+
+function isHeicImage(name: string) {
+  return ["heic", "heif"].includes(fileExt(name));
+}
+
+function isRegularImage(name: string) {
   return ["jpg", "jpeg", "png", "gif", "webp"].includes(fileExt(name));
 }
 
@@ -1014,11 +1022,21 @@ function BankPaymentReceipts() {
             const { data: urlData } = supabaseClient.storage
               .from(BUCKET)
               .getPublicUrl(f.name);
+            const baseUrl = urlData?.publicUrl || "";
+            
+            // Use appropriate API for image display
+            let displayUrl = baseUrl;
+            if (baseUrl && isHeicImage(f.name)) {
+              displayUrl = `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
+            } else if (baseUrl && isRegularImage(f.name)) {
+              displayUrl = `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
+            }
+            
             return {
               name: f.name,
               created_at: f.created_at || "",
               size: (f.metadata as any)?.size || 0,
-              url: urlData?.publicUrl || "",
+              url: displayUrl,
             };
           });
         setFiles(items);
