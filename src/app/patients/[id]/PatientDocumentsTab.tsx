@@ -1236,11 +1236,20 @@ export default function PatientDocumentsTab({
                       "heif",
                     ].includes(ext);
                     
-                    // For regular images, use proxy API to ensure proper loading
+                    // Determine the correct thumbnail source based on file type
                     const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
-                    const thumbnailSrc = isRegularImage 
-                      ? `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`
-                      : previewUrl;
+                    const isHeicImage = ["heic", "heif"].includes(ext);
+                    
+                    // For regular images: use proxy API
+                    // For HEIC: use conversion API (browsers can't display HEIC directly)
+                    let thumbnailSrc: string;
+                    if (isRegularImage) {
+                      thumbnailSrc = `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`;
+                    } else if (isHeicImage) {
+                      thumbnailSrc = `/api/documents/convert-heic?url=${encodeURIComponent(previewUrl)}`;
+                    } else {
+                      thumbnailSrc = previewUrl;
+                    }
                     const uploadDate = item.created_at || item.updated_at;
                     const mimeType = getMimeType(item.name, item.metadata);
 
