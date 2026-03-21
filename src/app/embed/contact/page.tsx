@@ -1,41 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { pushToDataLayer } from "@/components/GoogleTagManager";
-
-const SERVICES = [
-  "Augmentation Mammaire",
-  "Liposuccion",
-  "Rhinoplastie",
-  "Lifting du Visage",
-  "Blépharoplastie",
-  "Injections (Botox/Fillers)",
-  "Soins de la Peau",
-  "Consultation Générale",
-  "Autre",
-];
-
-const LOCATIONS = [
-  { id: "rhone", label: "Genève - Rue du Rhône" },
-  { id: "champel", label: "Genève - Champel" },
-  { id: "gstaad", label: "Gstaad" },
-  { id: "montreux", label: "Montreux" },
-];
-
-const COUNTRY_CODES = [
-  { code: "+41", country: "Suisse", flag: "🇨🇭" },
-  { code: "+33", country: "France", flag: "🇫🇷" },
-  { code: "+49", country: "Allemagne", flag: "🇩🇪" },
-  { code: "+39", country: "Italie", flag: "🇮🇹" },
-  { code: "+44", country: "Royaume-Uni", flag: "🇬🇧" },
-  { code: "+1", country: "USA/Canada", flag: "🇺🇸" },
-  { code: "+7", country: "Russie", flag: "🇷🇺" },
-  { code: "+34", country: "Espagne", flag: "🇪🇸" },
-  { code: "+971", country: "EAU", flag: "🇦🇪" },
-  { code: "+966", country: "Arabie Saoudite", flag: "🇸🇦" },
-];
+import { useEmbedHeight } from "@/hooks/useEmbedHeight";
+import { embedTranslations, getEmbedLanguage, type EmbedLanguage } from "@/lib/embedTranslations";
 
 export default function EmbedContactPage() {
+  const searchParams = useSearchParams();
+  const [lang, setLang] = useState<EmbedLanguage>("fr");
+  
+  // Initialize language from URL parameter
+  useEffect(() => {
+    setLang(getEmbedLanguage(searchParams));
+  }, [searchParams]);
+  
+  const t = embedTranslations.contact[lang];
+  const countries = embedTranslations.countries[lang];
+  
+  // Enable iframe height communication
+  useEmbedHeight();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,13 +62,13 @@ export default function EmbedContactPage() {
     e.preventDefault();
 
     if (!firstName || !lastName || !email) {
-      setError("Veuillez remplir tous les champs obligatoires");
+      setError(t.errorRequired);
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
-      setError("Veuillez entrer une adresse email valide");
+      setError(t.errorEmail);
       return;
     }
 
@@ -119,7 +103,7 @@ export default function EmbedContactPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Échec de l'envoi");
+        throw new Error(data.error || t.errorSubmit);
       }
 
       // Push GTM event
@@ -127,7 +111,7 @@ export default function EmbedContactPage() {
 
       setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Une erreur est survenue");
+      setError(err instanceof Error ? err.message : t.errorGeneric);
     } finally {
       setLoading(false);
     }
@@ -142,9 +126,9 @@ export default function EmbedContactPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-4">Merci!</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-4">{t.successTitle}</h1>
           <p className="text-slate-600 mb-6">
-            Votre demande a été envoyée avec succès. Notre équipe vous contactera très prochainement.
+            {t.successMessage}
           </p>
           <button
             onClick={() => {
@@ -160,7 +144,7 @@ export default function EmbedContactPage() {
             }}
             className="text-orange-500 hover:text-orange-600 text-sm underline"
           >
-            Envoyer une autre demande
+            {t.sendAnother}
           </button>
         </div>
       </div>
@@ -174,7 +158,7 @@ export default function EmbedContactPage() {
           {/* First Name */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Prénom<span className="text-orange-500">*</span>
+              {t.firstName}<span className="text-orange-500">{t.required}</span>
             </label>
             <input
               type="text"
@@ -188,7 +172,7 @@ export default function EmbedContactPage() {
           {/* Last Name */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Nom<span className="text-orange-500">*</span>
+              {t.lastName}<span className="text-orange-500">{t.required}</span>
             </label>
             <input
               type="text"
@@ -202,7 +186,7 @@ export default function EmbedContactPage() {
           {/* Email */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Email<span className="text-orange-500">*</span>
+              {t.email}<span className="text-orange-500">{t.required}</span>
             </label>
             <input
               type="email"
@@ -216,7 +200,7 @@ export default function EmbedContactPage() {
           {/* Phone */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Numéro de téléphone<span className="text-orange-500">*</span>
+              {t.phone}<span className="text-orange-500">{t.required}</span>
             </label>
             <div className="flex gap-2">
               <select
@@ -224,7 +208,7 @@ export default function EmbedContactPage() {
                 onChange={(e) => setCountryCode(e.target.value)}
                 className="w-24 rounded-lg border border-slate-300 px-2 py-2.5 text-slate-900 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
               >
-                {COUNTRY_CODES.map((c) => (
+                {countries.map((c: { code: string; country: string; flag: string }) => (
                   <option key={c.code} value={c.code}>
                     {c.flag} {c.code}
                   </option>
@@ -235,7 +219,7 @@ export default function EmbedContactPage() {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
-                placeholder="79 123 45 67"
+                placeholder={t.phonePlaceholder}
               />
             </div>
           </div>
@@ -243,7 +227,7 @@ export default function EmbedContactPage() {
           {/* Service */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Je suis intéressé par le service suivant:<span className="text-orange-500">*</span>
+              {t.service}<span className="text-orange-500">{t.required}</span>
             </label>
             <select
               value={service}
@@ -251,8 +235,8 @@ export default function EmbedContactPage() {
               className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
               required
             >
-              <option value="">Please Select</option>
-              {SERVICES.map((s) => (
+              <option value="">{t.pleaseSelect}</option>
+              {t.services.map((s: string) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
@@ -261,7 +245,7 @@ export default function EmbedContactPage() {
           {/* Location */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Mon lieu préféré est:<span className="text-orange-500">*</span>
+              {t.location}<span className="text-orange-500">{t.required}</span>
             </label>
             <select
               value={location}
@@ -269,8 +253,8 @@ export default function EmbedContactPage() {
               className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none"
               required
             >
-              <option value="">Please Select</option>
-              {LOCATIONS.map((loc) => (
+              <option value="">{t.pleaseSelect}</option>
+              {t.locations.map((loc: { id: string; label: string }) => (
                 <option key={loc.id} value={loc.id}>{loc.label}</option>
               ))}
             </select>
@@ -286,7 +270,7 @@ export default function EmbedContactPage() {
               className="w-4 h-4 rounded border-slate-300 text-sky-500 focus:ring-sky-500"
             />
             <label htmlFor="existingPatient" className="text-sm text-slate-700">
-              Êtes-vous déjà patient?
+              {t.existingPatient}
             </label>
           </div>
 
@@ -297,19 +281,18 @@ export default function EmbedContactPage() {
               onChange={(e) => setMessage(e.target.value)}
               rows={3}
               className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-slate-900 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none resize-none"
-              placeholder="Si vous avez des questions supplémentaires, n'hésitez pas à les poser ici!"
+              placeholder={t.messagePlaceholder}
             />
           </div>
 
           {/* Privacy notice */}
           <p className="text-xs text-slate-500">
-            Aesthetics Clinic Geneva a besoin des coordonnées que vous nous fournissez pour nous contacter
-            à propos de nos produits et services.
+            {t.privacyNotice}
           </p>
           <p className="text-xs text-slate-500">
-            En cliquant sur &quot;Soumettre&quot;, vous acceptez les termes listés dans notre{" "}
+            {t.privacyAccept}{" "}
             <a href="https://aesthetics-ge.ch/privacy" target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:underline">
-              politique de confidentialité
+              {t.privacyPolicy}
             </a>.
           </p>
 
@@ -331,10 +314,10 @@ export default function EmbedContactPage() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                Envoi...
+                {t.submitting}
               </>
             ) : (
-              "SOUMETTRE"
+              t.submit
             )}
           </button>
         </form>

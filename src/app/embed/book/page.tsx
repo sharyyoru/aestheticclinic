@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString, createSwissDateTime } from "@/lib/swissTimezone";
 import { pushToDataLayer } from "@/components/GoogleTagManager";
+import { useEmbedHeight } from "@/hooks/useEmbedHeight";
+import { embedTranslations, getEmbedLanguage, type EmbedLanguage } from "@/lib/embedTranslations";
 
 // Clinic locations
 const CLINIC_LOCATIONS = [
@@ -233,6 +236,20 @@ function getDoctorsForLocation(locationId: string) {
 type EmbedStep = "location" | "doctor" | "info" | "datetime" | "confirm" | "success";
 
 export default function EmbedBookPage() {
+  const searchParams = useSearchParams();
+  const [lang, setLang] = useState<EmbedLanguage>("fr");
+  
+  // Initialize language from URL parameter
+  useEffect(() => {
+    setLang(getEmbedLanguage(searchParams));
+  }, [searchParams]);
+  
+  const t = embedTranslations.book[lang];
+  const countries = embedTranslations.countries[lang];
+  
+  // Enable iframe height communication
+  useEmbedHeight();
+  
   const [step, setStep] = useState<EmbedStep>("location");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -344,13 +361,13 @@ export default function EmbedBookPage() {
 
   async function handleSubmit() {
     if (!firstName || !lastName || !email || !selectedDate || !selectedTime || !selectedLocation) {
-      setError("Please fill in all required fields");
+      setError(t.errorRequired);
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
-      setError("Please enter a valid email address");
+      setError(t.errorEmail);
       return;
     }
 
@@ -695,12 +712,12 @@ export default function EmbedBookPage() {
               <button
                 onClick={() => {
                   if (!firstName || !lastName || !email) {
-                    setError("Please fill in all required fields");
+                    setError(t.errorRequired);
                     return;
                   }
                   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                   if (!emailRegex.test(email.trim())) {
-                    setError("Please enter a valid email address");
+                    setError(t.errorEmail);
                     return;
                   }
                   setError(null);
@@ -708,7 +725,7 @@ export default function EmbedBookPage() {
                 }}
                 className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors"
               >
-                Continue
+                {t.next}
               </button>
             </div>
           </div>
