@@ -811,6 +811,7 @@ export default function CalendarPage() {
   const [timeSearch, setTimeSearch] = useState("");
   const [timeDropdownOpen, setTimeDropdownOpen] = useState(false);
   const [createDoctorCalendarId, setCreateDoctorCalendarId] = useState("");
+  const [createAppointmentType, setCreateAppointmentType] = useState<"appointment" | "meeting">("appointment");
 
   const closeAllCreateDropdowns = (except?: string) => {
     if (except !== "patient") setShowCreatePatientSuggestions(false);
@@ -1719,6 +1720,7 @@ export default function CalendarPage() {
     setDurationSearch(durationOption ? durationOption.label : `${durationMinutes} minutes`);
     
     setDraftDescription("");
+    setCreateAppointmentType("appointment");
     // Use the doctor from the dragged column if available, otherwise default
     if (dragDoctorCalendarId) {
       setCreateDoctorCalendarId(dragDoctorCalendarId);
@@ -1939,19 +1941,22 @@ export default function CalendarPage() {
 
     setCreateError(null);
 
-    if (!createPatientId) {
-      setCreateError("Please select a patient.");
-      return;
-    }
+    // Only require patient, service, and status for appointments (not meetings)
+    if (createAppointmentType === "appointment") {
+      if (!createPatientId) {
+        setCreateError("Please select a patient.");
+        return;
+      }
 
-    if (!selectedServiceId) {
-      setCreateError("Please select a service.");
-      return;
-    }
+      if (!selectedServiceId) {
+        setCreateError("Please select a service.");
+        return;
+      }
 
-    if (!bookingStatus) {
-      setCreateError("Please select a status.");
-      return;
+      if (!bookingStatus) {
+        setCreateError("Please select a status.");
+        return;
+      }
     }
 
     if (doctorCalendars.length > 0 && !createDoctorCalendarId) {
@@ -2013,18 +2018,25 @@ export default function CalendarPage() {
         : `${baseReason}${doctorTag}${categoryTag}${notesTag}`;
 
       // Don't set provider_id to avoid foreign key issues - doctor info is in [Doctor:] tag
+      // For meetings, patient_id can be null
+      const insertData: Record<string, unknown> = {
+        start_time: startIso,
+        end_time: endIso,
+        reason,
+        title: draftTitle || baseReason || null,
+        notes: draftDescription.trim() || null,
+        location: draftLocation || null,
+        source: "manual",
+      };
+      
+      // Only include patient_id for appointments (not meetings)
+      if (createAppointmentType === "appointment" && createPatientId) {
+        insertData.patient_id = createPatientId;
+      }
+
       const { data, error } = await supabaseClient
         .from("appointments")
-        .insert({
-          patient_id: createPatientId,
-          start_time: startIso,
-          end_time: endIso,
-          reason,
-          title: draftTitle || baseReason || null,
-          notes: draftDescription.trim() || null,
-          location: draftLocation || null,
-          source: "manual",
-        })
+        .insert(insertData)
         .select(
           "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
@@ -2087,6 +2099,7 @@ export default function CalendarPage() {
       setDurationSearch("");
       setCreateError(null);
       setCreateDoctorCalendarId("");
+      setCreateAppointmentType("appointment");
     } catch {
       setCreateError("Failed to create appointment.");
       setSavingCreate(false);
@@ -2392,6 +2405,7 @@ export default function CalendarPage() {
               setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
               setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
               setDraftDescription("");
+              setCreateAppointmentType("appointment");
               const defaultCalendar =
                 doctorCalendars.find((calendar) => calendar.selected) ||
                 doctorCalendars[0] ||
@@ -3721,6 +3735,7 @@ export default function CalendarPage() {
                 </button>
               </div>
               <div className="mt-3 space-y-3 flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+                {createAppointmentType === "appointment" && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-slate-600">Patient</p>
@@ -3815,6 +3830,7 @@ export default function CalendarPage() {
                     </p>
                   ) : null}
                 </div>
+                )}
                 <div className="space-y-1">
                   <input
                     type="text"
@@ -3823,6 +3839,33 @@ export default function CalendarPage() {
                     className="w-full border-b border-slate-200 bg-transparent px-0 pb-1 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none"
                     placeholder="Add title"
                   />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-slate-600">Type</p>
+                  <select
+                    value={createAppointmentType}
+                    onChange={(event) => {
+                      const newType = event.target.value as "appointment" | "meeting";
+                      setCreateAppointmentType(newType);
+                      if (newType === "meeting") {
+                        setCreatePatientId(null);
+                        setCreatePatientName("");
+                        setCreatePatientSearch("");
+                        setSelectedServiceId("");
+                        setServiceSearch("");
+                        setBookingStatus("");
+                        setStatusSearch("");
+                        setAppointmentCategory("");
+                        setCategorySearch("");
+                        setDraftLocation("");
+                        setLocationSearch("");
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  >
+                    <option value="appointment">Appointment</option>
+                    <option value="meeting">Meeting</option>
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Doctor calendar</p>
@@ -3919,6 +3962,8 @@ export default function CalendarPage() {
                     </div>
                   </div>
                 </div>
+                {createAppointmentType === "appointment" && (
+                <>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Service</p>
                   <div className="relative">
@@ -4159,6 +4204,8 @@ export default function CalendarPage() {
                     )}
                   </div>
                 </div>
+                </>
+                )}
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Description</p>
                   <textarea
