@@ -13,6 +13,7 @@ import {
   SWISS_TIMEZONE,
   SWISS_LOCALE,
   getSwissHourMinute,
+  createSwissDateTime,
 } from "@/lib/swissTimezone";
 
 type AppointmentStatus =
@@ -1969,7 +1970,17 @@ export default function CalendarPage() {
       return;
     }
 
-    const startLocal = new Date(`${draftDate}T${draftTime}:00`);
+    // Parse time as Swiss timezone to ensure correct UTC conversion
+    const [hourStr, minStr] = draftTime.split(":");
+    const hour = parseInt(hourStr, 10);
+    const minute = parseInt(minStr, 10);
+    
+    if (isNaN(hour) || isNaN(minute)) {
+      setCreateError("Invalid time format.");
+      return;
+    }
+    
+    const startLocal = createSwissDateTime(draftDate, hour, minute);
     if (Number.isNaN(startLocal.getTime())) {
       setCreateError("Invalid date or time.");
       return;
@@ -3344,7 +3355,16 @@ export default function CalendarPage() {
                 </button>
               </div>
               <div className="mt-3 space-y-3 flex-1 overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-                {/* Patient Information */}
+                {/* Type Display */}
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-slate-600">Type</p>
+                  <div className="inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-medium bg-slate-100 text-slate-700">
+                    {editingAppointment.patient_id ? "Appointment" : "Meeting"}
+                  </div>
+                </div>
+
+                {/* Patient Information - only show for appointments */}
+                {editingAppointment.patient_id && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                   <p className="text-[11px] font-semibold text-slate-700">Patient Information</p>
                   <div className="space-y-1">
@@ -3372,8 +3392,10 @@ export default function CalendarPage() {
                     )}
                   </div>
                 </div>
+                )}
 
-                {/* Appointment Details */}
+                {/* Appointment Details - only show for appointments, not meetings */}
+                {editingAppointment.patient_id && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                   <p className="text-[11px] font-semibold text-slate-700">Appointment Details</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -3484,16 +3506,19 @@ export default function CalendarPage() {
                       )}
                     </div>
                   </div>
-                  <div className="mt-2 pt-2 border-t border-slate-200">
-                    <p className="text-[10px] text-slate-500 mb-1">Notes</p>
-                    <textarea
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      rows={3}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      placeholder="Add notes for this appointment"
-                    />
-                  </div>
+                </div>
+                )}
+
+                {/* Notes - show for both appointments and meetings */}
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-slate-600">Notes</p>
+                  <textarea
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    placeholder="Add notes for this appointment"
+                  />
                 </div>
 
                 <div className="space-y-1">
