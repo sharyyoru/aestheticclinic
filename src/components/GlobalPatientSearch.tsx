@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { usePatientTabs } from "./PatientTabsContext";
+import { fuzzySearchPatients, buildFuzzyOrConditions } from "@/lib/fuzzySearch";
 
 type PatientResult = {
   id: string;
@@ -111,29 +112,25 @@ export default function GlobalPatientSearch() {
     const debounce = setTimeout(async () => {
       setLoading(true);
       try {
-        const searchTerm = `%${trimmed}%`;
+        // Build fuzzy-friendly OR conditions for broader initial fetch
+        const orConditions = buildFuzzyOrConditions(trimmed, ["first_name", "last_name", "email", "phone"]);
         
-        // Split search into words for multi-word name searches
-        const words = trimmed.split(/\s+/).filter(w => w.length > 0);
-        
-        // Build OR conditions for individual fields
-        let orConditions = `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`;
-        
-        // For multi-word queries, also search each word individually
-        // This handles "art wilson" matching first_name="Art" AND last_name="Wilson"
-        if (words.length > 1) {
-          for (const word of words) {
-            const wordTerm = `%${word}%`;
-            orConditions += `,first_name.ilike.${wordTerm},last_name.ilike.${wordTerm}`;
-          }
-        }
-        
-        // Run text search query
+        // Run text search query with loose patterns to catch potential fuzzy matches
         const textQuery = supabaseClient
           .from("patients")
           .select("id, first_name, last_name, email, phone, dob")
           .or(orConditions)
-          .limit(20);
+          .limit(50); // Fetch more results for fuzzy re-ranking
+
+        // If query looks like an email, also run exact email search
+        let emailQuery = null;
+        if (trimmed.includes("@")) {
+          emailQuery = supabaseClient
+            .from("patients")
+            .select("id, first_name, last_name, email, phone, dob")
+            .ilike("email", `%${trimmed}%`)
+            .limit(10);
+        }
 
         // Run DOB query in parallel if search looks like a date pattern
         const hasDigits = /\d/.test(trimmed);
@@ -175,8 +172,9 @@ export default function GlobalPatientSearch() {
           }
         }
 
-        const [textResult, dobResult] = await Promise.all([
+        const [textResult, emailResult, dobResult] = await Promise.all([
           textQuery,
+          emailQuery ?? Promise.resolve({ data: [] as PatientResult[], error: null }),
           dobQuery ?? Promise.resolve({ data: [] as PatientResult[], error: null }),
         ]);
 
@@ -187,16 +185,10 @@ export default function GlobalPatientSearch() {
         } else {
           let filtered = (textResult.data ?? []) as PatientResult[];
 
-          // For multi-word searches, filter results to ensure ALL words match somewhere
-          if (words.length > 1) {
-            filtered = filtered.filter(patient => {
-              const fullName = `${patient.first_name ?? ""} ${patient.last_name ?? ""}`.toLowerCase();
-              const email = (patient.email ?? "").toLowerCase();
-              const phone = (patient.phone ?? "").toLowerCase();
-              const dob = (patient.dob ?? "").toLowerCase();
-              const combined = `${fullName} ${email} ${phone} ${dob}`;
-              return words.every(word => combined.includes(word.toLowerCase()));
-            });
+          // Merge email results first (they should be prioritized for email searches)
+          const emailData = (emailResult?.data ?? []) as PatientResult[];
+          for (const m of emailData) {
+            if (!filtered.some(f => f.id === m.id)) filtered.unshift(m); // Add to front
           }
 
           // Merge DOB results (avoiding duplicates)
@@ -204,6 +196,24 @@ export default function GlobalPatientSearch() {
           for (const m of dobData) {
             if (!filtered.some(f => f.id === m.id)) filtered.push(m);
           }
+          
+          // Preserve exact email matches before fuzzy re-ranking (they should always appear)
+          const exactEmailMatches = filtered.filter(p => 
+            p.email?.toLowerCase().includes(trimmed.toLowerCase())
+          );
+          
+          // Apply fuzzy search re-ranking for better relevance
+          filtered = fuzzySearchPatients(filtered, trimmed, { threshold: 0.5 });
+          
+          // Ensure exact email matches are included even if fuzzy search filtered them out
+          for (const m of exactEmailMatches) {
+            if (!filtered.some(f => f.id === m.id)) {
+              filtered.unshift(m); // Add to front
+            }
+          }
+          
+          // Split search into words for categorization
+          const words = trimmed.split(/\s+/).filter(w => w.length > 0);
 
           // Categorize results by match type
           const queryLower = trimmed.toLowerCase();

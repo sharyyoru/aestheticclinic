@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import PatientMergeModal from "@/components/PatientMergeModal";
 import { useAuth } from "@/components/AuthContext";
+import { fuzzySearchPatients, buildFuzzyOrConditions } from "@/lib/fuzzySearch";
 
 type PatientRow = {
   id: string;
@@ -135,42 +136,27 @@ export default function PatientsPage() {
           );
 
         // Apply server-side search filter based on selected category
+        // Use fuzzy-friendly broad patterns to catch potential matches
+        let searchTrimmed = "";
         if (debouncedSearch.trim()) {
-          const trimmed = debouncedSearch.trim();
-          const searchTerm = `%${trimmed}%`;
+          searchTrimmed = debouncedSearch.trim();
+          const searchTerm = `%${searchTrimmed}%`;
           
           if (searchCategory === "all") {
-            // Search all fields
-            const words = trimmed.split(/\s+/).filter(w => w.length > 0);
-            let orConditions = `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`;
-            
-            // For multi-word queries, also search each word individually
-            if (words.length > 1) {
-              for (const word of words) {
-                const wordTerm = `%${word}%`;
-                orConditions += `,first_name.ilike.${wordTerm},last_name.ilike.${wordTerm}`;
-              }
-            }
+            // Use fuzzy-friendly OR conditions for broader initial fetch
+            const orConditions = buildFuzzyOrConditions(searchTrimmed, ["first_name", "last_name", "email", "phone"]);
             patientsQuery = patientsQuery.or(orConditions);
           } else if (searchCategory === "name") {
-            // Search only name fields
-            const words = trimmed.split(/\s+/).filter(w => w.length > 0);
-            let orConditions = `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm}`;
-            
-            // For multi-word queries, also search each word individually
-            if (words.length > 1) {
-              for (const word of words) {
-                const wordTerm = `%${word}%`;
-                orConditions += `,first_name.ilike.${wordTerm},last_name.ilike.${wordTerm}`;
-              }
-            }
+            // Use fuzzy-friendly OR conditions for name fields only
+            const orConditions = buildFuzzyOrConditions(searchTrimmed, ["first_name", "last_name"]);
             patientsQuery = patientsQuery.or(orConditions);
           } else if (searchCategory === "email") {
-            // Search only email field
-            patientsQuery = patientsQuery.ilike("email", searchTerm);
+            // Use fuzzy-friendly OR conditions for email
+            const orConditions = buildFuzzyOrConditions(searchTrimmed, ["email"]);
+            patientsQuery = patientsQuery.or(orConditions);
           } else if (searchCategory === "phone") {
-            // Search only phone field (strip non-digits for flexibility)
-            const digitsOnly = trimmed.replace(/\D/g, "");
+            // Search phone field with fuzzy patterns
+            const digitsOnly = searchTrimmed.replace(/\D/g, "");
             if (digitsOnly.length > 0) {
               patientsQuery = patientsQuery.or(`phone.ilike.${searchTerm},phone.ilike.%${digitsOnly}%`);
             } else {
@@ -179,7 +165,7 @@ export default function PatientsPage() {
           } else if (searchCategory === "birthday") {
             // Search DOB field with various date format support
             // Try DD/MM/YYYY format (Swiss format)
-            const ddmmyyyyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            const ddmmyyyyMatch = searchTrimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
             if (ddmmyyyyMatch) {
               const day = ddmmyyyyMatch[1].padStart(2, "0");
               const month = ddmmyyyyMatch[2].padStart(2, "0");
@@ -188,12 +174,12 @@ export default function PatientsPage() {
               patientsQuery = patientsQuery.eq("dob", isoDate);
             } else {
               // Try ISO format or year-only
-              const dateMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+              const dateMatch = searchTrimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
               if (dateMatch) {
-                patientsQuery = patientsQuery.eq("dob", trimmed);
+                patientsQuery = patientsQuery.eq("dob", searchTrimmed);
               } else {
                 // Year-only search (e.g. "1990")
-                const yearMatch = trimmed.match(/^(\d{4})$/);
+                const yearMatch = searchTrimmed.match(/^(\d{4})$/);
                 if (yearMatch) {
                   patientsQuery = patientsQuery
                     .gte("dob", `${yearMatch[1]}-01-01`)
@@ -246,7 +232,13 @@ export default function PatientsPage() {
           return;
         }
 
-        setPatients(patientsData as PatientRow[]);
+        // Apply fuzzy re-ranking if there's a search query
+        let rankedPatients = patientsData as PatientRow[];
+        if (searchTrimmed) {
+          rankedPatients = fuzzySearchPatients(rankedPatients, searchTrimmed, { threshold: 0.5 });
+        }
+
+        setPatients(rankedPatients);
         setTotalCount(count ?? 0);
 
         // Only fetch deals for the patients we just loaded (much smaller query)
