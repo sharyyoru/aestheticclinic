@@ -474,7 +474,7 @@ export default function EmbedBookPage() {
   // Success screen
   if (step === "success") {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-4">
+      <div className="bg-white flex items-center justify-center p-4 py-8">
         <div className="max-w-md w-full text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -523,7 +523,7 @@ export default function EmbedBookPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="bg-white">
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Progress indicator */}
         <div className="flex items-center justify-center gap-2 mb-6">
