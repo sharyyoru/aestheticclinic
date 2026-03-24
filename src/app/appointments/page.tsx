@@ -56,6 +56,7 @@ type AppointmentPatient = {
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  dob: string | null;
 };
 
 type AppointmentPatientSuggestion = {
@@ -866,7 +867,7 @@ export default function CalendarPage() {
         const { data, error } = await supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, temporary_text, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+            "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, temporary_text, patient:patients(id, first_name, last_name, email, phone, dob), provider:providers(id, name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
@@ -3152,6 +3153,15 @@ export default function CalendarPage() {
                                               <span className="text-slate-400">privé:</span> {patientEmail}
                                             </div>
                                           )}
+                                          {appt.patient?.dob && (
+                                            <div className="text-slate-500 mt-1">
+                                              🎂 {new Date(appt.patient.dob).toLocaleDateString(SWISS_LOCALE, { 
+                                                year: 'numeric', 
+                                                month: 'short', 
+                                                day: 'numeric' 
+                                              })}
+                                            </div>
+                                          )}
                                           {appt.location && <div className="text-slate-500 mt-1">📍 {appt.location}</div>}
                                           {notes && <div className="text-slate-600 mt-1 italic border-t border-slate-100 pt-1">📝 {notes}</div>}
                                         </div>
@@ -3229,6 +3239,15 @@ export default function CalendarPage() {
                     {editingAppointment.patient?.phone && (
                       <p className="text-[10px] text-slate-500">
                         {editingAppointment.patient.phone}
+                      </p>
+                    )}
+                    {editingAppointment.patient?.dob && (
+                      <p className="text-[10px] text-slate-500">
+                        🎂 {new Date(editingAppointment.patient.dob).toLocaleDateString(SWISS_LOCALE, { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
                       </p>
                     )}
                   </div>
