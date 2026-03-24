@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const QRCode = require('qrcode');
 const path = require('path');
+const fs = require('fs');
 const {
   getUserSession,
   upsertUserSession,
@@ -9,6 +10,15 @@ const {
   clearSessionQR,
   logEvent
 } = require('./db');
+
+// Lazy-loaded to avoid circular dependency (queue-processor requires whatsapp-manager)
+let _resetSessionFailedItems = null;
+function getResetSessionFailed() {
+  if (!_resetSessionFailedItems) {
+    try { _resetSessionFailedItems = require('./queue-processor').resetSessionFailedItems; } catch { _resetSessionFailedItems = () => {}; }
+  }
+  return _resetSessionFailedItems;
+}
 
 // Store active WhatsApp clients per user
 const clients = new Map();
@@ -32,7 +42,7 @@ function getWhatsAppClient(userId) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId,
-      dataPath: path.join(__dirname, 'whatsapp-sessions')
+      dataPath: process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions')
     }),
     puppeteer: {
       headless: true,
@@ -140,6 +150,9 @@ function getWhatsAppClient(userId) {
       
       broadcastToUser(userId, 'status', { status: 'ready' });
     }
+
+    // Auto-resend any queued messages that failed due to session disconnect
+    try { getResetSessionFailed()(userId); } catch {}
   });
 
   // Message event
@@ -211,6 +224,56 @@ function getWhatsAppClient(userId) {
 const initializingUsers = new Set();
 
 /**
+ * Remove stale Chromium lock files from a user's session directory.
+ * When a container dies (redeploy), Chromium leaves SingletonLock/SingletonCookie/SingletonSocket
+ * in the profile dir. The new container's Chromium refuses to start with "profile in use" error.
+ */
+function cleanStaleLockFiles(userId) {
+  const sessionBasePath = process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions');
+  const sessionDir = path.join(sessionBasePath, `session-${userId}`);
+
+  try {
+    fs.lstatSync(sessionDir);
+  } catch {
+    return; // session dir doesn't exist at all
+  }
+
+  // SingletonLock is a SYMLINK. When the old container dies the symlink becomes
+  // dangling/broken.  fs.existsSync() follows symlinks and returns false for
+  // broken ones, so we must use readdirSync (which lists broken symlinks) and
+  // lstatSync (which reads the link itself, not its target).
+  const removeLocks = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.startsWith('Singleton')) {
+        const fullPath = path.join(dir, entry);
+        try {
+          fs.unlinkSync(fullPath);
+          console.log(`[LockCleanup] Removed stale ${entry} for user ${userId} at ${fullPath}`);
+        } catch (err) {
+          console.warn(`[LockCleanup] Could not remove ${fullPath}:`, err.message);
+        }
+      }
+    }
+  };
+
+  // Chromium puts lock files at the root of the user-data-dir
+  removeLocks(sessionDir);
+
+  // Also check common subdirectories
+  for (const sub of ['Default', 'chrome_crashpad_handler']) {
+    removeLocks(path.join(sessionDir, sub));
+  }
+
+  console.log(`[LockCleanup] Lock file cleanup completed for user ${userId}`);
+}
+
+/**
  * Initialize WhatsApp for a user
  */
 async function initializeWhatsApp(userId) {
@@ -258,6 +321,9 @@ async function initializeWhatsApp(userId) {
     }
   }, 90000));
   
+  // Remove stale Chromium lock files left by previous container (persistent volume)
+  cleanStaleLockFiles(userId);
+
   // Start initialization in background (don't block the HTTP response)
   client.initialize().then(() => {
     console.log(`WhatsApp client initialized for user: ${userId}`);
@@ -377,7 +443,7 @@ async function getChats(userId) {
 /**
  * Get messages from a chat
  */
-async function getMessages(userId, chatId, limit = 50) {
+async function getMessages(userId, chatId, limit = 100) {
   const client = clients.get(userId);
   
   if (!client) {
@@ -386,16 +452,109 @@ async function getMessages(userId, chatId, limit = 50) {
   
   const chat = await client.getChatById(chatId);
   const messages = await chat.fetchMessages({ limit });
-  
-  return messages.map(msg => ({
-    id: msg.id._serialized,
-    body: msg.body,
-    fromMe: msg.fromMe,
-    timestamp: msg.timestamp,
-    author: msg.author || msg.from,
-    hasMedia: msg.hasMedia,
-    type: msg.type
+
+  // Build a contact-name cache so we don't re-fetch the same contact
+  const nameCache = new Map();
+
+  // For group chats, pre-populate cache from participant list
+  // This resolves @lid IDs that getContactById cannot handle
+  if (chat.isGroup && chat.participants) {
+    for (const p of chat.participants) {
+      try {
+        const pid = p.id?._serialized || p.id;
+        if (pid) {
+          const contact = await client.getContactById(pid);
+          const name = contact.pushname || contact.name || contact.shortName || contact.number || null;
+          if (name) {
+            nameCache.set(pid, name);
+          }
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  // Also try to build a @lid -> name mapping from participants
+  // whatsapp-web.js group participants have id in @c.us format
+  // but msg.author in groups can be @lid format
+  // We build a reverse lookup by phone-number suffix
+  const lidLookup = new Map();
+  for (const [key, name] of nameCache.entries()) {
+    // Extract digits from the @c.us key
+    const digits = key.replace(/@.*$/, '');
+    if (digits) {
+      lidLookup.set(digits, name);
+      // Also store last 10 digits for fuzzy match
+      if (digits.length > 10) {
+        lidLookup.set(digits.slice(-10), name);
+      }
+    }
+  }
+
+  const resolveName = async (contactId) => {
+    if (!contactId) return null;
+    if (nameCache.has(contactId)) return nameCache.get(contactId);
+
+    // Try @lid -> phone-digit matching
+    if (contactId.includes('@lid') || contactId.includes('@g.us')) {
+      const digits = contactId.replace(/@.*$/, '');
+      const found = lidLookup.get(digits) || lidLookup.get(digits.slice(-10));
+      if (found) {
+        nameCache.set(contactId, found);
+        return found;
+      }
+    }
+
+    // Direct contact lookup (works for @c.us IDs)
+    try {
+      const contact = await client.getContactById(contactId);
+      const name = contact.pushname || contact.name || contact.shortName || null;
+      nameCache.set(contactId, name);
+      return name;
+    } catch {
+      nameCache.set(contactId, null);
+      return null;
+    }
+  };
+
+  const result = await Promise.all(messages.map(async (msg) => {
+    const authorId = msg.author || msg.from;
+    const authorName = msg.fromMe ? null : await resolveName(authorId);
+
+    // Try to download media
+    let mediaData = null;
+    if (msg.hasMedia) {
+      try {
+        const media = await msg.downloadMedia();
+        if (media) {
+          const isVisual = media.mimetype?.startsWith('image/') || media.mimetype?.startsWith('video/');
+          mediaData = {
+            mimetype: media.mimetype,
+            filename: media.filename || null,
+            // Inline base64 for images/videos under ~1MB
+            data: isVisual && media.data && media.data.length < 1_400_000
+              ? media.data : null,
+          };
+        }
+      } catch {
+        // Media download can fail for old messages
+        mediaData = { mimetype: null, filename: null, data: null };
+      }
+    }
+
+    return {
+      id: msg.id._serialized,
+      body: msg.body,
+      fromMe: msg.fromMe,
+      timestamp: msg.timestamp,
+      author: authorId,
+      authorName,
+      hasMedia: msg.hasMedia,
+      type: msg.type,
+      media: mediaData,
+    };
   }));
+
+  return result;
 }
 
 /**
@@ -497,6 +656,29 @@ function getActiveClients() {
   return Array.from(clients.keys());
 }
 
+/**
+ * Destroy all active clients for graceful shutdown.
+ * Uses destroy() NOT logout() — logout clears session auth data!
+ */
+async function destroyAllClients() {
+  const userIds = Array.from(clients.keys());
+  console.log(`[Shutdown] Destroying ${userIds.length} active WhatsApp client(s)...`);
+
+  for (const userId of userIds) {
+    try {
+      const client = clients.get(userId);
+      if (client) {
+        await client.destroy();
+        clients.delete(userId);
+        console.log(`[Shutdown] Destroyed client for user ${userId}`);
+      }
+    } catch (err) {
+      console.error(`[Shutdown] Error destroying client for ${userId}:`, err.message);
+      clients.delete(userId);
+    }
+  }
+}
+
 module.exports = {
   getWhatsAppClient,
   initializeWhatsApp,
@@ -509,5 +691,6 @@ module.exports = {
   registerWebSocket,
   unregisterWebSocket,
   broadcastToUser,
-  getActiveClients
+  getActiveClients,
+  destroyAllClients
 };

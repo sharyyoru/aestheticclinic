@@ -3,7 +3,7 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { Image, Upload, Trash2, X, Loader2 } from "lucide-react";
+import { Image, Upload, Trash2, X, Loader2, Copy, Check, ChevronDown, ChevronRight, Eye } from "lucide-react";
 
 // Dynamically import to avoid SSR issues
 const EmailEditor = dynamic(() => import("react-email-editor"), { ssr: false });
@@ -102,6 +102,11 @@ export default function EmailTemplateBuilder({
   const [uploadingImage, setUploadingImage] = useState(false);
   const imageSelectDoneRef = useRef<((data: { url: string }) => void) | null>(null);
 
+  // Sidebar gallery state
+  const [sidebarGalleryExpanded, setSidebarGalleryExpanded] = useState(false);
+  const [copiedImageUrl, setCopiedImageUrl] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<GalleryImage | null>(null);
+
   useEffect(() => {
     if (open) {
       loadTemplates();
@@ -119,14 +124,31 @@ export default function EmailTemplateBuilder({
       if (error) throw error;
 
       const images: GalleryImage[] = (data || [])
-        .filter((file) => file.name && !file.name.endsWith("/"))
+        .filter((file) => {
+          if (!file.name || file.name.endsWith("/")) return false;
+          // Filter out placeholder files and non-image files
+          if (file.name.startsWith(".")) return false;
+          const ext = file.name.split(".").pop()?.toLowerCase();
+          return ["jpg", "jpeg", "png", "gif", "webp", "svg", "heic", "heif"].includes(ext || "");
+        })
         .map((file) => {
           const { data: urlData } = supabaseClient.storage
             .from("emailgallery")
             .getPublicUrl(file.name);
+          const baseUrl = urlData.publicUrl;
+          const ext = file.name.split(".").pop()?.toLowerCase() || "";
+          
+          // Use appropriate API for image display
+          let displayUrl = baseUrl;
+          if (["heic", "heif"].includes(ext)) {
+            displayUrl = `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
+          } else if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
+            displayUrl = `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
+          }
+          
           return {
             name: file.name,
-            url: urlData.publicUrl,
+            url: displayUrl,
             created_at: file.created_at || new Date().toISOString(),
           };
         });
@@ -214,6 +236,7 @@ export default function EmailTemplateBuilder({
     setSubjectTemplate(template.subject_template);
     setView("editor");
     setEditorReady(false);
+    loadGalleryImages();
   }
 
   function handleNewTemplate() {
@@ -222,6 +245,41 @@ export default function EmailTemplateBuilder({
     setSubjectTemplate("");
     setView("editor");
     setEditorReady(false);
+    loadGalleryImages();
+  }
+
+  // Copy image URL to clipboard
+  async function handleCopyImageUrl(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedImageUrl(url);
+      setTimeout(() => setCopiedImageUrl(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  }
+
+  // Handle sidebar image upload
+  async function handleSidebarImageUpload(file: File) {
+    try {
+      setUploadingImage(true);
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "png";
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+
+      const { error: uploadError } = await supabaseClient.storage
+        .from("emailgallery")
+        .upload(fileName, file, { contentType: file.type });
+
+      if (uploadError) throw uploadError;
+
+      await loadGalleryImages();
+      setSuccess("Image uploaded successfully!");
+      setTimeout(() => setSuccess(null), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload image");
+    } finally {
+      setUploadingImage(false);
+    }
   }
 
   // Called when editor iframe is created but before it's fully loaded
@@ -666,6 +724,133 @@ export default function EmailTemplateBuilder({
                     ))}
                   </div>
                 </div>
+
+                {/* Image Gallery */}
+                <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                  <button
+                    onClick={() => setSidebarGalleryExpanded(!sidebarGalleryExpanded)}
+                    className="flex w-full items-center justify-between p-3 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Image className="h-4 w-4 text-sky-600" />
+                      <h4 className="text-sm font-medium text-slate-900">Image Gallery</h4>
+                    </div>
+                    {sidebarGalleryExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-slate-400" />
+                    )}
+                  </button>
+
+                  {sidebarGalleryExpanded && (
+                    <div className="border-t border-slate-200 p-3 space-y-3">
+                      {/* Upload button */}
+                      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-3 py-3 hover:border-sky-400 hover:bg-sky-50 transition-colors">
+                        {uploadingImage ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+                            <span className="text-xs font-medium text-slate-600">Uploading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4 text-slate-400" />
+                            <span className="text-xs font-medium text-slate-600">Upload Image</span>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/gif,image/webp,image/svg+xml"
+                          className="hidden"
+                          disabled={uploadingImage}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              await handleSidebarImageUpload(file);
+                            }
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+
+                      {/* Gallery grid */}
+                      {loadingImages ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                        </div>
+                      ) : galleryImages.length === 0 ? (
+                        <div className="text-center py-4">
+                          <Image className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                          <p className="text-xs text-slate-500">No images yet</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2 max-h-64 overflow-auto">
+                          {galleryImages.map((image) => (
+                            <div
+                              key={image.name}
+                              className="group relative aspect-square rounded-lg border border-slate-200 bg-slate-50 overflow-hidden hover:border-sky-400 transition-all cursor-pointer"
+                              onClick={() => setPreviewImage(image)}
+                            >
+                              <img
+                                src={image.url}
+                                alt={image.name}
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  // Hide broken images
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto z-10">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPreviewImage(image);
+                                  }}
+                                  className="rounded-full bg-white p-1.5 text-slate-700 hover:bg-sky-500 hover:text-white transition-colors shadow-sm pointer-events-auto"
+                                  title="Preview image"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCopyImageUrl(image.url);
+                                  }}
+                                  className="rounded-full bg-white p-1.5 text-slate-700 hover:bg-sky-500 hover:text-white transition-colors shadow-sm pointer-events-auto"
+                                  title="Copy image URL"
+                                >
+                                  {copiedImageUrl === image.url ? (
+                                    <Check className="h-3 w-3 text-emerald-500" />
+                                  ) : (
+                                    <Copy className="h-3 w-3" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!confirm("Delete this image? This cannot be undone.")) return;
+                                    try {
+                                      const { error } = await supabaseClient.storage
+                                        .from("emailgallery")
+                                        .remove([image.name]);
+                                      if (error) throw error;
+                                      setGalleryImages((prev) => prev.filter((img) => img.name !== image.name));
+                                    } catch (err) {
+                                      setError(err instanceof Error ? err.message : "Failed to delete image");
+                                    }
+                                  }}
+                                  className="rounded-full bg-white p-1.5 text-red-500 hover:bg-red-500 hover:text-white transition-colors shadow-sm pointer-events-auto"
+                                  title="Delete image"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -788,6 +973,9 @@ export default function EmailTemplateBuilder({
                         src={image.url}
                         alt={image.name}
                         className="h-full w-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
                       />
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -820,6 +1008,71 @@ export default function EmailTemplateBuilder({
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div 
+            className="relative max-w-4xl max-h-[90vh] rounded-lg overflow-hidden bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-3 right-3 z-10 rounded-full bg-black/50 p-2 text-white hover:bg-black/70 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img
+              src={previewImage.url}
+              alt={previewImage.name}
+              className="max-w-full max-h-[80vh] object-contain"
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+              <p className="text-white text-sm font-medium truncate mb-2">{previewImage.name}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleCopyImageUrl(previewImage.url)}
+                  className="flex items-center gap-1.5 rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/30 transition-colors"
+                >
+                  {copiedImageUrl === previewImage.url ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy URL
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm("Delete this image? This cannot be undone.")) return;
+                    try {
+                      const { error } = await supabaseClient.storage
+                        .from("emailgallery")
+                        .remove([previewImage.name]);
+                      if (error) throw error;
+                      setGalleryImages((prev) => prev.filter((img) => img.name !== previewImage.name));
+                      setPreviewImage(null);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Failed to delete image");
+                    }
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg bg-red-500/80 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         </div>

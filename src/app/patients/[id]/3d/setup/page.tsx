@@ -209,17 +209,33 @@ export default function Patient3DSetupPage() {
         const imageFiles = data
           .filter((file) => {
             const ext = file.name.split(".").pop()?.toLowerCase();
-            return ["jpg", "jpeg", "png", "gif", "webp"].includes(ext || "");
+            return ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"].includes(ext || "");
           })
           .map((file) => {
             const fullPath = `${patientId}/${file.name}`;
             const { data: urlData } = supabaseClient.storage
               .from("patient_document")
               .getPublicUrl(fullPath);
+            const baseUrl = urlData.publicUrl;
+            
+            // Use appropriate API for each image type
+            const ext = file.name.split(".").pop()?.toLowerCase() || "";
+            const isHeic = ["heic", "heif"].includes(ext);
+            const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+            
+            let displayUrl: string;
+            if (isHeic) {
+              displayUrl = `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
+            } else if (isRegularImage) {
+              displayUrl = `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
+            } else {
+              displayUrl = baseUrl;
+            }
+            
             return {
               name: file.name,
               path: fullPath,
-              url: urlData.publicUrl,
+              url: displayUrl,
               created_at: (file as any).created_at,
             };
           });

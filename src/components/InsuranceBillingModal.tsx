@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabaseClient } from "@/lib/supabaseClient";
 import {
   INVOICE_STATUS_CONFIG,
@@ -449,9 +450,9 @@ export default function InsuranceBillingModal({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50"
       onClick={(e) => {
@@ -1096,6 +1097,7 @@ export default function InsuranceBillingModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense, useRef, useCallback } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { pushToDataLayer } from "@/components/GoogleTagManager";
 
 const LIPOSUCTION_AREAS = [
   "Tummy", "Flancs", "Back", "Arms", "Thighs", "Legs", "Breast", "Chin", "Other"
@@ -364,6 +365,9 @@ function ConsultationContent() {
         setUploading(false);
       }
 
+      // Push GTM event for form submission
+      pushToDataLayer("aliice_form_submit");
+      
       // Redirect to book appointment with patient info and consultation type
       router.push(`/book-appointment/doctors?pid=${patientId}&sid=${submissionId}&autofill=true&ctype=${category}`);
     } catch (err) {

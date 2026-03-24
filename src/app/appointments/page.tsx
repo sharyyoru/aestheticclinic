@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback, useLayoutEffect } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
@@ -13,6 +13,7 @@ import {
   SWISS_TIMEZONE,
   SWISS_LOCALE,
   getSwissHourMinute,
+  createSwissDateTime,
 } from "@/lib/swissTimezone";
 
 type AppointmentStatus =
@@ -671,29 +672,20 @@ async function sendAppointmentConfirmationEmail(
     if (patientPhone && patientPhone.trim().length > 0) {
       const whatsappText = `Appointment confirmation on ${dateTimeLabel} for ${serviceLabel} with ${doctorName} at ${location}`;
 
-      const templateVariables = {
-        "1": dateTimeLabel,
-        "2": serviceLabel,
-        "3": doctorName,
-        "4": patientName || "patient",
-      };
-
       try {
-        await fetch("/api/whatsapp/send", {
+        await fetch("/api/whatsapp/queue", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            toPhone: patientPhone,
+            messageBody: whatsappText,
             patientId: appointment.patient_id,
-            to: patientPhone,
-            body: whatsappText,
-            templateSid: "HX6f50c6d2b3b2372a9c2145ebfc1b5911",
-            templateVariables,
           }),
         });
       } catch (error) {
-        console.error("Failed to send WhatsApp appointment notification", error);
+        console.error("Failed to enqueue WhatsApp appointment notification", error);
       }
     }
   } catch (error) {
@@ -744,6 +736,31 @@ export default function CalendarPage() {
     slotHeight: number;
     startMinutesOffset: number;
   } | null>(null);
+
+  // iOS Safari viewport height fix
+  const [viewportHeight, setViewportHeight] = useState<string>("100vh");
+  
+  // Fix for iOS Safari dynamic viewport height
+  useLayoutEffect(() => {
+    function updateViewportHeight() {
+      // Use visualViewport for iOS Safari compatibility
+      const vh = window.visualViewport?.height || window.innerHeight;
+      setViewportHeight(`${vh}px`);
+    }
+    
+    updateViewportHeight();
+    
+    // Listen for resize and orientation changes
+    window.addEventListener("resize", updateViewportHeight);
+    window.addEventListener("orientationchange", updateViewportHeight);
+    window.visualViewport?.addEventListener("resize", updateViewportHeight);
+    
+    return () => {
+      window.removeEventListener("resize", updateViewportHeight);
+      window.removeEventListener("orientationchange", updateViewportHeight);
+      window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+    };
+  }, []);
   
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
@@ -796,6 +813,7 @@ export default function CalendarPage() {
   const [timeSearch, setTimeSearch] = useState("");
   const [timeDropdownOpen, setTimeDropdownOpen] = useState(false);
   const [createDoctorCalendarId, setCreateDoctorCalendarId] = useState("");
+  const [createAppointmentType, setCreateAppointmentType] = useState<"appointment" | "meeting">("appointment");
 
   const closeAllCreateDropdowns = (except?: string) => {
     if (except !== "patient") setShowCreatePatientSuggestions(false);
@@ -992,13 +1010,34 @@ export default function CalendarPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Allowed calendar names - only these will be shown in the calendar sidebar
+  const ALLOWED_CALENDAR_NAMES = [
+    "Xavier Tenorio",
+    "Yulia Raspertova",
+    "Borhan Rosa",
+    "Rodrigues Cezar",
+    "Patricia Caballero",
+    "Laser& treatments aesthetics clinic",
+    "Gstaad",
+    "Montreux",
+    "Lily Radinova",
+    "Neyner Leon",
+    "Mounia Khedir",
+    "Vladimir Facturation",
+    "Liridona Demiri",
+    "Burbuqe Fazliu",
+    "Assistante",
+    "Yosra",
+    "Ngadande Vera",
+  ];
+
   useEffect(() => {
     if (providers.length === 0) return;
 
     setDoctorCalendars((prev) => {
       if (prev.length > 0) return prev;
 
-      // Normalize name for deduplication - remove prefixes, normalize spelling
+      // Normalize name for deduplication and matching - remove prefixes, normalize spelling
       function normalizeName(name: string): string {
         return name
           .toLowerCase()
@@ -1023,11 +1062,33 @@ export default function CalendarPage() {
         }
       } catch {}
 
-      // Deduplicate providers by normalized name
+      // Normalize allowed names for matching
+      const normalizedAllowedNames = ALLOWED_CALENDAR_NAMES.map(name => normalizeName(name));
+      
+      // Check if a provider name matches any allowed name
+      function isAllowedProvider(providerName: string): boolean {
+        const normalized = normalizeName(providerName);
+        return normalizedAllowedNames.some(allowed => {
+          // Check for exact match or partial match (name contains allowed or allowed contains name)
+          return normalized === allowed || 
+                 normalized.includes(allowed) || 
+                 allowed.includes(normalized) ||
+                 // Also check individual words for flexibility
+                 normalized.split(' ').some(word => word.length > 2 && allowed.includes(word)) ||
+                 allowed.split(' ').some(word => word.length > 2 && normalized.includes(word));
+        });
+      }
+
+      // Deduplicate providers by normalized name and filter to allowed names only
       const seenNormalizedNames = new Map<string, typeof providers[0]>();
       const uniqueProviders = providers.filter((provider) => {
         const rawName = provider.name ?? "Unnamed doctor";
         const normalized = normalizeName(rawName);
+        
+        // Skip if not in allowed list
+        if (!isAllowedProvider(rawName)) {
+          return false;
+        }
         
         if (seenNormalizedNames.has(normalized)) {
           return false; // Skip duplicate
@@ -1661,6 +1722,7 @@ export default function CalendarPage() {
     setDurationSearch(durationOption ? durationOption.label : `${durationMinutes} minutes`);
     
     setDraftDescription("");
+    setCreateAppointmentType("appointment");
     // Use the doctor from the dragged column if available, otherwise default
     if (dragDoctorCalendarId) {
       setCreateDoctorCalendarId(dragDoctorCalendarId);
@@ -1680,6 +1742,7 @@ export default function CalendarPage() {
   }
 
   // Touch event handlers for iPad/tablet drag-to-create
+  // Improved for better iPad Safari compatibility
   const handleTouchStart = useCallback((
     e: React.TouchEvent,
     date: Date,
@@ -1689,8 +1752,9 @@ export default function CalendarPage() {
   ) => {
     if (!slotElement) return;
     
-    // Prevent default to avoid scroll while dragging
-    e.preventDefault();
+    // For iPad: Use a small delay to distinguish between tap and drag
+    const touch = e.touches[0];
+    if (!touch) return;
     
     const rect = slotElement.getBoundingClientRect();
     const containerRect = slotElement.parentElement?.getBoundingClientRect();
@@ -1709,7 +1773,10 @@ export default function CalendarPage() {
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!isDraggingCreate || !touchDragInfoRef.current) return;
     
-    e.preventDefault();
+    // Prevent scrolling while dragging on iPad
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     
     const touch = e.touches[0];
     if (!touch) return;
@@ -1732,7 +1799,9 @@ export default function CalendarPage() {
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     if (!isDraggingCreate) return;
-    e.preventDefault();
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     handleDragCreateEnd();
   }, [isDraggingCreate, dragStartMinutes, dragEndMinutes, dragDate, dragDoctorCalendarId, doctorCalendars]);
 
@@ -1874,19 +1943,22 @@ export default function CalendarPage() {
 
     setCreateError(null);
 
-    if (!createPatientId) {
-      setCreateError("Please select a patient.");
-      return;
-    }
+    // Only require patient, service, and status for appointments (not meetings)
+    if (createAppointmentType === "appointment") {
+      if (!createPatientId) {
+        setCreateError("Please select a patient.");
+        return;
+      }
 
-    if (!selectedServiceId) {
-      setCreateError("Please select a service.");
-      return;
-    }
+      if (!selectedServiceId) {
+        setCreateError("Please select a service.");
+        return;
+      }
 
-    if (!bookingStatus) {
-      setCreateError("Please select a status.");
-      return;
+      if (!bookingStatus) {
+        setCreateError("Please select a status.");
+        return;
+      }
     }
 
     if (doctorCalendars.length > 0 && !createDoctorCalendarId) {
@@ -1899,7 +1971,17 @@ export default function CalendarPage() {
       return;
     }
 
-    const startLocal = new Date(`${draftDate}T${draftTime}:00`);
+    // Parse time as Swiss timezone to ensure correct UTC conversion
+    const [hourStr, minStr] = draftTime.split(":");
+    const hour = parseInt(hourStr, 10);
+    const minute = parseInt(minStr, 10);
+    
+    if (isNaN(hour) || isNaN(minute)) {
+      setCreateError("Invalid time format.");
+      return;
+    }
+    
+    const startLocal = createSwissDateTime(draftDate, hour, minute);
     if (Number.isNaN(startLocal.getTime())) {
       setCreateError("Invalid date or time.");
       return;
@@ -1948,18 +2030,25 @@ export default function CalendarPage() {
         : `${baseReason}${doctorTag}${categoryTag}${notesTag}`;
 
       // Don't set provider_id to avoid foreign key issues - doctor info is in [Doctor:] tag
+      // For meetings, patient_id can be null
+      const insertData: Record<string, unknown> = {
+        start_time: startIso,
+        end_time: endIso,
+        reason,
+        title: draftTitle || baseReason || null,
+        notes: draftDescription.trim() || null,
+        location: draftLocation || null,
+        source: "manual",
+      };
+      
+      // Only include patient_id for appointments (not meetings)
+      if (createAppointmentType === "appointment" && createPatientId) {
+        insertData.patient_id = createPatientId;
+      }
+
       const { data, error } = await supabaseClient
         .from("appointments")
-        .insert({
-          patient_id: createPatientId,
-          start_time: startIso,
-          end_time: endIso,
-          reason,
-          title: draftTitle || baseReason || null,
-          notes: draftDescription.trim() || null,
-          location: draftLocation || null,
-          source: "manual",
-        })
+        .insert(insertData)
         .select(
           "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
@@ -2022,6 +2111,7 @@ export default function CalendarPage() {
       setDurationSearch("");
       setCreateError(null);
       setCreateDoctorCalendarId("");
+      setCreateAppointmentType("appointment");
     } catch {
       setCreateError("Failed to create appointment.");
       setSavingCreate(false);
@@ -2295,9 +2385,16 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-96px)] gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2">
+    <div 
+      className="flex gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2"
+      style={{ 
+        height: `calc(${viewportHeight} - 96px)`,
+        minHeight: '400px',
+        WebkitOverflowScrolling: 'touch',
+      } as React.CSSProperties}
+    >
       {/* Left sidebar similar to Google Calendar */}
-      <aside className="hidden w-64 flex-shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex">
+      <aside className="hidden w-64 shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
         <div className="mb-3">
           <button
             type="button"
@@ -2320,6 +2417,7 @@ export default function CalendarPage() {
               setDraftLocation(CLINIC_LOCATION_OPTIONS[0] ?? "");
               setLocationSearch(CLINIC_LOCATION_OPTIONS[0] ?? "");
               setDraftDescription("");
+              setCreateAppointmentType("appointment");
               const defaultCalendar =
                 doctorCalendars.find((calendar) => calendar.selected) ||
                 doctorCalendars[0] ||
@@ -2628,7 +2726,8 @@ export default function CalendarPage() {
             <button
               type="button"
               onClick={goToToday}
-              className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              style={{ touchAction: 'manipulation' }}
+              className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:bg-slate-100"
             >
               Today
             </button>
@@ -2636,7 +2735,8 @@ export default function CalendarPage() {
               <button
                 type="button"
                 onClick={goPrevMonth}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50"
+                style={{ touchAction: 'manipulation' }}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50 active:bg-slate-100"
                 aria-label="Previous month"
               >
                 <svg
@@ -2654,7 +2754,8 @@ export default function CalendarPage() {
               <button
                 type="button"
                 onClick={goNextMonth}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50"
+                style={{ touchAction: 'manipulation' }}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full hover:bg-slate-50 active:bg-slate-100"
                 aria-label="Next month"
               >
                 <svg
@@ -2707,7 +2808,8 @@ export default function CalendarPage() {
               <button
                 type="button"
                 onClick={() => setViewMenuOpen((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                style={{ touchAction: 'manipulation' }}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:bg-slate-100"
               >
                 {view === "month"
                   ? "Month"
@@ -2727,29 +2829,40 @@ export default function CalendarPage() {
                 </svg>
               </button>
               {viewMenuOpen ? (
-                <div className="absolute right-0 z-20 mt-1 min-w-[120px] rounded-xl border border-slate-200 bg-white py-1 text-xs shadow-lg">
-                  <button
-                    type="button"
-                    onClick={handleSelectDayView}
-                    className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50"
-                  >
-                    Day
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSelectWeekView}
-                    className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50"
-                  >
-                    Week
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSelectMonthView}
-                    className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50"
-                  >
-                    Month
-                  </button>
-                </div>
+                <>
+                  {/* Invisible backdrop to close menu on touch/click outside */}
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setViewMenuOpen(false)}
+                    onTouchEnd={() => setViewMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 z-20 mt-1 min-w-[120px] rounded-xl border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                    <button
+                      type="button"
+                      onClick={handleSelectDayView}
+                      style={{ touchAction: 'manipulation' }}
+                      className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                    >
+                      Day
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectWeekView}
+                      style={{ touchAction: 'manipulation' }}
+                      className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                    >
+                      Week
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectMonthView}
+                      style={{ touchAction: 'manipulation' }}
+                      className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                    >
+                      Month
+                    </button>
+                  </div>
+                </>
               ) : null}
             </div>
             <Link
@@ -2761,15 +2874,15 @@ export default function CalendarPage() {
           </div>
         </div>
         {view === "month" ? (
-          <div className="flex-1 flex flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
-            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium uppercase tracking-wide text-slate-500 sticky top-0 z-10">
+          <div className="flex-1 flex flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+            <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium uppercase tracking-wide text-slate-500 sticky top-0 z-10" style={{ position: '-webkit-sticky' } as React.CSSProperties}>
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => (
                 <div key={label} className="px-3 py-2">
                   {label}
                 </div>
               ))}
             </div>
-            <div className="grid flex-1 grid-cols-7 text-[11px] overflow-y-auto">
+            <div className="grid flex-1 grid-cols-7 text-[11px] overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
               {gridDates.map((date) => {
                 const ymd = formatYmd(date);
                 const isToday = ymd === todayYmd;
@@ -2786,9 +2899,27 @@ export default function CalendarPage() {
                     onClick={() => handleMonthDayClick(date)}
                     onMouseDown={() => handleMiniDayMouseDown(date)}
                     onMouseEnter={() => handleMiniDayMouseEnter(date)}
-                    onTouchStart={() => handleMiniDayMouseDown(date)}
+                    onTouchStart={(e) => {
+                      // Prevent default to avoid scroll interference on iPad
+                      if (e.cancelable) e.preventDefault();
+                      handleMiniDayMouseDown(date);
+                    }}
+                    onTouchMove={(e) => {
+                      // Handle touch move for range selection on iPad
+                      if (!isDraggingRange) return;
+                      const touch = e.touches[0];
+                      if (!touch) return;
+                      const element = document.elementFromPoint(touch.clientX, touch.clientY);
+                      const dateAttr = element?.closest('[data-month-date]')?.getAttribute('data-month-date');
+                      if (dateAttr) {
+                        const [year, month, day] = dateAttr.split('-').map(Number);
+                        const touchedDate = new Date(year, month - 1, day);
+                        handleMiniDayMouseEnter(touchedDate);
+                      }
+                    }}
                     onTouchEnd={() => setIsDraggingRange(false)}
                     data-month-date={ymd}
+                    style={{ touchAction: 'manipulation' }}
                     className={`flex min-h-[96px] flex-col border-b border-r border-slate-100 px-2 py-1 text-left last:border-r-0 ${
                       isCurrentMonth ? "bg-white" : "bg-slate-50/80 text-slate-400"
                     } ${inRange ? "bg-sky-50" : ""}`}
@@ -2842,6 +2973,11 @@ export default function CalendarPage() {
                                 event.stopPropagation();
                                 openEditModalForAppointment(appt);
                               }}
+                              onTouchEnd={(event) => {
+                                // Ensure touch works reliably on iPad
+                                event.stopPropagation();
+                              }}
+                              style={{ touchAction: 'manipulation' }}
                               className={`w-full rounded-md px-1 py-0.5 text-[10px] text-left ${getAppointmentStatusColorClasses(
                                 appt.status,
                               )} ${getCategoryColor(category)}`}
@@ -2912,7 +3048,7 @@ export default function CalendarPage() {
                 ))}
               </div>
               {/* Scrollable content area with time axis and day columns */}
-              <div className="flex-1 overflow-auto">
+              <div className="flex-1 overflow-auto" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 <div className="flex">
                   {/* Time axis - scrolls with content */}
                   <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0">
@@ -3120,6 +3256,8 @@ export default function CalendarPage() {
                                         <button
                                           type="button"
                                           onClick={() => openEditModalForAppointment(appt)}
+                                          onTouchEnd={(e) => e.stopPropagation()}
+                                          style={{ touchAction: 'manipulation' }}
                                           className={`w-full h-full rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)}`}
                                         >
                                           <div className="flex items-center gap-1 truncate font-medium text-slate-800">
@@ -3183,16 +3321,28 @@ export default function CalendarPage() {
         )}
         {editModalOpen && editingAppointment ? (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              // iOS Safari fix: prevent body scroll when modal is open
+              touchAction: 'none',
+            } as React.CSSProperties}
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 closeEditModal();
               }
             }}
           >
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)]" style={{ touchAction: 'auto' } as React.CSSProperties}>
-              <div className="flex items-start justify-between gap-2">
+            <div 
+              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)] max-h-[85vh] overflow-hidden flex flex-col"
+              style={{ 
+                touchAction: 'auto',
+                // iOS Safari safe area
+                paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+              } as React.CSSProperties}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-2 shrink-0">
                 <h2 className="text-sm font-semibold text-slate-900">Edit appointment</h2>
                 <button
                   type="button"
@@ -3214,8 +3364,17 @@ export default function CalendarPage() {
                   </svg>
                 </button>
               </div>
-              <div className="mt-3 space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                {/* Patient Information */}
+              <div className="mt-3 space-y-3 flex-1 overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+                {/* Type Display */}
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-slate-600">Type</p>
+                  <div className="inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-medium bg-slate-100 text-slate-700">
+                    {editingAppointment.patient_id ? "Appointment" : "Meeting"}
+                  </div>
+                </div>
+
+                {/* Patient Information - only show for appointments */}
+                {editingAppointment.patient_id && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                   <p className="text-[11px] font-semibold text-slate-700">Patient Information</p>
                   <div className="space-y-1">
@@ -3252,8 +3411,10 @@ export default function CalendarPage() {
                     )}
                   </div>
                 </div>
+                )}
 
-                {/* Appointment Details */}
+                {/* Appointment Details - only show for appointments, not meetings */}
+                {editingAppointment.patient_id && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                   <p className="text-[11px] font-semibold text-slate-700">Appointment Details</p>
                   <div className="grid grid-cols-2 gap-2">
@@ -3364,16 +3525,19 @@ export default function CalendarPage() {
                       )}
                     </div>
                   </div>
-                  <div className="mt-2 pt-2 border-t border-slate-200">
-                    <p className="text-[10px] text-slate-500 mb-1">Notes</p>
-                    <textarea
-                      value={editNotes}
-                      onChange={(e) => setEditNotes(e.target.value)}
-                      rows={3}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      placeholder="Add notes for this appointment"
-                    />
-                  </div>
+                </div>
+                )}
+
+                {/* Notes - show for both appointments and meetings */}
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-slate-600">Notes</p>
+                  <textarea
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    placeholder="Add notes for this appointment"
+                  />
                 </div>
 
                 <div className="space-y-1">
@@ -3562,8 +3726,11 @@ export default function CalendarPage() {
         ) : null}
         {createModalOpen ? (
           <div 
-            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              touchAction: 'none',
+            } as React.CSSProperties}
             onClick={(e) => {
               if (e.target === e.currentTarget && !savingCreate) {
                 setCreateModalOpen(false);
@@ -3571,8 +3738,11 @@ export default function CalendarPage() {
             }}
           >
             <div 
-              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]" 
-              style={{ touchAction: 'auto' } as React.CSSProperties}
+              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)] max-h-[85vh] overflow-hidden flex flex-col" 
+              style={{ 
+                touchAction: 'auto',
+                paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+              } as React.CSSProperties}
               onClick={(e) => {
                 // Close dropdowns only if clicking on the modal background, not on inputs
                 if ((e.target as HTMLElement).tagName !== 'INPUT' && 
@@ -3608,7 +3778,8 @@ export default function CalendarPage() {
                   </svg>
                 </button>
               </div>
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 space-y-3 flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+                {createAppointmentType === "appointment" && (
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-slate-600">Patient</p>
@@ -3703,6 +3874,7 @@ export default function CalendarPage() {
                     </p>
                   ) : null}
                 </div>
+                )}
                 <div className="space-y-1">
                   <input
                     type="text"
@@ -3711,6 +3883,33 @@ export default function CalendarPage() {
                     className="w-full border-b border-slate-200 bg-transparent px-0 pb-1 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none"
                     placeholder="Add title"
                   />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-slate-600">Type</p>
+                  <select
+                    value={createAppointmentType}
+                    onChange={(event) => {
+                      const newType = event.target.value as "appointment" | "meeting";
+                      setCreateAppointmentType(newType);
+                      if (newType === "meeting") {
+                        setCreatePatientId(null);
+                        setCreatePatientName("");
+                        setCreatePatientSearch("");
+                        setSelectedServiceId("");
+                        setServiceSearch("");
+                        setBookingStatus("");
+                        setStatusSearch("");
+                        setAppointmentCategory("");
+                        setCategorySearch("");
+                        setDraftLocation("");
+                        setLocationSearch("");
+                      }
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  >
+                    <option value="appointment">Appointment</option>
+                    <option value="meeting">Meeting</option>
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Doctor calendar</p>
@@ -3807,6 +4006,8 @@ export default function CalendarPage() {
                     </div>
                   </div>
                 </div>
+                {createAppointmentType === "appointment" && (
+                <>
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Service</p>
                   <div className="relative">
@@ -4047,6 +4248,8 @@ export default function CalendarPage() {
                     )}
                   </div>
                 </div>
+                </>
+                )}
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Description</p>
                   <textarea
@@ -4094,15 +4297,24 @@ export default function CalendarPage() {
         ) : null}
         {newPatientModalOpen ? (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+            style={{ 
+              WebkitOverflowScrolling: 'touch',
+              touchAction: 'none',
+            } as React.CSSProperties}
             onClick={(e) => {
               if (e.target === e.currentTarget && !savingNewPatient) {
                 setNewPatientModalOpen(false);
               }
             }}
           >
-            <div className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)]" style={{ touchAction: 'auto' } as React.CSSProperties}>
+            <div 
+              className="w-full max-w-md rounded-2xl border border-slate-200/80 bg-white p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.75)] max-h-[85vh] overflow-hidden flex flex-col" 
+              style={{ 
+                touchAction: 'auto',
+                paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+              } as React.CSSProperties}
+            >
               <div className="flex items-start justify-between gap-2">
                 <h2 className="text-sm font-semibold text-slate-900">New patient</h2>
                 <button

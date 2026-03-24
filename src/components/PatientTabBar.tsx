@@ -1,12 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { usePatientTabs } from "./PatientTabsContext";
+
+// Routes where the tab bar should be hidden
+const HIDDEN_ROUTES = ["/form", "/login", "/book-appointment", "/intake", "/onboarding", "/invoice"];
 
 export default function PatientTabBar() {
   const { tabs, activePatientId, removeTab, clearAllTabs } = usePatientTabs();
   const router = useRouter();
+  const pathname = usePathname();
+
+  // Don't render on standalone/public routes
+  if (HIDDEN_ROUTES.some(route => pathname.startsWith(route))) {
+    return null;
+  }
 
   // Don't render if no tabs
   if (tabs.length === 0) {

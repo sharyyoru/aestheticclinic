@@ -155,6 +155,9 @@ export async function POST(request: Request) {
       title: string | null;
       pipeline: string | null;
       notes: string | null;
+      owner_id: string | null;
+      owner_name: string | null;
+      service_id: string | null;
     };
 
     const safePatient = patient as {
@@ -588,7 +591,7 @@ export async function POST(request: Request) {
 
             // Also assign the task assignee as deal owner if enabled
             // Skip if deal already has an owner (e.g. manually created deals)
-            if (config.assign_deal_owner && assignedUserId && !deal.owner_id) {
+            if (config.assign_deal_owner && assignedUserId && !safeDeal.owner_id) {
               const { error: ownerError } = await supabaseAdmin
                 .from("deals")
                 .update({
@@ -601,10 +604,17 @@ export async function POST(request: Request) {
               if (ownerError) {
                 console.error(`Failed to assign deal owner:`, ownerError);
               } else {
-                console.log(`Assigned deal owner to ${assignedUserName} (${assignedUserId})`);
+                console.log(`Assigned deal owner to ${assignedUserName} (${assignedUserId}) for deal ${safeDeal.id}`);
+                // Update in-memory deal so subsequent actions (e.g. send_whatsapp) see the new owner
+                (deal as Record<string, unknown>).owner_id = assignedUserId;
+                (deal as Record<string, unknown>).owner_name = assignedUserName;
+                safeDeal.owner_id = assignedUserId;
+                safeDeal.owner_name = assignedUserName;
               }
-            } else if (config.assign_deal_owner && deal.owner_id) {
-              console.log(`Skipped deal owner assignment — deal already has owner: ${deal.owner_name || deal.owner_id}`);
+            } else if (config.assign_deal_owner && safeDeal.owner_id) {
+              console.log(`Skipped deal owner assignment — deal already has owner: ${safeDeal.owner_name || safeDeal.owner_id}`);
+            } else if (!config.assign_deal_owner) {
+              console.log(`assign_deal_owner not enabled in workflow config for this action`);
             }
 
             // Log successful step
@@ -920,7 +930,7 @@ export async function POST(request: Request) {
           }
         }
 
-        // Handle send_whatsapp action type
+        // Handle send_whatsapp action type — enqueue via whatsapp_queue (sent by deal owner's WA session)
         if (action.action_type === "send_whatsapp") {
           const config = (action.config || {}) as {
             message_template?: string;
@@ -951,6 +961,24 @@ export async function POST(request: Request) {
             continue;
           }
 
+          // Determine the sender: use deal owner's WhatsApp session
+          const senderUserId = deal.owner_id;
+          if (!senderUserId) {
+            console.log("No deal owner assigned, skipping WhatsApp action");
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "send_whatsapp",
+                step_config: config,
+                status: "skipped",
+                executed_at: new Date().toISOString(),
+                error_message: "No deal owner assigned — cannot determine WhatsApp sender",
+              });
+            }
+            continue;
+          }
+
           const now = new Date();
           const sendMode: "immediate" | "delay" | "recurring" =
             config.send_mode === "delay" || config.send_mode === "recurring"
@@ -970,117 +998,55 @@ export async function POST(request: Request) {
               ? Math.min(config.recurring_times, 30)
               : null;
 
-          async function sendWhatsAppMessage(scheduledAt: Date | null) {
+          async function enqueueWhatsAppMessage(scheduledAt: Date | null) {
             const messageBody = renderTemplate(messageTemplate, templateContext);
             const effectiveDate = scheduledAt ?? now;
-            const isFuture = effectiveDate.getTime() > now.getTime();
 
-            // For future messages, we store them as scheduled (would need a cron job to send)
-            // For immediate messages, send via Twilio API
-            if (isFuture) {
-              // Store as scheduled WhatsApp message
-              const { error: insertError } = await supabaseAdmin
-                .from("whatsapp_messages")
-                .insert({
-                  patient_id: safePatient.id,
-                  to_number: patientPhone,
-                  from_number: process.env.TWILIO_WHATSAPP_FROM || "",
-                  body: messageBody,
-                  status: "scheduled",
-                  direction: "outbound",
-                  scheduled_at: effectiveDate.toISOString(),
-                  metadata: {
-                    workflow_id: workflow.id,
-                    deal_id: safeDeal.id,
-                  },
+            const { error: insertError } = await supabaseAdmin
+              .from("whatsapp_queue")
+              .insert({
+                sender_user_id: senderUserId,
+                to_phone: patientPhone,
+                message_body: messageBody,
+                patient_id: safePatient.id,
+                deal_id: safeDeal.id,
+                workflow_id: workflow.id,
+                enrollment_id: enrollmentId || null,
+                status: "pending",
+                scheduled_at: effectiveDate.toISOString(),
+              });
+
+            if (insertError) {
+              console.error("Failed to enqueue WhatsApp message:", insertError);
+              if (enrollmentId) {
+                await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                  enrollment_id: enrollmentId,
+                  step_type: "action",
+                  step_action: "send_whatsapp",
+                  step_config: config,
+                  status: "failed",
+                  executed_at: new Date().toISOString(),
+                  error_message: insertError.message,
                 });
-
-              if (insertError) {
-                console.error("Failed to schedule WhatsApp message:", insertError);
-                if (enrollmentId) {
-                  await supabaseAdmin.from("workflow_enrollment_steps").insert({
-                    enrollment_id: enrollmentId,
-                    step_type: "action",
-                    step_action: "send_whatsapp",
-                    step_config: config,
-                    status: "failed",
-                    executed_at: new Date().toISOString(),
-                    error_message: insertError.message,
-                  });
-                }
-              } else {
-                console.log(`Scheduled WhatsApp message for ${effectiveDate.toISOString()}`);
-                if (enrollmentId) {
-                  await supabaseAdmin.from("workflow_enrollment_steps").insert({
-                    enrollment_id: enrollmentId,
-                    step_type: "action",
-                    step_action: "send_whatsapp",
-                    step_config: config,
-                    status: "scheduled",
-                    executed_at: new Date().toISOString(),
-                    result: { scheduled_at: effectiveDate.toISOString(), to: patientPhone },
-                  });
-                }
-                actionsRun += 1;
               }
             } else {
-              // Send immediately via the WhatsApp API
-              try {
-                const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-                const response = await fetch(`${appUrl}/api/whatsapp/send`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    patientId: safePatient.id,
-                    toNumber: patientPhone,
-                    message: messageBody,
-                  }),
+              const isImmediate = effectiveDate.getTime() <= now.getTime();
+              console.log(isImmediate
+                ? `Enqueued WhatsApp message to ${patientPhone} for immediate send via ${senderUserId}`
+                : `Enqueued WhatsApp message to ${patientPhone} scheduled at ${effectiveDate.toISOString()} via ${senderUserId}`);
+
+              if (enrollmentId) {
+                await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                  enrollment_id: enrollmentId,
+                  step_type: "action",
+                  step_action: "send_whatsapp",
+                  step_config: config,
+                  status: isImmediate ? "completed" : "scheduled",
+                  executed_at: new Date().toISOString(),
+                  result: { scheduled_at: effectiveDate.toISOString(), to: patientPhone, sender: senderUserId },
                 });
-
-                const result = await response.json();
-
-                if (!response.ok) {
-                  console.error("Failed to send WhatsApp message:", result);
-                  if (enrollmentId) {
-                    await supabaseAdmin.from("workflow_enrollment_steps").insert({
-                      enrollment_id: enrollmentId,
-                      step_type: "action",
-                      step_action: "send_whatsapp",
-                      step_config: config,
-                      status: "failed",
-                      executed_at: new Date().toISOString(),
-                      error_message: result.error || "Failed to send",
-                    });
-                  }
-                } else {
-                  console.log(`Sent WhatsApp message to ${patientPhone}`);
-                  actionsRun += 1;
-                  if (enrollmentId) {
-                    await supabaseAdmin.from("workflow_enrollment_steps").insert({
-                      enrollment_id: enrollmentId,
-                      step_type: "action",
-                      step_action: "send_whatsapp",
-                      step_config: config,
-                      status: "completed",
-                      executed_at: new Date().toISOString(),
-                      result: { message_id: result.id, to: patientPhone },
-                    });
-                  }
-                }
-              } catch (sendError) {
-                console.error("Unexpected error sending WhatsApp:", sendError);
-                if (enrollmentId) {
-                  await supabaseAdmin.from("workflow_enrollment_steps").insert({
-                    enrollment_id: enrollmentId,
-                    step_type: "action",
-                    step_action: "send_whatsapp",
-                    step_config: config,
-                    status: "failed",
-                    executed_at: new Date().toISOString(),
-                    error_message: sendError instanceof Error ? sendError.message : "Unknown error",
-                  });
-                }
               }
+              actionsRun += 1;
             }
           }
 
@@ -1092,18 +1058,17 @@ export async function POST(request: Request) {
             for (let i = 0; i < recurringTimes; i += 1) {
               const scheduledAt = new Date(now.getTime() + baseCumulativeMs + i * intervalMs);
               // eslint-disable-next-line no-await-in-loop
-              await sendWhatsAppMessage(scheduledAt);
+              await enqueueWhatsAppMessage(scheduledAt);
             }
           } else if (sendMode === "delay" && delayHours) {
             const scheduledAt = new Date(now.getTime() + baseCumulativeMs + delayHours * 60 * 60 * 1000);
-            await sendWhatsAppMessage(scheduledAt);
+            await enqueueWhatsAppMessage(scheduledAt);
           } else if (cumulativeDelayMinutes > 0) {
-            // No action-specific delay, but we have cumulative delay from delay steps
             const scheduledAt = new Date(now.getTime() + baseCumulativeMs);
             console.log(`Applying cumulative delay of ${cumulativeDelayMinutes} minutes to WhatsApp, scheduled at: ${scheduledAt.toISOString()}`);
-            await sendWhatsAppMessage(scheduledAt);
+            await enqueueWhatsAppMessage(scheduledAt);
           } else {
-            await sendWhatsAppMessage(null);
+            await enqueueWhatsAppMessage(null);
           }
         }
       }

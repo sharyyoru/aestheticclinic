@@ -122,21 +122,40 @@ export type ParsedLead = {
  */
 const SERVICE_PATTERNS: { pattern: RegExp; service: string }[] = [
   { pattern: /breast\s+augment/i, service: 'Breast Augmentation' },
+  { pattern: /breast\s+implant/i, service: 'Breast Implants Replacement' },
+  { pattern: /breast\s+reduc|breast\s+lift|mastopexy/i, service: 'Breast Reduction/Lifting' },
   { pattern: /full\s*face\s*fillers?/i, service: 'Face Fillers' },
   { pattern: /face\s*fillers?/i, service: 'Face Fillers' },
+  { pattern: /ha\s*[&+]\s*filler|hyaluronic|ha\s+filler/i, service: 'HA & Fillers' },
   { pattern: /traitement\s+de\s+rides/i, service: 'Wrinkle Treatment' },
   { pattern: /wrinkles?\s+treatment/i, service: 'Wrinkle Treatment' },
   { pattern: /blefaro|blephar/i, service: 'Blepharoplasty' },
+  { pattern: /micro\s*liposuc/i, service: 'Micro liposuction' },
   { pattern: /liposuc/i, service: 'Liposuction' },
   { pattern: /hyperbaric|hbot/i, service: 'Hyperbaric Oxygen Therapy' },
   { pattern: /longevity/i, service: 'Longevity' },
-  { pattern: /iv\s+therapy/i, service: 'IV Therapy' },
+  { pattern: /iv\s+(vitamin|therapy|infusion)|vitamin\s+inject/i, service: 'IV vitamin injections' },
   { pattern: /rhinoplast/i, service: 'Rhinoplasty' },
   { pattern: /facelift|face\s+lift/i, service: 'Facelift' },
-  { pattern: /botox/i, service: 'Botox' },
+  { pattern: /botox|botulinum\s+toxin/i, service: 'Botulinum toxin' },
   { pattern: /lip\s+filler/i, service: 'Lip Fillers' },
-  { pattern: /tummy\s+tuck/i, service: 'Tummy Tuck' },
+  { pattern: /tummy\s+tuck|abdominoplast/i, service: 'Abdominoplasty' },
   { pattern: /breast\s+lift/i, service: 'Breast Lift' },
+  { pattern: /hifu/i, service: 'HIFU' },
+  { pattern: /morpheus/i, service: 'Morpheus 8' },
+  { pattern: /skinbooster/i, service: 'Skinbooster' },
+  { pattern: /emsculpt/i, service: 'Emsculpt' },
+  { pattern: /prp/i, service: 'PRP' },
+  { pattern: /peeling/i, service: 'Peeling' },
+  { pattern: /dermapen/i, service: 'Dermapen' },
+  { pattern: /mesotherap/i, service: 'Mesotherapy' },
+  { pattern: /laser\s*co2/i, service: 'Laser Co2' },
+  { pattern: /laser\s*hair/i, service: 'Laser hair removal' },
+  { pattern: /vascular\s*laser/i, service: 'Vascular laser' },
+  { pattern: /genesis/i, service: 'GENESIS' },
+  { pattern: /cryolipolys|crypolipoly/i, service: 'Cryolipolysis' },
+  { pattern: /otoplast/i, service: 'Otoplasty' },
+  { pattern: /buttock\s*(inject|augment)/i, service: 'Buttock injections' },
   { pattern: /consultation/i, service: 'Consultation' },
 ];
 
@@ -188,8 +207,9 @@ export function detectServiceFromForm(form: string): string | null {
     }
   }
 
-  // No pattern matched — return null (don't auto-create unknown services)
-  return null;
+  // No pattern matched — return the raw form value so per-lead service is preserved
+  // The import route's resolveService() will try to fuzzy-match it against DB services
+  return form.trim();
 }
 
 /**

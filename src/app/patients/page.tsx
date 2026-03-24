@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import PatientMergeModal from "@/components/PatientMergeModal";
 import { useAuth } from "@/components/AuthContext";
+import { fuzzySearchPatients, buildFuzzyOrConditions } from "@/lib/fuzzySearch";
 
 type PatientRow = {
   id: string;
@@ -23,7 +24,63 @@ type CreatedDateFilter = "all" | "today" | "last_7_days" | "last_30_days";
 
 type StatusFilter = "all" | "has_deal" | "no_deal";
 
+type SearchCategory = "all" | "name" | "email" | "phone" | "birthday";
+
 type DealStatusByPatient = Record<string, string | null>;
+
+const SEARCH_CATEGORY_CONFIG: Record<SearchCategory, { label: string; placeholder: string; icon: React.ReactNode }> = {
+  all: {
+    label: "All Fields",
+    placeholder: "Search name, email, phone, DOB...",
+    icon: (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.35-4.35" />
+      </svg>
+    ),
+  },
+  name: {
+    label: "Name",
+    placeholder: "Search by first or last name...",
+    icon: (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+      </svg>
+    ),
+  },
+  email: {
+    label: "Email",
+    placeholder: "Search by email address...",
+    icon: (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="20" height="16" x="2" y="4" rx="2" />
+        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+      </svg>
+    ),
+  },
+  phone: {
+    label: "Phone",
+    placeholder: "Search by phone number...",
+    icon: (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+      </svg>
+    ),
+  },
+  birthday: {
+    label: "Birthday",
+    placeholder: "Search by DOB (e.g. 1990, 15/03/1990)...",
+    icon: (
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+        <line x1="16" x2="16" y1="2" y2="6" />
+        <line x1="8" x2="8" y1="2" y2="6" />
+        <line x1="3" x2="21" y1="10" y2="10" />
+      </svg>
+    ),
+  },
+};
 
 const PAGE_SIZE = 50;
 
@@ -42,6 +99,7 @@ export default function PatientsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchCategory, setSearchCategory] = useState<SearchCategory>("all");
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showMergeModal, setShowMergeModal] = useState(false);
@@ -77,12 +135,62 @@ export default function PatientsPage() {
             { count: "exact" }
           );
 
-        // Apply server-side search filter
+        // Apply server-side search filter based on selected category
+        // Use fuzzy-friendly broad patterns to catch potential matches
+        let searchTrimmed = "";
         if (debouncedSearch.trim()) {
-          const searchTerm = `%${debouncedSearch.trim()}%`;
-          patientsQuery = patientsQuery.or(
-            `first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`
-          );
+          searchTrimmed = debouncedSearch.trim();
+          const searchTerm = `%${searchTrimmed}%`;
+          
+          if (searchCategory === "all") {
+            // Use fuzzy-friendly OR conditions for broader initial fetch
+            const orConditions = buildFuzzyOrConditions(searchTrimmed, ["first_name", "last_name", "email", "phone"]);
+            patientsQuery = patientsQuery.or(orConditions);
+          } else if (searchCategory === "name") {
+            // Use fuzzy-friendly OR conditions for name fields only
+            const orConditions = buildFuzzyOrConditions(searchTrimmed, ["first_name", "last_name"]);
+            patientsQuery = patientsQuery.or(orConditions);
+          } else if (searchCategory === "email") {
+            // Use fuzzy-friendly OR conditions for email
+            const orConditions = buildFuzzyOrConditions(searchTrimmed, ["email"]);
+            patientsQuery = patientsQuery.or(orConditions);
+          } else if (searchCategory === "phone") {
+            // Search phone field with fuzzy patterns
+            const digitsOnly = searchTrimmed.replace(/\D/g, "");
+            if (digitsOnly.length > 0) {
+              patientsQuery = patientsQuery.or(`phone.ilike.${searchTerm},phone.ilike.%${digitsOnly}%`);
+            } else {
+              patientsQuery = patientsQuery.ilike("phone", searchTerm);
+            }
+          } else if (searchCategory === "birthday") {
+            // Search DOB field with various date format support
+            // Try DD/MM/YYYY format (Swiss format)
+            const ddmmyyyyMatch = searchTrimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if (ddmmyyyyMatch) {
+              const day = ddmmyyyyMatch[1].padStart(2, "0");
+              const month = ddmmyyyyMatch[2].padStart(2, "0");
+              const year = ddmmyyyyMatch[3];
+              const isoDate = `${year}-${month}-${day}`;
+              patientsQuery = patientsQuery.eq("dob", isoDate);
+            } else {
+              // Try ISO format or year-only
+              const dateMatch = searchTrimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+              if (dateMatch) {
+                patientsQuery = patientsQuery.eq("dob", searchTrimmed);
+              } else {
+                // Year-only search (e.g. "1990")
+                const yearMatch = searchTrimmed.match(/^(\d{4})$/);
+                if (yearMatch) {
+                  patientsQuery = patientsQuery
+                    .gte("dob", `${yearMatch[1]}-01-01`)
+                    .lte("dob", `${yearMatch[1]}-12-31`);
+                } else {
+                  // Partial date search
+                  patientsQuery = patientsQuery.ilike("dob", searchTerm);
+                }
+              }
+            }
+          }
         }
 
         // Apply owner filter
@@ -124,7 +232,13 @@ export default function PatientsPage() {
           return;
         }
 
-        setPatients(patientsData as PatientRow[]);
+        // Apply fuzzy re-ranking if there's a search query
+        let rankedPatients = patientsData as PatientRow[];
+        if (searchTrimmed) {
+          rankedPatients = fuzzySearchPatients(rankedPatients, searchTrimmed, { threshold: 0.5 });
+        }
+
+        setPatients(rankedPatients);
         setTotalCount(count ?? 0);
 
         // Only fetch deals for the patients we just loaded (much smaller query)
@@ -165,7 +279,7 @@ export default function PatientsPage() {
     return () => {
       isMounted = false;
     };
-  }, [page, debouncedSearch, ownerFilter, ownerNameFilter, createdFilter]);
+  }, [page, debouncedSearch, searchCategory, ownerFilter, ownerNameFilter, createdFilter]);
 
   // Load priority mode from user metadata
   useEffect(() => {
@@ -216,7 +330,7 @@ export default function PatientsPage() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [ownerFilter, ownerNameFilter, createdFilter, statusFilter]);
+  }, [ownerFilter, ownerNameFilter, createdFilter, statusFilter, searchCategory]);
 
   // For display - use filtered patients directly (already paginated from server)
   const paginatedPatients = filteredPatients;
@@ -336,14 +450,67 @@ export default function PatientsPage() {
       {/* Main contacts card */}
       <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-1 gap-2">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Type a keyword..."
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            />
+          <div className="flex flex-1 items-center gap-2">
+            {/* Search Category Dropdown */}
+            <div className="relative">
+              <select
+                value={searchCategory}
+                onChange={(e) => setSearchCategory(e.target.value as SearchCategory)}
+                className="h-[30px] appearance-none rounded-l-lg border border-r-0 border-slate-200 bg-slate-100 pl-8 pr-6 text-xs font-medium text-slate-700 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              >
+                {(Object.keys(SEARCH_CATEGORY_CONFIG) as SearchCategory[]).map((cat) => (
+                  <option key={cat} value={cat}>
+                    {SEARCH_CATEGORY_CONFIG[cat].label}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500">
+                {SEARCH_CATEGORY_CONFIG[searchCategory].icon}
+              </div>
+              <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </div>
+            
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={SEARCH_CATEGORY_CONFIG[searchCategory].placeholder}
+                className="h-[30px] w-full rounded-r-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            
+            {/* Search Category Pills (active indicator) */}
+            {searchCategory !== "all" && (
+              <span className="flex items-center gap-1 rounded-full bg-sky-100 px-2 py-1 text-[10px] font-medium text-sky-700">
+                Searching: {SEARCH_CATEGORY_CONFIG[searchCategory].label}
+                <button
+                  type="button"
+                  onClick={() => setSearchCategory("all")}
+                  className="ml-0.5 rounded-full hover:bg-sky-200"
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            )}
           </div>
           {selectedIds.length >= 2 && (
             <button

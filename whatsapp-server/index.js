@@ -14,9 +14,13 @@ const {
   getChatByPhoneNumber,
   registerWebSocket,
   unregisterWebSocket,
-  getActiveClients
+  getActiveClients,
+  destroyAllClients
 } = require('./whatsapp-manager');
-const { getAllActiveSessions, getRecentLogs } = require('./db');
+const { getAllActiveSessions, getRecentLogs, getReconnectableSessions, updateSessionStatus, logEvent } = require('./db');
+const fs = require('fs');
+const path = require('path');
+const { startQueueProcessor, stopQueueProcessor, getQueueStats } = require('./queue-processor');
 
 const app = express();
 const server = http.createServer(app);
@@ -155,12 +159,24 @@ app.get('/admin/sessions', optionalAuth, (req, res) => {
   }
 });
 
+// Queue stats endpoint
+app.get('/queue/stats', optionalAuth, async (req, res) => {
+  try {
+    const stats = await getQueueStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Diagnostics endpoint
-app.get('/diagnostics', optionalAuth, (req, res) => {
+app.get('/diagnostics', optionalAuth, async (req, res) => {
+  const queueStats = await getQueueStats().catch(() => ({ error: 'unavailable' }));
   res.json({
     serverStatus: 'running',
     activeClients: getActiveClients(),
     activeSessions: getAllActiveSessions().length,
+    queueStats,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
     nodeVersion: process.version,
@@ -236,15 +252,78 @@ server.listen(PORT, () => {
 ║               ✓ SQLite session storage                 ║
 ║               ✓ JWT authentication                     ║
 ║               ✓ Real-time WebSocket updates            ║
+║               ✓ Message queue processor                ║
 ╚════════════════════════════════════════════════════════╝
   `);
+
+  // Start queue processor after server is listening
+  startQueueProcessor();
+
+  // Auto-reconnect sessions that were active before redeploy
+  autoReconnectSessions();
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
+/**
+ * Auto-reconnect WhatsApp sessions that were active before a redeploy.
+ * Only reconnects if LocalAuth session files exist on disk (persisted via volume).
+ */
+async function autoReconnectSessions() {
+  try {
+    const sessions = getReconnectableSessions();
+    if (!sessions || sessions.length === 0) {
+      console.log('[AutoReconnect] No previously-active sessions to restore');
+      return;
+    }
+
+    const sessionBasePath = process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions');
+
+    console.log(`[AutoReconnect] Found ${sessions.length} session(s) to restore`);
+
+    for (const session of sessions) {
+      const userId = session.user_id;
+
+      // Check if LocalAuth session files exist on disk
+      // LocalAuth stores data in: {dataPath}/session-{clientId}/
+      const sessionDir = path.join(sessionBasePath, `session-${userId}`);
+      if (!fs.existsSync(sessionDir)) {
+        console.log(`[AutoReconnect] No session files for user ${userId} at ${sessionDir} — skipping (will need QR re-scan)`);
+        updateSessionStatus(userId, 'disconnected');
+        continue;
+      }
+
+      console.log(`[AutoReconnect] Restoring session for user ${userId} (${session.display_name || 'unknown'})`);
+      logEvent(userId, 'auto_reconnect_start');
+
+      try {
+        await initializeWhatsApp(userId);
+        // Stagger reconnects to avoid overloading the container
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      } catch (err) {
+        console.error(`[AutoReconnect] Failed to restore session for user ${userId}:`, err.message);
+        logEvent(userId, 'auto_reconnect_error', { error: err.message });
+      }
+    }
+  } catch (err) {
+    console.error('[AutoReconnect] Error during auto-reconnect:', err);
+  }
+}
+
+// Graceful shutdown — destroy all WA clients so session data is flushed to disk
+process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  stopQueueProcessor();
+
+  // Destroy all active WhatsApp clients (flushes LocalAuth session to disk)
+  await destroyAllClients();
+
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
   });
+
+  // Force exit after 15s if graceful shutdown stalls
+  setTimeout(() => {
+    console.error('Forced exit after timeout');
+    process.exit(1);
+  }, 15000);
 });

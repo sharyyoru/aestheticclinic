@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Image from "next/image";
 import { Language, getTranslation } from "@/lib/intakeTranslations";
+import { pushToDataLayer } from "@/components/GoogleTagManager";
 
 type ViewState = "search" | "register";
 
@@ -72,6 +73,9 @@ export default function IntakePage() {
 
         if (subError) throw subError;
 
+        // Push GTM event for form submission
+        pushToDataLayer("aliice_form_submit");
+        
         // Redirect to steps with submission ID and language
         router.push(`/intake/steps?sid=${submission?.id}&pid=${patient.id}&lang=${language}`);
       } else {
@@ -139,6 +143,9 @@ export default function IntakePage() {
         console.error("Failed to trigger patient_created workflow");
       }
 
+      // Push GTM event for form submission
+      pushToDataLayer("aliice_form_submit");
+      
       // Redirect to steps with language
       router.push(`/intake/steps?sid=${submission?.id}&pid=${newPatient?.id}&lang=${language}`);
     } catch (err) {
