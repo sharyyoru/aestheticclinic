@@ -2873,6 +2873,26 @@ export default function CalendarPage() {
             </Link>
           </div>
         </div>
+        
+        {/* Currently Copied Banner */}
+        {copiedAppointment && copiedAppointment.patient && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-blue-600 font-medium text-sm">📋 Currently Copying:</span>
+              <span className="text-blue-800 font-semibold text-sm">
+                {`${copiedAppointment.patient.first_name ?? ""} ${copiedAppointment.patient.last_name ?? ""}`.trim() || "Unknown Patient"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCopiedAppointment(null)}
+              className="text-blue-500 hover:text-blue-700 text-xs font-medium"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        
         {view === "month" ? (
           <div className="flex-1 flex flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium uppercase tracking-wide text-slate-500 sticky top-0 z-10" style={{ position: '-webkit-sticky' } as React.CSSProperties}>
@@ -2965,6 +2985,8 @@ export default function CalendarPage() {
                           const { statusLabel } = getServiceAndStatusFromReason(appt.reason);
                           const statusIcon = getStatusIcon(statusLabel);
 
+                          const isCopiedPatient = copiedAppointment?.patient?.id && appt.patient?.id === copiedAppointment.patient.id;
+
                           return (
                             <button
                               key={appt.id}
@@ -2980,11 +3002,12 @@ export default function CalendarPage() {
                               style={{ touchAction: 'manipulation' }}
                               className={`w-full rounded-md px-1 py-0.5 text-[10px] text-left ${getAppointmentStatusColorClasses(
                                 appt.status,
-                              )} ${getCategoryColor(category)}`}
+                              )} ${getCategoryColor(category)} ${isCopiedPatient ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
                             >
                               <div className="flex items-center gap-1 truncate font-medium text-slate-800">
                                 {statusIcon && <span className="flex-shrink-0">{statusIcon}</span>}
-                                <span className="truncate">{patientName || serviceLabel}</span>
+                                {isCopiedPatient && <span className="flex-shrink-0 text-blue-500">📋</span>}
+                                <span className={`truncate ${isCopiedPatient ? 'text-blue-600 font-semibold' : ''}`}>{patientName || serviceLabel}</span>
                               </div>
                               <div className="truncate text-[10px] text-slate-500">
                                 {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
@@ -3236,6 +3259,9 @@ export default function CalendarPage() {
                                       : null;
                                     const durationLabel = durationMins ? `${String(Math.floor(durationMins / 60)).padStart(2, "0")}:${String(durationMins % 60).padStart(2, "0")}h` : "";
 
+                                    // Check if this appointment's patient is the copied patient
+                                    const isCopiedPatient = copiedAppointment?.patient?.id && appt.patient?.id === copiedAppointment.patient.id;
+
                                     // Determine if tooltip should appear on left (for right-side items)
                                     const isRightSide = colIdx >= doctorColumns.length / 2;
                                     const tooltipPositionClass = isRightSide 
@@ -3258,11 +3284,12 @@ export default function CalendarPage() {
                                           onClick={() => openEditModalForAppointment(appt)}
                                           onTouchEnd={(e) => e.stopPropagation()}
                                           style={{ touchAction: 'manipulation' }}
-                                          className={`w-full h-full rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)}`}
+                                          className={`w-full h-full rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)} ${isCopiedPatient ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
                                         >
                                           <div className="flex items-center gap-1 truncate font-medium text-slate-800">
                                             {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
-                                            <span className="truncate">{patientName || serviceLabel}</span>
+                                            {isCopiedPatient && <span className="flex-shrink-0 text-blue-500">📋</span>}
+                                            <span className={`truncate ${isCopiedPatient ? 'text-blue-600 font-semibold' : ''}`}>{patientName || serviceLabel}</span>
                                           </div>
                                           <div className="truncate text-[9px] text-slate-600">
                                             {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
