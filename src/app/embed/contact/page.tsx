@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { pushToDataLayer } from "@/components/GoogleTagManager";
 import { useEmbedHeight } from "@/hooks/useEmbedHeight";
 import { embedTranslations, getEmbedLanguage, type EmbedLanguage } from "@/lib/embedTranslations";
 
-export default function EmbedContactPage() {
+function EmbedContactPageContent() {
   const searchParams = useSearchParams();
   const [lang, setLang] = useState<EmbedLanguage>("fr");
   
@@ -323,5 +323,14 @@ export default function EmbedContactPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams (required in Next.js 15)
+export default function EmbedContactPage() {
+  return (
+    <Suspense fallback={<div className="bg-white p-8 text-center text-slate-500">Loading...</div>}>
+      <EmbedContactPageContent />
+    </Suspense>
   );
 }

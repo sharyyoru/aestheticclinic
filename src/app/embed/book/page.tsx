@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { supabaseClient } from "@/lib/supabaseClient";
@@ -235,7 +235,7 @@ function getDoctorsForLocation(locationId: string) {
 
 type EmbedStep = "location" | "doctor" | "info" | "datetime" | "confirm" | "success";
 
-export default function EmbedBookPage() {
+function EmbedBookPageContent() {
   const searchParams = useSearchParams();
   const [lang, setLang] = useState<EmbedLanguage>("fr");
   
@@ -900,5 +900,14 @@ export default function EmbedBookPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams (required in Next.js 15)
+export default function EmbedBookPage() {
+  return (
+    <Suspense fallback={<div className="bg-white p-8 text-center text-slate-500">Loading...</div>}>
+      <EmbedBookPageContent />
+    </Suspense>
   );
 }
