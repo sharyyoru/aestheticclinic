@@ -492,10 +492,17 @@ export default function PatientDocumentsTab({
     const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
     const isHeicImage = ["heic", "heif"].includes(ext);
     
-    // For patient-docs files, use on-demand signed URL API to avoid expiration issues
-    if (selectedFile.source === "patient-docs" && selectedFile.path) {
-      const cacheBuster = `&v=${refreshKey}-${selectedFile.updated_at || Date.now()}`;
-      return `/api/patient-docs/get-signed-url?path=${encodeURIComponent(selectedFile.path)}${cacheBuster}`;
+    // For patient-docs files, use the pre-fetched signed URL (valid for 24 hours)
+    if (selectedFile.source === "patient-docs" && selectedFile.publicUrl) {
+      const baseUrl = selectedFile.publicUrl;
+      // For images, use proxy to avoid CORS issues
+      if (isRegularImage) {
+        return `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
+      } else if (isHeicImage) {
+        return `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
+      }
+      // For PDFs and other files, use the signed URL directly
+      return baseUrl;
     }
     
     // For patient_document bucket files
@@ -697,15 +704,18 @@ export default function PatientDocumentsTab({
         if (!item || item.kind !== "file") return null;
         
         let fileUrl: string;
-        if (item.source === "patient-docs" && item.path) {
-          // Use on-demand signed URL API for patient-docs files
-          fileUrl = `/api/patient-docs/get-signed-url?path=${encodeURIComponent(item.path)}`;
-        } else {
+        if (item.source === "patient-docs" && item.publicUrl) {
+          // Use pre-fetched signed URL for patient-docs files
+          fileUrl = item.publicUrl;
+        } else if (item.source !== "patient-docs") {
           const fullPath = [patientId, item.path].filter(Boolean).join("/");
           const { data } = supabaseClient.storage
             .from(BUCKET_NAME)
             .getPublicUrl(fullPath);
           fileUrl = data.publicUrl;
+        } else {
+          // Fallback - skip files without valid URLs
+          return null;
         }
         
         const response = await fetch(fileUrl);
@@ -1244,12 +1254,19 @@ export default function PatientDocumentsTab({
                     const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
                     const isHeicImage = ["heic", "heif"].includes(ext);
                     
-                    // For patient-docs files, use on-demand signed URL API to avoid JWT expiration
+                    // For patient-docs files, use the pre-fetched signed URL (valid for 24 hours)
                     let convertedUrl: string;
-                    if (item.source === "patient-docs" && item.path) {
-                      const cacheBuster = `&v=${refreshKey}-${item.updated_at || Date.now()}`;
-                      convertedUrl = `/api/patient-docs/get-signed-url?path=${encodeURIComponent(item.path)}${cacheBuster}`;
-                    } else {
+                    if (item.source === "patient-docs" && item.publicUrl) {
+                      const baseUrl = item.publicUrl;
+                      // For images, use proxy to avoid CORS issues
+                      if (isRegularImage) {
+                        convertedUrl = `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
+                      } else if (isHeicImage) {
+                        convertedUrl = `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
+                      } else {
+                        convertedUrl = baseUrl;
+                      }
+                    } else if (item.source !== "patient-docs") {
                       const fullPath = [patientId, item.path]
                         .filter(Boolean)
                         .join("/");
@@ -1270,6 +1287,9 @@ export default function PatientDocumentsTab({
                       } else {
                         convertedUrl = previewUrl;
                       }
+                    } else {
+                      // Fallback for patient-docs without publicUrl (should not happen)
+                      convertedUrl = "";
                     }
                     const thumbnailSrc = convertedUrl;
                     const uploadDate = item.created_at || item.updated_at;
