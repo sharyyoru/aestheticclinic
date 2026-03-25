@@ -197,12 +197,12 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
       }
     }
     
-    // If we found text, return it
+    // If we found text, return it (increased limit for full preview)
     if (allText.length > 0) {
       const result = allText.join(" ")
         .replace(/\s+/g, " ")
         .trim();
-      return result.substring(0, 2000) || "[Document content extracted]";
+      return result.substring(0, 10000) || "[Document content extracted]";
     }
     
     // Fallback: try to find any readable text in uncompressed parts

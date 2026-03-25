@@ -521,6 +521,7 @@ export default function MedicalConsultationsCard({
   const [axenitaPdfDocs, setAxenitaPdfDocs] = useState<AxenitaPdfDocument[]>([]);
   const [axenitaPdfLoading, setAxenitaPdfLoading] = useState(false);
   const [axenitaPdfError, setAxenitaPdfError] = useState<string | null>(null);
+  const [axenitaPreviewDoc, setAxenitaPreviewDoc] = useState<AxenitaPdfDocument | null>(null);
 
   const [exportingConsultationsPdf, setExportingConsultationsPdf] = useState(false);
 
@@ -6359,31 +6360,40 @@ export default function MedicalConsultationsCard({
               <span className="text-[10px] text-slate-400">({axenitaPdfDocs.length} document{axenitaPdfDocs.length !== 1 ? 's' : ''})</span>
             </div>
             {axenitaPdfDocs.map((doc, index) => (
-              <div
+              <button
+                type="button"
                 key={`${doc.folderName}-${doc.fileName}-${index}`}
-                className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs"
+                onClick={() => setAxenitaPreviewDoc(doc)}
+                className="w-full text-left rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs hover:bg-amber-100/50 hover:border-amber-300 transition-colors cursor-pointer"
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${doc.fileType === "ap"
-                    ? "bg-purple-100 text-purple-700"
-                    : doc.fileType === "af"
-                      ? "bg-indigo-100 text-indigo-700"
-                      : doc.fileType === "notes"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-blue-100 text-blue-700"
-                    }`}>
-                    {doc.fileType === "ap" ? "Medical Notes (AP)" :
-                      doc.fileType === "af" ? "Medical Notes (AF)" :
-                        doc.fileType === "notes" ? "Notes" : "Consultation"}
-                  </span>
-                  <span className="text-[10px] text-slate-400">
-                    {doc.fileName}
-                  </span>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${doc.fileType === "ap"
+                      ? "bg-purple-100 text-purple-700"
+                      : doc.fileType === "af"
+                        ? "bg-indigo-100 text-indigo-700"
+                        : doc.fileType === "notes"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}>
+                      {doc.fileType === "ap" ? "Medical Notes (AP)" :
+                        doc.fileType === "af" ? "Medical Notes (AF)" :
+                          doc.fileType === "notes" ? "Notes" : "Consultation"}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {doc.fileName}
+                    </span>
+                  </div>
+                  <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
                 </div>
                 <p className="text-[11px] text-slate-700 leading-relaxed line-clamp-3">
                   {doc.content || "No content extracted"}
                 </p>
-              </div>
+                <p className="text-[10px] text-amber-600 mt-1 font-medium">Click to view full content</p>
+              </button>
             ))}
           </div>
         )}
@@ -8124,6 +8134,78 @@ export default function MedicalConsultationsCard({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Axenita Document Preview Modal */}
+      {axenitaPreviewDoc && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-white shadow-2xl flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                  axenitaPreviewDoc.fileType === "ap"
+                    ? "bg-purple-100 text-purple-700"
+                    : axenitaPreviewDoc.fileType === "af"
+                      ? "bg-indigo-100 text-indigo-700"
+                      : axenitaPreviewDoc.fileType === "notes"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-blue-100 text-blue-700"
+                }`}>
+                  {axenitaPreviewDoc.fileType === "ap" ? "Medical Notes (AP)" :
+                    axenitaPreviewDoc.fileType === "af" ? "Medical Notes (AF)" :
+                      axenitaPreviewDoc.fileType === "notes" ? "Notes" : "Consultation"}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">{axenitaPreviewDoc.fileName}</h3>
+                  <p className="text-xs text-slate-500">Axenita Medical Record</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAxenitaPreviewDoc(null)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="prose prose-sm max-w-none">
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                  {axenitaPreviewDoc.content || "No content extracted from this document."}
+                </p>
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="border-t border-slate-200 px-6 py-4 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(axenitaPreviewDoc.content || "");
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copy Content
+              </button>
+              <button
+                type="button"
+                onClick={() => setAxenitaPreviewDoc(null)}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-slate-800 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Insurance Billing Modal */}
