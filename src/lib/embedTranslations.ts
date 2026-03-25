@@ -89,37 +89,85 @@ export const embedTranslations = {
   },
   book: {
     fr: {
+      // Step titles
       stepLocation: "Lieu",
       stepDoctor: "Médecin",
       stepInfo: "Informations",
       stepDateTime: "Date & Heure",
-      selectLocation: "Sélectionnez un lieu",
-      selectDoctor: "Sélectionnez un médecin",
-      yourInformation: "Vos informations",
-      selectDateTime: "Sélectionnez une date et heure",
+      stepConfirm: "Confirmation",
+      
+      // Location step
+      chooseLocation: "Choisissez votre lieu",
+      chooseLocationSubtitle: "Sélectionnez votre clinique préférée pour voir les spécialistes disponibles",
+      allLocationsOffer: "Toutes nos cliniques offrent",
+      allLocationsOfferDesc: "Consultations gratuites, simulations 3D et notre gamme complète de services esthétiques.",
+      
+      // Location descriptions
+      locationDescRhone: "Notre clinique phare au cœur de Genève",
+      locationDescChampel: "Services esthétiques premium à Champel",
+      locationDescGstaad: "Clinique exclusive en montagne",
+      locationDescMontreux: "Excellence esthétique au bord du lac",
+      
+      // Doctor step
+      availableSpecialists: "Spécialistes disponibles",
+      selectSpecialist: "Sélectionnez un spécialiste pour réserver votre consultation",
+      
+      // Info step
+      personalInformation: "Informations personnelles",
       firstName: "Prénom",
       lastName: "Nom",
-      email: "Email",
+      email: "Adresse email",
       phone: "Numéro de téléphone",
       phonePlaceholder: "79 123 45 67",
       existingPatient: "Êtes-vous déjà patient?",
-      notes: "Notes (optionnel)",
-      notesPlaceholder: "Ajoutez des notes pour votre rendez-vous...",
+      
+      // DateTime step
+      selectDateTime: "Sélectionnez une date et heure",
+      date: "Date",
+      availableDatesCount: "dates disponibles dans les 3 prochains mois",
+      allSlotsBooked: "Tous les créneaux sont complets pour ce jour. Veuillez sélectionner une autre date.",
+      availableTimeSlots: "Créneaux horaires disponibles",
+      noAvailabilityDate: "Aucune disponibilité pour cette date. Veuillez sélectionner une autre date.",
+      additionalNotes: "Notes supplémentaires",
+      notesPlaceholder: "Des préoccupations particulières...",
+      continue: "Continuer",
+      errorSelectDateTime: "Veuillez sélectionner une date et une heure",
+      
+      // Confirm step
+      confirmAppointment: "Confirmez votre rendez-vous",
+      name: "Nom",
+      specialist: "Spécialiste",
+      time: "Heure",
+      location: "Lieu",
+      
+      // Common
       back: "Retour",
       next: "Suivant",
       confirmBooking: "Confirmer le rendez-vous",
       booking: "Réservation...",
+      
+      // Errors
       errorRequired: "Veuillez remplir tous les champs obligatoires",
       errorEmail: "Veuillez entrer une adresse email valide",
       errorNoSlots: "Aucun créneau disponible pour cette date",
       errorGeneric: "Une erreur est survenue",
-      successTitle: "Rendez-vous confirmé!",
-      successMessage: "Votre rendez-vous a été réservé avec succès.",
+      
+      // Success
+      successTitle: "Rendez-vous réservé!",
+      successMessage: "Votre rendez-vous avec",
+      successConfirmed: "a été confirmé.",
+      confirmationSent: "Un email de confirmation a été envoyé à",
+      service: "Service",
+      bookAnother: "Réserver un autre rendez-vous",
+      
+      // Legacy (keep for compatibility)
+      selectLocation: "Sélectionnez un lieu",
+      selectDoctor: "Sélectionnez un médecin",
+      yourInformation: "Vos informations",
+      notes: "Notes (optionnel)",
       appointmentWith: "Rendez-vous avec",
       at: "à",
       on: "le",
-      confirmationSent: "Un email de confirmation vous sera envoyé.",
-      bookAnother: "Réserver un autre rendez-vous",
       availableSlots: "Créneaux disponibles",
       noAvailability: "Aucune disponibilité pour ce jour",
       selectDate: "Sélectionnez une date",
@@ -128,37 +176,85 @@ export const embedTranslations = {
       privacyPolicy: "politique de confidentialité",
     },
     en: {
+      // Step titles
       stepLocation: "Location",
       stepDoctor: "Doctor",
       stepInfo: "Information",
       stepDateTime: "Date & Time",
-      selectLocation: "Select a location",
-      selectDoctor: "Select a doctor",
-      yourInformation: "Your information",
-      selectDateTime: "Select a date and time",
+      stepConfirm: "Confirm",
+      
+      // Location step
+      chooseLocation: "Choose Your Location",
+      chooseLocationSubtitle: "Select your preferred clinic location to see available specialists",
+      allLocationsOffer: "All Locations Offer",
+      allLocationsOfferDesc: "Free consultations, 3D simulations, and our full range of aesthetic services.",
+      
+      // Location descriptions
+      locationDescRhone: "Our flagship clinic in the heart of Geneva",
+      locationDescChampel: "Premium aesthetic services in Champel",
+      locationDescGstaad: "Exclusive mountain retreat clinic",
+      locationDescMontreux: "Lakeside aesthetic excellence",
+      
+      // Doctor step
+      availableSpecialists: "Available Specialists",
+      selectSpecialist: "Select a specialist to book your consultation",
+      
+      // Info step
+      personalInformation: "Personal Information",
       firstName: "First Name",
       lastName: "Last Name",
-      email: "Email",
+      email: "Email Address",
       phone: "Phone Number",
       phonePlaceholder: "79 123 45 67",
       existingPatient: "Are you an existing patient?",
-      notes: "Notes (optional)",
-      notesPlaceholder: "Add notes for your appointment...",
+      
+      // DateTime step
+      selectDateTime: "Select Date & Time",
+      date: "Date",
+      availableDatesCount: "available dates in the next 3 months",
+      allSlotsBooked: "All time slots are fully booked on this day. Please select another date.",
+      availableTimeSlots: "Available Time Slots",
+      noAvailabilityDate: "No availability on this date. Please select another date.",
+      additionalNotes: "Additional Notes",
+      notesPlaceholder: "Any specific concerns...",
+      continue: "Continue",
+      errorSelectDateTime: "Please select a date and time",
+      
+      // Confirm step
+      confirmAppointment: "Confirm Your Appointment",
+      name: "Name",
+      specialist: "Specialist",
+      time: "Time",
+      location: "Location",
+      
+      // Common
       back: "Back",
       next: "Next",
       confirmBooking: "Confirm Booking",
       booking: "Booking...",
+      
+      // Errors
       errorRequired: "Please fill in all required fields",
       errorEmail: "Please enter a valid email address",
       errorNoSlots: "No slots available for this date",
       errorGeneric: "An error occurred",
-      successTitle: "Appointment Confirmed!",
-      successMessage: "Your appointment has been successfully booked.",
+      
+      // Success
+      successTitle: "Appointment Booked!",
+      successMessage: "Your appointment with",
+      successConfirmed: "has been confirmed.",
+      confirmationSent: "A confirmation email has been sent to",
+      service: "Service",
+      bookAnother: "Book Another Appointment",
+      
+      // Legacy (keep for compatibility)
+      selectLocation: "Select a location",
+      selectDoctor: "Select a doctor",
+      yourInformation: "Your information",
+      notes: "Notes (optional)",
       appointmentWith: "Appointment with",
       at: "at",
       on: "on",
-      confirmationSent: "A confirmation email will be sent to you.",
-      bookAnother: "Book another appointment",
       availableSlots: "Available slots",
       noAvailability: "No availability for this day",
       selectDate: "Select a date",

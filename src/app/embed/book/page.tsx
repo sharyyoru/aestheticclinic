@@ -481,23 +481,23 @@ function EmbedBookPageContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-4">Appointment Booked!</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-4">{t.successTitle}</h1>
           <p className="text-slate-600 mb-6">
-            Your appointment with <strong>{doctor?.name}</strong> has been confirmed. 
-            A confirmation email has been sent to <strong>{email}</strong>.
+            {t.successMessage} <strong>{doctor?.name}</strong> {t.successConfirmed}{" "}
+            {t.confirmationSent} <strong>{email}</strong>.
           </p>
           <div className="bg-slate-50 rounded-xl p-4 mb-6 text-left">
             <p className="text-sm text-slate-600 mb-2">
-              <strong>Date:</strong> {formatSwissDateWithWeekday(parseSwissDate(selectedDate))}
+              <strong>{t.date}:</strong> {formatSwissDateWithWeekday(parseSwissDate(selectedDate))}
             </p>
             <p className="text-sm text-slate-600 mb-2">
-              <strong>Time:</strong> {selectedTime}
+              <strong>{t.time}:</strong> {selectedTime}
             </p>
             <p className="text-sm text-slate-600 mb-2">
-              <strong>Location:</strong> {locationLabel}
+              <strong>{t.location}:</strong> {locationLabel}
             </p>
             <p className="text-sm text-slate-600">
-              <strong>Service:</strong> {selectedService}
+              <strong>{t.service}:</strong> {selectedService}
             </p>
           </div>
           <button
@@ -515,7 +515,7 @@ function EmbedBookPageContent() {
             }}
             className="text-slate-600 hover:text-slate-900 text-sm underline"
           >
-            Book Another Appointment
+            {t.bookAnother}
           </button>
         </div>
       </div>
@@ -561,41 +561,42 @@ function EmbedBookPageContent() {
         {/* Step 1: Location Selection */}
         {step === "location" && (
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 text-center mb-2">Choose Your Location</h1>
-            <p className="text-slate-600 text-center mb-6">Select your preferred clinic location to see available specialists</p>
+            <h1 className="text-2xl font-bold text-slate-900 text-center mb-2">{t.chooseLocation}</h1>
+            <p className="text-slate-600 text-center mb-6">{t.chooseLocationSubtitle}</p>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {CLINIC_LOCATIONS.map((location) => (
-                <button
-                  key={location.id}
-                  onClick={() => handleLocationSelect(location.id)}
-                  className="group bg-white rounded-xl border border-slate-200 p-4 text-left hover:border-slate-400 hover:shadow-md transition-all"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center group-hover:bg-slate-900 transition-colors">
-                      <svg className="w-5 h-5 text-slate-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              {CLINIC_LOCATIONS.map((location) => {
+                const locationDesc = t[`locationDesc${location.name.charAt(0).toUpperCase() + location.name.slice(1)}` as keyof typeof t] || location.description;
+                return (
+                  <button
+                    key={location.id}
+                    onClick={() => handleLocationSelect(location.id)}
+                    className="group bg-white rounded-xl border border-slate-200 p-4 text-left hover:border-slate-400 hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center group-hover:bg-slate-900 transition-colors">
+                        <svg className="w-5 h-5 text-slate-600 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-slate-900">{location.name}</h3>
+                        <p className="text-sm text-slate-500">{location.label}</p>
+                      </div>
+                      <svg className="w-5 h-5 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-slate-900">{location.name}</h3>
-                      <p className="text-sm text-slate-500">{location.label}</p>
-                    </div>
-                    <svg className="w-5 h-5 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-600">{location.description}</p>
-                </button>
-              ))}
+                    <p className="mt-2 text-sm text-slate-600">{locationDesc}</p>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="mt-6 p-4 bg-slate-50 rounded-xl text-center">
-              <h3 className="font-semibold text-slate-900 mb-2">All Locations Offer</h3>
-              <p className="text-sm text-slate-600">
-                Free consultations, 3D simulations, and our full range of aesthetic services.
-              </p>
+              <h3 className="font-semibold text-slate-900 mb-2">{t.allLocationsOffer}</h3>
+              <p className="text-sm text-slate-600">{t.allLocationsOfferDesc}</p>
             </div>
           </div>
         )}
@@ -607,7 +608,7 @@ function EmbedBookPageContent() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back
+              {t.back}
             </button>
 
             <div className="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1.5 w-fit mb-4">
@@ -618,8 +619,8 @@ function EmbedBookPageContent() {
               <span className="text-sm font-medium text-slate-700">{locationLabel}</span>
             </div>
 
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">Available Specialists</h1>
-            <p className="text-slate-600 mb-6">Select a specialist to book your consultation</p>
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">{t.availableSpecialists}</h1>
+            <p className="text-slate-600 mb-6">{t.selectSpecialist}</p>
 
             <div className="grid grid-cols-2 gap-3">
               {availableDoctors.map((doc) => (
@@ -655,7 +656,7 @@ function EmbedBookPageContent() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back
+              {t.back}
             </button>
 
             <div className="flex items-center gap-3 mb-6">
@@ -668,12 +669,12 @@ function EmbedBookPageContent() {
               </div>
             </div>
 
-            <h1 className="text-xl font-bold text-slate-900 mb-4">Personal Information</h1>
+            <h1 className="text-xl font-bold text-slate-900 mb-4">{t.personalInformation}</h1>
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">First Name *</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t.firstName} *</label>
                   <input
                     type="text"
                     value={firstName}
@@ -682,7 +683,7 @@ function EmbedBookPageContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Last Name *</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t.lastName} *</label>
                   <input
                     type="text"
                     value={lastName}
@@ -692,7 +693,7 @@ function EmbedBookPageContent() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email Address *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t.email} *</label>
                 <input
                   type="email"
                   value={email}
@@ -701,7 +702,7 @@ function EmbedBookPageContent() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t.phone}</label>
                 <input
                   type="tel"
                   value={phone}
@@ -738,14 +739,14 @@ function EmbedBookPageContent() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back
+              {t.back}
             </button>
 
-            <h1 className="text-xl font-bold text-slate-900 mb-4">Select Date & Time</h1>
+            <h1 className="text-xl font-bold text-slate-900 mb-4">{t.selectDateTime}</h1>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Date *</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t.date} *</label>
                 <input
                   type="date"
                   value={selectedDate}
@@ -759,7 +760,7 @@ function EmbedBookPageContent() {
                 />
                 {availableDatesSet.size > 0 && (
                   <p className="mt-1 text-xs text-slate-500">
-                    {availableDatesSet.size} available dates in the next 3 months
+                    {availableDatesSet.size} {t.availableDatesCount}
                   </p>
                 )}
               </div>
@@ -770,14 +771,14 @@ function EmbedBookPageContent() {
                 if (openSlots.length === 0) {
                   return (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <p className="text-sm text-amber-700">All time slots are fully booked on this day. Please select another date.</p>
+                      <p className="text-sm text-amber-700">{t.allSlotsBooked}</p>
                     </div>
                   );
                 }
                 
                 return (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Available Time Slots *</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">{t.availableTimeSlots} *</label>
                     <div className="grid grid-cols-4 gap-2">
                       {openSlots.map((time) => (
                         <button
@@ -799,25 +800,25 @@ function EmbedBookPageContent() {
 
               {selectedDate && availableSlots.length === 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-sm text-amber-700">No availability on this date. Please select another date.</p>
+                  <p className="text-sm text-amber-700">{t.noAvailabilityDate}</p>
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Additional Notes</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t.additionalNotes}</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none resize-none"
-                  placeholder="Any specific concerns..."
+                  placeholder={t.notesPlaceholder}
                 />
               </div>
 
               <button
                 onClick={() => {
                   if (!selectedDate || !selectedTime) {
-                    setError("Please select a date and time");
+                    setError(t.errorSelectDateTime);
                     return;
                   }
                   setError(null);
@@ -825,7 +826,7 @@ function EmbedBookPageContent() {
                 }}
                 className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors"
               >
-                Continue
+                {t.continue}
               </button>
             </div>
           </div>
@@ -838,43 +839,43 @@ function EmbedBookPageContent() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back
+              {t.back}
             </button>
 
-            <h1 className="text-xl font-bold text-slate-900 mb-4">Confirm Your Appointment</h1>
+            <h1 className="text-xl font-bold text-slate-900 mb-4">{t.confirmAppointment}</h1>
 
             <div className="bg-slate-50 rounded-xl p-4 space-y-3 mb-6">
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Name</span>
+                <span className="text-slate-600">{t.name}</span>
                 <span className="font-medium text-slate-900">{firstName} {lastName}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Email</span>
+                <span className="text-slate-600">{t.email}</span>
                 <span className="font-medium text-slate-900">{email}</span>
               </div>
               {phone && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Phone</span>
+                  <span className="text-slate-600">{t.phone}</span>
                   <span className="font-medium text-slate-900">{phone}</span>
                 </div>
               )}
               <hr className="border-slate-200" />
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Specialist</span>
+                <span className="text-slate-600">{t.specialist}</span>
                 <span className="font-medium text-slate-900">{doctor?.name}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Date</span>
+                <span className="text-slate-600">{t.date}</span>
                 <span className="font-medium text-slate-900">
-                  {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                  {new Date(selectedDate + "T12:00:00").toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US", { weekday: "short", month: "short", day: "numeric" })}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Time</span>
+                <span className="text-slate-600">{t.time}</span>
                 <span className="font-medium text-slate-900">{selectedTime}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Location</span>
+                <span className="text-slate-600">{t.location}</span>
                 <span className="font-medium text-slate-900">{locationLabel}</span>
               </div>
             </div>
@@ -890,10 +891,10 @@ function EmbedBookPageContent() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Booking...
+                  {t.booking}
                 </>
               ) : (
-                "Confirm Booking"
+                t.confirmBooking
               )}
             </button>
           </div>
@@ -906,7 +907,7 @@ function EmbedBookPageContent() {
 // Wrap in Suspense for useSearchParams (required in Next.js 15)
 export default function EmbedBookPage() {
   return (
-    <Suspense fallback={<div className="bg-white p-8 text-center text-slate-500">Loading...</div>}>
+    <Suspense fallback={<div className="bg-white p-8 text-center text-slate-500">Chargement...</div>}>
       <EmbedBookPageContent />
     </Suspense>
   );
