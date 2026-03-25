@@ -19,7 +19,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'self' https://aesthetics-ge.ch https://beauty.aesthetics-ge.ch https://ads.aesthetics-ge.ch"
+          "value": "frame-ancestors 'self' https://aesthetics-ge.ch https://www.aesthetics-ge.ch https://beauty.aesthetics-ge.ch https://www.beauty.aesthetics-ge.ch https://ads.aesthetics-ge.ch https://www.ads.aesthetics-ge.ch"
         }
       ]
     },
