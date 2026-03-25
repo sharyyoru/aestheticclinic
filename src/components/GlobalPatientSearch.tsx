@@ -120,7 +120,23 @@ export default function GlobalPatientSearch() {
           .from("patients")
           .select("id, first_name, last_name, email, phone, dob")
           .or(orConditions)
-          .limit(50); // Fetch more results for fuzzy re-ranking
+          .limit(50);
+
+        // Run exact name match query with AND logic for multi-word searches
+        const words = trimmed.toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2);
+        let nameQuery = null;
+        if (words.length >= 1 && !trimmed.includes("@")) {
+          // Build query that requires ALL words to match (AND logic)
+          let nameQueryBuilder = supabaseClient
+            .from("patients")
+            .select("id, first_name, last_name, email, phone, dob");
+          
+          // Chain .or() for each word - this creates AND between words
+          for (const word of words) {
+            nameQueryBuilder = nameQueryBuilder.or(`first_name.ilike.%${word}%,last_name.ilike.%${word}%`);
+          }
+          nameQuery = nameQueryBuilder.limit(20);
+        }
 
         // If query looks like an email, also run exact email search
         let emailQuery = null;
@@ -172,8 +188,9 @@ export default function GlobalPatientSearch() {
           }
         }
 
-        const [textResult, emailResult, dobResult] = await Promise.all([
+        const [textResult, nameResult, emailResult, dobResult] = await Promise.all([
           textQuery,
+          nameQuery ?? Promise.resolve({ data: [] as PatientResult[], error: null }),
           emailQuery ?? Promise.resolve({ data: [] as PatientResult[], error: null }),
           dobQuery ?? Promise.resolve({ data: [] as PatientResult[], error: null }),
         ]);
@@ -183,9 +200,16 @@ export default function GlobalPatientSearch() {
           setCategorizedResults({ name: [], email: [], phone: [], birthday: [] });
           setHasResults(false);
         } else {
-          let filtered = (textResult.data ?? []) as PatientResult[];
+          // Start with name matches (highest priority for name searches)
+          let filtered = (nameResult?.data ?? []) as PatientResult[];
+          
+          // Merge text search results (avoiding duplicates)
+          const textData = (textResult.data ?? []) as PatientResult[];
+          for (const m of textData) {
+            if (!filtered.some(f => f.id === m.id)) filtered.push(m);
+          }
 
-          // Merge email results first (they should be prioritized for email searches)
+          // Merge email results (prioritized for email searches)
           const emailData = (emailResult?.data ?? []) as PatientResult[];
           for (const m of emailData) {
             if (!filtered.some(f => f.id === m.id)) filtered.unshift(m); // Add to front

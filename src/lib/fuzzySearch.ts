@@ -86,36 +86,40 @@ export function generateLooseSearchPatterns(query: string): string[] {
   if (!trimmed) return [];
 
   const patterns: string[] = [];
+  const isEmailQuery = trimmed.includes("@");
   
-  // Original query as-is
+  // Original query as-is (highest priority)
   patterns.push(`%${trimmed}%`);
   
-  // Split into words (by spaces) and add individual word patterns
-  const words = trimmed.split(/\s+/).filter((w) => w.length >= 2);
-  for (const word of words) {
-    patterns.push(`%${word}%`);
-    
-    // Add pattern with first few characters (for typo tolerance)
-    if (word.length >= 3) {
-      patterns.push(`%${word.slice(0, 3)}%`);
-    }
-    
-    // Add pattern without last character (common typo: extra/wrong ending)
-    if (word.length >= 4) {
-      patterns.push(`%${word.slice(0, -1)}%`);
-    }
-  }
-  
-  // For email-like queries (contains @), also extract username part
-  if (trimmed.includes("@")) {
+  // For email-like queries, prioritize email-specific patterns
+  if (isEmailQuery) {
     const username = trimmed.split("@")[0];
     if (username.length >= 2) {
+      // Full username is very specific - add it first
       patterns.push(`%${username}%`);
       // Also split username by common separators (., _, -)
       const usernameParts = username.split(/[._-]/).filter((p) => p.length >= 2);
       for (const part of usernameParts) {
         patterns.push(`%${part}%`);
       }
+    }
+    // For email queries, don't add short prefix patterns that match too broadly
+    // The username patterns above are specific enough
+  } else {
+    // Split into words (by spaces) and add individual word patterns
+    const words = trimmed.split(/\s+/).filter((w) => w.length >= 2);
+    for (const word of words) {
+      // Full word pattern - most specific and reliable
+      patterns.push(`%${word}%`);
+      
+      // Add pattern without last character (common typo: extra/wrong ending)
+      // This is specific enough to not match too broadly
+      if (word.length >= 4) {
+        patterns.push(`%${word.slice(0, -1)}%`);
+      }
+      
+      // DON'T add short prefix patterns like %deb% - they match too many records
+      // and cause pagination to cut off the actual matches
     }
   }
   

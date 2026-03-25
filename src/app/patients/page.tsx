@@ -143,13 +143,39 @@ export default function PatientsPage() {
           const searchTerm = `%${searchTrimmed}%`;
           
           if (searchCategory === "all") {
-            // Use fuzzy-friendly OR conditions for broader initial fetch
-            const orConditions = buildFuzzyOrConditions(searchTrimmed, ["first_name", "last_name", "email", "phone"]);
-            patientsQuery = patientsQuery.or(orConditions);
+            // For "all" search, use AND logic for multi-word name searches
+            const words = searchTrimmed.toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2);
+            if (words.length >= 2) {
+              // Multi-word search: patient must match ALL words (AND logic)
+              // Chain .or() calls - each one is ANDed with the previous
+              for (const word of words) {
+                patientsQuery = patientsQuery.or(`first_name.ilike.%${word}%,last_name.ilike.%${word}%`);
+              }
+            } else if (words.length === 1) {
+              // Single word: search name, email, phone
+              const word = words[0];
+              patientsQuery = patientsQuery.or(
+                `first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%,phone.ilike.%${word}%`
+              );
+            } else {
+              const orConditions = buildFuzzyOrConditions(searchTrimmed, ["first_name", "last_name", "email", "phone"]);
+              patientsQuery = patientsQuery.or(orConditions);
+            }
           } else if (searchCategory === "name") {
-            // Use fuzzy-friendly OR conditions for name fields only
-            const orConditions = buildFuzzyOrConditions(searchTrimmed, ["first_name", "last_name"]);
-            patientsQuery = patientsQuery.or(orConditions);
+            // For name search, use AND logic for multi-word searches
+            const words = searchTrimmed.toLowerCase().split(/\s+/).filter((w: string) => w.length >= 2);
+            if (words.length >= 2) {
+              // Multi-word: patient must match ALL words
+              for (const word of words) {
+                patientsQuery = patientsQuery.or(`first_name.ilike.%${word}%,last_name.ilike.%${word}%`);
+              }
+            } else if (words.length === 1) {
+              const word = words[0];
+              patientsQuery = patientsQuery.or(`first_name.ilike.%${word}%,last_name.ilike.%${word}%`);
+            } else {
+              const orConditions = buildFuzzyOrConditions(searchTrimmed, ["first_name", "last_name"]);
+              patientsQuery = patientsQuery.or(orConditions);
+            }
           } else if (searchCategory === "email") {
             // Use fuzzy-friendly OR conditions for email
             const orConditions = buildFuzzyOrConditions(searchTrimmed, ["email"]);
