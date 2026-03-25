@@ -488,23 +488,26 @@ export default function PatientDocumentsTab({
   const selectedFilePreviewUrl = useMemo(() => {
     if (!selectedFile || selectedFile.kind !== "file") return null;
 
-    let baseUrl: string;
+    const ext = getExtension(selectedFile.name);
+    const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
+    const isHeicImage = ["heic", "heif"].includes(ext);
     
-    // For patient-docs files, use the pre-fetched publicUrl
-    if (selectedFile.source === "patient-docs" && selectedFile.publicUrl) {
-      baseUrl = selectedFile.publicUrl;
-    } else {
-      // For patient_document bucket files
-      const fullPath = [patientId, selectedFile.path]
-        .filter(Boolean)
-        .join("/");
-
-      const { data } = supabaseClient.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(fullPath);
-
-      baseUrl = data.publicUrl;
+    // For patient-docs files, use on-demand signed URL API to avoid expiration issues
+    if (selectedFile.source === "patient-docs" && selectedFile.path) {
+      const cacheBuster = `&v=${refreshKey}-${selectedFile.updated_at || Date.now()}`;
+      return `/api/patient-docs/get-signed-url?path=${encodeURIComponent(selectedFile.path)}${cacheBuster}`;
     }
+    
+    // For patient_document bucket files
+    const fullPath = [patientId, selectedFile.path]
+      .filter(Boolean)
+      .join("/");
+
+    const { data } = supabaseClient.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(fullPath);
+
+    const baseUrl = data.publicUrl;
 
     // Add cache-busting parameter to ensure fresh content after edits
     const cacheBuster = `?v=${refreshKey}-${selectedFile.updated_at || Date.now()}`;
@@ -512,10 +515,6 @@ export default function PatientDocumentsTab({
     
     // Use appropriate API for each image type to ensure proper display
     if (urlWithCache) {
-      const ext = getExtension(selectedFile.name);
-      const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
-      const isHeicImage = ["heic", "heif"].includes(ext);
-      
       if (isRegularImage) {
         return `/api/documents/proxy-image?url=${encodeURIComponent(urlWithCache)}`;
       } else if (isHeicImage) {
@@ -698,8 +697,9 @@ export default function PatientDocumentsTab({
         if (!item || item.kind !== "file") return null;
         
         let fileUrl: string;
-        if (item.source === "patient-docs" && item.publicUrl) {
-          fileUrl = item.publicUrl;
+        if (item.source === "patient-docs" && item.path) {
+          // Use on-demand signed URL API for patient-docs files
+          fileUrl = `/api/patient-docs/get-signed-url?path=${encodeURIComponent(item.path)}`;
         } else {
           const fullPath = [patientId, item.path].filter(Boolean).join("/");
           const { data } = supabaseClient.storage
@@ -1228,22 +1228,6 @@ export default function PatientDocumentsTab({
                       );
                     }
 
-                    // For patient-docs files, use the pre-fetched publicUrl
-                    let thumbUrl: string;
-                    if (item.source === "patient-docs" && item.publicUrl) {
-                      thumbUrl = item.publicUrl;
-                    } else {
-                      const fullPath = [patientId, item.path]
-                        .filter(Boolean)
-                        .join("/");
-                      const { data } = supabaseClient.storage
-                        .from(BUCKET_NAME)
-                        .getPublicUrl(fullPath);
-                      thumbUrl = data.publicUrl;
-                    }
-                    // Add cache-busting parameter to ensure fresh content after edits
-                    const cacheBuster = `?v=${refreshKey}-${item.updated_at || Date.now()}`;
-                    const previewUrl = thumbUrl + cacheBuster;
                     const ext = getExtension(item.name);
                     const isImageThumb = [
                       "jpg",
@@ -1260,16 +1244,32 @@ export default function PatientDocumentsTab({
                     const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
                     const isHeicImage = ["heic", "heif"].includes(ext);
                     
-                    // For regular images: use proxy API
-                    // For HEIC: use conversion API (browsers can't display HEIC directly)
-                    // This converted URL is used for thumbnails, previews, and modals
+                    // For patient-docs files, use on-demand signed URL API to avoid JWT expiration
                     let convertedUrl: string;
-                    if (isRegularImage) {
-                      convertedUrl = `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`;
-                    } else if (isHeicImage) {
-                      convertedUrl = `/api/documents/convert-heic?url=${encodeURIComponent(previewUrl)}`;
+                    if (item.source === "patient-docs" && item.path) {
+                      const cacheBuster = `&v=${refreshKey}-${item.updated_at || Date.now()}`;
+                      convertedUrl = `/api/patient-docs/get-signed-url?path=${encodeURIComponent(item.path)}${cacheBuster}`;
                     } else {
-                      convertedUrl = previewUrl;
+                      const fullPath = [patientId, item.path]
+                        .filter(Boolean)
+                        .join("/");
+                      const { data } = supabaseClient.storage
+                        .from(BUCKET_NAME)
+                        .getPublicUrl(fullPath);
+                      const thumbUrl = data.publicUrl;
+                      // Add cache-busting parameter to ensure fresh content after edits
+                      const cacheBuster = `?v=${refreshKey}-${item.updated_at || Date.now()}`;
+                      const previewUrl = thumbUrl + cacheBuster;
+                      
+                      // For regular images: use proxy API
+                      // For HEIC: use conversion API (browsers can't display HEIC directly)
+                      if (isRegularImage) {
+                        convertedUrl = `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`;
+                      } else if (isHeicImage) {
+                        convertedUrl = `/api/documents/convert-heic?url=${encodeURIComponent(previewUrl)}`;
+                      } else {
+                        convertedUrl = previewUrl;
+                      }
                     }
                     const thumbnailSrc = convertedUrl;
                     const uploadDate = item.created_at || item.updated_at;
@@ -1301,7 +1301,7 @@ export default function PatientDocumentsTab({
                           className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm cursor-pointer"
                           onClick={() => handleSelectFile(item)}
                         >
-                          {isImageThumb && thumbUrl ? (
+                          {isImageThumb && convertedUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={thumbnailSrc}
@@ -1368,7 +1368,7 @@ export default function PatientDocumentsTab({
                               e.stopPropagation();
                               documentPreviewTabs?.addTab({
                                 name: item.name,
-                                url: previewUrl,
+                                url: convertedUrl,
                                 mimeType,
                               });
                             }}

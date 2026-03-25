@@ -219,6 +219,47 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
   }
 }
 
+// Format consultation content with proper structure and line breaks
+function formatConsultationContent(rawContent: string): string {
+  if (!rawContent || rawContent.startsWith("[")) return rawContent;
+  
+  // First normalize whitespace
+  let content = rawContent
+    .replace(/\r\n/g, " ")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  
+  // Add line breaks before common consultation entry markers
+  const markers = [
+    /\b(Mandant:\s*Docteur)/gi,           // Doctor entries
+    /\b(Motif de la consultation\s*:)/gi, // Consultation reason
+    /\b(Remarque\s*:)/gi,                 // Remarks
+    /\b(Traitement\s*:)/gi,               // Treatment
+    /\b(Consult\.?\s*infirmi[eè]re\s*:)/gi, // Nurse consultation
+    /\b(JOUR OPERATOIRE\s*:?)/gi,         // Surgery day
+    /\b(Powered by axenita)/gi,           // Entry separator
+    /\b(\d{1,2}\.\d{2}\.\d{2,4}\s+\d{1,2}:\d{2})/g, // Date-time patterns
+  ];
+  
+  for (const marker of markers) {
+    content = content.replace(marker, "\n\n$1");
+  }
+  
+  // Add line break after specific patterns
+  content = content
+    .replace(/(\d{2}\.\d{2}\.\d{4},\s*AXO\s*\d+\s*\/\s*\d+)/g, "$1\n") // AXO entries
+    .replace(/(ven\.|lun\.|mar\.|mer\.|jeu\.|sam\.|dim\.)\s+(\d{1,2}\.\d{2}\.\d{2})/gi, "\n$1 $2"); // Day abbreviations with dates
+  
+  // Clean up multiple newlines
+  content = content
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  
+  // Limit length
+  return content.substring(0, 15000);
+}
+
 async function processPdfFile(
   folderPath: string,
   fileName: string,
@@ -243,11 +284,8 @@ async function processPdfFile(
     const buffer = Buffer.from(await fileData.arrayBuffer());
     const content = await extractPdfText(buffer);
 
-    const singleLineContent = content
-      .replace(/\r\n/g, " ")
-      .replace(/\n/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    // Format consultation content with proper line breaks
+    const formattedContent = formatConsultationContent(content);
 
     const fileTypeLabels: Record<string, string> = {
       ap: "Medical Notes (AP)",
@@ -260,7 +298,7 @@ async function processPdfFile(
       folderName: folderPath.split("/")[0],
       fileName,
       fileType,
-      content: singleLineContent || `[${fileTypeLabels[fileType] || "Document"} document]`,
+      content: formattedContent || `[${fileTypeLabels[fileType] || "Document"} document]`,
       firstName: folderInfo.firstName,
       lastName: folderInfo.lastName,
     });

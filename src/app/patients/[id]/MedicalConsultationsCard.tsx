@@ -522,6 +522,8 @@ export default function MedicalConsultationsCard({
   const [axenitaPdfLoading, setAxenitaPdfLoading] = useState(false);
   const [axenitaPdfError, setAxenitaPdfError] = useState<string | null>(null);
   const [axenitaPreviewDoc, setAxenitaPreviewDoc] = useState<AxenitaPdfDocument | null>(null);
+  const [axenitaEditMode, setAxenitaEditMode] = useState(false);
+  const [axenitaEditedContent, setAxenitaEditedContent] = useState("");
 
   const [exportingConsultationsPdf, setExportingConsultationsPdf] = useState(false);
 
@@ -8139,7 +8141,7 @@ export default function MedicalConsultationsCard({
       {/* Axenita Document Preview Modal */}
       {axenitaPreviewDoc && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-          <div className="relative w-full max-w-3xl max-h-[90vh] rounded-xl bg-white shadow-2xl flex flex-col">
+          <div className="relative w-full max-w-4xl max-h-[90vh] rounded-xl bg-white shadow-2xl flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div className="flex items-center gap-3">
@@ -8161,47 +8163,117 @@ export default function MedicalConsultationsCard({
                   <p className="text-xs text-slate-500">Axenita Medical Record</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setAxenitaPreviewDoc(null)}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-2">
+                {!axenitaEditMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAxenitaEditMode(true);
+                      setAxenitaEditedContent(axenitaPreviewDoc.content || "");
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 transition-colors"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAxenitaPreviewDoc(null);
+                    setAxenitaEditMode(false);
+                    setAxenitaEditedContent("");
+                  }}
+                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
             
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              <div className="prose prose-sm max-w-none">
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-                  {axenitaPreviewDoc.content || "No content extracted from this document."}
-                </p>
-              </div>
+              {axenitaEditMode ? (
+                <textarea
+                  value={axenitaEditedContent}
+                  onChange={(e) => setAxenitaEditedContent(e.target.value)}
+                  className="w-full h-full min-h-[400px] p-4 text-sm text-slate-700 leading-relaxed border border-slate-200 rounded-lg focus:border-sky-500 focus:ring-1 focus:ring-sky-500 focus:outline-none resize-none font-mono"
+                  placeholder="Edit the content..."
+                />
+              ) : (
+                <div className="prose prose-sm max-w-none">
+                  <pre className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap font-sans bg-transparent p-0 m-0 overflow-visible">
+                    {axenitaPreviewDoc.content || "No content extracted from this document."}
+                  </pre>
+                </div>
+              )}
             </div>
             
             {/* Footer */}
-            <div className="border-t border-slate-200 px-6 py-4 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(axenitaPreviewDoc.content || "");
-                }}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                Copy Content
-              </button>
-              <button
-                type="button"
-                onClick={() => setAxenitaPreviewDoc(null)}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-slate-800 transition-colors"
-              >
-                Close
-              </button>
+            <div className="border-t border-slate-200 px-6 py-4 flex justify-between">
+              <div className="flex gap-2">
+                {axenitaEditMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAxenitaEditMode(false);
+                      setAxenitaEditedContent("");
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const content = axenitaEditMode ? axenitaEditedContent : (axenitaPreviewDoc.content || "");
+                    navigator.clipboard.writeText(content);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy Content
+                </button>
+                {axenitaEditMode ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Update the document content in the local state
+                      setAxenitaPdfDocs(prev => prev.map(doc => 
+                        doc.fileName === axenitaPreviewDoc.fileName && doc.folderName === axenitaPreviewDoc.folderName
+                          ? { ...doc, content: axenitaEditedContent }
+                          : doc
+                      ));
+                      setAxenitaPreviewDoc({ ...axenitaPreviewDoc, content: axenitaEditedContent });
+                      setAxenitaEditMode(false);
+                    }}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 transition-colors"
+                  >
+                    Save Changes
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAxenitaPreviewDoc(null);
+                      setAxenitaEditMode(false);
+                      setAxenitaEditedContent("");
+                    }}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-slate-800 transition-colors"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>,
