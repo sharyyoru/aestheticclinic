@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
 
         const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin.storage
           .from(BUCKET_NAME)
-          .createSignedUrl(filePath, 3600);
+          .createSignedUrl(filePath, 86400); // 24 hours instead of 1 hour
 
         if (signedUrlError || !signedUrlData?.signedUrl) continue;
 
