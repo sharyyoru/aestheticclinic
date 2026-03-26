@@ -68,6 +68,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // Check if patient has opted out of WhatsApp notifications
+    if (body.patientId) {
+      const { data: patient } = await supabaseAdmin
+        .from("patients")
+        .select("whatsapp_opt_in")
+        .eq("id", body.patientId)
+        .single();
+
+      if (patient && patient.whatsapp_opt_in === false) {
+        return NextResponse.json(
+          { ok: false, skipped: true, reason: "Patient has not opted in to WhatsApp notifications" },
+          { status: 200 },
+        );
+      }
+    }
+
     const scheduledAt = body.scheduledAt
       ? new Date(body.scheduledAt).toISOString()
       : new Date().toISOString();

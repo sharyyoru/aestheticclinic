@@ -131,7 +131,7 @@ export async function POST(request: Request) {
           .maybeSingle(),
         supabaseAdmin
           .from("patients")
-          .select("id, first_name, last_name, email, phone")
+          .select("id, first_name, last_name, email, phone, whatsapp_opt_in")
           .eq("id", patientId)
           .maybeSingle(),
       ]);
@@ -166,6 +166,7 @@ export async function POST(request: Request) {
       last_name: string | null;
       email: string | null;
       phone: string | null;
+      whatsapp_opt_in: boolean | null;
     };
 
     const stageIdsToFetch: string[] = [];
@@ -956,6 +957,23 @@ export async function POST(request: Request) {
                 status: "skipped",
                 executed_at: new Date().toISOString(),
                 error_message: "Patient has no phone number",
+              });
+            }
+            continue;
+          }
+
+          // Check if patient has opted out of WhatsApp notifications
+          if (safePatient.whatsapp_opt_in === false) {
+            console.log("Patient has not opted in to WhatsApp, skipping WhatsApp action");
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "send_whatsapp",
+                step_config: config,
+                status: "skipped",
+                executed_at: new Date().toISOString(),
+                error_message: "Patient has not opted in to WhatsApp notifications",
               });
             }
             continue;

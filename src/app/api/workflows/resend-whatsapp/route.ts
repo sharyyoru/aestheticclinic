@@ -140,7 +140,7 @@ export async function POST(request: Request) {
         // Fetch patient
         const { data: patient, error: patientError } = await supabaseAdmin
           .from("patients")
-          .select("id, first_name, last_name, email, phone")
+          .select("id, first_name, last_name, email, phone, whatsapp_opt_in")
           .eq("id", deal.patient_id)
           .maybeSingle();
 
@@ -152,6 +152,13 @@ export async function POST(request: Request) {
 
         if (!patient.phone) {
           results.push({ dealId, status: "skipped", error: "No phone number" });
+          skipped++;
+          continue;
+        }
+
+        // Check if patient has opted out of WhatsApp notifications
+        if (patient.whatsapp_opt_in === false) {
+          results.push({ dealId, status: "skipped", error: "Patient has not opted in to WhatsApp" });
           skipped++;
           continue;
         }

@@ -39,6 +39,7 @@ create table if not exists patients (
   emergency_contact_name text,
   emergency_contact_phone text,
   emergency_contact_relation text,
+  whatsapp_opt_in boolean default true,
   created_by_user_id uuid references users(id),
   created_by text,
   created_at timestamptz default now(),
