@@ -73,6 +73,52 @@ type ServiceOption = {
   name: string;
 };
 
+type AppointmentCategory = {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+};
+
+// Default hex colors for categories (fallback)
+const DEFAULT_CATEGORY_COLORS: Record<string, string> = {
+  "No selection": "#e0f2fe",
+  "Mesotherapy": "#d8b4fe",
+  "Dermomask": "#bef264",
+  "1ère consultation": "#fef08a",
+  "Administration": "#cbd5e1",
+  "Cavitation": "#86efac",
+  "CO2": "#fbcfe8",
+  "Control": "#5eead4",
+  "Emla Cream": "#99f6e4",
+  "Cryotherapy": "#d8b4fe",
+  "Discussion": "#bae6fd",
+  "EMSCULPT": "#5eead4",
+  "Cutera laser hair removal": "#cbd5e1",
+  "Epilation laser Gentel": "#86efac",
+  "Electrolysis hair removal": "#a5b4fc",
+  "HIFU": "#fbcfe8",
+  "Injection (botox; Acide hyaluronic)": "#bae6fd",
+  "Important": "#fca5a5",
+  "IPL": "#e9d5ff",
+  "Meso Anti-age": "#fcd34d",
+  "Meso Anti-cellulite": "#fcd34d",
+  "Meso Anti-tache": "#fcd34d",
+  "Microdermabrasion": "#93c5fd",
+  "MORPHEUS8": "#fbbf24",
+  "Radio frequency": "#d9f99d",
+  "Meeting": "#fbcfe8",
+  "OP Surgery": "#86efac",
+  "Breaks/Change of Location": "#d8b4fe",
+  "PRP": "#fdba74",
+  "Tatoo removal": "#fcd34d",
+  "TCA": "#e9d5ff",
+  "Treatment": "#e9d5ff",
+  "Caviar treatment": "#c7d2fe",
+  "Vacation/Leave": "#d9f99d",
+  "Visia": "#fef08a",
+};
+
 const BOOKING_STATUS_OPTIONS = [
   "Aucune sélection",
   "Vidéo conférence / appel",
@@ -806,6 +852,10 @@ export default function CalendarPage() {
   const [appointmentCategory, setAppointmentCategory] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  const [categoryOptions, setCategoryOptions] = useState<AppointmentCategory[]>([]);
+  const [categoryOptionsLoading, setCategoryOptionsLoading] = useState(false);
+  const [colorPickerCategoryId, setColorPickerCategoryId] = useState<string | null>(null);
+  const [savingCategoryColor, setSavingCategoryColor] = useState(false);
   const [locationSearch, setLocationSearch] = useState("");
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const [durationSearch, setDurationSearch] = useState("");
@@ -1009,6 +1059,64 @@ export default function CalendarPage() {
     }, 60000); // Update every minute
     return () => clearInterval(interval);
   }, []);
+
+  // Load appointment categories from database
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCategories() {
+      try {
+        setCategoryOptionsLoading(true);
+        const response = await fetch("/api/appointment-categories");
+        if (!isMounted) return;
+        
+        if (response.ok) {
+          const data = await response.json();
+          setCategoryOptions(data);
+        } else {
+          // Fallback to hardcoded options if API fails
+          console.error("Failed to load categories from API");
+        }
+        setCategoryOptionsLoading(false);
+      } catch (err) {
+        if (!isMounted) return;
+        console.error("Error loading categories:", err);
+        setCategoryOptionsLoading(false);
+      }
+    }
+
+    void loadCategories();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Handle category color update
+  async function handleCategoryColorChange(categoryId: string, newColor: string) {
+    setSavingCategoryColor(true);
+    try {
+      const response = await fetch("/api/appointment-categories", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: categoryId, color: newColor }),
+      });
+      
+      if (response.ok) {
+        const updated = await response.json();
+        setCategoryOptions((prev) =>
+          prev.map((cat) =>
+            cat.id === categoryId ? { ...cat, color: updated.color } : cat
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Failed to update category color:", err);
+    } finally {
+      setSavingCategoryColor(false);
+      setColorPickerCategoryId(null);
+    }
+  }
 
   // Allowed calendar names - only these will be shown in the calendar sidebar
   const ALLOWED_CALENDAR_NAMES = [
@@ -1495,9 +1603,110 @@ export default function CalendarPage() {
 
   const filteredCategoryOptions = useMemo(() => {
     const search = categorySearch.trim().toLowerCase();
-    if (!search) return APPOINTMENT_CATEGORY_OPTIONS;
-    return APPOINTMENT_CATEGORY_OPTIONS.filter((opt) => opt.toLowerCase().includes(search));
-  }, [categorySearch]);
+    // Use database categories if available, fallback to hardcoded options
+    if (categoryOptions.length > 0) {
+      if (!search) return categoryOptions;
+      return categoryOptions.filter((cat) => cat.name.toLowerCase().includes(search));
+    }
+    // Fallback to hardcoded options with direct color mapping
+    const FALLBACK_COLORS = [
+      "#e0f2fe", // No selection - sky
+      "#d8b4fe", // Mesotherapy - purple
+      "#bef264", // Dermomask - lime
+      "#fef08a", // 1ère consultation - yellow
+      "#cbd5e1", // Administration - slate
+      "#86efac", // Cavitation - green
+      "#fbcfe8", // CO2 - pink
+      "#5eead4", // Control - teal
+      "#99f6e4", // Emla Cream - teal
+      "#d8b4fe", // Cryotherapy - purple
+      "#bae6fd", // Discussion - sky
+      "#5eead4", // EMSCULPT - teal
+      "#cbd5e1", // Cutera laser hair removal - slate
+      "#86efac", // Epilation laser Gentel - green
+      "#a5b4fc", // Electrolysis hair removal - indigo
+      "#fbcfe8", // HIFU - pink
+      "#bae6fd", // Injection - sky
+      "#fca5a5", // Important - red
+      "#e9d5ff", // IPL - purple
+      "#fcd34d", // Meso Anti-age - amber
+      "#fcd34d", // Meso Anti-cellulite - amber
+      "#fcd34d", // Meso Anti-tache - amber
+      "#93c5fd", // Microdermabrasion - blue
+      "#fbbf24", // MORPHEUS8 - amber
+      "#d9f99d", // Radio frequency - lime
+      "#fbcfe8", // Meeting - pink
+      "#86efac", // OP Surgery - green
+      "#d8b4fe", // Breaks/Change of Location - purple
+      "#fdba74", // PRP - orange
+      "#fcd34d", // Tatoo removal - amber
+      "#e9d5ff", // TCA - purple
+      "#e9d5ff", // Treatment - purple
+      "#c7d2fe", // Caviar treatment - indigo
+      "#d9f99d", // Vacation/Leave - lime
+      "#fef08a", // Visia - yellow
+    ];
+    const fallbackOptions = APPOINTMENT_CATEGORY_OPTIONS.map((name, idx) => ({
+      id: `fallback-${idx}`,
+      name,
+      color: FALLBACK_COLORS[idx] || "#e2e8f0",
+      sort_order: idx,
+    }));
+    if (!search) return fallbackOptions;
+    return fallbackOptions.filter((cat) => cat.name.toLowerCase().includes(search));
+  }, [categorySearch, categoryOptions]);
+
+  // Helper to get category color from database or fallback (returns hex color)
+  const getDynamicCategoryColor = useCallback((categoryName: string | null): string => {
+    if (!categoryName) return "#f1f5f9";
+    // Direct hex color map for categories
+    const CATEGORY_HEX_COLORS: Record<string, string> = {
+      "No selection": "#e0f2fe",
+      "Mesotherapy": "#d8b4fe",
+      "Dermomask": "#bef264",
+      "1ère consultation": "#fef08a",
+      "Administration": "#cbd5e1",
+      "Cavitation": "#86efac",
+      "CO2": "#fbcfe8",
+      "Control": "#5eead4",
+      "Emla Cream": "#99f6e4",
+      "Cryotherapy": "#d8b4fe",
+      "Discussion": "#bae6fd",
+      "EMSCULPT": "#5eead4",
+      "Cutera laser hair removal": "#cbd5e1",
+      "Epilation laser Gentel": "#86efac",
+      "Electrolysis hair removal": "#a5b4fc",
+      "HIFU": "#fbcfe8",
+      "Injection (botox; Acide hyaluronic)": "#bae6fd",
+      "Important": "#fca5a5",
+      "IPL": "#e9d5ff",
+      "Meso Anti-age": "#fcd34d",
+      "Meso Anti-cellulite": "#fcd34d",
+      "Meso Anti-tache": "#fcd34d",
+      "Microdermabrasion": "#93c5fd",
+      "MORPHEUS8": "#fbbf24",
+      "Radio frequency": "#d9f99d",
+      "Meeting": "#fbcfe8",
+      "OP Surgery": "#86efac",
+      "Breaks/Change of Location": "#d8b4fe",
+      "PRP": "#fdba74",
+      "Tatoo removal": "#fcd34d",
+      "TCA": "#e9d5ff",
+      "Treatment": "#e9d5ff",
+      "Caviar treatment": "#c7d2fe",
+      "Vacation/Leave": "#d9f99d",
+      "Visia": "#fef08a",
+      // French variants
+      "Consultation": "#fef08a",
+      "First Consultation": "#fef08a",
+      "Filler / HA": "#bae6fd",
+      "General Consultation": "#fef08a",
+      "Consultation de contrôle": "#5eead4",
+      "Changement clinique rhone": "#d8b4fe",
+      "RHINOPLASTIE MEDICALE": "#fbcfe8",
+    };
+    return CATEGORY_HEX_COLORS[categoryName] || "#e2e8f0";
+  }, []);
 
   const filteredLocationOptions = useMemo(() => {
     const search = locationSearch.trim().toLowerCase();
@@ -2999,10 +3208,10 @@ export default function CalendarPage() {
                                 // Ensure touch works reliably on iPad
                                 event.stopPropagation();
                               }}
-                              style={{ touchAction: 'manipulation' }}
+                              style={{ touchAction: 'manipulation', backgroundColor: getDynamicCategoryColor(category) }}
                               className={`w-full rounded-md px-1 py-0.5 text-[10px] text-left ${getAppointmentStatusColorClasses(
                                 appt.status,
-                              )} ${getCategoryColor(category)} ${isCopiedPatient ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
+                              )} ${isCopiedPatient ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
                             >
                               <div className="flex items-center gap-1 truncate font-medium text-slate-800">
                                 {statusIcon && <span className="flex-shrink-0">{statusIcon}</span>}
@@ -3283,8 +3492,8 @@ export default function CalendarPage() {
                                           type="button"
                                           onClick={() => openEditModalForAppointment(appt)}
                                           onTouchEnd={(e) => e.stopPropagation()}
-                                          style={{ touchAction: 'manipulation' }}
-                                          className={`w-full h-full rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${getCategoryColor(category)} ${isCopiedPatient ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
+                                          style={{ touchAction: 'manipulation', backgroundColor: getDynamicCategoryColor(category) }}
+                                          className={`w-full h-full rounded-md px-1 py-0.5 text-[10px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${isCopiedPatient ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
                                         >
                                           <div className="flex items-center gap-1 truncate font-medium text-slate-800">
                                             {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
@@ -3459,17 +3668,25 @@ export default function CalendarPage() {
                     </div>
                     <div className="relative col-span-2">
                       <p className="text-[10px] text-slate-500 mb-1">Category</p>
-                      <input
-                        type="text"
-                        value={editCategorySearch}
-                        onChange={(e) => {
-                          setEditCategorySearch(e.target.value);
-                          setEditCategoryDropdownOpen(true);
-                        }}
-                        onFocus={() => setEditCategoryDropdownOpen(true)}
-                        placeholder="Search category..."
-                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
-                      />
+                      <div className="relative">
+                        {editCategory && (
+                          <span 
+                            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-3 w-3 rounded-sm border border-slate-300/50" 
+                            style={{ backgroundColor: getDynamicCategoryColor(editCategory) }}
+                          />
+                        )}
+                        <input
+                          type="text"
+                          value={editCategorySearch}
+                          onChange={(e) => {
+                            setEditCategorySearch(e.target.value);
+                            setEditCategoryDropdownOpen(true);
+                          }}
+                          onFocus={() => setEditCategoryDropdownOpen(true)}
+                          placeholder="Search category..."
+                          className={`w-full rounded-md border border-slate-200 bg-white py-1.5 text-[11px] text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400 ${editCategory ? "pl-7 pr-2" : "px-2"}`}
+                        />
+                      </div>
                       {editCategory && (
                         <button
                           type="button"
@@ -3482,27 +3699,92 @@ export default function CalendarPage() {
                           ×
                         </button>
                       )}
-                      {editCategoryDropdownOpen && (
-                        <div className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
-                          {APPOINTMENT_CATEGORY_OPTIONS.filter((opt) =>
-                            opt.toLowerCase().includes(editCategorySearch.toLowerCase())
-                          ).map((opt) => (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => {
-                                setEditCategory(opt);
-                                setEditCategorySearch(opt);
-                                setEditCategoryDropdownOpen(false);
-                              }}
-                              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] text-slate-700 hover:bg-slate-50"
-                            >
-                              <span className={`h-3 w-3 rounded-sm ${getCategoryColor(opt)}`} />
-                              {opt}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      {editCategoryDropdownOpen && (() => {
+                        const CATEGORY_HEX_COLORS: Record<string, string> = {
+                          "No selection": "#e0f2fe",
+                          "Mesotherapy": "#d8b4fe",
+                          "Dermomask": "#bef264",
+                          "1ère consultation": "#fef08a",
+                          "Administration": "#cbd5e1",
+                          "Cavitation": "#86efac",
+                          "CO2": "#fbcfe8",
+                          "Control": "#5eead4",
+                          "Emla Cream": "#99f6e4",
+                          "Cryotherapy": "#d8b4fe",
+                          "Discussion": "#bae6fd",
+                          "EMSCULPT": "#5eead4",
+                          "Cutera laser hair removal": "#cbd5e1",
+                          "Epilation laser Gentel": "#86efac",
+                          "Electrolysis hair removal": "#a5b4fc",
+                          "HIFU": "#fbcfe8",
+                          "Injection (botox; Acide hyaluronic)": "#bae6fd",
+                          "Important": "#fca5a5",
+                          "IPL": "#e9d5ff",
+                          "Meso Anti-age": "#fcd34d",
+                          "Meso Anti-cellulite": "#fcd34d",
+                          "Meso Anti-tache": "#fcd34d",
+                          "Microdermabrasion": "#93c5fd",
+                          "MORPHEUS8": "#fbbf24",
+                          "Radio frequency": "#d9f99d",
+                          "Meeting": "#fbcfe8",
+                          "OP Surgery": "#86efac",
+                          "Breaks/Change of Location": "#d8b4fe",
+                          "PRP": "#fdba74",
+                          "Tatoo removal": "#fcd34d",
+                          "TCA": "#e9d5ff",
+                          "Treatment": "#e9d5ff",
+                          "Caviar treatment": "#c7d2fe",
+                          "Vacation/Leave": "#d9f99d",
+                          "Visia": "#fef08a",
+                        };
+                        const search = editCategorySearch.trim().toLowerCase();
+                        const options = APPOINTMENT_CATEGORY_OPTIONS.filter(name => 
+                          !search || name.toLowerCase().includes(search)
+                        );
+                        return options.length > 0 && (
+                          <div className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                            {options.map((name, index) => {
+                              const bgColor = CATEGORY_HEX_COLORS[name] || "#e2e8f0";
+                              return (
+                                <div key={name} className="flex w-full items-center gap-2 px-2 py-1.5 hover:bg-slate-50">
+                                  <div 
+                                    className="h-4 w-4 rounded border border-slate-300 flex-shrink-0 cursor-pointer"
+                                    style={{ backgroundColor: bgColor }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const input = document.getElementById(`color-picker-edit-${index}`);
+                                      if (input) input.click();
+                                    }}
+                                    title="Click to change color"
+                                  />
+                                  <input
+                                    id={`color-picker-edit-${index}`}
+                                    type="color"
+                                    defaultValue={bgColor}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      const div = e.target.previousElementSibling as HTMLElement;
+                                      if (div) div.style.backgroundColor = e.target.value;
+                                    }}
+                                    className="sr-only"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditCategory(name);
+                                      setEditCategorySearch(name);
+                                      setEditCategoryDropdownOpen(false);
+                                    }}
+                                    className="flex-1 text-left text-[11px] text-slate-700"
+                                  >
+                                    {name}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="relative col-span-2">
                       <p className="text-[10px] text-slate-500 mb-1">Status/Channel</p>
@@ -4139,7 +4421,10 @@ export default function CalendarPage() {
                   <div className="relative">
                     <div className="flex items-center">
                       {appointmentCategory && (
-                        <span className={`absolute left-2 z-10 h-3 w-3 rounded-sm ${getCategoryColor(appointmentCategory)}`} />
+                        <span 
+                          className="absolute left-2 z-10 h-3 w-3 rounded-sm border border-slate-300/50" 
+                          style={{ backgroundColor: getDynamicCategoryColor(appointmentCategory) }}
+                        />
                       )}
                       <input
                         type="text"
@@ -4165,25 +4450,93 @@ export default function CalendarPage() {
                         <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                       </button>
                     )}
-                    {categoryDropdownOpen && filteredCategoryOptions.length > 0 && (
-                      <div className="absolute z-20 mt-1 max-h-40 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
-                        {filteredCategoryOptions.map((opt) => (
-                          <button
-                            key={opt}
-                            type="button"
-                            onClick={() => {
-                              setAppointmentCategory(opt);
-                              setCategorySearch(opt);
-                              setCategoryDropdownOpen(false);
-                            }}
-                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sky-50 ${appointmentCategory === opt ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
-                          >
-                            <span className={`h-3 w-3 rounded-sm flex-shrink-0 ${getCategoryColor(opt)}`} />
-                            {opt}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {categoryDropdownOpen && (() => {
+                      const CATEGORY_HEX_COLORS: Record<string, string> = {
+                        "No selection": "#e0f2fe",
+                        "Mesotherapy": "#d8b4fe",
+                        "Dermomask": "#bef264",
+                        "1ère consultation": "#fef08a",
+                        "Administration": "#cbd5e1",
+                        "Cavitation": "#86efac",
+                        "CO2": "#fbcfe8",
+                        "Control": "#5eead4",
+                        "Emla Cream": "#99f6e4",
+                        "Cryotherapy": "#d8b4fe",
+                        "Discussion": "#bae6fd",
+                        "EMSCULPT": "#5eead4",
+                        "Cutera laser hair removal": "#cbd5e1",
+                        "Epilation laser Gentel": "#86efac",
+                        "Electrolysis hair removal": "#a5b4fc",
+                        "HIFU": "#fbcfe8",
+                        "Injection (botox; Acide hyaluronic)": "#bae6fd",
+                        "Important": "#fca5a5",
+                        "IPL": "#e9d5ff",
+                        "Meso Anti-age": "#fcd34d",
+                        "Meso Anti-cellulite": "#fcd34d",
+                        "Meso Anti-tache": "#fcd34d",
+                        "Microdermabrasion": "#93c5fd",
+                        "MORPHEUS8": "#fbbf24",
+                        "Radio frequency": "#d9f99d",
+                        "Meeting": "#fbcfe8",
+                        "OP Surgery": "#86efac",
+                        "Breaks/Change of Location": "#d8b4fe",
+                        "PRP": "#fdba74",
+                        "Tatoo removal": "#fcd34d",
+                        "TCA": "#e9d5ff",
+                        "Treatment": "#e9d5ff",
+                        "Caviar treatment": "#c7d2fe",
+                        "Vacation/Leave": "#d9f99d",
+                        "Visia": "#fef08a",
+                      };
+                      const search = categorySearch.trim().toLowerCase();
+                      const options = APPOINTMENT_CATEGORY_OPTIONS.filter(name => 
+                        !search || name.toLowerCase().includes(search)
+                      );
+                      return options.length > 0 && (
+                        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                          {options.map((name, index) => {
+                            const bgColor = CATEGORY_HEX_COLORS[name] || "#e2e8f0";
+                            return (
+                              <div key={name} className={`flex w-full items-center gap-2 px-3 py-1.5 hover:bg-sky-50 ${appointmentCategory === name ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}>
+                                <div 
+                                  className="h-4 w-4 rounded border border-slate-300 flex-shrink-0 cursor-pointer"
+                                  style={{ backgroundColor: bgColor }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const input = document.getElementById(`color-picker-create-${index}`);
+                                    if (input) input.click();
+                                  }}
+                                  title="Click to change color"
+                                />
+                                <input
+                                  id={`color-picker-create-${index}`}
+                                  type="color"
+                                  defaultValue={bgColor}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    // Update the div color directly
+                                    const div = e.target.previousElementSibling as HTMLElement;
+                                    if (div) div.style.backgroundColor = e.target.value;
+                                  }}
+                                  className="sr-only"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAppointmentCategory(name);
+                                    setCategorySearch(name);
+                                    setCategoryDropdownOpen(false);
+                                  }}
+                                  className="flex-1 text-left"
+                                >
+                                  {name}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="space-y-1">
