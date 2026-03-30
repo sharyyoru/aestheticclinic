@@ -2436,7 +2436,14 @@ export default function CalendarPage() {
       return;
     }
 
-    const startLocal = new Date(`${editDate}T${editTime}:00`);
+    // Parse hour and minute from editTime (HH:MM format)
+    const [hourStr, minuteStr] = editTime.split(":");
+    const hour = parseInt(hourStr, 10);
+    const minute = parseInt(minuteStr, 10);
+    
+    // Use createSwissDateTime to interpret the time in Swiss timezone
+    // This ensures consistency regardless of the user's browser timezone
+    const startLocal = createSwissDateTime(editDate, hour, minute);
     if (Number.isNaN(startLocal.getTime())) {
       setEditError("Invalid date or time.");
       return;
