@@ -888,6 +888,8 @@ export default function MedicalConsultationsCard({
         }));
 
         // 2) Load invoice records directly from invoices table
+        // Exclude installment sub-invoices (parent_invoice_id != null) — they are
+        // managed within their parent invoice's installment modal, not as separate entries.
         const { data: invoiceData, error: invoiceError } = await supabaseClient
           .from("invoices")
           .select(
@@ -895,6 +897,7 @@ export default function MedicalConsultationsCard({
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
+          .is("parent_invoice_id", null)
           .order("invoice_date", { ascending: false });
 
         if (!isMounted) return;
@@ -6927,6 +6930,12 @@ export default function MedicalConsultationsCard({
                               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                               {generatingPdf === linkedInvoice.id ? "Generating..." : linkedInvoice.invoice_pdf_path ? "Regenerate PDF" : "Generate PDF"}
                             </button>
+                            {(linkedInvoice.invoice_status === "PAID" || linkedInvoice.invoice_status === "PARTIAL_PAID" || linkedInvoice.invoice_status === "PARTIAL_LOSS" || linkedInvoice.invoice_status === "OVERPAID") && (
+                              <button type="button" onClick={() => handleGenerateInvoicePdf(linkedInvoice.id)} disabled={generatingPdf === linkedInvoice.id} className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50">
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                {generatingPdf === linkedInvoice.id ? "Generating..." : "Generate Receipt"}
+                              </button>
+                            )}
                             <div className="h-4 w-px bg-slate-200" />
                             <button type="button" onClick={() => handleEditInvoice(linkedInvoice)} className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -7054,6 +7063,19 @@ export default function MedicalConsultationsCard({
                               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                               {generatingPdf === row.id ? "Generating..." : row.invoice_pdf_path ? "Regenerate PDF" : "Generate PDF"}
                             </button>
+
+                            {/* Generate Receipt — only for paid/partial statuses */}
+                            {(effectiveStatus === "PAID" || effectiveStatus === "PARTIAL_PAID" || effectiveStatus === "PARTIAL_LOSS" || effectiveStatus === "OVERPAID") && (
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateInvoicePdf(row.id)}
+                                disabled={generatingPdf === row.id}
+                                className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                {generatingPdf === row.id ? "Generating..." : "Generate Receipt"}
+                              </button>
+                            )}
 
                             <div className="h-4 w-px bg-slate-200" />
 

@@ -117,6 +117,7 @@ export default function FinancialsPage() {
             "id, patient_id, invoice_number, invoice_date, doctor_user_id, doctor_name, provider_id, provider_name, payment_method, total_amount, paid_amount, status, is_complimentary, created_by_user_id, created_by_name, is_archived",
           )
           .eq("is_archived", false)
+          .is("parent_invoice_id", null)
           .order("invoice_date", { ascending: false });
 
         if (!isMounted) return;

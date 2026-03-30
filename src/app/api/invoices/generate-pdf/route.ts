@@ -236,14 +236,33 @@ export async function POST(request: NextRequest) {
         code: String(code),
       }));
 
+      // --- Payment status remark & generation attributes ---
+      const paidAmt = Number(invoiceData.paid_amount) || 0;
+      const totalAmt = Number(invoiceData.total_amount) || 0;
+      const isFullyPaid = invoiceData.status === "PAID" || invoiceData.status === "OVERPAID" || (paidAmt > 0 && paidAmt >= totalAmt - 0.01);
+      const isPartialPaid = invoiceData.status === "PARTIAL_PAID" || (paidAmt > 0 && paidAmt < totalAmt - 0.01);
+
+      let paymentRemark = "";
+      let pdfGenAttrs = GenerationAttribute.None;
+      if (isFullyPaid) {
+        paymentRemark = `ACQUITTÉ / BEZAHLT — Montant acquitté: ${totalAmt.toFixed(2)} CHF`;
+        // Remove QR payment slip for fully paid invoices (nothing to pay)
+        pdfGenAttrs = GenerationAttribute.ExcludeESRInPrint;
+      } else if (isPartialPaid) {
+        const remaining = totalAmt - paidAmt;
+        paymentRemark = `Acompte reçu / Anzahlung erhalten: ${paidAmt.toFixed(2)} CHF — Solde / Restbetrag: ${remaining.toFixed(2)} CHF`;
+      }
+
       const sumexInput: SumexInvoiceInput = {
         language: 2,
         roleType: RoleType.Physician,
         placeType: PlaceType.Practice,
         requestType: RequestType.Invoice,
         requestSubtype: RequestSubtype.Normal,
+        remark: paymentRemark || undefined,
         tiersMode: mapSumexTiers(invoiceData.billing_type || "TG"),
         vatNumber: "",
+        amountPrepaid: paidAmt,
         invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
         invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         lawType: mapSumexLaw(invoiceData.health_insurance_law || "KVG"),
@@ -314,7 +333,7 @@ export async function POST(request: NextRequest) {
       };
 
       // Generate XML + PDF via Sumex1 server
-      const sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true });
+      const sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true, generationAttributes: pdfGenAttrs });
 
       if (!sumexResult.success) {
         console.error(`[GeneratePDF] Sumex1 FAILED: ${sumexResult.error} / ${sumexResult.abortInfo}`);
@@ -459,14 +478,32 @@ export async function POST(request: NextRequest) {
         };
       });
 
+      // --- Payment status remark & generation attributes (non-insurance path) ---
+      const paidAmt2 = Number(invoiceData.paid_amount) || 0;
+      const totalAmt2 = Number(invoiceData.total_amount) || 0;
+      const isFullyPaid2 = invoiceData.status === "PAID" || invoiceData.status === "OVERPAID" || (paidAmt2 > 0 && paidAmt2 >= totalAmt2 - 0.01);
+      const isPartialPaid2 = invoiceData.status === "PARTIAL_PAID" || (paidAmt2 > 0 && paidAmt2 < totalAmt2 - 0.01);
+
+      let paymentRemark2 = "";
+      let pdfGenAttrs2 = GenerationAttribute.None;
+      if (isFullyPaid2) {
+        paymentRemark2 = `ACQUITTÉ / BEZAHLT — Montant acquitté: ${totalAmt2.toFixed(2)} CHF`;
+        pdfGenAttrs2 = GenerationAttribute.ExcludeESRInPrint;
+      } else if (isPartialPaid2) {
+        const remaining2 = totalAmt2 - paidAmt2;
+        paymentRemark2 = `Acompte reçu / Anzahlung erhalten: ${paidAmt2.toFixed(2)} CHF — Solde / Restbetrag: ${remaining2.toFixed(2)} CHF`;
+      }
+
       const sumexInput2: SumexInvoiceInput = {
         language: 2,
         roleType: RoleType.Physician,
         placeType: PlaceType.Practice,
         requestType: RequestType.Invoice,
         requestSubtype: RequestSubtype.Normal,
+        remark: paymentRemark2 || undefined,
         tiersMode: mapSumexTiers("TG"),
         vatNumber: "",
+        amountPrepaid: paidAmt2,
         invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
         invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         lawType: mapSumexLaw(invoiceData.health_insurance_law || "VVG"),
@@ -527,7 +564,7 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        const sumexResult2 = await buildInvoiceRequest(sumexInput2, { generatePdf: true });
+        const sumexResult2 = await buildInvoiceRequest(sumexInput2, { generatePdf: true, generationAttributes: pdfGenAttrs2 });
 
         if (sumexResult2.success && sumexResult2.pdfContent) {
           // Overlay Payrexx QR for Online and Card payments (both use Payrexx gateway)

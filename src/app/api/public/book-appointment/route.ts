@@ -25,6 +25,18 @@ type BookingPayload = {
   location?: string;
 };
 
+function parseBookingAppointmentDate(value: string): Date {
+  const trimmed = value.trim();
+  if (!trimmed) return new Date(NaN);
+
+  const looksLikeIsoWithTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed);
+  if (looksLikeIsoWithTimezone) {
+    return new Date(trimmed);
+  }
+
+  return parseSwissDateTimeLocal(trimmed);
+}
+
 async function sendEmail(to: string, subject: string, html: string) {
   if (!mailgunApiKey || !mailgunDomain) {
     console.log("Mailgun not configured, skipping email send");
@@ -256,8 +268,16 @@ export async function POST(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const patientName = `${firstName} ${lastName}`;
-    // Parse the datetime-local string as Swiss timezone to ensure correct UTC time
-    const appointmentDateObj = parseSwissDateTimeLocal(appointmentDate);
+    // The public booking pages already send an ISO UTC timestamp.
+    // Only interpret naive datetime-local strings as Swiss local time.
+    const appointmentDateObj = parseBookingAppointmentDate(appointmentDate);
+
+    if (Number.isNaN(appointmentDateObj.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid appointment date" },
+        { status: 400 }
+      );
+    }
 
     // Look up the provider ID for this doctor to filter appointments correctly
     let providerId: string | null = null;
