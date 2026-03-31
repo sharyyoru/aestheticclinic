@@ -154,7 +154,7 @@ export default function PatientCockpitDetails({
             <p className="text-slate-500">
               <span className="font-semibold text-slate-700">Country:</span>{" "}
               <span className="text-slate-900">{
-                ({ CH:"🇨🇭 Switzerland", DE:"🇩🇪 Germany", FR:"🇫🇷 France", AT:"🇦🇹 Austria", IT:"🇮🇹 Italy", LI:"🇱🇮 Liechtenstein", LU:"🇱🇺 Luxembourg", BE:"🇧🇪 Belgium", NL:"🇳🇱 Netherlands", ES:"🇪🇸 Spain", PT:"🇵🇹 Portugal", GB:"🇬🇧 United Kingdom", US:"🇺🇸 United States" } as Record<string,string>)[patient.country ?? ""] || patient.country || "N/A"
+                ({ CH:"🇨🇭 Switzerland", DE:"🇩🇪 Germany", FR:"🇫🇷 France", AT:"🇦🇹 Austria", IT:"🇮🇹 Italy", LI:"🇱🇮 Liechtenstein", LU:"🇱🇺 Luxembourg", BE:"🇧🇪 Belgium", NL:"🇳🇱 Netherlands", ES:"🇪🇸 Spain", PT:"🇵🇹 Portugal", GB:"🇬🇧 United Kingdom", US:"🇺🇸 United States", AE:"🇦🇪 United Arab Emirates" } as Record<string,string>)[patient.country ?? ""] || patient.country || "N/A"
               }</span>
             </p>
           </div>
@@ -311,6 +311,7 @@ export default function PatientCockpitDetails({
                       <option value="PT">🇵🇹 Portugal (PT)</option>
                       <option value="GB">🇬🇧 United Kingdom (GB)</option>
                       <option value="US">🇺🇸 United States (US)</option>
+                      <option value="AE">🇦🇪 United Arab Emirates (AE)</option>
                     </select>
                   </label>
                 </>
