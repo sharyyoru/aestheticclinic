@@ -84,15 +84,9 @@ async function sendEmail(
 }
 
 function formatAppointmentDate(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Zurich",
-  });
+  const dateStr = formatSwissDateWithWeekday(date);
+  const timeStr = formatSwissTimeAmPm(date);
+  return `${dateStr} at ${timeStr}`;
 }
 
 function generatePatientEmailHtml(
@@ -123,7 +117,6 @@ function generatePatientEmailHtml(
     <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
       <p style="margin: 0 0 10px 0;"><strong>📅 Date & Time:</strong> ${formattedDate}</p>
       ${location ? `<p style="margin: 0 0 10px 0;"><strong>📍 Location:</strong> ${location}</p>` : ""}
-      ${notes ? `<p style="margin: 0;"><strong>📝 Notes:</strong> ${notes}</p>` : ""}
     </div>
     
     <p style="margin-bottom: 20px;">If you need to reschedule or cancel, please contact us as soon as possible.</p>
