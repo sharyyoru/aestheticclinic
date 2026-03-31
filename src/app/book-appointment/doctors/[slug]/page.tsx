@@ -242,6 +242,7 @@ function DoctorBookingContent() {
   const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set());
   const [nearestAvailableDate, setNearestAvailableDate] = useState<string | null>(null);
   const [isLoadingDates, setIsLoadingDates] = useState(true);
+  const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
   const [selectedTime, setSelectedTime] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -276,14 +277,36 @@ function DoctorBookingContent() {
     }
   }, [autofill, patientId]);
 
+  // Fetch blocked dates on mount
+  useEffect(() => {
+    async function fetchBlockedDates() {
+      try {
+        const res = await fetch("/api/settings/blocked-dates");
+        if (res.ok) {
+          const data = await res.json();
+          const blocked = new Set<string>(
+            (data.blockedDates || []).map((bd: { blocked_date: string }) => bd.blocked_date)
+          );
+          setBlockedDates(blocked);
+        }
+      } catch (err) {
+        console.error("Failed to fetch blocked dates:", err);
+      }
+    }
+    fetchBlockedDates();
+  }, []);
+
   // Calculate available dates and nearest date when location changes
   useEffect(() => {
     if (locationId && slug) {
       setIsLoadingDates(true);
       const dates = getAvailableDates(slug, locationId, 90);
-      setAvailableDatesSet(new Set(dates));
+      // Filter out blocked dates
+      const filteredDates = dates.filter((d) => !blockedDates.has(d));
+      setAvailableDatesSet(new Set(filteredDates));
       
-      const nearest = findNearestAvailableDate(slug, locationId, 90);
+      // Find nearest available date that is not blocked
+      const nearest = filteredDates.length > 0 ? filteredDates[0] : null;
       if (nearest) {
         setNearestAvailableDate(nearest);
         // Auto-select the nearest available date
@@ -293,7 +316,7 @@ function DoctorBookingContent() {
       }
       setIsLoadingDates(false);
     }
-  }, [locationId, slug]);
+  }, [locationId, slug, blockedDates]);
 
   // Generate time slots and check availability when date changes
   useEffect(() => {
@@ -675,15 +698,8 @@ function DoctorBookingContent() {
                     value={selectedDate}
                     onChange={(e) => {
                       const newDate = e.target.value;
-                      // Only allow dates with availability
-                      if (availableDatesSet.has(newDate) || !newDate) {
-                        setSelectedDate(newDate);
-                        setSelectedTime("");
-                      } else {
-                        // If user selects unavailable date, show it but warn them
-                        setSelectedDate(newDate);
-                        setSelectedTime("");
-                      }
+                      setSelectedDate(newDate);
+                      setSelectedTime("");
                     }}
                     min={getMinDate()}
                     max={getMaxDate()}
@@ -701,7 +717,7 @@ function DoctorBookingContent() {
                   )}
                 </div>
 
-                {selectedDate && availableSlots.length > 0 && (() => {
+                {selectedDate && !blockedDates.has(selectedDate) && availableSlots.length > 0 && (() => {
                   // Filter out fully booked slots - only show slots that can actually be booked
                   const openSlots = availableSlots.filter(time => !bookedSlots.includes(time));
                   
@@ -740,7 +756,18 @@ function DoctorBookingContent() {
                   );
                 })()}
 
-                {selectedDate && availableSlots.length === 0 && (
+                {selectedDate && blockedDates.has(selectedDate) && (
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-xl space-y-2">
+                    <p className="text-sm text-red-700 font-medium">
+                      The clinic is closed on {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. Please select another date.
+                    </p>
+                    <p className="text-sm text-red-600 italic">
+                      La clinique est fermée le {new Date(selectedDate + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}. Veuillez choisir une autre date.
+                    </p>
+                  </div>
+                )}
+
+                {selectedDate && !blockedDates.has(selectedDate) && availableSlots.length === 0 && (
                   <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                     <p className="text-sm text-amber-700 font-medium">
                       The doctor is fully booked on {new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.

@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 const TABS = [
   { id: "external-labs", label: "External Labs" },
   { id: "doctor-scheduling", label: "Doctor Scheduling" },
+  { id: "blocked-dates", label: "Blocked Dates" },
   { id: "medidata", label: "MediData Connection" },
 ] as const;
 
@@ -65,6 +66,7 @@ export default function SettingsPage() {
       <div className="mt-6">
         {activeTab === "external-labs" && <ExternalLabsTab />}
         {activeTab === "doctor-scheduling" && <DoctorSchedulingTab />}
+        {activeTab === "blocked-dates" && <BlockedDatesTab />}
         {activeTab === "medidata" && <MediDataConnectionTab />}
       </div>
     </div>
@@ -679,6 +681,196 @@ function ExternalLabsTab() {
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Blocked Dates Tab
+// ---------------------------------------------------------------------------
+
+interface BlockedDate {
+  id: string;
+  blocked_date: string;
+  reason: string | null;
+  created_at: string;
+}
+
+function BlockedDatesTab() {
+  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [newDate, setNewDate] = useState("");
+  const [newReason, setNewReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadBlockedDates() {
+      try {
+        const res = await fetch("/api/settings/blocked-dates");
+        if (res.ok) {
+          const data = await res.json();
+          setBlockedDates(data.blockedDates || []);
+        }
+      } catch (err) {
+        console.error("Failed to load blocked dates:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadBlockedDates();
+  }, []);
+
+  async function handleAddDate() {
+    if (!newDate) {
+      setError("Please select a date to block.");
+      return;
+    }
+
+    setError(null);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings/blocked-dates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blocked_date: newDate,
+          reason: newReason || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Failed to add blocked date.");
+        return;
+      }
+
+      const data = await res.json();
+      setBlockedDates((prev) => [...prev, data.blockedDate].sort((a, b) => 
+        a.blocked_date.localeCompare(b.blocked_date)
+      ));
+      setNewDate("");
+      setNewReason("");
+    } catch (err) {
+      setError("Failed to add blocked date.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteDate(id: string) {
+    setSaving(true);
+    try {
+      await fetch(`/api/settings/blocked-dates?id=${id}`, { method: "DELETE" });
+      setBlockedDates((prev) => prev.filter((d) => d.id !== id));
+    } catch (err) {
+      console.error("Failed to delete blocked date:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function formatDate(dateStr: string): string {
+    const date = new Date(dateStr + "T12:00:00");
+    return date.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      {/* Add new blocked date */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">Block a Date</h3>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Block dates when the clinic is closed. These dates will not be available for booking by any doctor.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-600">
+              Date to Block <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              min={today}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-600">
+              Reason (optional)
+            </label>
+            <input
+              type="text"
+              value={newReason}
+              onChange={(e) => setNewReason(e.target.value)}
+              placeholder="e.g., Holiday, Maintenance"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        <div className="flex justify-end">
+          <button
+            onClick={handleAddDate}
+            disabled={saving || !newDate}
+            className="rounded-lg bg-sky-500 px-4 py-2 text-xs font-medium text-white hover:bg-sky-600 transition-colors disabled:opacity-50"
+          >
+            {saving ? "Adding…" : "Add Blocked Date"}
+          </button>
+        </div>
+      </div>
+
+      {/* List of blocked dates */}
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <div className="border-b border-slate-200 px-5 py-3">
+          <h3 className="text-sm font-semibold text-slate-800">Blocked Dates</h3>
+        </div>
+
+        {loading ? (
+          <div className="px-5 py-8 text-center text-xs text-slate-400">
+            Loading blocked dates…
+          </div>
+        ) : blockedDates.length === 0 ? (
+          <div className="px-5 py-8 text-center text-xs text-slate-400">
+            No dates are blocked. The booking calendar is fully available.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {blockedDates.map((bd) => (
+              <div key={bd.id} className="flex items-center justify-between px-5 py-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    {formatDate(bd.blocked_date)}
+                  </p>
+                  {bd.reason && (
+                    <p className="text-xs text-slate-500">{bd.reason}</p>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleDeleteDate(bd.id)}
+                  disabled={saving}
+                  className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>
