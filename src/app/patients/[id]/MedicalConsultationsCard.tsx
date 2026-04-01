@@ -720,7 +720,7 @@ export default function MedicalConsultationsCard({
       { value: "patient_information", label: "Patient Information" },
       { value: "documents", label: "Documents" },
       { value: "form_photos", label: "Form Photos" },
-      { value: "medication", label: "Medication" },
+      { value: "medication", label: "Prescription" },
     ];
 
   const filteredSortedConsultations = useMemo(() => {
