@@ -836,8 +836,10 @@ async function handleSendEmail(event: React.FormEvent) {
                        [authUser.user_metadata?.first_name, authUser.user_metadata?.last_name].filter(Boolean).join(" ") ||
                        null;
 
-      // Build HTML body — emailBody is already HTML from the WYSIWYG editor
-      const htmlBody = emailBody.trim() || `<p>Hi ${patientFullName},</p><p>Please find your documents attached.</p>`;
+      // Build HTML body — convert bare newlines to <br> so email clients render line breaks correctly
+      // (RichTextEditor uses whiteSpace:pre-wrap which stores \n in innerHTML, but email clients ignore that CSS)
+      const rawBody = emailBody.trim() || `<p>Hi ${patientFullName},</p><p>Please find your documents attached.</p>`;
+      const htmlBody = rawBody.replace(/\n/g, "<br>");
 
       const { data: inserted, error: insertError } = await supabaseClient
         .from("emails")
