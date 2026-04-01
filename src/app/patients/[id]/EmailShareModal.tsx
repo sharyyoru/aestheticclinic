@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import RichTextEditor from "@/components/RichTextEditor";
+import { supabaseClient } from "@/lib/supabaseClient";
 
 interface EmailShareModalProps {
   open: boolean;
@@ -19,6 +20,8 @@ interface EmailShareModalProps {
   patientId: string;
 }
 
+type PlatformUser = { id: string; full_name: string | null; email: string | null };
+
 export default function EmailShareModal({
   open,
   onClose,
@@ -34,10 +37,96 @@ export default function EmailShareModal({
   patientEmail,
   patientId,
 }: EmailShareModalProps) {
+  // AI generation state
   const [aiDescription, setAiDescription] = useState("");
   const [aiTone, setAiTone] = useState("professional and reassuring");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  // Follow-up task state
+  const [createFollowUp, setCreateFollowUp] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState<"3days" | "1week" | "custom">("3days");
+  const [followUpCustomDate, setFollowUpCustomDate] = useState("");
+  const [followUpAssignedUserId, setFollowUpAssignedUserId] = useState("");
+  const [followUpAssignedUserSearch, setFollowUpAssignedUserSearch] = useState("");
+  const [followUpUserDropdownOpen, setFollowUpUserDropdownOpen] = useState(false);
+  const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>([]);
+  const [platformUsersLoaded, setPlatformUsersLoaded] = useState(false);
+
+  // Track sending → done transition to create follow-up task after successful send
+  const wasSending = useRef(false);
+
+  // Load platform users when modal opens
+  useEffect(() => {
+    if (!open || platformUsersLoaded) return;
+    let mounted = true;
+    async function load() {
+      try {
+        const response = await fetch("/api/users/list");
+        if (!response.ok || !mounted) return;
+        const data = await response.json();
+        if (!mounted) return;
+        const users: PlatformUser[] = Array.isArray(data) ? data : [];
+        setPlatformUsers(users);
+        setPlatformUsersLoaded(true);
+        // Default assign-to = logged-in user
+        const { data: authData } = await supabaseClient.auth.getUser();
+        const authUser = authData?.user;
+        if (authUser) {
+          const me = users.find((u) => u.id === authUser.id);
+          if (me) {
+            setFollowUpAssignedUserId(me.id);
+            setFollowUpAssignedUserSearch(me.full_name || me.email || "Me");
+          }
+        }
+      } catch {}
+    }
+    load();
+    return () => { mounted = false; };
+  }, [open, platformUsersLoaded]);
+
+  // After a successful send, create the follow-up task
+  useEffect(() => {
+    if (wasSending.current && !sending && !error && createFollowUp) {
+      createFollowUpTask();
+    }
+    wasSending.current = sending;
+  }, [sending, error]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function createFollowUpTask() {
+    try {
+      let date: Date | null = null;
+      if (followUpDate === "3days") {
+        date = new Date();
+        date.setDate(date.getDate() + 3);
+      } else if (followUpDate === "1week") {
+        date = new Date();
+        date.setDate(date.getDate() + 7);
+      } else if (followUpDate === "custom" && followUpCustomDate) {
+        date = new Date(followUpCustomDate);
+      }
+      if (!date || Number.isNaN(date.getTime())) return;
+
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const authUser = authData?.user;
+      const today = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+
+      await supabaseClient.from("tasks").insert({
+        patient_id: patientId,
+        name: `Follow up on: ${emailSubject || "Email"}`,
+        content: `Follow up regarding email sent on ${today}`,
+        type: "email",
+        priority: "medium",
+        status: "not_started",
+        activity_date: date.toISOString(),
+        assigned_user_id: followUpAssignedUserId || authUser?.id,
+        assigned_user_name: followUpAssignedUserSearch || null,
+        created_by_user_id: authUser?.id,
+      });
+    } catch (err) {
+      console.error("Failed to create follow-up task", err);
+    }
+  }
 
   async function handleAiGenerate() {
     const description = aiDescription.trim();
@@ -191,6 +280,110 @@ export default function EmailShareModal({
           <p className="text-[10px] text-slate-400">
             {selectedFileCount} document{selectedFileCount > 1 ? "s" : ""} will be attached directly to this email.
           </p>
+
+          {/* Create Follow-up Task */}
+          <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 text-[11px]">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="h-3 w-3 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                checked={createFollowUp}
+                onChange={(e) => setCreateFollowUp(e.target.checked)}
+              />
+              <span className="font-medium text-emerald-800">Create Follow-up Task</span>
+            </label>
+
+            {createFollowUp && (
+              <div className="mt-2 space-y-2">
+                {/* Follow-up Date */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-medium text-emerald-700">Follow-up Date</label>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {(["3days", "1week", "custom"] as const).map((opt) => (
+                      <label key={opt} className="inline-flex items-center gap-1.5">
+                        <input
+                          type="radio"
+                          name="shareFollowUpDate"
+                          value={opt}
+                          checked={followUpDate === opt}
+                          onChange={() => setFollowUpDate(opt)}
+                          className="h-3 w-3 border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-slate-700">
+                          {opt === "3days" ? "3 Days" : opt === "1week" ? "1 Week" : "Custom Date"}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  {followUpDate === "custom" && (
+                    <input
+                      type="datetime-local"
+                      value={followUpCustomDate}
+                      onChange={(e) => setFollowUpCustomDate(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  )}
+                </div>
+
+                {/* Assign To */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-medium text-emerald-700">Assign To</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={followUpAssignedUserSearch}
+                      onChange={(e) => {
+                        setFollowUpAssignedUserSearch(e.target.value);
+                        setFollowUpUserDropdownOpen(true);
+                        if (!e.target.value.trim()) setFollowUpAssignedUserId("");
+                      }}
+                      onFocus={() => setFollowUpUserDropdownOpen(true)}
+                      placeholder="Search user..."
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                    {followUpAssignedUserId && (
+                      <button
+                        type="button"
+                        onClick={() => { setFollowUpAssignedUserId(""); setFollowUpAssignedUserSearch(""); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                    {followUpUserDropdownOpen && platformUsers.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                        {platformUsers
+                          .filter((u) => {
+                            if (!followUpAssignedUserSearch.trim()) return true;
+                            const s = followUpAssignedUserSearch.toLowerCase();
+                            return (u.full_name?.toLowerCase() || "").includes(s) || (u.email?.toLowerCase() || "").includes(s);
+                          })
+                          .map((u) => (
+                            <button
+                              key={u.id}
+                              type="button"
+                              onClick={() => {
+                                setFollowUpAssignedUserId(u.id);
+                                setFollowUpAssignedUserSearch(u.full_name || u.email || "");
+                                setFollowUpUserDropdownOpen(false);
+                              }}
+                              className={`w-full px-3 py-1.5 text-left text-[11px] hover:bg-emerald-50 ${
+                                followUpAssignedUserId === u.id ? "bg-emerald-50 text-emerald-700" : "text-slate-700"
+                              }`}
+                            >
+                              <div className="font-medium">{u.full_name || "Unnamed"}</div>
+                              {u.email && <div className="text-[10px] text-slate-500">{u.email}</div>}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Footer Actions */}
           <div className="flex items-center justify-end gap-2 pt-1">
