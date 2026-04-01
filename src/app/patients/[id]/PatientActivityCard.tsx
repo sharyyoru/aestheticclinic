@@ -1034,9 +1034,10 @@ export default function PatientActivityCard({
 
         const attachments: EmailAttachment[] = (data as any[]).map((row) => {
           const path = (row.storage_path as string) || "";
-          const { data: publicData } = supabaseClient.storage
-            .from("email-attachments")
-            .getPublicUrl(path);
+          // If storage_path is already a full URL (e.g. from patient_document bucket), use it directly
+          const publicUrl = path.startsWith("https://") || path.startsWith("http://")
+            ? path
+            : supabaseClient.storage.from("email-attachments").getPublicUrl(path).data?.publicUrl ?? null;
 
           let size: number | null = null;
           const rawSize = (row.file_size ?? null) as number | string | null;
@@ -1054,7 +1055,7 @@ export default function PatientActivityCard({
             storage_path: path,
             mime_type: (row.mime_type as string | null) ?? null,
             file_size: size,
-            public_url: publicData?.publicUrl ?? null,
+            public_url: publicUrl,
           };
         });
 

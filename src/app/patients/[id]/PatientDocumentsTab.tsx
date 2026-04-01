@@ -173,6 +173,7 @@ export default function PatientDocumentsTab({
   const [emailBody, setEmailBody] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailPatientEmail, setEmailPatientEmail] = useState<string | undefined>(undefined);
   
   // Download state
   const [downloadingFiles, setDownloadingFiles] = useState(false);
@@ -755,7 +756,7 @@ export default function PatientDocumentsTab({
     }
   };
 
-  async function handleSendEmail(event: React.FormEvent) {
+async function handleSendEmail(event: React.FormEvent) {
     event.preventDefault();
     if (selectedFilesForEmail.size === 0) {
       setEmailError("Please select at least one file to share.");
@@ -789,38 +790,54 @@ export default function PatientDocumentsTab({
 
       const patientEmail = patientData.email;
       const patientFullName = `${patientData.first_name} ${patientData.last_name}`;
+      setEmailPatientEmail(patientEmail);
 
-      // Get URLs for selected files
-      const fileUrls: { name: string; url: string }[] = [];
+      // Download selected files and encode as base64 for direct attachment
+      const inlineAttachments: { filename: string; content: string; encoding: string; contentType: string }[] = [];
+      const attachmentMeta: { file_name: string; storage_path: string; mime_type: string; file_size: number }[] = [];
       for (const itemPath of Array.from(selectedFilesForEmail)) {
         const fullPath = [patientId, itemPath].filter(Boolean).join("/");
-        const { data } = supabaseClient.storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(fullPath);
-        
         const item = items.find(i => i.path === itemPath);
-        if (data.publicUrl && item) {
-          fileUrls.push({
-            name: item.name,
-            url: data.publicUrl,
-          });
+        if (!item) continue;
+
+        const { data: fileBlob, error: downloadError } = await supabaseClient.storage
+          .from(BUCKET_NAME)
+          .download(fullPath);
+
+        if (downloadError || !fileBlob) {
+          console.error("Failed to download file for attachment:", item.name, downloadError);
+          continue;
         }
+
+        const arrayBuffer = await fileBlob.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuffer);
+        let binary = "";
+        for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+        const base64 = btoa(binary);
+        const mimeType = item.metadata?.mimetype || fileBlob.type || "application/octet-stream";
+        inlineAttachments.push({
+          filename: item.name,
+          content: base64,
+          encoding: "base64",
+          contentType: mimeType,
+        });
+        // Store the public URL as storage_path so the email log can display it
+        const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
+        attachmentMeta.push({
+          file_name: item.name,
+          storage_path: urlData.publicUrl,
+          mime_type: mimeType,
+          file_size: arrayBuffer.byteLength,
+        });
       }
 
       const fromAddress = authUser.email ?? null;
-      const fromName = authUser.user_metadata?.full_name || 
+      const fromName = authUser.user_metadata?.full_name ||
                        [authUser.user_metadata?.first_name, authUser.user_metadata?.last_name].filter(Boolean).join(" ") ||
                        null;
 
-      // Create email with file links in body
-      let emailBodyWithLinks = emailBody || `Hi ${patientFullName},\n\nPlease find your documents below:\n\n`;
-      emailBodyWithLinks += fileUrls.map((file, index) => 
-        `${index + 1}. <a href="${file.url}" target="_blank">${file.name}</a>`
-      ).join("\n");
-      emailBodyWithLinks += `\n\nBest regards,\nAesthetic Clinic`;
-
-      // Convert to HTML
-      const htmlBody = emailBodyWithLinks.replace(/\n/g, "<br>");
+      // Build HTML body — emailBody is already HTML from the WYSIWYG editor
+      const htmlBody = emailBody.trim() || `<p>Hi ${patientFullName},</p><p>Please find your documents attached.</p>`;
 
       const { data: inserted, error: insertError } = await supabaseClient
         .from("emails")
@@ -843,7 +860,16 @@ export default function PatientDocumentsTab({
         return;
       }
 
-      // Send email via API
+      const emailId = (inserted as any).id;
+
+      // Insert email_attachments records so the email log displays them
+      if (attachmentMeta.length > 0) {
+        await supabaseClient.from("email_attachments").insert(
+          attachmentMeta.map((a) => ({ ...a, email_id: emailId }))
+        );
+      }
+
+      // Send email via API with files as direct attachments
       const response = await fetch("/api/emails/send", {
         method: "POST",
         headers: {
@@ -855,8 +881,9 @@ export default function PatientDocumentsTab({
           html: htmlBody,
           fromUserEmail: fromAddress,
           fromUserName: fromName,
-          emailId: (inserted as any).id,
+          emailId: emailId,
           patientId: patientId,
+          inlineAttachments,
         }),
       });
 
@@ -1087,7 +1114,17 @@ export default function PatientDocumentsTab({
               </button>
               <button
                 type="button"
-                onClick={() => setEmailModalOpen(true)}
+                onClick={async () => {
+                  setEmailModalOpen(true);
+                  if (!emailPatientEmail) {
+                    const { data } = await supabaseClient
+                      .from("patients")
+                      .select("email")
+                      .eq("id", patientId)
+                      .single();
+                    if (data?.email) setEmailPatientEmail(data.email);
+                  }
+                }}
                 className="inline-flex h-7 items-center gap-1.5 rounded-full border border-emerald-500 bg-emerald-500 px-3 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-600 transition-colors"
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2014,6 +2051,8 @@ export default function PatientDocumentsTab({
         sending={sendingEmail}
         error={emailError}
         patientName={patientName}
+        patientEmail={emailPatientEmail}
+        patientId={patientId}
       />
     </>
   );
