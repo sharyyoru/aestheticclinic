@@ -8070,7 +8070,7 @@ export default function MedicalConsultationsCard({
       )}
 
       {/* Medication Creation Success Modal */}
-      {medCreationSuccessModal.open && (
+      {medCreationSuccessModal.open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="mx-4 w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
             <div className="mb-4 flex items-center gap-3">
@@ -8157,7 +8157,8 @@ export default function MedicalConsultationsCard({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Axenita Document Preview Modal */}

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"export const\" D:/Mutant/aestheticclinic/src/lib/supabase*.ts)",
+      "Bash(npx tsc:*)",
+      "Bash(start:*)",
+      "Bash(npm run:*)"
+    ]
+  }
+}
