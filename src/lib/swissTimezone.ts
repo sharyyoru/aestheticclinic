@@ -248,16 +248,39 @@ export function createSwissDateTime(dateStr: string, hour: number, minute: numbe
   // Parse the date parts
   const [year, month, day] = dateStr.split("-").map(Number);
   
-  // Create date at noon in local time first
-  const localDate = new Date(year, month - 1, day, hour, minute, 0, 0);
+  // Strategy: We want to find the UTC time that, when displayed in Swiss timezone, shows our target time.
+  // We'll use an iterative approach starting from a reasonable guess.
   
-  // Get the offset between local and Swiss timezone for this date
-  const localStr = localDate.toLocaleString("en-US", { timeZone: SWISS_TIMEZONE });
-  const swissDate = new Date(localStr);
-  const offset = localDate.getTime() - swissDate.getTime();
+  // Start with the time as if it were UTC
+  let utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
   
-  // Adjust the date by the offset to get the correct UTC time
-  return new Date(localDate.getTime() + offset);
+  // Check what this UTC time looks like in Swiss timezone
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: SWISS_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  
+  const parts = formatter.formatToParts(utcGuess);
+  const swissHour = parseInt(parts.find(p => p.type === "hour")?.value || "0", 10);
+  const swissMinute = parseInt(parts.find(p => p.type === "minute")?.value || "0", 10);
+  const swissDay = parseInt(parts.find(p => p.type === "day")?.value || "0", 10);
+  const swissMonth = parseInt(parts.find(p => p.type === "month")?.value || "0", 10);
+  const swissYear = parseInt(parts.find(p => p.type === "year")?.value || "0", 10);
+  
+  // Calculate the difference in minutes
+  const targetMinutes = year * 525600 + month * 43800 + day * 1440 + hour * 60 + minute;
+  const swissMinutes = swissYear * 525600 + swissMonth * 43800 + swissDay * 1440 + swissHour * 60 + swissMinute;
+  const diffMinutes = targetMinutes - swissMinutes;
+  
+  // Adjust the UTC time by the difference
+  const correctedUtc = new Date(utcGuess.getTime() + diffMinutes * 60 * 1000);
+  
+  return correctedUtc;
 }
 
 /**
