@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { notifyDealStageChange } from "@/lib/dealNotifications";
 
 export const runtime = "nodejs";
 
@@ -192,6 +193,21 @@ export async function POST(request: Request) {
           }
         }
       }
+    }
+
+    // Create deal notification for stage change
+    try {
+      await notifyDealStageChange(
+        dealId,
+        patientId,
+        fromStageId,
+        toStageId,
+        null, // changedByUserId - could be passed from request if available
+        null, // changedByName - could be passed from request if available
+      );
+    } catch (notifErr) {
+      console.error("Error creating deal notification:", notifErr);
+      // Don't fail the entire workflow if notification fails
     }
 
     const { data: workflows, error: workflowsError } = await supabaseAdmin

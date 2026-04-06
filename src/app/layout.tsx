@@ -8,12 +8,14 @@ import { ShellSidebar, ShellHeader, ShellFrame } from "@/components/ShellVisibil
 import HeaderUser from "@/components/HeaderUser";
 import HeaderCommentsButton from "@/components/HeaderCommentsButton";
 import HeaderNotificationsButton from "@/components/HeaderNotificationsButton";
+import HeaderDealNotificationsButton from "@/components/HeaderDealNotificationsButton";
 import HeaderTasksButton from "@/components/HeaderTasksButton";
 import HeaderWhatsAppButton from "@/components/HeaderWhatsAppButton";
 import GlobalPatientSearch from "@/components/GlobalPatientSearch";
 import { CommentsUnreadProvider } from "@/components/CommentsUnreadContext";
 import { TasksNotificationsProvider } from "@/components/TasksNotificationsContext";
 import { EmailNotificationsProvider } from "@/components/EmailNotificationsContext";
+import { DealNotificationsProvider } from "@/components/DealNotificationsContext";
 import { PatientTabsProvider } from "@/components/PatientTabsContext";
 import PatientTabBar from "@/components/PatientTabBar";
 import { AuthProvider } from "@/components/AuthContext";
@@ -51,6 +53,7 @@ export default function RootLayout({
           <CommentsUnreadProvider>
           <TasksNotificationsProvider>
           <EmailNotificationsProvider>
+          <DealNotificationsProvider>
           <PatientTabsProvider>
           <ShellFrame>
           <div className="flex min-h-[80vh] flex-1 overflow-hidden">
@@ -491,6 +494,7 @@ export default function RootLayout({
                     <GlobalPatientSearch />
                     <div className="flex items-center gap-2 text-slate-500">
                       <HeaderTasksButton />
+                      <HeaderDealNotificationsButton />
                       <HeaderNotificationsButton />
                       <HeaderCommentsButton />
                       <HeaderWhatsAppButton />
@@ -506,6 +510,7 @@ export default function RootLayout({
           </div>
           </ShellFrame>
           </PatientTabsProvider>
+          </DealNotificationsProvider>
           </EmailNotificationsProvider>
           </TasksNotificationsProvider>
           </CommentsUnreadProvider>
