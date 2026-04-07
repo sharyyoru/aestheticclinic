@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import ProvidersBillingSettingsTab from "@/components/ProvidersBillingSettingsTab";
 
 const TABS = [
   { id: "external-labs", label: "External Labs" },
+  { id: "providers-billing", label: "Providers & Billing" },
   { id: "doctor-scheduling", label: "Doctor Scheduling" },
   { id: "blocked-dates", label: "Blocked Dates" },
   { id: "medidata", label: "MediData Connection" },
@@ -65,6 +67,7 @@ export default function SettingsPage() {
       {/* Tab content */}
       <div className="mt-6">
         {activeTab === "external-labs" && <ExternalLabsTab />}
+        {activeTab === "providers-billing" && <ProvidersBillingSettingsTab />}
         {activeTab === "doctor-scheduling" && <DoctorSchedulingTab />}
         {activeTab === "blocked-dates" && <BlockedDatesTab />}
         {activeTab === "medidata" && <MediDataConnectionTab />}

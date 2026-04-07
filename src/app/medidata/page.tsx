@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import InvoiceStatusBadge, { InvoiceStatusTimeline } from "@/components/InvoiceStatusBadge";
@@ -15,6 +16,11 @@ type Submission = {
   id: string;
   invoice_id: string | null;
   invoice_number: string;
+  patient?: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+  } | null;
   invoice?: {
     id: string;
     pdf_path: string | null;
@@ -108,6 +114,12 @@ type MediDataParticipant = {
   tgTpChange?: boolean;
   tgAllowed?: boolean;
 };
+
+const SUBMISSIONS_PAGE_SIZE = 25;
+const RESPONSES_BATCH_SIZE = 100;
+const NOTIFICATIONS_BATCH_SIZE = 100;
+const AUTO_POLL_INTERVAL_MS = 12 * 60 * 60 * 1000;
+const AUTO_POLL_STORAGE_KEY = "medidata:last-poll-at";
 
 // ---------------------------------------------------------------------------
 // Law type helpers
@@ -225,6 +237,9 @@ export default function MediDataDashboard() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [subsLoading, setSubsLoading] = useState(false);
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
+  const [submissionsPage, setSubmissionsPage] = useState(0);
+  const [submissionsCount, setSubmissionsCount] = useState(0);
+  const [submissionSearch, setSubmissionSearch] = useState("");
 
   // Participants
   const [participants, setParticipants] = useState<MediDataParticipant[]>([]);
@@ -236,18 +251,27 @@ export default function MediDataDashboard() {
   const [responses, setResponses] = useState<DbResponse[]>([]);
   const [respLoading, setRespLoading] = useState(false);
   const [expandedResp, setExpandedResp] = useState<string | null>(null);
+  const [responsesLimit, setResponsesLimit] = useState(RESPONSES_BATCH_SIZE);
 
   // Notifications (DB-backed)
   const [notifications, setNotifications] = useState<DbNotification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [notificationsLimit, setNotificationsLimit] = useState(NOTIFICATIONS_BATCH_SIZE);
 
   // Actions
   const [connStatus, setConnStatus] = useState<string | null>(null);
   const [pollStatus, setPollStatus] = useState<string | null>(null);
+  const [lastPolledAt, setLastPolledAt] = useState<string | null>(null);
   const [sendTestStatus, setSendTestStatus] = useState<string | null>(null);
   const [sendTestResults, setSendTestResults] = useState<any[] | null>(null);
   const [sendInvoiceIds, setSendInvoiceIds] = useState("");
   const [renderingPdf, setRenderingPdf] = useState<string | null>(null);
+
+  const formatPatientName = useCallback((patient?: Submission["patient"] | null) => {
+    if (!patient) return "Unknown patient";
+    const full = [patient.first_name, patient.last_name].filter(Boolean).join(" ").trim();
+    return full || "Unknown patient";
+  }, []);
 
   const openStorageFile = useCallback((path: string | null | undefined) => {
     if (!path) return;
@@ -256,19 +280,52 @@ export default function MediDataDashboard() {
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   }, []);
 
+  const submissionTotalPages = Math.max(1, Math.ceil(submissionsCount / SUBMISSIONS_PAGE_SIZE));
+
   // ── Fetch submissions from local DB ──
   const fetchSubmissions = useCallback(async () => {
     setSubsLoading(true);
     try {
-      const { data } = await supabaseClient
+      const from = submissionsPage * SUBMISSIONS_PAGE_SIZE;
+      const to = from + SUBMISSIONS_PAGE_SIZE - 1;
+      let query = supabaseClient
         .from("medidata_submissions")
         .select(`
           *,
+          patient:patients(id,first_name,last_name),
           invoice:invoices(id,pdf_path,pdf_generated_at),
           history:medidata_submission_history(*)
-        `)
+        `, { count: "exact" })
         .order("created_at", { ascending: false })
-        .limit(50);
+        .range(from, to);
+
+      const trimmedSearch = submissionSearch.trim();
+      if (trimmedSearch) {
+        const { data: matchingPatients } = await supabaseClient
+          .from("patients")
+          .select("id")
+          .or([
+            `first_name.ilike.%${trimmedSearch}%`,
+            `last_name.ilike.%${trimmedSearch}%`,
+          ].join(","))
+          .limit(100);
+
+        const patientIds = (matchingPatients || []).map((patient) => patient.id).filter(Boolean);
+        const searchClauses = [
+          `invoice_number.ilike.%${trimmedSearch}%`,
+          `medidata_message_id.ilike.%${trimmedSearch}%`,
+          `law_type.ilike.%${trimmedSearch}%`,
+          `billing_type.ilike.%${trimmedSearch}%`,
+        ];
+
+        if (patientIds.length > 0) {
+          searchClauses.push(`patient_id.in.(${patientIds.join(",")})`);
+        }
+
+        query = query.or(searchClauses.join(","));
+      }
+
+      const { data, count } = await query;
 
       let subs = (data as Submission[]) || [];
 
@@ -339,11 +396,12 @@ export default function MediDataDashboard() {
       }
 
       setSubmissions(subs);
+      setSubmissionsCount(count || 0);
     } catch (e) {
       console.error("Error fetching submissions:", e);
     }
     setSubsLoading(false);
-  }, []);
+  }, [submissionSearch, submissionsPage]);
 
   // ── Fetch responses from local DB ──
   const fetchResponses = useCallback(async () => {
@@ -353,13 +411,13 @@ export default function MediDataDashboard() {
         .from("medidata_responses")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .range(0, responsesLimit - 1);
       setResponses((data as DbResponse[]) || []);
     } catch (e) {
       console.error("Error fetching responses:", e);
     }
     setRespLoading(false);
-  }, []);
+  }, [responsesLimit]);
 
   // ── Fetch notifications from local DB ──
   const fetchNotifications = useCallback(async () => {
@@ -369,13 +427,13 @@ export default function MediDataDashboard() {
         .from("medidata_notifications_log")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .range(0, notificationsLimit - 1);
       setNotifications((data as DbNotification[]) || []);
     } catch (e) {
       console.error("Error fetching notifications:", e);
     }
     setNotifLoading(false);
-  }, []);
+  }, [notificationsLimit]);
 
   // ── Fetch participants from MediData proxy ──
   const fetchParticipants = useCallback(async () => {
@@ -395,12 +453,17 @@ export default function MediDataDashboard() {
   }, [partSearch, partLawFilter]);
 
   // ── Poll MediData: fetch downloads + notifications, store in DB ──
-  const handlePollMediData = async () => {
-    setPollStatus("Polling...");
+  const handlePollMediData = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setPollStatus("Polling...");
     try {
       const res = await fetch("/api/medidata/poll", { method: "POST" });
       const json = await res.json();
       if (json.success) {
+        const polledAt = json.polledAt || new Date().toISOString();
+        setLastPolledAt(polledAt);
+        try {
+          window.localStorage.setItem(AUTO_POLL_STORAGE_KEY, polledAt);
+        } catch {}
         const parts: string[] = [];
         if (json.statusUpdates?.updated > 0)
           parts.push(`${json.statusUpdates.updated} status updates`);
@@ -408,18 +471,26 @@ export default function MediDataDashboard() {
           parts.push(`${json.downloads.processed} responses`);
         if (json.notifications?.processed > 0)
           parts.push(`${json.notifications.processed} notifications`);
-        setPollStatus(parts.length > 0 ? `Found: ${parts.join(", ")}` : "No new data");
+        if (!options?.silent) {
+          setPollStatus(parts.length > 0 ? `Found: ${parts.join(", ")}` : "No new data");
+        }
         // Refresh all tabs
         fetchSubmissions();
         fetchResponses();
         fetchNotifications();
       } else {
-        setPollStatus(`Error: ${json.error}`);
+        if (!options?.silent) {
+          setPollStatus(`Error: ${json.error}`);
+        }
       }
     } catch {
-      setPollStatus("Poll failed");
+      if (!options?.silent) {
+        setPollStatus("Poll failed");
+      }
     }
-    setTimeout(() => setPollStatus(null), 8000);
+    if (!options?.silent) {
+      setTimeout(() => setPollStatus(null), 8000);
+    }
   };
 
   // ── Send invoices to MediData (production) ──
@@ -636,6 +707,23 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
     if (tab === "notifications") fetchNotifications();
   }, [tab, fetchSubmissions, fetchParticipants, fetchResponses, fetchNotifications]);
 
+  useEffect(() => {
+    setSubmissionsPage(0);
+  }, [submissionSearch]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(AUTO_POLL_STORAGE_KEY);
+      if (stored) setLastPolledAt(stored);
+      const last = stored ? new Date(stored).getTime() : 0;
+      if (!last || Date.now() - last >= AUTO_POLL_INTERVAL_MS) {
+        void handlePollMediData({ silent: true });
+      }
+    } catch {
+      void handlePollMediData({ silent: true });
+    }
+  }, []);
+
   // ── Tab buttons ──
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: "submissions", label: "Submissions", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
@@ -684,7 +772,7 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={handlePollMediData}
+            onClick={() => handlePollMediData()}
             disabled={pollStatus === "Polling..."}
             className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
           >
@@ -696,6 +784,11 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
           {pollStatus && (
             <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700">
               {pollStatus}
+            </span>
+          )}
+          {lastPolledAt && (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              Last poll {new Date(lastPolledAt).toLocaleString("fr-CH")}
             </span>
           )}
           {sendTestStatus && (
@@ -785,14 +878,50 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
       {tab === "submissions" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-800">Invoice Submissions</h2>
-            <button
-              onClick={fetchSubmissions}
-              disabled={subsLoading}
-              className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:opacity-50"
-            >
-              {subsLoading ? "Loading..." : "Refresh"}
-            </button>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Invoice Submissions</h2>
+              <p className="text-xs text-slate-500">
+                {submissionsCount > 0
+                  ? `Showing ${submissionsPage * SUBMISSIONS_PAGE_SIZE + 1}-${Math.min((submissionsPage + 1) * SUBMISSIONS_PAGE_SIZE, submissionsCount)} of ${submissionsCount}`
+                  : "No submissions found"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSubmissionsPage((prev) => Math.max(0, prev - 1))}
+                disabled={subsLoading || submissionsPage === 0}
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setSubmissionsPage((prev) => (prev + 1 < submissionTotalPages ? prev + 1 : prev))}
+                disabled={subsLoading || submissionsPage + 1 >= submissionTotalPages}
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+              >
+                Next
+              </button>
+              <button
+                onClick={fetchSubmissions}
+                disabled={subsLoading}
+                className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+              >
+                {subsLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-slate-400">
+              Search submissions
+            </label>
+            <input
+              type="text"
+              value={submissionSearch}
+              onChange={(e) => setSubmissionSearch(e.target.value)}
+              placeholder="Search by patient, invoice number, MediData reference, law type, billing type"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-300 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            />
           </div>
 
           {submissions.length === 0 && !subsLoading ? (
@@ -800,39 +929,57 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
               <p className="text-sm text-slate-400">No submissions found</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.8fr)_minmax(110px,0.9fr)_minmax(90px,0.8fr)_minmax(140px,1fr)_32px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <div>Invoice</div>
+                <div>Patient</div>
+                <div>Billing</div>
+                <div>Amount</div>
+                <div>Status</div>
+                <div></div>
+              </div>
+
               {submissions.map((sub) => (
-                <div key={sub.id} className="rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div
-                    className="flex cursor-pointer items-center justify-between p-4 hover:bg-slate-50/50"
+                <div key={sub.id} className="border-b border-slate-100 last:border-b-0">
+                  <button
+                    type="button"
+                    className="grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1.8fr)_minmax(110px,0.9fr)_minmax(90px,0.8fr)_minmax(140px,1fr)_32px] gap-3 px-4 py-3 text-left hover:bg-slate-50"
                     onClick={() => setExpandedSub(expandedSub === sub.id ? null : sub.id)}
                   >
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <p className="font-medium text-slate-900">{sub.invoice_number}</p>
-                        <p className="text-xs text-slate-400">
-                          {new Date(sub.created_at).toLocaleDateString("fr-CH")}{" "}
-                          {new Date(sub.created_at).toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      </div>
-                      {sub.billing_type && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                          {sub.billing_type}
-                        </span>
-                      )}
-                      {sub.law_type && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
-                          {sub.law_type}
-                        </span>
-                      )}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-900">{sub.invoice_number}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {new Date(sub.created_at).toLocaleDateString("fr-CH")} {" "}
+                        {new Date(sub.created_at).toLocaleTimeString("fr-CH", { hour: "2-digit", minute: "2-digit" })}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      {sub.invoice_amount != null && (
-                        <span className="text-sm font-medium text-slate-700">
-                          CHF {sub.invoice_amount.toFixed(2)}
-                        </span>
-                      )}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-slate-800">{formatPatientName(sub.patient)}</p>
+                      <p className="mt-1 truncate text-xs text-slate-400">{sub.patient_id}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap gap-1">
+                        {sub.billing_type && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                            {sub.billing_type}
+                          </span>
+                        )}
+                        {sub.law_type && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                            {sub.law_type}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-700">
+                        {sub.invoice_amount != null ? `CHF ${sub.invoice_amount.toFixed(2)}` : "—"}
+                      </p>
+                    </div>
+                    <div className="min-w-0">
                       <InvoiceStatusBadge status={sub.status} />
+                    </div>
+                    <div className="flex items-center justify-center">
                       <svg
                         className={`h-4 w-4 text-slate-400 transition-transform ${expandedSub === sub.id ? "rotate-180" : ""}`}
                         fill="none"
@@ -843,10 +990,35 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                       </svg>
                     </div>
-                  </div>
+                  </button>
 
                   {expandedSub === sub.id && (
-                    <div className="border-t border-slate-100 p-4 space-y-4">
+                    <div className="border-t border-slate-100 p-4 space-y-4 bg-white">
+                      <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-4">
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Patient</p>
+                          <p className="mt-1 text-sm text-slate-700">{formatPatientName(sub.patient)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Patient ID</p>
+                          <p className="mt-1 break-all font-mono text-xs text-slate-600">{sub.patient_id}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Invoice ID</p>
+                          <p className="mt-1 break-all font-mono text-xs text-slate-600">{sub.invoice_id || "—"}</p>
+                        </div>
+                        <div className="flex items-end justify-start md:justify-end">
+                          {sub.patient?.id && (
+                            <Link
+                              href={`/patients/${sub.patient.id}`}
+                              className="inline-flex items-center rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+                            >
+                              Go to patient
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Error Notifications Alert (transmission errors) */}
                       {sub.error_notifications && sub.error_notifications.length > 0 && (
                         <div className="rounded-lg border-2 border-orange-200 bg-orange-50 p-4">
@@ -1198,6 +1370,30 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
               ))}
             </div>
           )}
+
+          {submissionsCount > 0 && (
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs text-slate-500">
+                Page {submissionsPage + 1} of {submissionTotalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSubmissionsPage((prev) => Math.max(0, prev - 1))}
+                  disabled={subsLoading || submissionsPage === 0}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setSubmissionsPage((prev) => (prev + 1 < submissionTotalPages ? prev + 1 : prev))}
+                  disabled={subsLoading || submissionsPage + 1 >= submissionTotalPages}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1208,7 +1404,14 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
             <h2 className="text-lg font-semibold text-slate-800">Insurer Responses</h2>
             <div className="flex items-center gap-2">
               <button
-                onClick={handlePollMediData}
+                onClick={() => setResponsesLimit((prev) => prev + RESPONSES_BATCH_SIZE)}
+                disabled={respLoading}
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+              >
+                Load more
+              </button>
+              <button
+                onClick={() => handlePollMediData()}
                 disabled={pollStatus === "Polling..."}
                 className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
               >
@@ -1458,7 +1661,14 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
             <h2 className="text-lg font-semibold text-slate-800">MediData Notifications</h2>
             <div className="flex items-center gap-2">
               <button
-                onClick={handlePollMediData}
+                onClick={() => setNotificationsLimit((prev) => prev + NOTIFICATIONS_BATCH_SIZE)}
+                disabled={notifLoading}
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+              >
+                Load more
+              </button>
+              <button
+                onClick={() => handlePollMediData()}
                 disabled={pollStatus === "Polling..."}
                 className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
               >
