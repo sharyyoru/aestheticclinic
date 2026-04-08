@@ -42,6 +42,19 @@ export function pushToDataLayer(event: string, data?: Record<string, unknown>) {
   if (typeof window !== "undefined") {
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push({ event, ...data });
+    
+    // If we're in an iframe, also send postMessage to parent window
+    // This allows GTM on the parent page to track events from embedded forms
+    if (window.parent && window.parent !== window) {
+      try {
+        window.parent.postMessage({
+          event,
+          ...data
+        }, "*");
+      } catch (error) {
+        console.error("Failed to send postMessage to parent:", error);
+      }
+    }
   }
 }
 

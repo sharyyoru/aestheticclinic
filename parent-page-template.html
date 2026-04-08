@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aesthetics Clinic - Contact</title>
+  
+  <!-- Google Tag Manager -->
+  <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+  new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+  j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+  'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+  })(window,document,'script','dataLayer','GTM-KP9GM9QG');</script>
+  <!-- End Google Tag Manager -->
+  
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      color: #1e293b;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: #64748b;
+      margin-bottom: 30px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-KP9GM9QG"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
+
+  <div class="container">
+    <h1>Contact Us</h1>
+    <p class="subtitle">Fill out the form below and we'll get back to you shortly.</p>
+    
+    <!-- Embedded Contact Form -->
+    <iframe
+      id="aesthetics-contact-form"
+      src="https://aestheticclinic.vercel.app/embed/contact"
+      style="width: 100%; border: none; overflow: hidden; min-height: 750px;"
+      scrolling="no"
+      frameborder="0"
+      allowtransparency="true"
+    ></iframe>
+  </div>
+
+  <!-- 
+    ============================================
+    IFRAME EVENT LISTENER FOR GTM TRACKING
+    ============================================
+    This script listens for form submission events from the iframe
+    and pushes them to Google Tag Manager's dataLayer.
+    
+    DO NOT REMOVE THIS SCRIPT - It's required for conversion tracking!
+  -->
+  <script>
+  (function() {
+    console.log('🎯 Iframe event listener initialized');
+    
+    // Listen for messages from the iframe
+    window.addEventListener('message', function(event) {
+      // Optional: Uncomment to restrict to specific domain
+      // if (event.origin !== 'https://aestheticclinic.vercel.app') {
+      //   console.warn('⚠️ Rejected message from:', event.origin);
+      //   return;
+      // }
+      
+      // Handle form submission events
+      if (event.data && event.data.event) {
+        // Push the event to dataLayer for GTM to track
+        window.dataLayer = window.dataLayer || [];
+        window.dataLayer.push({
+          event: event.data.event
+        });
+        
+        console.log('✅ Received iframe event:', event.data.event);
+        console.log('📊 Pushed to dataLayer:', { event: event.data.event });
+      }
+      
+      // Handle iframe height adjustment (optional)
+      if (event.data && event.data.type === 'embed-height') {
+        var iframe = document.getElementById('aesthetics-contact-form');
+        if (iframe) {
+          iframe.style.height = event.data.height + 'px';
+          console.log('📏 Adjusted iframe height:', event.data.height + 'px');
+        }
+      }
+    });
+    
+    console.log('✅ Iframe event listener ready');
+  })();
+  </script>
+</body>
+</html>
