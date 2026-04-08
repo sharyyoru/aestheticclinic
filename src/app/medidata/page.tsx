@@ -118,6 +118,20 @@ type MediDataParticipant = {
 const SUBMISSIONS_PAGE_SIZE = 25;
 const RESPONSES_BATCH_SIZE = 100;
 const NOTIFICATIONS_BATCH_SIZE = 100;
+const TEST_PATIENT_ID = "65ef3b81-6568-584d-a0be-5cb58e7620be";
+
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "All statuses" },
+  { value: "draft", label: "Draft" },
+  { value: "pending", label: "Pending" },
+  { value: "transmitted", label: "Transmitted" },
+  { value: "delivered", label: "Delivered" },
+  { value: "accepted", label: "Accepted" },
+  { value: "rejected", label: "Rejected" },
+  { value: "paid", label: "Paid" },
+  { value: "partially_paid", label: "Partially Paid" },
+  { value: "cancelled", label: "Cancelled" },
+];
 const AUTO_POLL_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const AUTO_POLL_STORAGE_KEY = "medidata:last-poll-at";
 
@@ -240,6 +254,9 @@ export default function MediDataDashboard() {
   const [submissionsPage, setSubmissionsPage] = useState(0);
   const [submissionsCount, setSubmissionsCount] = useState(0);
   const [submissionSearch, setSubmissionSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   // Participants
   const [participants, setParticipants] = useState<MediDataParticipant[]>([]);
@@ -296,8 +313,22 @@ export default function MediDataDashboard() {
           invoice:invoices(id,pdf_path,pdf_generated_at),
           history:medidata_submission_history(*)
         `, { count: "exact" })
+        .neq("patient_id", TEST_PATIENT_ID)
         .order("created_at", { ascending: false })
         .range(from, to);
+
+      // Status filter
+      if (statusFilter) {
+        query = query.eq("status", statusFilter);
+      }
+
+      // Date range filter
+      if (dateFrom) {
+        query = query.gte("created_at", `${dateFrom}T00:00:00`);
+      }
+      if (dateTo) {
+        query = query.lte("created_at", `${dateTo}T23:59:59`);
+      }
 
       const trimmedSearch = submissionSearch.trim();
       if (trimmedSearch) {
@@ -401,7 +432,7 @@ export default function MediDataDashboard() {
       console.error("Error fetching submissions:", e);
     }
     setSubsLoading(false);
-  }, [submissionSearch, submissionsPage]);
+  }, [submissionSearch, submissionsPage, statusFilter, dateFrom, dateTo]);
 
   // ── Fetch responses from local DB ──
   const fetchResponses = useCallback(async () => {
@@ -911,18 +942,191 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-slate-400">
-              Search submissions
-            </label>
-            <input
-              type="text"
-              value={submissionSearch}
-              onChange={(e) => setSubmissionSearch(e.target.value)}
-              placeholder="Search by patient, invoice number, MediData reference, law type, billing type"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-300 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            />
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
+              <div>
+                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">Search</label>
+                <input
+                  type="text"
+                  value={submissionSearch}
+                  onChange={(e) => setSubmissionSearch(e.target.value)}
+                  placeholder="Patient, invoice number, reference…"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-300 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value); setSubmissionsPage(0); }}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                >
+                  {STATUS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); setSubmissionsPage(0); }}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-slate-400">To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => { setDateTo(e.target.value); setSubmissionsPage(0); }}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+            </div>
+            {(statusFilter || dateFrom || dateTo) && (
+              <button
+                type="button"
+                onClick={() => { setStatusFilter(""); setDateFrom(""); setDateTo(""); setSubmissionsPage(0); }}
+                className="text-[11px] font-medium text-sky-600 hover:text-sky-800"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
+
+          {/* ── Accountant Action Items ── */}
+          {(() => {
+            const rejected = submissions.filter((s) => s.status === "rejected");
+            if (rejected.length === 0 && !statusFilter) return null;
+
+            // Categorize rejections by parsing insurance_response_message and response explanations
+            type ActionItem = { invoiceNumber: string; patientName: string; patientId: string; submissionId: string; category: string; detail: string };
+            const items: ActionItem[] = [];
+
+            for (const sub of rejected) {
+              const msg = sub.insurance_response_message || "";
+              const respExplanations = (sub.rejection_responses || []).map((r) => r.explanation || "").join(" ");
+              const combined = `${msg} ${respExplanations}`.toLowerCase();
+
+              let category = "Other";
+              let detail = msg || respExplanations || "No details available";
+
+              if (combined.includes("point tarifaire") || combined.includes("taxe de valeur") || combined.includes("0,91") || combined.includes("0.91")) {
+                category = "Wrong tariff point value";
+                detail = "Canton GE requires point value 0.91. Resubmit with corrected tariff.";
+              } else if (combined.includes("tarif 007") || combined.includes("type de tarif") || combined.includes("chiffre tarifaire") || combined.includes("chiffres tarifaires")) {
+                category = "Wrong tariff type/code";
+                detail = "Insurer requires TARDOC tariff 007. Check service codes and resubmit.";
+              } else if (combined.includes("déjà reçu") || combined.includes("bereits erhalten") || combined.includes("duplicate")) {
+                category = "Duplicate invoice";
+                detail = "Insurer already has this invoice. Verify if previously sent via another channel.";
+              } else if (combined.includes("assuré inconnu") || combined.includes("versicherter unbekannt")) {
+                category = "Unknown insured";
+                detail = "Patient not recognized by insurer. Verify insurance details and policy number.";
+              } else if (combined.includes("pas payés directement") || combined.includes("pas à notre charge") || combined.includes("conditions n'étant pas remplies")) {
+                category = "Not covered";
+                detail = "Treatment not covered by insurance. May need to bill patient directly.";
+              } else if (combined.includes("xml-schema") || combined.includes("w3c")) {
+                category = "XML Schema error";
+                detail = "Technical XML issue. Contact system administrator.";
+              } else if (combined.includes("rueckweisung") && !combined.includes("copy")) {
+                category = "Generic rejection";
+                detail = msg || "Insurer rejected without specific reason. Check response details.";
+              }
+
+              items.push({
+                invoiceNumber: sub.invoice_number,
+                patientName: formatPatientName(sub.patient),
+                patientId: sub.patient_id,
+                submissionId: sub.id,
+                category,
+                detail: detail.length > 120 ? detail.substring(0, 120) + "…" : detail,
+              });
+            }
+
+            if (items.length === 0) return null;
+
+            // Group by category
+            const grouped: Record<string, ActionItem[]> = {};
+            for (const item of items) {
+              if (!grouped[item.category]) grouped[item.category] = [];
+              grouped[item.category].push(item);
+            }
+
+            const categoryColors: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+              "Wrong tariff point value": { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-900", badge: "bg-amber-100 text-amber-800" },
+              "Wrong tariff type/code": { bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-900", badge: "bg-orange-100 text-orange-800" },
+              "Duplicate invoice": { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-900", badge: "bg-blue-100 text-blue-800" },
+              "Unknown insured": { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-900", badge: "bg-rose-100 text-rose-800" },
+              "Not covered": { bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-900", badge: "bg-purple-100 text-purple-800" },
+              "XML Schema error": { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-900", badge: "bg-slate-100 text-slate-800" },
+              "Generic rejection": { bg: "bg-red-50", border: "border-red-200", text: "text-red-900", badge: "bg-red-100 text-red-800" },
+              "Other": { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-900", badge: "bg-slate-100 text-slate-800" },
+            };
+
+            return (
+              <div className="rounded-xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 shadow-sm overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setExpandedSub(expandedSub === "accountant-actions" ? null : "accountant-actions")}
+                  className="w-full p-4 text-left hover:bg-amber-100/50 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <svg className="h-5 w-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <h3 className="text-sm font-bold text-amber-900">
+                        Accountant Action Required - {items.length} rejected invoice{items.length !== 1 ? "s" : ""} need attention
+                      </h3>
+                    </div>
+                    <svg
+                      className={`h-4 w-4 text-amber-600 transition-transform ${expandedSub === "accountant-actions" ? "rotate-180" : ""}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {expandedSub === "accountant-actions" && (
+                  <div className="border-t border-amber-200 p-4 space-y-3 bg-white/50">
+                    {Object.entries(grouped).sort((a, b) => b[1].length - a[1].length).map(([cat, catItems]) => {
+                      const colors = categoryColors[cat] || categoryColors["Other"];
+                      return (
+                        <div key={cat} className={`rounded-lg border ${colors.border} ${colors.bg} p-3`}>
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${colors.badge}`}>
+                              {catItems.length}
+                            </span>
+                            <span className={`text-xs font-semibold ${colors.text}`}>{cat}</span>
+                          </div>
+                          <div className="space-y-1.5">
+                            {catItems.slice(0, 5).map((item) => (
+                              <div key={item.submissionId} className="flex items-start gap-2 text-xs">
+                                <span className="font-mono font-semibold text-slate-700 whitespace-nowrap">{item.invoiceNumber}</span>
+                                <span className="text-slate-500">-</span>
+                                <Link href={`/patients/${item.patientId}`} className="text-sky-600 hover:underline whitespace-nowrap">{item.patientName}</Link>
+                                <span className="text-slate-400 truncate">{item.detail}</span>
+                              </div>
+                            ))}
+                            {catItems.length > 5 && (
+                              <p className="text-[10px] text-slate-500 italic">+ {catItems.length - 5} more</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {submissions.length === 0 && !subsLoading ? (
             <div className="rounded-xl border border-slate-200 bg-white p-12 text-center">

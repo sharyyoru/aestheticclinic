@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Link from "next/link";
+import InsuranceBillingModal from "@/components/InsuranceBillingModal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,6 +35,33 @@ type InvoiceRow = {
 
 type PatientInfo = { id: string; first_name: string | null; last_name: string | null; email: string | null };
 type PatientsById = Record<string, PatientInfo>;
+
+type BulkInsValidation = {
+  invoiceId: string;
+  invoiceNumber: string;
+  patientId: string | null;
+  patientName: string;
+  amount: number;
+  ready: boolean;
+  warnings: string[];
+  errors: string[];
+  insurerGln: string | null;
+  insurerName: string | null;
+  lawType: string | null;
+  billingType: string | null;
+  policyNumber: string | null;
+  avsNumber: string | null;
+  caseNumber: string | null;
+  accidentDate: string | null;
+};
+
+type BulkInsResult = {
+  invoiceId: string;
+  invoiceNumber: string;
+  patientName: string;
+  status: "success" | "error" | "skipped";
+  message: string;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -93,6 +121,17 @@ export default function InvoicesPage() {
   const [generatingPdf, setGeneratingPdf] = useState<Set<string>>(new Set());
   const [sendingEmail, setSendingEmail] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<string | null>(null);
+
+  // Insurance modal state
+  const [insuranceModalOpen, setInsuranceModalOpen] = useState(false);
+  const [insuranceTarget, setInsuranceTarget] = useState<InvoiceRow | null>(null);
+
+  // Bulk insurance modal state
+  const [bulkInsuranceOpen, setBulkInsuranceOpen] = useState(false);
+  const [bulkInsValidation, setBulkInsValidation] = useState<BulkInsValidation[]>([]);
+  const [bulkInsSending, setBulkInsSending] = useState(false);
+  const [bulkInsProgress, setBulkInsProgress] = useState(0);
+  const [bulkInsResults, setBulkInsResults] = useState<BulkInsResult[]>([]);
 
   // ---------------------------------------------------------------------------
   // Load data
@@ -352,6 +391,209 @@ export default function InvoicesPage() {
   };
 
   // ---------------------------------------------------------------------------
+  // Insurance: single invoice
+  // ---------------------------------------------------------------------------
+
+  const handleOpenInsurance = (row: InvoiceRow) => {
+    setInsuranceTarget(row);
+    setInsuranceModalOpen(true);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Insurance: bulk validation + sending
+  // ---------------------------------------------------------------------------
+
+  const handleBulkInsuranceOpen = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+
+    setBulkInsuranceOpen(true);
+    setBulkInsValidation([]);
+    setBulkInsResults([]);
+    setBulkInsSending(false);
+    setBulkInsProgress(0);
+
+    const rows = ids.map(id => invoices.find(r => r.id === id)).filter(Boolean) as InvoiceRow[];
+
+    // Pre-validate each invoice
+    const validations: BulkInsValidation[] = [];
+
+    for (const row of rows) {
+      const errors: string[] = [];
+      const warnings: string[] = [];
+      let insurerGln: string | null = null;
+      let insurerName: string | null = null;
+      let lawType: string | null = row.health_insurance_law || null;
+      let billingType: string | null = row.billing_type || null;
+      let policyNumber: string | null = null;
+      let avsNumber: string | null = null;
+      let caseNumber: string | null = null;
+      let accidentDate: string | null = null;
+
+      if (!row.patient_id) {
+        errors.push("No patient linked");
+      } else {
+        // Check patient has required fields
+        const { data: patient } = await supabaseClient
+          .from("patients")
+          .select("first_name, last_name, date_of_birth, gender, street, zip_code, city")
+          .eq("id", row.patient_id)
+          .maybeSingle();
+
+        if (!patient) {
+          errors.push("Patient record not found");
+        } else {
+          if (!patient.first_name || !patient.last_name) warnings.push("Missing patient name");
+          if (!patient.date_of_birth) warnings.push("Missing date of birth");
+          if (!patient.gender) warnings.push("Missing gender");
+          if (!patient.street || !patient.zip_code || !patient.city) warnings.push("Incomplete address");
+        }
+
+        // Check patient has insurance
+        const { data: insurances } = await supabaseClient
+          .from("patient_insurances")
+          .select("insurer_gln, gln, provider_name, law_type, billing_type, avs_number, policy_number, case_number, accident_date, is_primary")
+          .eq("patient_id", row.patient_id)
+          .order("is_primary", { ascending: false })
+          .limit(5);
+
+        if (!insurances || insurances.length === 0) {
+          errors.push("No insurance on file");
+        } else {
+          const primary = insurances.find((i: any) => i.is_primary) || insurances[0];
+          insurerGln = primary.insurer_gln || primary.gln || null;
+          insurerName = primary.provider_name || null;
+          if (!lawType) lawType = primary.law_type || "KVG";
+          if (!billingType) billingType = primary.billing_type || "TG";
+          policyNumber = primary.policy_number || null;
+          avsNumber = primary.avs_number || null;
+          caseNumber = primary.case_number || null;
+          accidentDate = primary.accident_date || null;
+
+          if (!insurerGln) {
+            errors.push("Insurance has no GLN");
+          }
+          if (!insurerName) warnings.push("Insurance name missing");
+        }
+
+        // Check invoice has line items
+        const { count } = await supabaseClient
+          .from("invoice_line_items")
+          .select("id", { count: "exact", head: true })
+          .eq("invoice_id", row.id);
+
+        if (!count || count === 0) {
+          errors.push("No line items");
+        }
+      }
+
+      // Check if already submitted
+      const { data: existingSubs } = await supabaseClient
+        .from("medidata_submissions")
+        .select("id, status")
+        .eq("invoice_id", row.id)
+        .in("status", ["pending", "transmitted", "delivered", "accepted"])
+        .limit(1);
+
+      if (existingSubs && existingSubs.length > 0) {
+        warnings.push("Already has an active submission");
+      }
+
+      validations.push({
+        invoiceId: row.id,
+        invoiceNumber: row.invoice_number,
+        patientId: row.patient_id,
+        patientName: patientName(row.patient_id),
+        amount: Number(row.total_amount) || 0,
+        ready: errors.length === 0,
+        warnings,
+        errors,
+        insurerGln,
+        insurerName,
+        lawType,
+        billingType,
+        policyNumber,
+        avsNumber,
+        caseNumber,
+        accidentDate,
+      });
+    }
+
+    setBulkInsValidation(validations);
+  };
+
+  const handleBulkInsuranceSend = async () => {
+    const ready = bulkInsValidation.filter(v => v.ready);
+    if (ready.length === 0) return;
+
+    setBulkInsSending(true);
+    setBulkInsProgress(0);
+    setBulkInsResults([]);
+
+    const results: BulkInsResult[] = [];
+
+    for (let i = 0; i < ready.length; i++) {
+      const v = ready[i];
+      setBulkInsProgress(i + 1);
+
+      try {
+        const res = await fetch("/api/medidata/send-invoice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invoiceId: v.invoiceId,
+            consultationId: v.invoiceId,
+            patientId: v.patientId,
+            billingType: v.billingType || "TG",
+            lawType: v.lawType || "KVG",
+            reminderLevel: 0,
+            diagnosisCodes: [],
+            treatmentReason: v.lawType === "UVG" ? "accident" : "disease",
+            insurerGln: v.insurerGln,
+            insurerName: v.insurerName || "",
+            policyNumber: v.policyNumber || "",
+            avsNumber: v.avsNumber || "",
+            caseNumber: v.caseNumber || "",
+            accidentDate: v.lawType === "UVG" ? v.accidentDate : undefined,
+            language: 2,
+            skipValidation: false,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          const errMsg = data.abortInfo
+            ? `${data.error}: ${data.abortInfo}`
+            : data.details || data.error || "Unknown error";
+          results.push({ invoiceId: v.invoiceId, invoiceNumber: v.invoiceNumber, patientName: v.patientName, status: "error", message: errMsg });
+        } else {
+          const transmitted = data.submission?.transmitted;
+          results.push({
+            invoiceId: v.invoiceId,
+            invoiceNumber: v.invoiceNumber,
+            patientName: v.patientName,
+            status: "success",
+            message: transmitted ? `Sent — ref: ${data.submission.messageId || "—"}` : "Created as draft (proxy not configured)",
+          });
+        }
+      } catch (err) {
+        results.push({
+          invoiceId: v.invoiceId,
+          invoiceNumber: v.invoiceNumber,
+          patientName: v.patientName,
+          status: "error",
+          message: err instanceof Error ? err.message : "Network error",
+        });
+      }
+
+      setBulkInsResults([...results]);
+    }
+
+    setBulkInsSending(false);
+  };
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -443,6 +685,11 @@ export default function InvoicesPage() {
           <button type="button" onClick={handleBulkSendEmail} disabled={!!bulkAction} className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-white px-2.5 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors">
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
             {bulkAction === "email" ? "Sending..." : "Bulk Send Email"}
+          </button>
+          <div className="h-4 w-px bg-sky-200" />
+          <button type="button" onClick={handleBulkInsuranceOpen} disabled={!!bulkAction || bulkInsSending} className="inline-flex items-center gap-1 rounded-md border border-teal-200 bg-white px-2.5 py-1 text-[10px] font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-50 transition-colors">
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+            Bulk Send Insurance
           </button>
           <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-[10px] text-sky-600 hover:text-sky-800 font-medium">
             Deselect all
@@ -556,6 +803,16 @@ export default function InvoicesPage() {
                             {isSending ? "..." : "Email"}
                           </button>
                         )}
+                        {row.patient_id && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenInsurance(row)}
+                            className="inline-flex items-center gap-0.5 rounded border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[9px] font-medium text-teal-700 hover:bg-teal-100 transition-colors"
+                            title="Send to insurance via MediData"
+                          >
+                            Insurance
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -579,6 +836,189 @@ export default function InvoicesPage() {
             <button type="button" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="rounded border border-slate-200 bg-white px-2.5 py-1 hover:bg-slate-50 disabled:opacity-40 transition-colors">
               Next
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Single invoice insurance modal */}
+      {insuranceTarget && (
+        <InsuranceBillingModal
+          isOpen={insuranceModalOpen}
+          onClose={() => { setInsuranceModalOpen(false); setInsuranceTarget(null); }}
+          consultationId={insuranceTarget.id}
+          patientId={insuranceTarget.patient_id || ""}
+          patientName={patientName(insuranceTarget.patient_id)}
+          invoiceAmount={Number(insuranceTarget.total_amount) || null}
+          onSuccess={() => { setInsuranceModalOpen(false); setInsuranceTarget(null); }}
+        />
+      )}
+
+      {/* Bulk insurance send modal */}
+      {bulkInsuranceOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50" onClick={(e) => { if (e.target === e.currentTarget && !bulkInsSending) setBulkInsuranceOpen(false); }}>
+          <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Bulk Send to Insurance</h2>
+                <p className="text-sm text-slate-500">Pre-flight validation & batch MediData transmission</p>
+              </div>
+              {!bulkInsSending && (
+                <button onClick={() => setBulkInsuranceOpen(false)} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              )}
+            </div>
+
+            {bulkInsValidation.length === 0 ? (
+              <div className="py-12 text-center">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+                  <svg className="h-5 w-5 text-slate-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
+                </div>
+                <p className="mt-3 text-sm text-slate-500">Validating invoices...</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary */}
+                <div className="mb-4 grid grid-cols-3 gap-3">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center">
+                    <p className="text-2xl font-bold text-emerald-700">{bulkInsValidation.filter(v => v.ready).length}</p>
+                    <p className="text-[11px] font-medium text-emerald-600">Ready to send</p>
+                  </div>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
+                    <p className="text-2xl font-bold text-amber-700">{bulkInsValidation.filter(v => v.ready && v.warnings.length > 0).length}</p>
+                    <p className="text-[11px] font-medium text-amber-600">With warnings</p>
+                  </div>
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-center">
+                    <p className="text-2xl font-bold text-red-700">{bulkInsValidation.filter(v => !v.ready).length}</p>
+                    <p className="text-[11px] font-medium text-red-600">Will fail</p>
+                  </div>
+                </div>
+
+                {/* Validation table */}
+                <div className="overflow-hidden rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50">
+                        <th className="px-3 py-2 font-semibold text-slate-600">Status</th>
+                        <th className="px-3 py-2 font-semibold text-slate-600">Invoice</th>
+                        <th className="px-3 py-2 font-semibold text-slate-600">Patient</th>
+                        <th className="px-3 py-2 font-semibold text-slate-600">Insurer</th>
+                        <th className="px-3 py-2 font-semibold text-slate-600 text-right">Amount</th>
+                        <th className="px-3 py-2 font-semibold text-slate-600">Issues</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {bulkInsValidation.map(v => (
+                        <tr key={v.invoiceId} className={v.ready ? "" : "bg-red-50/30"}>
+                          <td className="px-3 py-2">
+                            {v.ready ? (
+                              v.warnings.length > 0 ? (
+                                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">WARN</span>
+                              ) : (
+                                <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">READY</span>
+                              )
+                            ) : (
+                              <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">FAIL</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-medium text-slate-900">{v.invoiceNumber}</td>
+                          <td className="px-3 py-2 text-slate-700">{v.patientName}</td>
+                          <td className="px-3 py-2">
+                            {v.insurerName ? (
+                              <span className="text-slate-700">{v.insurerName}</span>
+                            ) : (
+                              <span className="text-slate-400 italic">None</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right font-medium text-slate-900">CHF {v.amount.toFixed(2)}</td>
+                          <td className="px-3 py-2">
+                            <div className="space-y-0.5">
+                              {v.errors.map((e, i) => (
+                                <p key={i} className="text-[10px] text-red-600 font-medium">{e}</p>
+                              ))}
+                              {v.warnings.map((w, i) => (
+                                <p key={i} className="text-[10px] text-amber-600">{w}</p>
+                              ))}
+                              {v.errors.length === 0 && v.warnings.length === 0 && (
+                                <span className="text-[10px] text-emerald-600">All checks passed</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Progress bar during sending */}
+                {bulkInsSending && (
+                  <div className="mt-4">
+                    <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
+                      <span>Sending {bulkInsProgress} of {bulkInsValidation.filter(v => v.ready).length}...</span>
+                      <span>{Math.round((bulkInsProgress / bulkInsValidation.filter(v => v.ready).length) * 100)}%</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${(bulkInsProgress / bulkInsValidation.filter(v => v.ready).length) * 100}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Results */}
+                {bulkInsResults.length > 0 && (
+                  <div className="mt-4 space-y-1.5">
+                    <h3 className="text-sm font-semibold text-slate-800">Results</h3>
+                    {bulkInsResults.map(r => (
+                      <div key={r.invoiceId} className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${r.status === "success" ? "bg-emerald-50 border border-emerald-200" : "bg-red-50 border border-red-200"}`}>
+                        {r.status === "success" ? (
+                          <svg className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" /></svg>
+                        ) : (
+                          <svg className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        )}
+                        <div>
+                          <span className="font-medium text-slate-900">{r.invoiceNumber}</span>
+                          <span className="mx-1 text-slate-400">·</span>
+                          <span className="text-slate-600">{r.patientName}</span>
+                          <p className={`mt-0.5 ${r.status === "success" ? "text-emerald-700" : "text-red-700"}`}>{r.message}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="mt-5 flex items-center justify-end gap-3">
+                  {!bulkInsSending && bulkInsResults.length === 0 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setBulkInsuranceOpen(false)}
+                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleBulkInsuranceSend}
+                        disabled={bulkInsValidation.filter(v => v.ready).length === 0}
+                        className="inline-flex items-center gap-2 rounded-full bg-teal-600 px-5 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                        Send {bulkInsValidation.filter(v => v.ready).length} invoice{bulkInsValidation.filter(v => v.ready).length !== 1 ? "s" : ""} to insurance
+                      </button>
+                    </>
+                  )}
+                  {!bulkInsSending && bulkInsResults.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setBulkInsuranceOpen(false)}
+                      className="rounded-full bg-slate-800 px-5 py-2 text-sm font-medium text-white hover:bg-slate-900"
+                    >
+                      Done
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

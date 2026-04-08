@@ -120,6 +120,11 @@ export async function POST() {
         // Parse response type from XML
         const parsed = parseResponseXml(content);
 
+        // Detect if this response is for a patient copy (request_subtype="copy")
+        // Patient copies (TP Art. 42) are often rejected as duplicates by insurers.
+        // We must NOT overwrite the original submission status with a copy rejection.
+        const isCopyResponse = /request_subtype\s*=\s*["']copy["']/i.test(content);
+
         // Try to find the related submission.
         // CRITICAL: Match by transmission reference FIRST (unique per upload),
         // then fall back to invoice_number only if transmission ref not found.
@@ -159,31 +164,44 @@ export async function POST() {
         if (matchedSub) {
           submissionId = matchedSub.id;
 
-          // Update submission status based on response
-          const newStatus = parsed.type === "accepted" ? "accepted"
-            : parsed.type === "rejected" ? "rejected"
-            : parsed.type === "pending" ? "pending"
-            : matchedSub.status;
-
-          if (newStatus !== matchedSub.status) {
-            await supabaseAdmin
-              .from("medidata_submissions")
-              .update({
-                status: newStatus,
-                insurance_response_date: new Date().toISOString(),
-                insurance_response_code: parsed.statusOut,
-                insurance_response_message: parsed.explanation || parsed.type,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", matchedSub.id);
-
+          if (isCopyResponse) {
+            // Patient copy response — do NOT change submission status.
+            // Just record it in history for audit trail.
+            console.log(`[poll] Patient copy response for submission ${matchedSub.id} (${corrRef}): ${parsed.type} — ${parsed.explanation || "no explanation"}. Status NOT changed.`);
             await supabaseAdmin.from("medidata_submission_history").insert({
               submission_id: matchedSub.id,
               previous_status: matchedSub.status,
-              new_status: newStatus,
+              new_status: matchedSub.status, // status unchanged
               response_code: parsed.statusOut,
-              response_message: `Insurer response: ${parsed.type}${parsed.explanation ? ` — ${parsed.explanation}` : ""}`,
+              response_message: `[PATIENT COPY] Insurer response: ${parsed.type}${parsed.explanation ? ` — ${parsed.explanation}` : ""}`,
             });
+          } else {
+            // Original invoice response — update submission status
+            const newStatus = parsed.type === "accepted" ? "accepted"
+              : parsed.type === "rejected" ? "rejected"
+              : parsed.type === "pending" ? "pending"
+              : matchedSub.status;
+
+            if (newStatus !== matchedSub.status) {
+              await supabaseAdmin
+                .from("medidata_submissions")
+                .update({
+                  status: newStatus,
+                  insurance_response_date: new Date().toISOString(),
+                  insurance_response_code: parsed.statusOut,
+                  insurance_response_message: parsed.explanation || parsed.type,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", matchedSub.id);
+
+              await supabaseAdmin.from("medidata_submission_history").insert({
+                submission_id: matchedSub.id,
+                previous_status: matchedSub.status,
+                new_status: newStatus,
+                response_code: parsed.statusOut,
+                response_message: `Insurer response: ${parsed.type}${parsed.explanation ? ` — ${parsed.explanation}` : ""}`,
+              });
+            }
           }
         }
 
