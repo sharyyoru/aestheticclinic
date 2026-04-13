@@ -1,0 +1,462 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+        
+        <!-- Facebook sharing information tags -->
+        
+        
+        <title>*|MC:SUBJECT|*</title>
+        <style type="text/css">
+			img{display:block;} /* Force GMail to ignore image spacing. */
+			#outlook a {padding:0;} /* Force Outlook to provide a "view in browser" button. */
+			body{width:100% !important;} /* Force Hotmail to display emails at full width */
+			
+			/* Reset Styles */
+			body{margin:0; padding:0;}
+			img{border:none; outline:none; text-decoration:none;}
+			
+			/* Template Styles */
+			
+			body{
+				background-color:#FFFFFF;
+			}
+			
+			#container{
+				background-color:#FFFFFF;
+				height:100%;
+				margin:0;
+				padding:0;
+				width:100%;
+			}
+			
+			#templateHeader{
+				background-color:#EFEFEF;
+			}
+			
+			/**
+			* @tab Page
+			* @section primary heading style
+			* @tip Primary headings in your message body. Make them big and easy to read.
+			* @theme title
+			*/
+			.title{
+				/*@editable*/ color:#B2B2B2;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:26px;
+				/*@editable*/ line-height:150%;
+				/*@editable*/ font-weight:bold;
+			}
+			
+			/**
+			* @tab Page
+			* @section secondary heading style
+			* @tip Secondary headings in your message body. Make these smaller than your primary titles, but bigger than your content text.
+			* @theme subtitle
+			*/
+			.subTitle{
+				/*@editable*/ color:#B2B2B2;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:22px;
+				/*@editable*/ line-height:150%;
+				/*@editable*/ font-weight:bold;
+			}
+			
+			/**
+			* @tab Header
+			* @section text style
+			* @tip The styling for your email's header text. Make it a color and size that is easy to read.
+			*/
+			#emailHeading{
+				/*@editable*/ color:#B2B2B2;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:30px;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ line-height:100%;
+			}
+			
+			/**
+			* @tab Header
+			* @section link style
+			* @tip The styling for your email's header hyperlinks. Make it a color that stands out from the rest of your text.
+			*/
+			#emailHeading a:link, #emailHeading a:visited{
+				/*@editable*/ color:#B2B2B2;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ text-decoration:none;
+			}
+			
+			/**
+			* @tab Header
+			* @section image alignment
+			* @tip Set the alignment for your main event image.
+			*/
+			#headerImage{
+				/*@editable*/ text-align:center;
+			}
+			
+			#headerImage img{
+				display:inline;
+				max-width:600px;
+			}
+			
+			/**
+			* @tab Header
+			* @section location text style
+			* @tip The styling for your email's event location text. Make it a color and size that is easy to read.
+			*/
+			#location{
+				/*@editable*/ color:#303030;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:16px;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ line-height:150%;
+			}
+			
+			/**
+			* @tab Body
+			* @section text style
+			* @tip The styling for your email's main content text. Make it a color and size that is easy to read.
+			*/
+			#templateCopy{
+				/*@editable*/ color:#505050;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:14px;
+				/*@editable*/ line-height:150%;
+				/*@editable*/ font-weight:bold;
+			}
+			
+			/**
+			* @tab Body
+			* @section link style
+			* @tip The styling for your email's main content hyperlinks. Make it a color that stands out from the rest of your text.
+			*/
+			#templateCopy a:link, #templateCopy a:visited{
+				/*@editable*/ color:#505050;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ text-decoration:underline;
+			}
+			
+			/**
+			* @tab Body
+			* @section calendar month text style
+			* @tip The styling for your email's calendar month text. Make it a color and size that is easy to read.
+			*/
+			#month{
+				background-color:#EFEFEF;
+				/*@editable*/ color:#303030;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:14px;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ line-height:150%;
+			}
+			
+			/**
+			* @tab Body
+			* @section calendar day text style
+			* @tip The styling for your email's calendar day text. Make it a color and size that is easy to read.
+			*/
+			#day{
+				background-color:#FFFFFF;
+				/*@editable*/ color:#303030;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:72px;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ line-height:100%;
+			}
+			
+			/**
+			* @tab Body
+			* @section register button style
+			* @tip The styling for your email's register button text. Make it stand out from the rest of your text.
+			*/
+			#button, #button a:link, #button a:visited{
+				/*@editable*/ color:#FFFFFF;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:13px;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ line-height:150%;
+				/*@editable*/ text-decoration:none;
+			}
+			
+			/**
+			* @tab Body
+			* @section social button text style
+			* @tip The styling for your email's social button text. Make it a color and size that is easy to read.
+			*/
+			#social{
+				/*@editable*/ color:#505050;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:11px;
+				/*@editable*/ line-height:100%;
+			}
+			
+			/**
+			* @tab Body
+			* @section social button link style
+			* @tip The styling for your email's social button hyperlinks. Make it a color that stands out from the rest of your text.
+			*/
+			#social a:link, #social a:visited{
+				/*@editable*/ color:#6ACC3B;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ text-decoration:none;
+			}
+			
+			/**
+			* @tab Footer
+			* @section text style
+			* @tip The styling for your email's footer text. Make it a color and size that is easy to read.
+			*/
+			#templateFooter{
+				border-top:5px solid #FFFFFF;
+				/*@editable*/ color:#505050;
+				/*@editable*/ font-family:Helvetica;
+				/*@editable*/ font-size:11px;
+				/*@editable*/ line-height:150%;
+				/*@editable*/ text-align:center;
+			}
+			
+			/**
+			* @tab Footer
+			* @section link style
+			* @tip The styling for your email's footer hyperlinks. Make it a color that stands out from the rest of your text.
+			*/
+			#templateFooter a:link, #templateFooter a:visited{
+				/*@editable*/ color:#6ACC3B;
+				/*@editable*/ font-weight:bold;
+				/*@editable*/ text-decoration:none;
+			}
+		</style>
+    </head>
+    <body>
+    	<center>
+        	<br />
+            <br />
+        	<table border="0" cellpadding="0" cellspacing="0" height="100%" width="100%" id="container">
+            	<tr>
+                	<td align="center" valign="top">
+                    	<table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color:#EFEFEF;">
+                        	<tr>
+                            	<td align="center" valign="top">
+                                    <table border="0" cellpadding="0" cellspacing="0" width="600" id="templateHeader">
+                                        <tr>
+                                            <td align="left" valign="top" width="15">
+                                                <br />
+                                                <br />
+                                                <img src="http://gallery.mailchimp.com/0d61bb2ec9002f0e9872b8c36/images/arrow_left.png" />
+                                            </td>
+                                            <td width="35">
+                                                <br />
+                                            </td>
+                                            <td align="left" valign="top" width="500">
+                                                <br />
+                                                <br />
+                                                <div id="emailHeading" mc:edit="header">
+                                                    BANANACO BANANA SUMMIT
+                                                </div>
+                                                <div id="location" mc:edit="lower_header">
+                                                    BANANACO WORLD HEADQUARTERS
+                                                </div>
+                                                <br />
+                                            </td>
+                                            <td width="50">
+                                                <br />
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        	<tr>
+                            	<td align="center" valign="top">
+                                    <table border="0" cellpadding="0" cellspacing="0" width="600" id="templateBody">
+                                        <tr>
+                                            <td colspan="7" valign="top" id="headerImage">
+                                                <img src="http://gallery.mailchimp.com/0d61bb2ec9002f0e9872b8c36/images/main_image.png" style="max-width:600px;" id="campaign-icon" mc:edit="main_image" />
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td colspan="2" width="50">
+                                                <br />
+                                            </td>
+                                            <td align="left" valign="top" width="345" id="templateCopy">
+                                            	<br />
+                                                <div mc:edit="main">
+                                                    The Bananaco Banana Summit provides banana fans and companies from around the world a unique opportunity to come together and discuss that thing we emailed you about. 
+                                                </div>
+                                            </td>
+                                            <td width="15">
+                                            	<br />
+                                            </td>
+                                            <td align="right" valign="top" width="150">
+                                            	<br />
+                                                <table bgcolor="#FFFFFF" border="0" cellpadding="5" cellspacing="5" width="150" id="calendar">
+                                                	<tr>
+                                                    	<td align="center" bgcolor="#EFEFEF" valign="top" id="month">
+                                                        	<div mc:edit="month">
+                                                            	September 2010
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                    	<td align="center" valign="top" id="day">
+                                                        	<div mc:edit="day">
+                                                            	27
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                </table>
+                                                <br />
+                                                <table bgcolor="#FFFFFF" border="0" cellpadding="5" cellspacing="5" width="150">
+                                                	<tr>
+                                                    	<td align="center" bgcolor="#60CA2E" valign="middle" id="button">
+                                                        	<div mc:edit="button">
+                                                            	<a href="http://www.mailchimp.com/" target="_blank">REGISTER NOW</a>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                            <td width="35">
+                                            	<br />
+                                            </td>
+                                            <td align="right" valign="top" width="15">
+                                            	<br />
+                                            	<img src="http://gallery.mailchimp.com/0d61bb2ec9002f0e9872b8c36/images/arrow_right.png" />
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td align="left" valign="middle" width="15">
+                                                <img src="http://gallery.mailchimp.com/0d61bb2ec9002f0e9872b8c36/images/arrow_left.png" />
+                                            </td>
+                                            <td width="35">
+                                                <br />
+                                            </td>
+                                            <td align="center" colspan="3" width="500">
+                                            	<br />
+                                                <table border="0" cellpadding="2" cellspacing="0" id="social">
+                                                	<tr>
+                                                    	<td align="center" bgcolor="#FFFFFF" valign="middle" width="150">
+                                                        	<table border="0" cellpadding="0" cellspacing="0">
+                                                            	<tr>
+                                                                    <td align="center" bgcolor="#FFFFFF" valign="middle" width="48">
+                                                                        <img src="http://gallery.mailchimp.com/0d61bb2ec9002f0e9872b8c36/images/icon_twitter.6.gif" />
+                                                                    </td>
+                                                                    <td bgcolor="#EFEFEF" width="10">
+                                                                    	<br />
+                                                                    </td>
+                                                                    <td align="left" bgcolor="#EFEFEF" valign="middle" width="78">
+                                                                    	<br />
+                                                                        <div mc:edit="social_link_one">
+                                                                            <a href="*|TWITTER:PROFILEURL|*" target="_blank">FOLLOW ON</a><br /><strong>TWITTER</strong>
+                                                                        </div>
+                                                                        <br />
+                                                                    </td>
+                                                                    <td bgcolor="#EFEFEF" width="10">
+                                                                    	<br />
+                                                                    </td>
+                                                                </tr>
+                                                            </table>
+                                                        </td>
+                                                        <td width="24">
+                                                        	<br />
+                                                        </td>
+                                                    	<td align="center" bgcolor="#FFFFFF" valign="middle" width="150">
+                                                        	<table border="0" cellpadding="0" cellspacing="0">
+                                                            	<tr>
+                                                                    <td align="center" bgcolor="#FFFFFF" valign="middle" width="48">
+                                                                        <img src="http://gallery.mailchimp.com/0d61bb2ec9002f0e9872b8c36/images/icon_facebook.6.gif" />
+                                                                    </td>
+                                                                    <td bgcolor="#EFEFEF" width="10">
+                                                                    	<br />
+                                                                    </td>
+                                                                    <td align="left" bgcolor="#EFEFEF" valign="middle" width="78">
+                                                                    	<br />
+                                                                        <div mc:edit="social_link_two">
+                                                                            <a href="*|FACEBOOK:PROFILEURL|*" target="_blank">FRIEND ON</a><br /><strong>FACEBOOK</strong>
+                                                                        </div>
+                                                                        <br />
+                                                                    </td>
+                                                                    <td bgcolor="#EFEFEF" width="10">
+                                                                    	<br />
+                                                                    </td>
+                                                                </tr>
+                                                            </table>
+                                                        </td>
+                                                        <td width="24">
+                                                        	<br />
+                                                        </td>
+                                                    	<td align="center" bgcolor="#FFFFFF" valign="middle" width="150">
+                                                        	<table border="0" cellpadding="0" cellspacing="0">
+                                                            	<tr>
+                                                                    <td align="center" bgcolor="#FFFFFF" valign="middle" width="48">
+                                                                        <img src="http://gallery.mailchimp.com/0d61bb2ec9002f0e9872b8c36/images/icon_forward.6.gif" />
+                                                                    </td>
+                                                                    <td bgcolor="#EFEFEF" width="10">
+                                                                    	<br />
+                                                                    </td>
+                                                                    <td align="left" bgcolor="#EFEFEF" valign="middle" width="78">
+                                                                    	<br />
+                                                                        <div mc:edit="social_link_three">
+                                                                            <a href="*|FORWARD|*" target="_blank">FORWARD TO</a><br /><strong>A FRIEND</strong>
+                                                                        </div>
+                                                                        <br />
+                                                                    </td>
+                                                                    <td bgcolor="#EFEFEF" width="10">
+                                                                    	<br />
+                                                                    </td>
+                                                                </tr>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                                <br />
+                                            </td>
+                                            <td colspan="2" width="50">
+                                            	<br />
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        	<tr>
+                            	<td align="center" valign="top">                            
+                                    <table border="0" cellpadding="0" cellspacing="0" width="600" id="templateFooter">
+                                        <tr>
+                                        	<td width="50">
+                                            	<br />
+                                            </td>
+                                            <td valign="top" width="500">
+                                            	<br />
+                                                <div mc:edit="footer">
+                                                	Copyright &copy; *|CURRENT_YEAR|* *|LIST:COMPANY|* All rights reserved.
+                                                    <br />
+                                                    <br />
+                                                	*|IFNOT:ARCHIVE_PAGE|* *|LIST:DESCRIPTION|* *|END:IF|*
+                                                    <br />
+                                                    <a href="*|UNSUB|*" target="_blank">Unsubscribe</a> <span style="color:#FFFFFF;">&bull;</span> <a href="*|UPDATE_PROFILE|*" target="_blank">Update subscription preferences</a>
+                                                    <br />
+                                                    <br />
+                                                    *|IFNOT:ARCHIVE_PAGE|* *|LIST:ADDRESS|* *|END:IF|*
+                                                    <br />
+                                                    <br />
+                                                    *|IF:REWARDS|* *|HTML:REWARDS|* *|END:IF|*
+                                                </div>
+                                                <br />
+                                            </td>
+                                            <td width="50">
+                                            	<br />
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+            <br />
+            <br />
+        </center>
+    </body>
+</html>

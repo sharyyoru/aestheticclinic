@@ -1,0 +1,193 @@
+<html>
+<head>
+    <title>*|MC:SUBJECT|*</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <style type="text/css">
+        .mcnPreviewText{display: none !important;} /* Hide preview text in Yahoo */
+
+        /**
+         * @tab Body
+         * @section background color
+         * @tip choose a color for your email's background.
+         */
+        body, .container {
+            /*@editable*/ background-color: #ffffff;
+        }
+        
+        /**
+         * @tab Header
+         * @section top bar
+         * @tip You can make this color stand out, or you might make it the same as your email's background color.
+         */
+        .headerContainer {
+            /*@editable*/ padding: 10px;
+            /*@editable*/ background-color: #ffffff;
+            /*@editable*/ width: 600px;
+        }
+
+        /**
+         * @tab Header
+         * @section header text
+         * @tip Customize the way the "View in a browser" text looks in the top bar.
+         */
+        .headerText {
+            /*@editable*/ font-size: 12px;
+            /*@editable*/ font-family: Courier New;
+            /*@editable*/ font-weight: normal;
+            /*@editable*/ text-align: left;
+        }
+        
+        /**
+         * @tab Body
+         * @section main body
+         * @tip Make sure the text contrasts well with the background color.
+         */
+        .mainContainer {
+            /*@editable*/ padding: 10px;
+            /*@editable*/ background-color: #ffffff;
+            /*@editable*/ width: 600px;
+        }
+        
+        /**
+         * @tab Body
+         * @section default text
+         * @tip This is the default text style for the body of your email.
+         */
+        .mainText {
+            text-align: left;
+            /*@editable*/ font-size: 14px;
+            /*@editable*/ font-family: Courier New;
+            /*@editable*/ line-height: 150%;
+            font-weight: normal;
+        }
+        
+        /**
+         * @tab Body
+         * @section title style
+         * @tip Titles and headlines in your message body. Make them big and easy to read.
+         */
+        .mainText .title {
+            /*@editable*/ font-size: 20px;
+            /*@editable*/ font-weight: bold;
+            /*@editable*/ color: #CC6600;
+            /*@editable*/ font-family: Courier New;
+            /*@editable*/ line-height: 110%;
+        }
+        
+        /**
+         * @tab Body
+         * @section subtitle style
+         * @tip This is the byline text that appears immediately underneath your titles/headlines.
+         */
+        .mainText .subTitle {
+            /*@editable*/ font-size: 16px;
+            /*@editable*/ font-weight: normal;
+            /*@editable*/ color: #666666;
+            /*@editable*/ font-family: Courier New;
+            /*@editable*/ font-style: italic;
+        }
+        
+        /**
+         * @tab Footer
+         * @section footer style
+         * @tip You can make your footer stand out, or pick a background color that blends in.
+         */
+        .footerContainer {
+            /*@editable*/ padding: 10px;
+            /*@editable*/ border-top: 0px none #999999;
+            /*@editable*/ width: 600px;
+        }
+        
+        /**
+         * @tab Footer
+         * @section footer text
+         * @tip You can make this font smaller than your body text, but pick a color that's easy to read.
+         */
+        .footerText {
+            /*@editable*/ font-size: 12px;
+            /*@editable*/ font-family: Courier New;
+            /*@editable*/ line-height: 100%;
+            /*@editable*/ text-align: left;
+            font-weight: normal;
+        }
+
+        /**
+         * @tab Body
+         * @section link style
+         * @tip Specify a color for all your hyperlinks.
+         */
+        a, a:link, a:visited {
+            /*@editable*/ color: #0000ff;
+            /*@editable*/ text-decoration: underline;
+            /*@editable*/ font-weight: normal;
+        }
+        
+        /**
+         * @tab Header
+         * @section link style
+         * @tip Specify a color for your header hyperlinks.
+         */
+        .headerText a {
+            /*@editable*/ color: #0000ff;
+            /*@editable*/ text-decoration: underline;
+            /*@editable*/ font-weight: normal;
+        }
+        
+        /**
+         * @tab Footer
+         * @section link style
+         * @tip Specify a color for your footer hyperlinks.
+         */
+        .footerText a {
+            /*@editable*/ color: #0000ff;
+            /*@editable*/ text-decoration: underline;
+            /*@editable*/ font-weight: normal;
+        }
+    </style>
+</head>
+<body leftmargin="0" marginwidth="0" topmargin="0" marginheight="0" offset="0" id="richtext">
+<!--*|IF:MC_PREVIEW_TEXT|*-->
+<!--[if !gte mso 9]><!----><span class="mcnPreviewText" style="display:none; font-size:0px; line-height:0px; max-height:0px; max-width:0px; opacity:0; overflow:hidden; visibility:hidden; mso-hide:all;">*|MC_PREVIEW_TEXT|*</span><!--<![endif]-->
+<!--*|END:IF|*-->
+<div class="container">
+    <div class="headerContainer">
+        <div class="headerText" mc:edit="header">
+        </div>
+    </div>
+    <div class="headerImage"><img mc:edit="header_image" mc:allowdesigner mc:allowtext /></div>
+    <div class="mainContainer">
+        <div class="mainText" mc:edit="main">
+            <span class="title">Primary Heading</span><br />
+            <span class="subTitle">Subheading</span><br />
+            Click here to add your email copy and images.
+        </div>
+    </div>
+    <div class="footerContainer">
+        <div class="footerText" mc:edit="footer">
+        *|IF:LIST|*
+            *|LIST:DESCRIPTION|*<br />
+            <br />
+            <a href="*|UNSUB|*">Unsubscribe</a> *|EMAIL|* from this list.<br />
+            <br />
+            Our mailing address is:<br />
+            *|HTML:LIST_ADDRESS_HTML|*<br />
+            Copyright (C) *|CURRENT_YEAR|* *|LIST:COMPANY|* All rights reserved.<br />
+            <br />
+            <a href="*|FORWARD|*">Forward</a> this email to a friend<br />
+            <a href="*|UPDATE_PROFILE|*">Update your profile</a>
+        *|ELSE:|*
+            Our mailing address is:<br />
+            *|USER:ADDRESS_HTML|*<br />
+            Copyright (C) *|CURRENT_YEAR|* *|USER:COMPANY|* All rights reserved.
+        *|END:IF|*
+        </div>
+    </div>
+    *|IF:REWARDS|*
+    <div id="monkeyRewards" style="margin-top: 10px; text-align: right;">
+        *|HTML:REWARDS|*
+    </div>
+    *|END:IF|*
+</div>
+<span style="padding: 0px;"></span>
+</body>
+</html>

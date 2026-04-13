@@ -29,6 +29,11 @@ export default function EmailTemplatesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
   const [workflowsUsingTemplate, setWorkflowsUsingTemplate] = useState<Map<string, WorkflowUsingTemplate[]>>(new Map());
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [availableHtmlTemplates, setAvailableHtmlTemplates] = useState<Array<{ filename: string; displayName: string; size: number }>>([]);
+  const [selectedForImport, setSelectedForImport] = useState<Set<string>>(new Set());
+  const [importing, setImporting] = useState(false);
+  const [loadingHtmlTemplates, setLoadingHtmlTemplates] = useState(false);
 
   useEffect(() => {
     loadTemplates();
@@ -105,6 +110,66 @@ export default function EmailTemplatesPage() {
     }
   }
 
+  async function loadAvailableHtmlTemplates() {
+    try {
+      setLoadingHtmlTemplates(true);
+      const response = await fetch("/api/email-templates/import-html");
+      if (!response.ok) throw new Error("Failed to load HTML templates");
+      const data = await response.json();
+      setAvailableHtmlTemplates(data.templates || []);
+    } catch (err) {
+      console.error("Error loading HTML templates:", err);
+    } finally {
+      setLoadingHtmlTemplates(false);
+    }
+  }
+
+  async function handleImportTemplates() {
+    if (selectedForImport.size === 0) return;
+
+    try {
+      setImporting(true);
+      const response = await fetch("/api/email-templates/import-html", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filenames: Array.from(selectedForImport) }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data.error || "Failed to import templates");
+
+      alert(data.message);
+      setShowImportModal(false);
+      setSelectedForImport(new Set());
+      loadTemplates();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to import templates");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function toggleTemplateSelection(filename: string) {
+    setSelectedForImport((prev) => {
+      const next = new Set(prev);
+      if (next.has(filename)) {
+        next.delete(filename);
+      } else {
+        next.add(filename);
+      }
+      return next;
+    });
+  }
+
+  function toggleAllTemplates() {
+    if (selectedForImport.size === availableHtmlTemplates.length) {
+      setSelectedForImport(new Set());
+    } else {
+      setSelectedForImport(new Set(availableHtmlTemplates.map((t) => t.filename)));
+    }
+  }
+
   const filteredTemplates = templates.filter((template) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -146,15 +211,29 @@ export default function EmailTemplatesPage() {
             </div>
             <p className="text-sm text-slate-500">Manage email templates used in workflow automations</p>
           </div>
-          <Link
-            href="/workflows/builder"
-            className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Create in Workflow
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setShowImportModal(true);
+                loadAvailableHtmlTemplates();
+              }}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Upload HTML
+            </button>
+            <Link
+              href="/workflows/builder"
+              className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create in Workflow
+            </Link>
+          </div>
         </header>
 
         {error && (
@@ -327,6 +406,126 @@ export default function EmailTemplatesPage() {
               ) : (
                 <p className="text-center text-slate-500">No preview available</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import HTML Templates Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Upload HTML Templates</h2>
+                <p className="text-sm text-slate-500">Select templates from public/templates folder</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setSelectedForImport(new Set());
+                }}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              {loadingHtmlTemplates ? (
+                <div className="flex items-center justify-center py-12">
+                  <svg className="h-6 w-6 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </div>
+              ) : availableHtmlTemplates.length === 0 ? (
+                <div className="text-center py-12 text-slate-500">
+                  <svg className="mx-auto h-12 w-12 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p className="mt-2">No HTML templates found in public/templates</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={selectedForImport.size === availableHtmlTemplates.length && availableHtmlTemplates.length > 0}
+                        onChange={toggleAllTemplates}
+                        className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                      />
+                      Select all ({availableHtmlTemplates.length} templates)
+                    </label>
+                    <span className="text-sm text-slate-500">
+                      {selectedForImport.size} selected
+                    </span>
+                  </div>
+                  <div className="space-y-2 max-h-[400px] overflow-auto">
+                    {availableHtmlTemplates.map((template) => (
+                      <label
+                        key={template.filename}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedForImport.has(template.filename)
+                            ? "border-sky-500 bg-sky-50"
+                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedForImport.has(template.filename)}
+                          onChange={() => toggleTemplateSelection(template.filename)}
+                          className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-slate-900 truncate">{template.displayName}</p>
+                          <p className="text-xs text-slate-500 truncate">{template.filename}</p>
+                        </div>
+                        <span className="text-xs text-slate-400 shrink-0">
+                          {(template.size / 1024).toFixed(1)} KB
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setSelectedForImport(new Set());
+                }}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportTemplates}
+                disabled={selectedForImport.size === 0 || importing}
+                className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {importing ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Import {selectedForImport.size} Template{selectedForImport.size !== 1 ? "s" : ""}
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
