@@ -3,16 +3,30 @@
 import { useState, useEffect } from "react";
 
 type KeywordData = {
-  Ph?: string;      // Keyword/Phrase
-  Nq?: string;      // Search Volume
-  Cp?: string;      // CPC
-  Co?: string;      // Competition
-  Nr?: string;      // Number of Results
-  Td?: string;      // Trends
-  Kd?: string;      // Keyword Difficulty
-  Rr?: string;      // Related Relevance
-  Po?: string;      // Position
-  Tr?: string;      // Traffic
+  // Short codes
+  Ph?: string;
+  Nq?: string;
+  Cp?: string;
+  Co?: string;
+  Nr?: string;
+  Td?: string;
+  Kd?: string;
+  Rr?: string;
+  Po?: string;
+  Tr?: string;
+  // Full names from API
+  Keyword?: string;
+  "Search Volume"?: string;
+  CPC?: string;
+  Competition?: string;
+  "Number of Results"?: string;
+  Trends?: string;
+  "Keyword Difficulty"?: string;
+  "Keyword Difficulty Index"?: string;
+  "Related Relevance"?: string;
+  Position?: string;
+  "Traffic (%)"?: string;
+  Traffic?: string;
   database?: string;
 };
 
@@ -63,12 +77,42 @@ const EU_DATABASES = [
   { code: "it", name: "Italy", flag: "🇮🇹" },
 ];
 
-function formatNumber(num: string | number): string {
+function formatNumber(num: string | number | undefined): string {
+  if (num === undefined || num === null || num === "") return "-";
   const n = typeof num === "string" ? parseInt(num, 10) : num;
   if (isNaN(n)) return "-";
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
   if (n >= 1000) return (n / 1000).toFixed(1) + "K";
   return n.toString();
+}
+
+// Helper to get keyword value (handles both short codes and full names)
+function getKw(data: KeywordData): string {
+  return data.Keyword || data.Ph || "";
+}
+
+function getVolume(data: KeywordData): string {
+  return data["Search Volume"] || data.Nq || "0";
+}
+
+function getCpc(data: KeywordData): string {
+  return data.CPC || data.Cp || "0";
+}
+
+function getCompetition(data: KeywordData): string {
+  return data.Competition || data.Co || "0";
+}
+
+function getDifficulty(data: KeywordData): string {
+  return data["Keyword Difficulty Index"] || data["Keyword Difficulty"] || data.Kd || "0";
+}
+
+function getPosition(data: KeywordData): string {
+  return data.Position || data.Po || "-";
+}
+
+function getTraffic(data: KeywordData): string {
+  return data["Traffic (%)"] || data.Traffic || data.Tr || "0";
 }
 
 function getDifficultyColor(kd: string | number): string {
@@ -408,34 +452,34 @@ export default function AEOPage() {
             {keywordData && (
               <div className="rounded-xl bg-white p-6 shadow-sm">
                 <h2 className="mb-4 text-lg font-semibold text-slate-900">
-                  Keyword Overview: "{keywordData.Ph || searchKeyword}"
+                  Keyword Overview: "{getKw(keywordData) || searchKeyword}"
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-4">
                   <div className="rounded-lg bg-blue-50 p-4">
                     <p className="text-sm text-blue-600">Search Volume</p>
                     <p className="text-2xl font-bold text-blue-900">
-                      {formatNumber(keywordData.Nq || "0")}
+                      {formatNumber(getVolume(keywordData))}
                     </p>
                     <p className="text-xs text-blue-500">monthly searches</p>
                   </div>
                   <div className="rounded-lg bg-emerald-50 p-4">
                     <p className="text-sm text-emerald-600">CPC</p>
                     <p className="text-2xl font-bold text-emerald-900">
-                      ${keywordData.Cp || "0"}
+                      ${getCpc(keywordData)}
                     </p>
                     <p className="text-xs text-emerald-500">cost per click</p>
                   </div>
                   <div className="rounded-lg bg-amber-50 p-4">
                     <p className="text-sm text-amber-600">Competition</p>
                     <p className="text-2xl font-bold text-amber-900">
-                      {(parseFloat(keywordData.Co || "0") * 100).toFixed(0)}%
+                      {(parseFloat(getCompetition(keywordData)) * 100).toFixed(0)}%
                     </p>
                     <p className="text-xs text-amber-500">advertiser competition</p>
                   </div>
-                  <div className={`rounded-lg p-4 ${getDifficultyColor(keywordData.Kd || "0")}`}>
+                  <div className={`rounded-lg p-4 ${getDifficultyColor(getDifficulty(keywordData))}`}>
                     <p className="text-sm">Keyword Difficulty</p>
                     <p className="text-2xl font-bold">
-                      {keywordData.Kd || "N/A"}
+                      {getDifficulty(keywordData) || "N/A"}
                     </p>
                     <p className="text-xs">SEO difficulty score</p>
                   </div>
@@ -443,16 +487,16 @@ export default function AEOPage() {
                 <div className="mt-4 flex gap-2">
                   <button
                     onClick={() => addToContentPlan(
-                      keywordData.Ph || searchKeyword,
-                      keywordData.Nq || "0",
-                      keywordData.Kd || "50"
+                      getKw(keywordData) || searchKeyword,
+                      getVolume(keywordData),
+                      getDifficulty(keywordData)
                     )}
                     className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                   >
                     + Add to Content Plan
                   </button>
                   <button
-                    onClick={() => generateArticle(keywordData.Ph || searchKeyword)}
+                    onClick={() => generateArticle(getKw(keywordData) || searchKeyword)}
                     disabled={generatingArticle}
                     className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                   >
@@ -486,18 +530,18 @@ export default function AEOPage() {
                       <tbody className="divide-y divide-slate-100">
                         {relatedKeywords.map((kw, idx) => (
                           <tr key={idx} className="hover:bg-slate-50">
-                            <td className="p-2 font-medium text-slate-700">{kw.Ph}</td>
+                            <td className="p-2 font-medium text-slate-700">{getKw(kw)}</td>
                             <td className="p-2 text-right text-slate-600">
-                              {formatNumber(kw.Nq || "0")}
+                              {formatNumber(getVolume(kw))}
                             </td>
                             <td className="p-2 text-right">
-                              <span className={`rounded px-2 py-0.5 text-xs ${getDifficultyColor(kw.Kd || "0")}`}>
-                                {kw.Kd || "-"}
+                              <span className={`rounded px-2 py-0.5 text-xs ${getDifficultyColor(getDifficulty(kw))}`}>
+                                {getDifficulty(kw) || "-"}
                               </span>
                             </td>
                             <td className="p-2">
                               <button
-                                onClick={() => addToContentPlan(kw.Ph || "", kw.Nq || "0", kw.Kd || "50")}
+                                onClick={() => addToContentPlan(getKw(kw), getVolume(kw), getDifficulty(kw))}
                                 className="text-blue-600 hover:text-blue-700"
                               >
                                 +
@@ -526,13 +570,13 @@ export default function AEOPage() {
                         key={idx}
                         className="flex items-center justify-between rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 p-3"
                       >
-                        <p className="text-sm text-slate-700">{q.Ph}</p>
+                        <p className="text-sm text-slate-700">{getKw(q)}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-slate-500">
-                            {formatNumber(q.Nq || "0")} vol
+                            {formatNumber(getVolume(q))} vol
                           </span>
                           <button
-                            onClick={() => addToContentPlan(q.Ph || "", q.Nq || "0", q.Kd || "50")}
+                            onClick={() => addToContentPlan(getKw(q), getVolume(q), getDifficulty(q))}
                             className="rounded bg-indigo-600 px-2 py-1 text-xs text-white hover:bg-indigo-700"
                           >
                             +
@@ -569,33 +613,33 @@ export default function AEOPage() {
                     <tbody className="divide-y divide-slate-100">
                       {domainKeywords.slice(0, 20).map((kw, idx) => (
                         <tr key={idx} className="hover:bg-slate-50">
-                          <td className="p-3 font-medium text-slate-700">{kw.Ph}</td>
+                          <td className="p-3 font-medium text-slate-700">{getKw(kw)}</td>
                           <td className="p-3 text-center">
                             <span className={`rounded-full px-2 py-1 text-xs font-bold ${
-                              parseInt(kw.Po || "100") <= 3
+                              parseInt(getPosition(kw)) <= 3
                                 ? "bg-emerald-100 text-emerald-700"
-                                : parseInt(kw.Po || "100") <= 10
+                                : parseInt(getPosition(kw)) <= 10
                                 ? "bg-blue-100 text-blue-700"
                                 : "bg-slate-100 text-slate-600"
                             }`}>
-                              #{kw.Po}
+                              #{getPosition(kw)}
                             </span>
                           </td>
                           <td className="p-3 text-right text-slate-600">
-                            {formatNumber(kw.Nq || "0")}
+                            {formatNumber(getVolume(kw))}
                           </td>
                           <td className="p-3 text-right text-emerald-600">
-                            {formatNumber(kw.Tr || "0")}
+                            {getTraffic(kw)}%
                           </td>
                           <td className="p-3 text-right">
-                            <span className={`rounded px-2 py-0.5 text-xs ${getDifficultyColor(kw.Kd || "0")}`}>
-                              {kw.Kd || "-"}
+                            <span className={`rounded px-2 py-0.5 text-xs ${getDifficultyColor(getDifficulty(kw))}`}>
+                              {getDifficulty(kw) || "-"}
                             </span>
                           </td>
                           <td className="p-3">
                             <button
                               onClick={() => {
-                                setSearchKeyword(kw.Ph || "");
+                                setSearchKeyword(getKw(kw));
                                 searchKeywordData();
                               }}
                               className="text-blue-600 hover:text-blue-700"
