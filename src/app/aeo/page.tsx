@@ -1371,7 +1371,9 @@ export default function AEOPage() {
                             </span>
                           </td>
                           <td className="p-3 text-slate-500">
-                            {link.first_seen ? new Date(link.first_seen).toLocaleDateString() : "-"}
+                            {link.first_seen 
+                              ? new Date(parseInt(link.first_seen) * 1000).toLocaleDateString() 
+                              : "-"}
                           </td>
                           <td className="p-3">
                             <span className={`rounded px-2 py-0.5 text-xs ${
