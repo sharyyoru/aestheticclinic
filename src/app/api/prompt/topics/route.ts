@@ -30,10 +30,11 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
+      console.error("Error fetching topics:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ topics: data });
+    return NextResponse.json({ topics: data || [] });
   } catch (error) {
     console.error("Error fetching topics:", error);
     return NextResponse.json({ error: "Failed to fetch topics" }, { status: 500 });
@@ -49,6 +50,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
 
+    // Ensure user exists in the users table (for foreign key constraint)
+    const { data: existingUser } = await supabaseAdmin
+      .from("users")
+      .select("id")
+      .eq("id", userId)
+      .single();
+
+    if (!existingUser) {
+      // Create user record if it doesn't exist
+      const { error: userError } = await supabaseAdmin
+        .from("users")
+        .insert({ id: userId, email: `user-${userId.slice(0, 8)}@temp.local` })
+        .select()
+        .single();
+
+      if (userError && !userError.message.includes("duplicate")) {
+        console.error("Error creating user:", userError);
+        return NextResponse.json({ error: "Failed to create user record" }, { status: 500 });
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from("knowledge_topics")
       .insert({
@@ -62,6 +84,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
+      console.error("Error inserting topic:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
