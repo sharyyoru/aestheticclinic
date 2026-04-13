@@ -264,6 +264,9 @@ export async function POST(request: NextRequest) {
         paymentRemark = `Acompte reçu / Anzahlung erhalten: ${paidAmt.toFixed(2)} CHF — Solde / Restbetrag: ${remaining.toFixed(2)} CHF`;
       }
 
+      // Check if invoice contains TARMED items (tariff_code=1) to enable TP modification
+      const hasTarmedItems = lineItems.some((item: any) => item.tariff_code === 1 || item.catalog_name?.toLowerCase() === 'tarmed');
+
       const sumexInput: SumexInvoiceInput = {
         language: 2,
         roleType: RoleType.Physician,
@@ -274,6 +277,7 @@ export async function POST(request: NextRequest) {
         tiersMode: mapSumexTiers(invoiceData.billing_type || "TG"),
         vatNumber: "",
         amountPrepaid: paidAmt,
+        allowTPModification: hasTarmedItems, // Enable for TARMED to bypass strict validation
         invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
         invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         lawType: mapSumexLaw(invoiceData.health_insurance_law || "KVG"),
