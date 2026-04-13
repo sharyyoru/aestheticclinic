@@ -212,9 +212,31 @@ export async function POST(request: NextRequest) {
         const isTardoc = item.tariff_code === 7 || tariffType === "007";
         const isTarmed = item.tariff_code === 1 || tariffType === "001";
         
-        // For TARMED: let Sumex auto-calculate amount (set to 0)
-        // For TARDOC/others: use stored total_price
-        const calculatedAmount = isTarmed ? 0 : (item.total_price || 0);
+        // For TARMED: Sumex expects amounts in technical points (TP), not CHF
+        // The formula is: amount = tp_al (medical TP) for the service
+        // Sumex will multiply by tax point value internally
+        // For TARDOC/others: use stored total_price (CHF)
+        let calculatedAmount: number;
+        let unit: number;
+        let unitFactor: number;
+        
+        if (isTarmed) {
+          // TARMED: amount = tp_al (medical technical points)
+          // unit = tp_al, unitFactor = 1 (Sumex handles tax point value internally)
+          unit = item.tp_al || item.unit_price || 0;
+          unitFactor = 1;
+          calculatedAmount = unit * (item.quantity || 1);
+        } else if (isTardoc) {
+          // TARDOC: use tp_al and tax point value
+          unit = item.tp_al || 0;
+          unitFactor = item.tp_al_value || 1;
+          calculatedAmount = item.total_price || 0;
+        } else {
+          // Other tariffs: use unit_price and total_price
+          unit = item.unit_price || 0;
+          unitFactor = 1;
+          calculatedAmount = item.total_price || 0;
+        }
         
         return {
           tariffType,
@@ -227,10 +249,8 @@ export async function POST(request: NextRequest) {
           responsibleGln: svcRespGln,
           side: (item.side_type as 0 | 1 | 2 | 3) ?? 0,
           serviceName: item.name || "",
-          // For TARDOC: use tp_al (technical points), for TARMED/others: use unit_price
-          unit: isTardoc ? (item.tp_al || 0) : (item.unit_price || 0),
-          // For TARDOC: use tax point value, for TARMED: use 1 (price already calculated)
-          unitFactor: isTardoc ? (item.tp_al_value || 1) : 1,
+          unit,
+          unitFactor,
           externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : (item.external_factor_mt ?? 1),
           amount: calculatedAmount,
           vatRate: 0,
@@ -264,9 +284,6 @@ export async function POST(request: NextRequest) {
         paymentRemark = `Acompte reçu / Anzahlung erhalten: ${paidAmt.toFixed(2)} CHF — Solde / Restbetrag: ${remaining.toFixed(2)} CHF`;
       }
 
-      // Check if invoice contains TARMED items (tariff_code=1) to enable TP modification
-      const hasTarmedItems = lineItems.some((item: any) => item.tariff_code === 1 || item.catalog_name?.toLowerCase() === 'tarmed');
-
       const sumexInput: SumexInvoiceInput = {
         language: 2,
         roleType: RoleType.Physician,
@@ -277,7 +294,6 @@ export async function POST(request: NextRequest) {
         tiersMode: mapSumexTiers(invoiceData.billing_type || "TG"),
         vatNumber: "",
         amountPrepaid: paidAmt,
-        allowTPModification: hasTarmedItems, // Enable for TARMED to bypass strict validation
         invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
         invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         lawType: mapSumexLaw(invoiceData.health_insurance_law || "KVG"),
