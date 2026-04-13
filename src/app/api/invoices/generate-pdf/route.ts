@@ -207,6 +207,11 @@ export async function POST(request: NextRequest) {
         const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
         const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
         const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
+        
+        // TARMED (tariff_code=1) vs TARDOC (tariff_code=7) have different handling
+        const isTardoc = item.tariff_code === 7 || tariffType === "007";
+        const isTarmed = item.tariff_code === 1 || tariffType === "001";
+        
         return {
           tariffType,
           code: item.code || "",
@@ -218,9 +223,11 @@ export async function POST(request: NextRequest) {
           responsibleGln: svcRespGln,
           side: (item.side_type as 0 | 1 | 2 | 3) ?? 0,
           serviceName: item.name || "",
-          unit: item.unit_price || 0,
-          unitFactor: 1,
-          externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : 1,
+          // For TARDOC: use tp_al (technical points), for TARMED/others: use unit_price
+          unit: isTardoc ? (item.tp_al || 0) : (item.unit_price || 0),
+          // For TARDOC: use tax point value, for TARMED: use 1 (price already calculated)
+          unitFactor: isTardoc ? (item.tp_al_value || 1) : 1,
+          externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : (item.external_factor_mt ?? 1),
           amount: item.total_price || 0,
           vatRate: 0,
           ignoreValidate: YesNo.Yes,
