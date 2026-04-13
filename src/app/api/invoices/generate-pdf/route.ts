@@ -158,10 +158,18 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Detect insurance (Tiers Payant / Tiers Garant) invoice and generate specialized PDF ──
-    // Only treat as insurance if there's an actual insurer OR payment method is Insurance
-    const isInsuranceInvoice = !!invoiceData.insurer_id || invoiceData.payment_method === "Insurance";
+    // Treat as insurance if:
+    // 1. There's an actual insurer OR payment method is Insurance
+    // 2. OR invoice contains TARMED/TARDOC items (requires proper tariff handling)
+    const hasMedicalTariffItems = lineItems.some((item: any) => 
+      item.tariff_code === 1 || // TARMED
+      item.tariff_code === 7 || // TARDOC
+      item.catalog_name?.toLowerCase() === 'tarmed' ||
+      item.catalog_name?.toLowerCase() === 'tardoc'
+    );
+    const isInsuranceInvoice = !!invoiceData.insurer_id || invoiceData.payment_method === "Insurance" || hasMedicalTariffItems;
     if (isInsuranceInvoice) {
-      console.log(`[GeneratePDF] Insurance invoice detected (${invoiceData.billing_type || "TP"}) — using Sumex1 Print for PDF`);
+      console.log(`[GeneratePDF] Insurance/Medical tariff invoice detected (${invoiceData.billing_type || "TG"}) — using Sumex1 Print for PDF`);
 
       // Fetch insurer data
       let insurerGln = "";
@@ -489,21 +497,54 @@ export async function POST(request: NextRequest) {
       const isValidGln2 = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
       const sumexServices2: SumexServiceInput[] = lineItems.map((item: any) => {
         const svcGln = isValidGln2(item.provider_gln) ? item.provider_gln : provGln;
+        const svcRespGln = isValidGln2(item.responsible_gln) ? item.responsible_gln : svcGln;
+        
+        // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
+        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
+        
+        // TARMED (tariff_code=1) vs TARDOC (tariff_code=7) have different handling
+        const isTardoc = item.tariff_code === 7 || tariffType === "007";
+        const isTarmed = item.tariff_code === 1 || tariffType === "001";
+        
+        // For TARMED: Sumex expects amounts in technical points (TP), not CHF
+        // For TARDOC/others: use stored total_price (CHF)
+        let calculatedAmount: number;
+        let unit: number;
+        let unitFactor: number;
+        
+        if (isTarmed) {
+          // TARMED: amount = tp_al (medical technical points)
+          // unit = tp_al, unitFactor = 1 (Sumex handles tax point value internally)
+          unit = item.tp_al || item.unit_price || 0;
+          unitFactor = 1;
+          calculatedAmount = unit * (item.quantity || 1);
+        } else if (isTardoc) {
+          // TARDOC: use tp_al and tax point value
+          unit = item.tp_al || 0;
+          unitFactor = item.tp_al_value || 1;
+          calculatedAmount = item.total_price || 0;
+        } else {
+          // Other tariffs: use unit_price and total_price
+          unit = item.unit_price || 0;
+          unitFactor = 1;
+          calculatedAmount = item.total_price || 0;
+        }
+        
         return {
-          tariffType: "999",
+          tariffType,
           code: item.code || "",
-          referenceCode: "",
+          referenceCode: item.ref_code || "",
           quantity: item.quantity || 1,
-          sessionNumber: 1,
+          sessionNumber: item.session_number ?? 1,
           dateBegin: item.date_begin || treatmentDate,
           providerGln: svcGln,
-          responsibleGln: svcGln,
-          side: 0 as 0,
+          responsibleGln: svcRespGln,
+          side: (item.side_type as 0 | 1 | 2 | 3) ?? 0,
           serviceName: item.name || "",
-          unit: item.unit_price || 0,
-          unitFactor: 1,
-          externalFactor: 1,
-          amount: item.total_price || 0,
+          unit,
+          unitFactor,
+          externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : (item.external_factor_mt ?? 1),
+          amount: calculatedAmount,
           vatRate: 0,
           ignoreValidate: YesNo.Yes,
         };
