@@ -66,23 +66,19 @@ async function testPRNowConnection(): Promise<{ success: boolean; data?: unknown
 // Get available categories
 async function getPRNowCategories(): Promise<string[]> {
   try {
-    const res = await fetch(`${PRNOW_API_URL}/categories`, {
-      headers: {
-        Authorization: `Bearer ${PRNOW_API_KEY}`,
-      },
-    });
+    const res = await fetch(`${PRNOW_API_URL}/categories`);
     const data = await res.json();
-    return data.data || [];
+    // Handle nested structure: { data: { categories: [...] } } or { categories: [...] }
+    const categories = data.data?.categories || data.categories || data.data || [];
+    return Array.isArray(categories) ? categories : [];
   } catch (err) {
     // Return default categories if API fails
     return [
-      "Healthcare",
-      "Beauty & Personal Care",
-      "Medical Devices",
-      "Wellness",
-      "Cosmetics",
-      "Business",
+      "Healthcare & Medicine",
+      "Fashion & Beauty",
+      "Business & Professional Services",
       "Technology",
+      "Lifestyle & Home",
     ];
   }
 }
@@ -313,7 +309,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Default categories for aesthetic/medical content
-      const defaultCategories = ["Healthcare", "Beauty & Personal Care"];
+      const defaultCategories = ["Healthcare & Medicine", "Fashion & Beauty"];
       const finalCategories = categories?.length ? categories : defaultCategories;
 
       // Default country

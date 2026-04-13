@@ -424,7 +424,7 @@ export default function AEOPage() {
           title: article.titleTag,
           content: article.content,
           summary: article.metaDescription,
-          categories: ["Healthcare", "Beauty & Personal Care"],
+          categories: ["Healthcare & Medicine", "Fashion & Beauty"],
           country: "Switzerland",
           language: article.language,
           articleId: `${article.keyword}-${article.language}-${Date.now()}`,
