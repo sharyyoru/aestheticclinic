@@ -212,6 +212,10 @@ export async function POST(request: NextRequest) {
         const isTardoc = item.tariff_code === 7 || tariffType === "007";
         const isTarmed = item.tariff_code === 1 || tariffType === "001";
         
+        // For TARMED: let Sumex auto-calculate amount (set to 0)
+        // For TARDOC/others: use stored total_price
+        const calculatedAmount = isTarmed ? 0 : (item.total_price || 0);
+        
         return {
           tariffType,
           code: item.code || "",
@@ -228,7 +232,7 @@ export async function POST(request: NextRequest) {
           // For TARDOC: use tax point value, for TARMED: use 1 (price already calculated)
           unitFactor: isTardoc ? (item.tp_al_value || 1) : 1,
           externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : (item.external_factor_mt ?? 1),
-          amount: item.total_price || 0,
+          amount: calculatedAmount,
           vatRate: 0,
           ignoreValidate: YesNo.Yes,
         };
