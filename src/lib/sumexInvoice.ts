@@ -1083,9 +1083,11 @@ export async function buildInvoiceRequest(
       }
 
       // TARMED services auto-promoted to AddServiceEx
+      // Note: We use tariff "999" (generic) for ServiceExInput to avoid validator requirement,
+      // but pass "001" (TARMED) in the actual AddServiceEx call for proper XML generation
       if (tarmedServices.length > 0) {
         const svcInputRes = await reqGet<{ pIServiceExInput: number }>(
-          `IGeneralInvoiceRequest/GetCreateServiceExInput?pIGeneralInvoiceRequest=${req}&bstrTariffType=001`,
+          `IGeneralInvoiceRequest/GetCreateServiceExInput?pIGeneralInvoiceRequest=${req}&bstrTariffType=999`,
         );
         const svcInputHandle = svcInputRes.pIServiceExInput;
 
@@ -1107,7 +1109,7 @@ export async function buildInvoiceRequest(
             {
               pIGeneralInvoiceRequest: req,
               pIServiceExInput: svcInputHandle,
-              bstrTariffType: svc.tariffType,
+              bstrTariffType: "001", // Use actual TARMED tariff type for XML
               bstrCode: svc.code,
               bstrReferenceCode: svc.referenceCode || "",
               dQuantity: svc.quantity,
@@ -1130,7 +1132,7 @@ export async function buildInvoiceRequest(
               dAmount: computedAmountMT,
               dVatRate: svc.vatRate ?? 0,
               bstrRemark: svc.remark || "",
-              eIgnoreValidate: svc.ignoreValidate ?? YesNo.Yes,
+              eIgnoreValidate: YesNo.Yes, // Always ignore validation for TARMED without validator
               lServiceAttributes: svc.serviceAttributes ?? 0,
             },
           );
