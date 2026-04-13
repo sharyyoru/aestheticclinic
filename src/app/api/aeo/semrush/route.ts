@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SEMRUSH_API_KEY = process.env.SEMRUSH_API_KEY || "f9ad9c77fdbd2b57d551867ab800d380";
 const SEMRUSH_BASE_URL = "https://api.semrush.com/";
+const SEMRUSH_BACKLINKS_URL = "https://api.semrush.com/analytics/v1/";
 
 // European databases for aesthetic medicine
 const EU_DATABASES = ["fr", "de", "uk", "ch", "it", "es", "nl", "be", "at"];
@@ -14,8 +15,9 @@ type SemrushReport =
   | "domain_organic"   // Domain organic keywords
   | "domain_organic_organic"; // Competitors
 
-async function fetchSemrush(params: Record<string, string>): Promise<string> {
-  const url = new URL(SEMRUSH_BASE_URL);
+async function fetchSemrush(params: Record<string, string>, isBacklinks = false): Promise<string> {
+  const baseUrl = isBacklinks ? SEMRUSH_BACKLINKS_URL : SEMRUSH_BASE_URL;
+  const url = new URL(baseUrl);
   Object.entries(params).forEach(([key, value]) => {
     url.searchParams.append(key, value);
   });
@@ -159,6 +161,104 @@ export async function POST(request: NextRequest) {
           display_limit: String(limit),
         });
         result = parseSemrushResponse(csv);
+        break;
+      }
+
+      case "backlinks_overview": {
+        // Get backlinks overview for domain
+        const csv = await fetchSemrush({
+          type: "backlinks_overview",
+          target: domain || "aesthetics-ge.ch",
+          target_type: "root_domain",
+          export_columns: "ascore,total,domains_num,urls_num,ips_num,follows_num,nofollows_num,texts_num,images_num",
+        }, true);
+        result = parseSemrushResponse(csv);
+        break;
+      }
+
+      case "backlinks": {
+        // Get list of backlinks
+        const csv = await fetchSemrush({
+          type: "backlinks",
+          target: domain || "aesthetics-ge.ch",
+          target_type: "root_domain",
+          export_columns: "page_ascore,source_url,source_title,target_url,anchor,first_seen,last_seen,nofollow",
+          display_limit: String(limit),
+          display_sort: "page_ascore_desc",
+        }, true);
+        result = parseSemrushResponse(csv);
+        break;
+      }
+
+      case "referring_domains": {
+        // Get referring domains
+        const csv = await fetchSemrush({
+          type: "backlinks_refdomains",
+          target: domain || "aesthetics-ge.ch",
+          target_type: "root_domain",
+          export_columns: "domain_ascore,domain,backlinks_num,ip,first_seen,last_seen",
+          display_limit: String(limit),
+          display_sort: "domain_ascore_desc",
+        }, true);
+        result = parseSemrushResponse(csv);
+        break;
+      }
+
+      case "keyword_deep_analysis": {
+        // Deep analysis for a keyword - combines multiple reports
+        const results: Record<string, unknown> = {};
+
+        // Get keyword overview
+        try {
+          const overviewCsv = await fetchSemrush({
+            type: "phrase_this",
+            phrase: keyword,
+            database,
+            export_columns: "Ph,Nq,Cp,Co,Nr,Td,Kd",
+          });
+          results.overview = parseSemrushResponse(overviewCsv)[0] || null;
+        } catch { results.overview = null; }
+
+        // Get related keywords
+        try {
+          const relatedCsv = await fetchSemrush({
+            type: "phrase_related",
+            phrase: keyword,
+            database,
+            export_columns: "Ph,Nq,Cp,Co,Kd",
+            display_limit: "20",
+            display_sort: "nq_desc",
+          });
+          results.related = parseSemrushResponse(relatedCsv);
+        } catch { results.related = []; }
+
+        // Get questions
+        try {
+          const questionsCsv = await fetchSemrush({
+            type: "phrase_questions",
+            phrase: keyword,
+            database,
+            export_columns: "Ph,Nq,Kd",
+            display_limit: "10",
+            display_sort: "nq_desc",
+          });
+          results.questions = parseSemrushResponse(questionsCsv);
+        } catch { results.questions = []; }
+
+        // Get broad match
+        try {
+          const broadCsv = await fetchSemrush({
+            type: "phrase_fullsearch",
+            phrase: keyword,
+            database,
+            export_columns: "Ph,Nq,Cp,Kd",
+            display_limit: "15",
+            display_sort: "nq_desc",
+          });
+          results.broadMatch = parseSemrushResponse(broadCsv);
+        } catch { results.broadMatch = []; }
+
+        result = results;
         break;
       }
 
