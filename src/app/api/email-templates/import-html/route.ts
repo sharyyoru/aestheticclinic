@@ -21,7 +21,7 @@ export async function GET() {
         // Extract name from filename (remove ID prefix and extension)
         const nameMatch = file.match(/^\d+_(.+)\.html$/);
         const displayName = nameMatch 
-          ? nameMatch[1].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+          ? nameMatch[1].replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
           : file.replace(".html", "");
         
         return {
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         // Extract name from filename
         const nameMatch = filename.match(/^\d+_(.+)\.html$/);
         const templateName = nameMatch
-          ? nameMatch[1].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+          ? nameMatch[1].replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
           : filename.replace(".html", "");
 
         // Extract title from HTML if available
