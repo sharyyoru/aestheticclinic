@@ -1039,14 +1039,14 @@ export async function buildInvoiceRequest(
     }
 
     // --- AddService / AddServiceEx (auto-route based on tariff type) ---
-    // TARDOC (007) MUST use AddServiceEx; TARMED (001) and others use AddService
+    // TARMED (001) and TARDOC (007) MUST use AddServiceEx; others use AddService
     if (input.services && input.services.length > 0) {
-      const simpleServices = input.services.filter(s => s.tariffType !== "007");
+      const simpleServices = input.services.filter(s => s.tariffType !== "007" && s.tariffType !== "001");
+      const tarmedServices = input.services.filter(s => s.tariffType === "001");
       const tardocServices = input.services.filter(s => s.tariffType === "007");
-      console.log(`${LOG_PREFIX} Services: ${input.services.length} total, ${simpleServices.length} simple (incl TARMED), ${tardocServices.length} TARDOC. Types: [${input.services.map(s => s.tariffType).join(",")}]`);
+      console.log(`${LOG_PREFIX} Services: ${input.services.length} total, ${simpleServices.length} simple, ${tarmedServices.length} TARMED, ${tardocServices.length} TARDOC. Types: [${input.services.map(s => s.tariffType).join(",")}]`);
 
-      // Simple tariff services (ACF 005, drugs 402, TARMED 001, other)
-      // For TARMED: use technical points (TP) in unit/amount, not CHF
+      // Simple tariff services (ACF 005, drugs 402, other - NOT TARMED/TARDOC)
       for (const svc of simpleServices) {
         const addRes = await reqPost<{ plID: number; pbStatus: boolean }>(
           "IGeneralInvoiceRequest",
@@ -1072,13 +1072,92 @@ export async function buildInvoiceRequest(
             dVatRate: svc.vatRate ?? 0,
             bstrRemark: svc.remark || "",
             bstrSectionCode: svc.sectionCode || "",
-            eIgnoreValidate: YesNo.Yes, // Always ignore validation (no validator installed)
+            eIgnoreValidate: svc.ignoreValidate ?? YesNo.Yes,
             lServiceAttributes: svc.serviceAttributes ?? 0,
           },
         );
         if (!addRes.pbStatus) {
           const abortInfo = await getAbortInfo(mgr);
-          console.warn(`${LOG_PREFIX} AddService ${svc.tariffType}::${svc.code} rejected: ${abortInfo}`);
+          console.warn(`${LOG_PREFIX} AddService ${svc.code} rejected: ${abortInfo}`);
+        }
+      }
+
+      // TARMED services - use AddServiceEx with TARMED tariffType (001)
+      // Try different approaches to bypass validator requirement
+      if (tarmedServices.length > 0) {
+        // Attempt 1: Try with eIgnoreValidate parameter in URL
+        let svcInputHandle: number | null = null;
+        try {
+          const svcInputRes = await reqGet<{ pIServiceExInput: number }>(
+            `IGeneralInvoiceRequest/GetCreateServiceExInput?pIGeneralInvoiceRequest=${req}&bstrTariffType=001&eIgnoreValidate=1`,
+          );
+          svcInputHandle = svcInputRes.pIServiceExInput;
+          console.log(`${LOG_PREFIX} Created ServiceExInput for TARMED with eIgnoreValidate flag`);
+        } catch (err1) {
+          const errMsg1 = err1 instanceof Error ? err1.message : String(err1);
+          console.log(`${LOG_PREFIX} Attempt 1 failed (eIgnoreValidate in URL): ${errMsg1}`);
+          // Attempt 2: Try standard approach
+          try {
+            const svcInputRes = await reqGet<{ pIServiceExInput: number }>(
+              `IGeneralInvoiceRequest/GetCreateServiceExInput?pIGeneralInvoiceRequest=${req}&bstrTariffType=001`,
+            );
+            svcInputHandle = svcInputRes.pIServiceExInput;
+            console.log(`${LOG_PREFIX} Created ServiceExInput for TARMED (standard)`);
+          } catch (err2) {
+            const errMsg2 = err2 instanceof Error ? err2.message : String(err2);
+            console.error(`${LOG_PREFIX} All attempts failed. Err1: ${errMsg1}, Err2: ${errMsg2}`);
+            throw new Error(`Cannot create ServiceExInput for TARMED. Last error: ${errMsg2}`);
+          }
+        }
+
+        // Initialize the IServiceExInput with physician, patient, treatment data
+        await initServiceExInput(svcInputHandle, input);
+
+        for (const svc of tarmedServices) {
+          // For TARMED: amount is in technical points (TP), not CHF
+          const unitMT = svc.unit ?? 0;
+          const unitFactorMT = svc.unitFactor ?? 1;
+          const extFactorMT = svc.externalFactor ?? 1;
+          const computedAmountMT = Math.round(svc.quantity * unitMT * unitFactorMT * 1 * extFactorMT * 100) / 100;
+          console.log(`${LOG_PREFIX} AddServiceEx TARMED ${svc.code}: qty=${svc.quantity} unitMT=${unitMT} factor=${unitFactorMT} ext=${extFactorMT} => amountMT=${computedAmountMT}`);
+
+          const addRes = await reqPost<{ plID: number; pbStatus: boolean }>(
+            "IGeneralInvoiceRequest",
+            "AddServiceEx",
+            {
+              pIGeneralInvoiceRequest: req,
+              pIServiceExInput: svcInputHandle,
+              bstrTariffType: "001",
+              bstrCode: svc.code,
+              bstrReferenceCode: svc.referenceCode || "",
+              dQuantity: svc.quantity,
+              lSessionNumber: svc.sessionNumber ?? 1,
+              lGroupSize: svc.groupSize ?? 1,
+              dDateBegin: svc.dateBegin,
+              dDateEnd: svc.dateEnd || "0",
+              eSide: svc.side ?? SideType.None,
+              bstrServiceName: svc.serviceName || "",
+              dUnitMT: unitMT,
+              dUnitFactorMT: unitFactorMT,
+              dUnitInternalScalingFactorMT: 1,
+              dUnitExternalScalingFactorMT: extFactorMT,
+              dAmountMT: computedAmountMT,
+              dUnitTT: 0,
+              dUnitFactorTT: 1,
+              dUnitInternalScalingFactorTT: 1,
+              dUnitExternalScalingFactorTT: 1,
+              dAmountTT: 0,
+              dAmount: computedAmountMT,
+              dVatRate: svc.vatRate ?? 0,
+              bstrRemark: svc.remark || "",
+              eIgnoreValidate: YesNo.Yes,
+              lServiceAttributes: svc.serviceAttributes ?? 0,
+            },
+          );
+          if (!addRes.pbStatus) {
+            const abortInfo = await getAbortInfo(mgr);
+            console.warn(`${LOG_PREFIX} AddServiceEx TARMED ${svc.code} rejected: ${abortInfo}`);
+          }
         }
       }
 

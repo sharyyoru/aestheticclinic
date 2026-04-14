@@ -44,6 +44,10 @@ next-env.d.ts
 .wwebjs_auth/
 .wwebjs_cache/
 
+# sumex documentation
+sumex_docs/
+*.chm
+
 #webstorm settings
 .idea
 public/forms/Consentement anesthésie - Aesthetics (2).pdf
