@@ -153,7 +153,7 @@ export async function POST(request: Request) {
             .join("\n");
 
     const systemPrompt =
-      "You are an expert email copywriter for Aesthetics Clinic. You generate clear, concise, empathetic emails for patients. Always output strict JSON.";
+      "You are an expert email copywriter for Aesthetics Clinic. You generate clear, concise, empathetic emails for patients. Always output strict JSON. All prices must be in CHF (Swiss Francs), not any other currency.";
 
     const userPrompt = `
 Write a patient-facing email for a medical clinic workflow.
@@ -175,9 +175,11 @@ Requirements:
 - Do not invent new variables that are not in the list above.
 - The subject should be short, specific, and appropriate for the email.
 - Keep paragraphs concise and well-structured.
+- All prices must be in CHF (Swiss Francs).
+- Include a final paragraph with contact information: "Main Telephone Number: +41 22 732 22 23, Main Email Address: info@aesthetics-ge.ch, Book an appointment: https://aestheticclinic.vercel.app/book-appointment/location"
 
 Example output:
-{"subject": "Your Appointment Confirmation", "paragraphs": ["<p>Dear {{patient.first_name}},</p>", "<p>We're excited to confirm your upcoming appointment.</p>", "<p><strong>Date:</strong> {{appointment.date}}<br><strong>Time:</strong> {{appointment.time}}</p>", "<p>We look forward to seeing you!</p>", "<p>Best regards,<br>The {{clinic.name}} Team</p>"]}
+{"subject": "Your Appointment Confirmation", "paragraphs": ["<p>Dear {{patient.first_name}},</p>", "<p>We're excited to confirm your upcoming appointment.</p>", "<p><strong>Date:</strong> {{appointment.date}}<br><strong>Time:</strong> {{appointment.time}}</p>", "<p>We look forward to seeing you!</p>", "<p>Best regards,<br>The {{clinic.name}} Team</p>", "<p>Main Telephone Number: +41 22 732 22 23<br>Main Email Address: info@aesthetics-ge.ch<br>Book an appointment: https://aestheticclinic.vercel.app/book-appointment/location</p>"]}
 `;
 
     const model = genAI.getGenerativeModel({ 

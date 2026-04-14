@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     }
 
     const systemPrompt =
-      "You are an email assistant for Aesthetics Clinic. You write concise, empathetic, medically appropriate emails to a single patient. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML).";
+      "You are an email assistant for Aesthetics Clinic. You write concise, empathetic, medically appropriate emails to a single patient. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML). All prices must be in CHF (Swiss Francs), not any other currency.";
 
     const userPrompt = `
 We are composing a one-off email to this specific patient.
@@ -115,7 +115,13 @@ ${knowledgebaseContext}
 - Output STRICT JSON only, no markdown, with shape: {"subject": string, "body": string}.
 - 'body' must be plain text suitable for pasting into an email textarea; use paragraphs separated by blank lines.
 - Start with a natural greeting to the patient (for example, "Dear ${firstName || "patient"},").
-- Do NOT include an email signature or clinic contact information; that will be appended separately.
+- All prices must be in CHF (Swiss Francs).
+- After the main content, include this contact footer:
+
+---
+Main Telephone Number: +41 22 732 22 23
+Main Email Address: info@aesthetics-ge.ch
+Book an appointment: https://aestheticclinic.vercel.app/book-appointment/location
 `;
 
     const model = genAI.getGenerativeModel({ 
