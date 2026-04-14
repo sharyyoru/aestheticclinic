@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useAuth } from "@/components/AuthContext";
 
 type PatientData = {
   id: string;
@@ -38,14 +39,26 @@ type PatientMergeModalProps = {
   onSuccess: () => void;
 };
 
+type MergePreview = {
+  primaryPatient: { id: string; name: string; email: string | null };
+  patientsToMerge: { id: string; name: string; email: string | null }[];
+  recordCounts: Record<string, number>;
+  fileCounts: Record<string, number>;
+  totalRecords: number;
+  totalFiles: number;
+};
+
 export default function PatientMergeModal({
   patientIds,
   onClose,
   onSuccess,
 }: PatientMergeModalProps) {
+  const { user } = useAuth();
   const [patients, setPatients] = useState<PatientData[]>([]);
   const [loading, setLoading] = useState(true);
   const [merging, setMerging] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewData, setPreviewData] = useState<MergePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [primaryPatientId, setPrimaryPatientId] = useState<string>("");
   const [mergeSelection, setMergeSelection] = useState<MergeSelection>({
@@ -125,6 +138,41 @@ export default function PatientMergeModal({
     });
   }, [primaryPatientId, patients]);
 
+  async function handlePreview() {
+    if (!primaryPatientId) {
+      setError("Please select a primary patient");
+      return;
+    }
+
+    setPreviewing(true);
+    setError(null);
+    setPreviewData(null);
+
+    try {
+      const response = await fetch("/api/patients/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          primaryPatientId,
+          patientIdsToMerge: patientIds.filter(id => id !== primaryPatientId),
+          preview: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to preview merge");
+      }
+
+      setPreviewData(data.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to preview merge");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   async function handleMerge() {
     if (!primaryPatientId) {
       setError("Please select a primary patient");
@@ -135,6 +183,17 @@ export default function PatientMergeModal({
     setError(null);
 
     try {
+      // Get user's full name
+      let performedByName: string | null = null;
+      if (user) {
+        const { data: userData } = await supabaseClient
+          .from("users")
+          .select("full_name, email")
+          .eq("id", user.id)
+          .single();
+        performedByName = userData?.full_name || userData?.email || null;
+      }
+
       const response = await fetch("/api/patients/merge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -142,6 +201,8 @@ export default function PatientMergeModal({
           primaryPatientId,
           patientIdsToMerge: patientIds.filter(id => id !== primaryPatientId),
           mergedData: mergeSelection,
+          performedByUserId: user?.id,
+          performedByName,
         }),
       });
 
@@ -316,20 +377,119 @@ export default function PatientMergeModal({
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-6 py-3 shrink-0">
           <button
             onClick={onClose}
-            disabled={merging}
+            disabled={merging || previewing}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             Cancel
           </button>
           <button
+            onClick={handlePreview}
+            disabled={merging || previewing || !primaryPatientId}
+            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+          >
+            {previewing ? "Loading Preview..." : "Preview Merge"}
+          </button>
+          <button
             onClick={handleMerge}
-            disabled={merging || !primaryPatientId}
+            disabled={merging || previewing || !primaryPatientId}
             className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
           >
             {merging ? "Merging..." : "Merge Patients"}
           </button>
         </div>
       </div>
+
+      {/* Preview Results Modal */}
+      {previewData && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h3 className="text-sm font-semibold text-slate-900">Merge Preview</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Review what will be merged before proceeding
+              </p>
+            </div>
+            <div className="px-6 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* Summary */}
+              <div className="rounded-lg bg-sky-50 border border-sky-200 p-3">
+                <p className="text-xs font-medium text-sky-900">
+                  Merging {previewData.patientsToMerge.length} patient(s) into{" "}
+                  <span className="font-bold">{previewData.primaryPatient.name}</span>
+                </p>
+                <p className="text-[11px] text-sky-700 mt-1">
+                  {previewData.totalRecords} records and {previewData.totalFiles} files will be transferred
+                </p>
+              </div>
+
+              {/* Records by table */}
+              {Object.keys(previewData.recordCounts).length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-900 mb-2">Records to Merge</h4>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {Object.entries(previewData.recordCounts).map(([table, count]) => (
+                      <div key={table} className="flex items-center justify-between rounded bg-slate-50 px-2 py-1">
+                        <span className="text-[10px] text-slate-600">{table.replace(/_/g, " ")}</span>
+                        <span className="text-[10px] font-medium text-slate-900">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Files by bucket */}
+              {Object.keys(previewData.fileCounts).length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-900 mb-2">Files to Copy</h4>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {Object.entries(previewData.fileCounts).map(([bucket, count]) => (
+                      <div key={bucket} className="flex items-center justify-between rounded bg-emerald-50 px-2 py-1">
+                        <span className="text-[10px] text-emerald-700">{bucket}</span>
+                        <span className="text-[10px] font-medium text-emerald-900">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Patients being merged */}
+              <div>
+                <h4 className="text-xs font-semibold text-slate-900 mb-2">Patients to be Removed</h4>
+                <div className="space-y-1">
+                  {previewData.patientsToMerge.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2 rounded bg-red-50 px-2 py-1.5">
+                      <svg className="h-3.5 w-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      <div>
+                        <p className="text-[11px] font-medium text-red-900">{p.name}</p>
+                        <p className="text-[10px] text-red-600">{p.email || "No email"}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-slate-200 px-6 py-3 flex justify-end gap-2">
+              <button
+                onClick={() => setPreviewData(null)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Close Preview
+              </button>
+              <button
+                onClick={() => {
+                  setPreviewData(null);
+                  handleMerge();
+                }}
+                disabled={merging}
+                className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {merging ? "Merging..." : "Confirm & Merge"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
