@@ -15,6 +15,7 @@ type GeneratePatientEmailRequestBody = {
   patientId?: string;
   description?: string;
   tone?: string;
+  knowledgebaseTopicIds?: string[]; // Optional: knowledgebase topics to include as context
 };
 
 export async function POST(request: Request) {
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
     const patientId = body.patientId?.trim();
     const description = (body.description || "").trim();
     const tone = (body.tone || "professional and reassuring").trim();
+    const knowledgebaseTopicIds = body.knowledgebaseTopicIds || [];
 
     if (!patientId || !description) {
       return NextResponse.json(
@@ -67,6 +69,28 @@ export async function POST(request: Request) {
         ? patientSummaryLines.join("\n")
         : "Basic identity and contact details are not available.";
 
+    // Fetch knowledgebase context if topic IDs are provided
+    let knowledgebaseContext = "";
+    if (knowledgebaseTopicIds.length > 0) {
+      const { data: messages } = await supabaseAdmin
+        .from("knowledge_messages")
+        .select("content, role, knowledge_topics!inner(title)")
+        .in("topic_id", knowledgebaseTopicIds)
+        .order("created_at", { ascending: true });
+
+      if (messages && messages.length > 0) {
+        const contextLines: string[] = [];
+        for (const msg of messages) {
+          const topicTitle = (msg as any).knowledge_topics?.title || "Unknown Topic";
+          const roleLabel = msg.role === "assistant" ? "AI Assistant" : "User";
+          contextLines.push(`[${topicTitle} - ${roleLabel}]:`);
+          contextLines.push(msg.content);
+          contextLines.push("");
+        }
+        knowledgebaseContext = contextLines.join("\n");
+      }
+    }
+
     const systemPrompt =
       "You are an email assistant for Aesthetics Clinic. You write concise, empathetic, medically appropriate emails to a single patient. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML).";
 
@@ -81,7 +105,13 @@ ${description}
 
 Tone: ${tone}.
 
-Requirements:
+${knowledgebaseContext ? `
+RELEVANT KNOWLEDGE BASE CONTEXT:
+Use the following information from the knowledge base to inform your response. This contains relevant clinic policies, procedures, or information that should guide the email content:
+
+${knowledgebaseContext}
+
+` : ""}Requirements:
 - Output STRICT JSON only, no markdown, with shape: {"subject": string, "body": string}.
 - 'body' must be plain text suitable for pasting into an email textarea; use paragraphs separated by blank lines.
 - Start with a natural greeting to the patient (for example, "Dear ${firstName || "patient"},").

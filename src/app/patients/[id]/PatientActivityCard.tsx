@@ -261,6 +261,11 @@ export default function PatientActivityCard({
   const [emailAiLoading, setEmailAiLoading] = useState(false);
   const [emailAiError, setEmailAiError] = useState<string | null>(null);
 
+  // Knowledgebase topic selection for email generation
+  const [emailAiKnowledgeTopics, setEmailAiKnowledgeTopics] = useState<Array<{ id: string; title: string; icon: string; color: string }>>([]);
+  const [selectedEmailAiTopics, setSelectedEmailAiTopics] = useState<string[]>([]);
+  const [emailAiTopicsDropdownOpen, setEmailAiTopicsDropdownOpen] = useState(false);
+
   const [emailFilter, setEmailFilter] = useState<EmailFilter>("inbound");
   const [viewEmail, setViewEmail] = useState<PatientEmail | null>(null);
 
@@ -938,7 +943,33 @@ export default function PatientActivityCard({
     };
   }, []);
 
-  // Handle Escape key to close email modal
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadKnowledgeTopics() {
+      try {
+        const { data: authData } = await supabaseClient.auth.getUser();
+        if (!isMounted || !authData?.user?.id) return;
+
+        const userId = authData.user.id;
+        const response = await fetch(`/api/prompt/topics?userId=${userId}`);
+        const data = await response.json();
+
+        if (isMounted && data.topics) {
+          setEmailAiKnowledgeTopics(data.topics);
+        }
+      } catch {
+        // Silently fail - knowledgebase is optional
+      }
+    }
+
+    loadKnowledgeTopics();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (!emailModalOpen) return;
 
@@ -2202,6 +2233,7 @@ export default function PatientActivityCard({
           patientId,
           description,
           tone: emailAiTone,
+          knowledgebaseTopicIds: selectedEmailAiTopics.length > 0 ? selectedEmailAiTopics : undefined,
         }),
       });
 
@@ -4869,6 +4901,57 @@ export default function PatientActivityCard({
                   placeholder="Describe the goal, key points, and context for this email..."
                   className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
+                {/* Knowledgebase topic selection */}
+                {emailAiKnowledgeTopics.length > 0 && (
+                  <div className="mt-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                      <span className="text-[10px] font-medium text-slate-600">
+                        Optional: Include knowledge from topics
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {selectedEmailAiTopics.length} selected
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setEmailAiTopicsDropdownOpen(!emailAiTopicsDropdownOpen)}
+                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-900 text-left focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      >
+                        {selectedEmailAiTopics.length === 0
+                          ? "Select topics to include..."
+                          : `${selectedEmailAiTopics.length} topic${selectedEmailAiTopics.length > 1 ? 's' : ''} selected`}
+                      </button>
+                      {emailAiTopicsDropdownOpen && (
+                        <div className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                          {emailAiKnowledgeTopics.map((topic) => (
+                            <button
+                              key={topic.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmailAiTopics((prev) =>
+                                  prev.includes(topic.id)
+                                    ? prev.filter((id) => id !== topic.id)
+                                    : [...prev, topic.id]
+                                );
+                              }}
+                              className="flex w-full items-center gap-2 px-2 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                            >
+                              <div className={`h-4 w-4 rounded border ${selectedEmailAiTopics.includes(topic.id) ? "bg-sky-500 border-sky-500" : "border-slate-300"}`}>
+                                {selectedEmailAiTopics.includes(topic.id) && (
+                                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                              </div>
+                              <span className="truncate">{topic.title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <select
                     value={emailAiTone}
