@@ -132,7 +132,78 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, sentTo: recipientEmail.trim() });
+    const nowIso = new Date().toISOString();
+
+    // Get the Message-ID from Mailgun response for tracking
+    let messageId: string | null = null;
+    try {
+      const mailgunResponseData = await mgResponse.json();
+      messageId = mailgunResponseData.id || null;
+    } catch (jsonErr) {
+      console.error("[InvoiceSendEmail] Failed to parse Mailgun response:", jsonErr);
+      // Continue anyway - email was sent successfully
+    }
+
+    // Log email to emails table for patient email history
+    let emailId: string | null = null;
+    try {
+      const { data: insertedEmail } = await supabaseAdmin
+        .from("emails")
+        .insert({
+          patient_id: invoice.patient_id,
+          to_address: recipientEmail.trim(),
+          from_address: fromAddress,
+          subject,
+          body: bodyHtml,
+          direction: "outbound",
+          status: "sent",
+          sent_at: nowIso,
+          message_id: messageId,
+        })
+        .select("id")
+        .single();
+      
+      emailId = insertedEmail?.id || null;
+
+      // Log the PDF attachment to email_attachments table
+      if (emailId && invoice.pdf_path) {
+        try {
+          await supabaseAdmin
+            .from("email_attachments")
+            .insert({
+              email_id: emailId,
+              file_name: pdfFileName,
+              // Prefix with bucket name so the frontend knows which bucket to use
+              storage_path: `invoice-pdfs/${invoice.pdf_path}`,
+              mime_type: "application/pdf",
+              file_size: pdfBlob.size,
+            });
+        } catch (attachErr) {
+          console.error("[InvoiceSendEmail] Failed to log attachment:", attachErr);
+          // Continue anyway
+        }
+      }
+    } catch (emailLogErr) {
+      console.error("[InvoiceSendEmail] Failed to log email:", emailLogErr);
+      // Continue anyway - email was sent successfully
+    }
+
+    // Update email_sent_at timestamp on invoice
+    try {
+      await supabaseAdmin
+        .from("invoices")
+        .update({ email_sent_at: nowIso })
+        .eq("id", invoiceId);
+    } catch (updateErr) {
+      console.error("[InvoiceSendEmail] Failed to update invoice timestamp:", updateErr);
+      // Continue anyway - email was sent successfully
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      sentTo: recipientEmail.trim(),
+      messageId 
+    });
   } catch (err) {
     console.error("[InvoiceSendEmail] Error:", err);
     return NextResponse.json(

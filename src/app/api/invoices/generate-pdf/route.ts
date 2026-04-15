@@ -53,9 +53,13 @@ type ProviderData = {
 };
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  const timings: Record<string, number> = {};
+  
   try {
     const { invoiceId } = await request.json();
-    console.log("PDF generation request received for invoice ID:", invoiceId);
+    console.log(`[TIMING] PDF generation started for invoice ID: ${invoiceId}`);
+    timings.start = 0;
 
     if (!invoiceId) {
       return NextResponse.json(
@@ -65,11 +69,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch invoice with line items
+    const fetchInvoiceStart = Date.now();
     const { data: invoice, error: invoiceError } = await supabaseAdmin
       .from("invoices")
       .select("*")
       .eq("id", invoiceId)
       .single();
+    timings.fetchInvoice = Date.now() - fetchInvoiceStart;
+    console.log(`[TIMING] Fetch invoice: ${timings.fetchInvoice}ms`);
 
     console.log("Invoice query result:", { invoice, invoiceError });
 
@@ -84,11 +91,14 @@ export async function POST(request: NextRequest) {
     const invoiceData = invoice as Invoice;
 
     // Fetch line items
+    const fetchLineItemsStart = Date.now();
     const { data: lineItemsRaw, error: lineItemsError } = await supabaseAdmin
       .from("invoice_line_items")
       .select("*")
       .eq("invoice_id", invoiceId)
       .order("sort_order", { ascending: true });
+    timings.fetchLineItems = Date.now() - fetchLineItemsStart;
+    console.log(`[TIMING] Fetch line items: ${timings.fetchLineItems}ms`);
 
     if (lineItemsError) {
       return NextResponse.json(
@@ -100,11 +110,14 @@ export async function POST(request: NextRequest) {
     const lineItems = (lineItemsRaw || []) as InvoiceLineItem[];
 
     // Fetch patient
+    const fetchPatientStart = Date.now();
     const { data: patient, error: patientError } = await supabaseAdmin
       .from("patients")
       .select("first_name, last_name, dob, street_address, postal_code, town, gender, email, phone")
       .eq("id", invoiceData.patient_id)
       .single();
+    timings.fetchPatient = Date.now() - fetchPatientStart;
+    console.log(`[TIMING] Fetch patient: ${timings.fetchPatient}ms`);
 
     console.log("Patient query result:", { patientId: invoiceData.patient_id, patient, patientError });
 
@@ -117,8 +130,9 @@ export async function POST(request: NextRequest) {
     }
 
     const patientData = patient as PatientData;
-
+    
     // Fetch billing entity (clinic) data
+    const fetchProvidersStart = Date.now();
     let billingEntityData: ProviderData | null = null;
     if (invoiceData.provider_id) {
       const { data: providerRow } = await supabaseAdmin
@@ -139,6 +153,8 @@ export async function POST(request: NextRequest) {
         .single();
       if (staffRow) staffData = staffRow as ProviderData;
     }
+    timings.fetchProviders = Date.now() - fetchProvidersStart;
+    console.log(`[TIMING] Fetch providers: ${timings.fetchProviders}ms`);
 
     // FALLBACK for old invoices: If no doctor_user_id, provider_id was the doctor
     // In old system, the doctor record contained BOTH doctor info AND billing entity info
@@ -156,7 +172,6 @@ export async function POST(request: NextRequest) {
       // So billingEntityData already has the IBAN and address we need
       // No need to fetch a separate billing entity
     }
-
     // ── Detect insurance (Tiers Payant / Tiers Garant) invoice and generate specialized PDF ──
     // Treat as insurance if:
     // 1. There's an actual insurer OR payment method is Insurance
@@ -372,18 +387,31 @@ export async function POST(request: NextRequest) {
       };
 
       // Generate XML + PDF via Sumex1 server
-      const sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true, generationAttributes: pdfGenAttrs });
+      try {
+        const sumexStart = Date.now();
+        console.log(`[TIMING] Starting Sumex1 buildInvoiceRequest (insurance path)...`);
+        const sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true, generationAttributes: pdfGenAttrs });
+        timings.sumexBuildInvoice = Date.now() - sumexStart;
+        console.log(`[TIMING] Sumex1 buildInvoiceRequest completed: ${timings.sumexBuildInvoice}ms`);
 
-      if (!sumexResult.success) {
-        console.error(`[GeneratePDF] Sumex1 FAILED: ${sumexResult.error} / ${sumexResult.abortInfo}`);
-        return NextResponse.json({ 
-          error: "Sumex1 PDF generation failed", 
-          details: sumexResult.error,
-          abortInfo: sumexResult.abortInfo 
-        }, { status: 500 });
-      }
-
-      // Use Sumex1-generated PDF
+        if (!sumexResult.success) {
+          console.error(`[GeneratePDF] Sumex1 FAILED: ${sumexResult.error} / ${sumexResult.abortInfo}`);
+          
+          // Check for server offline error
+          if (sumexResult.error === 'SUMEX_SERVER_OFFLINE') {
+            return NextResponse.json({ 
+              error: "Sumex1 server is offline", 
+              details: "The invoice generation server is currently unavailable. Please contact your system administrator for support.",
+              technicalDetails: "Connection timeout to Sumex server at 34.100.230.253:8080"
+            }, { status: 503 });
+          }
+          
+          return NextResponse.json({ 
+            error: "Sumex1 PDF generation failed", 
+            details: sumexResult.error,
+            abortInfo: sumexResult.abortInfo 
+          }, { status: 500 });
+        }      // Use Sumex1-generated PDF
       if (!sumexResult.pdfContent) {
         console.error(`[GeneratePDF] Sumex1 XML OK but PDF not available`);
         return NextResponse.json({ 
@@ -395,43 +423,72 @@ export async function POST(request: NextRequest) {
       const pdfBuffer = sumexResult.pdfContent;
       console.log(`[GeneratePDF] Sumex1 PDF: ${pdfBuffer.length} bytes, schema=${sumexResult.usedSchema}`);
 
-      const fileName = `invoice-sumex-${invoiceData.invoice_number}-${Date.now()}.pdf`;
+      // Create filename with patient name, invoice number, and timestamp for versioning
+      const patientName = `${patientData.last_name}_${patientData.first_name}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19); // YYYY-MM-DDTHH-MM-SS
+      const fileName = `Facture_${invoiceData.invoice_number}_${patientName}_${timestamp}.pdf`;
       const filePath = `${invoiceData.patient_id}/${fileName}`;
 
+      const uploadStart = Date.now();
       const { error: uploadError } = await supabaseAdmin.storage
         .from("invoice-pdfs")
         .upload(filePath, pdfBuffer, {
           contentType: "application/pdf",
           cacheControl: "3600",
-          upsert: true,
         });
+      timings.uploadPdf = Date.now() - uploadStart;
+      console.log(`[TIMING] Upload PDF to storage: ${timings.uploadPdf}ms`);
 
       if (uploadError) {
         return NextResponse.json({ error: "Failed to upload PDF" }, { status: 500 });
       }
 
+      const updateDbStart = Date.now();
       await supabaseAdmin
         .from("invoices")
         .update({ pdf_path: filePath, pdf_generated_at: new Date().toISOString() })
         .eq("id", invoiceId);
+      timings.updateDb = Date.now() - updateDbStart;
+      console.log(`[TIMING] Update database: ${timings.updateDb}ms`);
 
       const { data: publicUrlData } = supabaseAdmin.storage
         .from("invoice-pdfs")
         .getPublicUrl(filePath);
+
+      timings.total = Date.now() - startTime;
+      console.log(`[TIMING] ===== TOTAL PDF GENERATION TIME: ${timings.total}ms =====`);
+      console.log(`[TIMING] Breakdown:`, JSON.stringify(timings, null, 2));
 
       return NextResponse.json({
         success: true,
         pdfUrl: publicUrlData.publicUrl,
         pdfPath: filePath,
         qrCodeType: "sumex1",
+        timings, // Include timing data in response for analysis
         sumex1Schema: sumexResult.usedSchema,
       });
+      } catch (sumexErr: any) {
+        console.error(`[GeneratePDF] Sumex1 insurance error:`, sumexErr);
+        
+        // Check for server offline error
+        if (sumexErr?.message === 'SUMEX_SERVER_OFFLINE') {
+          return NextResponse.json({ 
+            error: "Sumex1 server is offline", 
+            details: "The invoice generation server is currently unavailable. Please contact your system administrator for support.",
+            technicalDetails: "Connection timeout to Sumex server at 34.100.230.253:8080"
+          }, { status: 503 });
+        }
+        
+        return NextResponse.json({ 
+          error: "Sumex1 PDF generation error", 
+          details: String(sumexErr) 
+        }, { status: 500 });
+      }
     }
 
     // ── Try Sumex1 for cash/card/bank/online invoices too (unified template) ──
     {
       console.log(`[GeneratePDF] Non-insurance invoice (${invoiceData.payment_method}) — attempting Sumex1 unified template (TG mode, no insurance)`);
-
       // Auto-create Payrexx gateway for online/card/cash invoices that don't have one yet
       const pmLower = (invoiceData.payment_method || "").toLowerCase();
       const needsPayrexx = (pmLower.includes("online") || pmLower.includes("card") || pmLower.includes("cash")) && !invoiceData.payrexx_payment_link;
@@ -636,7 +693,11 @@ export async function POST(request: NextRequest) {
       };
 
       try {
+        const sumexStart = Date.now();
+        console.log(`[TIMING] Starting Sumex1 buildInvoiceRequest (non-insurance path)...`);
         const sumexResult2 = await buildInvoiceRequest(sumexInput2, { generatePdf: true, generationAttributes: pdfGenAttrs2 });
+        timings.sumexBuildInvoice = Date.now() - sumexStart;
+        console.log(`[TIMING] Sumex1 buildInvoiceRequest completed: ${timings.sumexBuildInvoice}ms`);
 
         if (sumexResult2.success && sumexResult2.pdfContent) {
           // Overlay Payrexx QR for Online and Card payments (both use Payrexx gateway)
@@ -709,9 +770,12 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          const fileName = `invoice-sumex-${invoiceData.invoice_number}-${Date.now()}.pdf`;
+          // Create filename with patient name, invoice number, and timestamp for versioning
+          const patientName = `${patientData.last_name}_${patientData.first_name}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19); // YYYY-MM-DDTHH-MM-SS
+          const fileName = `Facture_${invoiceData.invoice_number}_${patientName}_${timestamp}.pdf`;
           const filePath = `${invoiceData.patient_id}/${fileName}`;
-          const { error: uploadError } = await supabaseAdmin.storage.from("invoice-pdfs").upload(filePath, finalPdfBuffer, { contentType: "application/pdf", cacheControl: "3600", upsert: true });
+          const { error: uploadError } = await supabaseAdmin.storage.from("invoice-pdfs").upload(filePath, finalPdfBuffer, { contentType: "application/pdf", cacheControl: "3600" });
           if (!uploadError) {
             await supabaseAdmin.from("invoices").update({ pdf_path: filePath, pdf_generated_at: new Date().toISOString() }).eq("id", invoiceId);
             const { data: publicUrlData } = supabaseAdmin.storage.from("invoice-pdfs").getPublicUrl(filePath);
@@ -725,13 +789,33 @@ export async function POST(request: NextRequest) {
           }
         } else {
           console.error(`[GeneratePDF] Sumex1 unified failed: ${sumexResult2.error}`);
+          
+          // Check for server offline error
+          if (sumexResult2.error === 'SUMEX_SERVER_OFFLINE') {
+            return NextResponse.json({ 
+              error: "Sumex1 server is offline", 
+              details: "The invoice generation server is currently unavailable. Please contact your system administrator for support.",
+              technicalDetails: "Connection timeout to Sumex server at 34.100.230.253:8080"
+            }, { status: 503 });
+          }
+          
           return NextResponse.json({ 
             error: "Sumex1 PDF generation failed", 
             details: sumexResult2.error 
           }, { status: 500 });
         }
-      } catch (sumex2Err) {
+      } catch (sumex2Err: any) {
         console.error(`[GeneratePDF] Sumex1 unified error:`, sumex2Err);
+        
+        // Check for server offline error
+        if (sumex2Err?.message === 'SUMEX_SERVER_OFFLINE') {
+          return NextResponse.json({ 
+            error: "Sumex1 server is offline", 
+            details: "The invoice generation server is currently unavailable. Please contact your system administrator for support.",
+            technicalDetails: "Connection timeout to Sumex server at 34.100.230.253:8080"
+          }, { status: 503 });
+        }
+        
         return NextResponse.json({ 
           error: "Sumex1 PDF generation error", 
           details: String(sumex2Err) 

@@ -1065,10 +1065,31 @@ export default function PatientActivityCard({
 
         const attachments: EmailAttachment[] = (data as any[]).map((row) => {
           const path = (row.storage_path as string) || "";
+          let publicUrl: string | null = null;
+          
           // If storage_path is already a full URL (e.g. from patient_document bucket), use it directly
-          const publicUrl = path.startsWith("https://") || path.startsWith("http://")
-            ? path
-            : supabaseClient.storage.from("email-attachments").getPublicUrl(path).data?.publicUrl ?? null;
+          if (path.startsWith("https://") || path.startsWith("http://")) {
+            publicUrl = path;
+          } else if (path.includes("/")) {
+            // Check if path has bucket prefix (e.g., "invoice-pdfs/path/to/file.pdf")
+            const parts = path.split("/");
+            const possibleBucket = parts[0];
+            const restOfPath = parts.slice(1).join("/");
+            
+            // List of known buckets
+            const knownBuckets = ["invoice-pdfs", "email-attachments", "patient-documents"];
+            
+            if (knownBuckets.includes(possibleBucket) && restOfPath) {
+              // Use the specified bucket
+              publicUrl = supabaseClient.storage.from(possibleBucket).getPublicUrl(restOfPath).data?.publicUrl ?? null;
+            } else {
+              // Default to email-attachments bucket
+              publicUrl = supabaseClient.storage.from("email-attachments").getPublicUrl(path).data?.publicUrl ?? null;
+            }
+          } else {
+            // No slash, assume email-attachments bucket
+            publicUrl = supabaseClient.storage.from("email-attachments").getPublicUrl(path).data?.publicUrl ?? null;
+          }
 
           let size: number | null = null;
           const rawSize = (row.file_size ?? null) as number | string | null;

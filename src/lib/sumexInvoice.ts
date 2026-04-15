@@ -469,15 +469,27 @@ export type SumexInvoiceInput = {
 async function reqGet<T = Record<string, unknown>>(path: string): Promise<T> {
   const url = `${SUMEX_REQUEST_BASE_URL}/${path}`;
   console.log(`${LOG_PREFIX} GET ${path}`);
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) {
-    const err = await res.text().catch(() => "");
-    console.error(`${LOG_PREFIX} GET ${path} FAILED: ${res.status} ${err}`);
-    throw new Error(`Sumex Request GET ${path} failed: ${res.status} ${err}`);
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      console.error(`${LOG_PREFIX} GET ${path} FAILED: ${res.status} ${err}`);
+      throw new Error(`Sumex Request GET ${path} failed: ${res.status} ${err}`);
+    }
+    const data = await res.json() as T;
+    console.log(`${LOG_PREFIX} GET ${path} OK`);
+    return data;
+  } catch (error: any) {
+    // Check for connection/timeout errors
+    if (error.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' || 
+        error.cause?.code === 'ECONNREFUSED' ||
+        error.message?.includes('fetch failed') ||
+        error.message?.includes('ECONNREFUSED')) {
+      console.error(`${LOG_PREFIX} Sumex server connection failed:`, error);
+      throw new Error('SUMEX_SERVER_OFFLINE');
+    }
+    throw error;
   }
-  const data = await res.json() as T;
-  console.log(`${LOG_PREFIX} GET ${path} OK`);
-  return data;
 }
 
 async function reqPost<T = Record<string, unknown>>(
@@ -515,6 +527,17 @@ async function reqPost<T = Record<string, unknown>>(
       console.error(`${LOG_PREFIX} POST ${iface}/${method} JSON parse failed: textLen=${text.length}, first200=${text.slice(0, 200)}, last200=${text.slice(-200)}`);
       throw parseErr;
     }
+  } catch (error: any) {
+    // Check for connection/timeout errors
+    if (error.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' || 
+        error.cause?.code === 'ECONNREFUSED' ||
+        error.message?.includes('fetch failed') ||
+        error.message?.includes('ECONNREFUSED') ||
+        error.name === 'AbortError') {
+      console.error(`${LOG_PREFIX} Sumex server connection failed:`, error);
+      throw new Error('SUMEX_SERVER_OFFLINE');
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -779,9 +802,16 @@ export async function buildInvoiceRequest(
     generationAttributes?: number;
   },
 ): Promise<SumexBuildResult> {
+  const buildStart = Date.now();
+  const timings: Record<string, number> = {};
+  
   // Always create a fresh session for each invoice build
   console.log(`${LOG_PREFIX} buildInvoiceRequest starting — invoiceId=${input.invoiceId}`);
+  const sessionStart = Date.now();
   const session = await createRequestSession();
+  timings.createSession = Date.now() - sessionStart;
+  console.log(`${LOG_PREFIX} [TIMING] Create session: ${timings.createSession}ms`);
+  
   const mgr = session.managerHandle;
   const req = session.requestHandle!;
   const addr = session.addressHandle!;
@@ -1296,11 +1326,14 @@ export async function buildInvoiceRequest(
     });
 
     // --- Finalize ---
+    const finalizeStart = Date.now();
     const finalRes = await reqPost<{ pdRoundDifference: number; pbStatus: boolean }>(
       "IGeneralInvoiceRequest",
       "Finalize",
       { pIGeneralInvoiceRequest: req },
     );
+    timings.finalize = Date.now() - finalizeStart;
+    console.log(`${LOG_PREFIX} [TIMING] Finalize: ${timings.finalize}ms`);
     console.log(`${LOG_PREFIX} Finalize result: status=${finalRes.pbStatus}, roundDiff=${finalRes.pdRoundDifference}`);
     if (!finalRes.pbStatus) {
       const abortInfo = await getAbortInfo(mgr);
@@ -1317,6 +1350,7 @@ export async function buildInvoiceRequest(
     }
 
     // --- GetXML ---
+    const getXmlStart = Date.now();
     // Use raw fetch with retry for GetXML — the Sumex1 server sometimes returns
     // empty body on first attempt (especially for TARDOC/extended services).
     const genAttrs = options?.generationAttributes ?? GenerationAttribute.None;
@@ -1377,6 +1411,8 @@ export async function buildInvoiceRequest(
         clearTimeout(tmout);
       }
     }
+    timings.getXml = Date.now() - getXmlStart;
+    console.log(`${LOG_PREFIX} [TIMING] GetXML: ${timings.getXml}ms`);
 
     if (!xmlRes!.pbStatus) {
       const abortInfo = await getAbortInfo(mgr);
@@ -1432,6 +1468,7 @@ export async function buildInvoiceRequest(
 
     // --- Print / PDF (optional) ---
     if (options?.generatePdf) {
+      const printStart = Date.now();
       console.log(`${LOG_PREFIX} Print/PDF generation requested`);
       try {
         const pdfTemplate = options.pdfPath
@@ -1457,7 +1494,11 @@ export async function buildInvoiceRequest(
         if (printRes.pbStatus && printRes.pbstrPDFFile) {
           result.pdfFilePath = printRes.pbstrPDFFile;
           console.log(`${LOG_PREFIX} Print OK: pdfFile=${printRes.pbstrPDFFile}`);
+          timings.print = Date.now() - printStart;
+          console.log(`${LOG_PREFIX} [TIMING] Print API call: ${timings.print}ms`);
+          
           // Download the PDF content from the server
+          const downloadStart = Date.now();
           try {
             const baseOrigin = new URL(SUMEX_REQUEST_BASE_URL).origin;
             const pdfUrl = `${baseOrigin}${printRes.pbstrPDFFile}`;
@@ -1466,6 +1507,8 @@ export async function buildInvoiceRequest(
             if (pdfRes.ok) {
               const arrayBuf = await pdfRes.arrayBuffer();
               result.pdfContent = Buffer.from(arrayBuf);
+              timings.downloadPdf = Date.now() - downloadStart;
+              console.log(`${LOG_PREFIX} [TIMING] Download PDF: ${timings.downloadPdf}ms`);
               console.log(`${LOG_PREFIX} PDF downloaded: ${result.pdfContent.length} bytes`);
             } else {
               console.warn(`${LOG_PREFIX} PDF download failed: ${pdfRes.status}`);
@@ -1481,6 +1524,10 @@ export async function buildInvoiceRequest(
         console.warn(`${LOG_PREFIX} Print/PDF generation failed:`, e);
       }
     }
+
+    timings.totalBuildInvoice = Date.now() - buildStart;
+    console.log(`${LOG_PREFIX} [TIMING] ===== Total buildInvoiceRequest: ${timings.totalBuildInvoice}ms =====`);
+    console.log(`${LOG_PREFIX} [TIMING] Breakdown:`, JSON.stringify(timings, null, 2));
 
     return result;
   } catch (error) {

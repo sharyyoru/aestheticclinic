@@ -77,6 +77,8 @@ type ConsultationRow = {
   invoice_paid_amount: number | null;
   cash_receipt_path: string | null;
   invoice_pdf_path: string | null;
+  invoice_number: string | null;
+  email_sent_at: string | null;
   payment_link_token: string | null;
   payrexx_payment_link: string | null;
   payrexx_payment_status: string | null;
@@ -469,6 +471,7 @@ export default function MedicalConsultationsCard({
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [generatedPaymentLink, setGeneratedPaymentLink] = useState<{ consultationId: string; url: string } | null>(null);
   const [paymentLinkCopied, setPaymentLinkCopied] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
 
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
@@ -893,7 +896,7 @@ export default function MedicalConsultationsCard({
         const { data: invoiceData, error: invoiceError } = await supabaseClient
           .from("invoices")
           .select(
-            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, provider_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, title, reference_number",
+            "id, patient_id, consultation_id, invoice_number, invoice_date, treatment_date, doctor_user_id, doctor_name, provider_name, payment_method, total_amount, subtotal, paid_amount, status, is_complimentary, cash_receipt_path, pdf_path, email_sent_at, payment_link_token, payrexx_payment_link, payrexx_payment_status, created_by_user_id, created_by_name, is_archived, title, reference_number",
           )
           .eq("patient_id", patientId)
           .eq("is_archived", showArchived ? true : false)
@@ -948,6 +951,8 @@ export default function MedicalConsultationsCard({
             invoice_paid_amount: inv.paid_amount ?? null,
             cash_receipt_path: inv.cash_receipt_path ?? null,
             invoice_pdf_path: inv.pdf_path ?? null,
+            invoice_number: inv.invoice_number ?? null,
+            email_sent_at: inv.email_sent_at ?? null,
             payment_link_token: inv.payment_link_token ?? null,
             payrexx_payment_link: inv.payrexx_payment_link ?? null,
             payrexx_payment_status: inv.payrexx_payment_status ?? null,
@@ -964,7 +969,6 @@ export default function MedicalConsultationsCard({
             medidata_status: null,
           };
         });
-
         // 4a) Link consultations to their invoices (invoices.consultation_id → consultations.id)
         const consultationIdsForLinking = nonInvoiceRows.map((r) => r.id);
         if (consultationIdsForLinking.length > 0 && invoiceData && invoiceData.length > 0) {
@@ -2188,11 +2192,30 @@ export default function MedicalConsultationsCard({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to generate PDF");
+        // Check for server offline error (503)
+        if (response.status === 503 || data.error?.includes("offline")) {
+          throw new Error(data.details || "Invoice server is currently offline. Please contact your system administrator for support.");
+        }
+        throw new Error(data.error || data.details || "Failed to generate PDF");
       }
 
+      // Download PDF directly instead of opening in new tab
       if (data.pdfUrl && typeof window !== "undefined") {
-        window.open(data.pdfUrl, "_blank", "noopener,noreferrer");
+        const pdfResponse = await fetch(data.pdfUrl);
+        const blob = await pdfResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        
+        // Extract filename from the URL path (server already generates proper name)
+        const urlPath = new URL(data.pdfUrl).pathname;
+        const serverFilename = urlPath.split('/').pop() || `Facture_${invoiceId.slice(0, 8)}.pdf`;
+        a.download = serverFilename;
+        
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
       }
 
       if (data.paymentUrl) {
@@ -2212,7 +2235,7 @@ export default function MedicalConsultationsCard({
       }
 
       setGeneratingPdf(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating PDF:", error);
       setPdfError(error instanceof Error ? error.message : "Failed to generate PDF");
       setGeneratingPdf(null);
@@ -2232,6 +2255,119 @@ export default function MedicalConsultationsCard({
     } catch (error) {
       console.error("Error viewing PDF:", error);
       alert("Failed to load PDF. Please try again.");
+    }
+  }
+
+  async function handleDownloadPdf(pdfPath: string) {
+    try {
+      const { data } = supabaseClient.storage
+        .from("invoice-pdfs")
+        .getPublicUrl(pdfPath);
+      
+      if (data?.publicUrl) {
+        const response = await fetch(data.publicUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        // Extract filename from path
+        const filename = pdfPath.split('/').pop() || 'invoice.pdf';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error("Error downloading PDF:", error);
+      alert("Failed to download PDF. Please try again.");
+    }
+  }
+
+  async function handleSendEmail(invoiceId: string, invoiceNumber: string, pdfPath: string | null) {
+    if (!patientEmail) {
+      alert("Patient has no email address.");
+      return;
+    }
+    if (!pdfPath) {
+      alert("Please generate the PDF first.");
+      return;
+    }
+
+    setSendingEmail(invoiceId);
+    try {
+      const res = await fetch("/api/invoices/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId, recipientEmail: patientEmail }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Show success toast instead of alert
+        const toast = document.createElement("div");
+        toast.className = "fixed top-4 right-4 z-50 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg";
+        toast.innerHTML = `
+          <div class="flex items-center gap-2">
+            <svg class="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Email sent to ${patientEmail}</span>
+          </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.transition = "opacity 0.3s";
+          toast.style.opacity = "0";
+          setTimeout(() => document.body.removeChild(toast), 300);
+        }, 3000);
+        
+        // Update local state to show email sent timestamp immediately
+        setConsultations((prev) =>
+          prev.map((row) =>
+            row.id === invoiceId
+              ? { ...row, email_sent_at: new Date().toISOString() }
+              : row,
+          ),
+        );
+      } else {
+        // Show error toast
+        const toast = document.createElement("div");
+        toast.className = "fixed top-4 right-4 z-50 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg";
+        toast.innerHTML = `
+          <div class="flex items-center gap-2">
+            <svg class="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <span>Failed: ${data.error || "Unknown error"}</span>
+          </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.transition = "opacity 0.3s";
+          toast.style.opacity = "0";
+          setTimeout(() => document.body.removeChild(toast), 300);
+        }, 4000);
+      }
+    } catch (error) {
+      console.error("Error sending email:", error);
+      const toast = document.createElement("div");
+      toast.className = "fixed top-4 right-4 z-50 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg";
+      toast.innerHTML = `
+        <div class="flex items-center gap-2">
+          <svg class="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          <span>Failed to send email</span>
+        </div>
+      `;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = "opacity 0.3s";
+        toast.style.opacity = "0";
+        setTimeout(() => document.body.removeChild(toast), 300);
+      }, 4000);
+    } finally {
+      setSendingEmail(null);
     }
   }
 
@@ -6460,6 +6596,31 @@ export default function MedicalConsultationsCard({
               No consultations found.
             </div>
           ) : (
+            <>
+              {/* PDF Generation Error Display */}
+              {pdfError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 mb-3">
+                  <div className="flex items-start gap-2">
+                    <svg className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="font-medium">PDF Generation Error</p>
+                      <p className="mt-1">{pdfError}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPdfError(null)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+              
             <div className="space-y-3">
               {filteredSortedConsultations.map((row) => {
                 const scheduled = row.scheduled_at
@@ -6921,10 +7082,20 @@ export default function MedicalConsultationsCard({
                           {/* Invoice actions */}
                           <div className="flex flex-wrap items-center gap-1.5">
                             {linkedInvoice.invoice_pdf_path ? (
-                              <button type="button" onClick={() => handleViewPdf(linkedInvoice.invoice_pdf_path!)} className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 transition-colors">
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                View PDF
-                              </button>
+                              <>
+                                <button type="button" onClick={() => handleViewPdf(linkedInvoice.invoice_pdf_path!)} className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 transition-colors">
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                  View PDF
+                                </button>
+                                <button type="button" onClick={() => handleDownloadPdf(linkedInvoice.invoice_pdf_path!)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors">
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                  Download
+                                </button>
+                                <button type="button" onClick={() => handleSendEmail(linkedInvoice.id, linkedInvoice.linked_invoice_number || linkedInvoice.consultation_id, linkedInvoice.invoice_pdf_path)} disabled={sendingEmail === linkedInvoice.id} className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50">
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                  {sendingEmail === linkedInvoice.id ? "Sending..." : "Send Email"}
+                                </button>
+                              </>
                             ) : null}
                             <button type="button" onClick={() => handleGenerateInvoicePdf(linkedInvoice.id)} disabled={generatingPdf === linkedInvoice.id} className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-medium text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50">
                               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -7045,15 +7216,43 @@ export default function MedicalConsultationsCard({
                           <div className="flex flex-wrap items-center gap-1.5">
                             {/* Document group */}
                             {row.invoice_pdf_path ? (
-                              <button
-                                type="button"
-                                onClick={() => handleViewPdf(row.invoice_pdf_path!)}
-                                className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
-                              >
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                View PDF
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewPdf(row.invoice_pdf_path!)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                  View PDF
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadPdf(row.invoice_pdf_path!)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                  Download
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendEmail(row.id, row.invoice_number || row.consultation_id, row.invoice_pdf_path)}
+                                  disabled={sendingEmail === row.id}
+                                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                  {sendingEmail === row.id ? "Sending..." : "Send Email"}
+                                </button>
+                              </>
                             ) : null}
+                            
+                            {/* Email sent timestamp */}
+                            {row.email_sent_at && (
+                              <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] text-slate-600">
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                Sent {new Date(row.email_sent_at).toLocaleDateString()}
+                              </span>
+                            )}
+                            
                             <button
                               type="button"
                               onClick={() => handleGenerateInvoicePdf(row.id)}
@@ -7063,7 +7262,6 @@ export default function MedicalConsultationsCard({
                               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                               {generatingPdf === row.id ? "Generating..." : row.invoice_pdf_path ? "Regenerate PDF" : "Generate PDF"}
                             </button>
-
                             {/* Generate Receipt — only for paid/partial statuses */}
                             {(effectiveStatus === "PAID" || effectiveStatus === "PARTIAL_PAID" || effectiveStatus === "PARTIAL_LOSS" || effectiveStatus === "OVERPAID") && (
                               <button
@@ -7201,6 +7399,7 @@ export default function MedicalConsultationsCard({
                 );
               })}
             </div>
+            </>
           )}
         </div>
       </div>
@@ -7407,16 +7606,34 @@ export default function MedicalConsultationsCard({
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
               <h3 className="text-sm font-semibold text-slate-900">Invoice PDF</h3>
               <div className="flex items-center gap-2">
-                <a
-                  href={pdfViewerUrl}
-                  download
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(pdfViewerUrl);
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      // Extract filename from URL or use default
+                      const urlPath = new URL(pdfViewerUrl).pathname;
+                      const filename = urlPath.split('/').pop() || 'invoice.pdf';
+                      a.download = filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (error) {
+                      console.error('Download failed:', error);
+                      alert('Failed to download PDF. Please try again.');
+                    }
+                  }}
                   className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   Download
-                </a>
+                </button>
                 <button
                   onClick={() => {
                     setPdfViewerOpen(false);

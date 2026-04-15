@@ -252,7 +252,12 @@ export default function InvoicesPage() {
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      console.log('Selection updated:', next.size, 'items selected');
       return next;
     });
   };
@@ -269,9 +274,27 @@ export default function InvoicesPage() {
   // Actions
   // ---------------------------------------------------------------------------
 
-  const handleViewPdf = (pdfPath: string) => {
-    const { data } = supabaseClient.storage.from("invoice-pdfs").getPublicUrl(pdfPath);
-    if (data?.publicUrl) window.open(data.publicUrl, "_blank");
+  const handleViewPdf = async (pdfPath: string) => {
+    try {
+      const { data } = supabaseClient.storage.from("invoice-pdfs").getPublicUrl(pdfPath);
+      if (data?.publicUrl) {
+        const response = await fetch(data.publicUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        // Extract filename from path
+        const filename = pdfPath.split('/').pop() || 'invoice.pdf';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error('Download failed:', error);
+      alert('Failed to download PDF. Please try again.');
+    }
   };
 
   const handleGeneratePdf = async (invoiceId: string) => {
@@ -300,7 +323,6 @@ export default function InvoicesPage() {
     const email = patientEmail(invoice.patient_id);
     if (!email) { alert("Patient has no email address."); return; }
     if (!invoice.pdf_path) { alert("Please generate the PDF first."); return; }
-    if (!confirm(`Send invoice ${invoice.invoice_number} to ${email}?`)) return;
 
     setSendingEmail(prev => new Set(prev).add(invoice.id));
     try {
@@ -311,12 +333,59 @@ export default function InvoicesPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Email sent to ${email}`);
+        // Show success toast
+        const toast = document.createElement("div");
+        toast.className = "fixed top-4 right-4 z-50 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-lg";
+        toast.innerHTML = `
+          <div class="flex items-center gap-2">
+            <svg class="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Email sent to ${email}</span>
+          </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.transition = "opacity 0.3s";
+          toast.style.opacity = "0";
+          setTimeout(() => document.body.removeChild(toast), 300);
+        }, 3000);
       } else {
-        alert("Failed: " + (data.error || "Unknown error"));
+        // Show error toast
+        const toast = document.createElement("div");
+        toast.className = "fixed top-4 right-4 z-50 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg";
+        toast.innerHTML = `
+          <div class="flex items-center gap-2">
+            <svg class="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            <span>Failed: ${data.error || "Unknown error"}</span>
+          </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.transition = "opacity 0.3s";
+          toast.style.opacity = "0";
+          setTimeout(() => document.body.removeChild(toast), 300);
+        }, 4000);
       }
     } catch {
-      alert("Failed to send email");
+      const toast = document.createElement("div");
+      toast.className = "fixed top-4 right-4 z-50 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg";
+      toast.innerHTML = `
+        <div class="flex items-center gap-2">
+          <svg class="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          <span>Failed to send email</span>
+        </div>
+      `;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = "opacity 0.3s";
+        toast.style.opacity = "0";
+        setTimeout(() => document.body.removeChild(toast), 300);
+      }, 4000);
     } finally {
       setSendingEmail(prev => { const n = new Set(prev); n.delete(invoice.id); return n; });
     }
