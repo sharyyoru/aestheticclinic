@@ -357,12 +357,34 @@ export async function POST(request: NextRequest) {
     const serviceId = matchedService?.id || null;
     const finalServiceInterest = matchedService?.name || serviceInterest;
 
-    console.log(`Service interest "${serviceInterest}" matched to HubSpot service: ${matchedService?.name || "None"}`);
+    console.log(`[Zapier Facebook Leads] Service matching:`, {
+      input: serviceInterest,
+      matched: matchedService?.name || "None",
+      serviceId: serviceId,
+      totalHubspotServices: hubspotServices.length
+    });
 
-    // Check if deal already exists for this patient with same service (within 6 hours)
+    // Generate deal title (used for deduplication)
+    const dealTitle = `${firstName} ${lastName} - ${finalServiceInterest}`;
+
+    // Check if deal with this exact title AND matching patient name already exists (within 24 hours)
+    // This prevents both duplicate deals AND duplicate patients
     const dealCheck = await shouldCreateDeal(supabaseAdmin, {
-      patientId,
-      serviceId: serviceId || undefined,
+      title: dealTitle,
+      patientFirstName: firstName,
+      patientLastName: lastName,
+    });
+
+    console.log(`[Zapier Facebook Leads] Deal deduplication check:`, {
+      title: dealTitle,
+      patientName: `${firstName} ${lastName}`,
+      shouldCreate: dealCheck.shouldCreate,
+      existingDeal: dealCheck.shouldCreate ? null : {
+        id: dealCheck.existingDeal.id,
+        patientId: dealCheck.existingDeal.patient_id,
+        patientName: `${dealCheck.existingDeal.patient_first_name} ${dealCheck.existingDeal.patient_last_name}`,
+        createdAt: dealCheck.existingDeal.created_at
+      }
     });
 
     let dealId: string | null = null;
@@ -373,7 +395,7 @@ export async function POST(request: NextRequest) {
         .from("deals")
         .insert({
           patient_id: patientId,
-          title: `${firstName} ${lastName} - ${finalServiceInterest}`,
+          title: dealTitle,
           pipeline: "Lead to Surgery",
           stage_id: defaultStageId,
           service_id: serviceId,

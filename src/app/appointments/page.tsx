@@ -1133,6 +1133,7 @@ export default function CalendarPage() {
     "Mounia Khedir",
     "Vladimir Facturation",
     "Liridona Demiri",
+    "Operation Room",
     "Burbuqe Fazliu",
     "Assistante",
     "Yosra",

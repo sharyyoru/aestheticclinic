@@ -140,7 +140,7 @@ export default function RootLayout({
                         <path d="M16 3v4M8 3v4M3 11h18" />
                       </svg>
                     </span>
-                    <span>Calendar</span>
+                    <span>Agenda</span>
                   </Link>
                 </div>
                 <div className="border-b border-slate-100/80">

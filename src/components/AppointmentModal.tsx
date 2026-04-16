@@ -472,17 +472,6 @@ export default function AppointmentModal({
               <label className="flex items-center gap-3">
                 <input
                   type="checkbox"
-                  checked={sendUserEmail}
-                  onChange={(e) => setSendUserEmail(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-sm text-slate-700">
-                  Send notification email to me
-                </span>
-              </label>
-              <label className="flex items-center gap-3">
-                <input
-                  type="checkbox"
                   checked={scheduleReminder}
                   onChange={(e) => setScheduleReminder(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
