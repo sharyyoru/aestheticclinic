@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/medidata-poll",
       "schedule": "0 */12 * * *"
+    },
+    {
+      "path": "/api/cron/process-webhook-queue",
+      "schedule": "* * * * *"
     }
   ],
   "headers": [

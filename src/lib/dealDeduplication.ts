@@ -146,9 +146,9 @@ export async function shouldCreateDeal(
     return { shouldCreate: false, existingDeal };
   }
 
-  // Add a small random delay (0-200ms) to stagger concurrent requests
+  // Add a small random delay (0-500ms) to stagger concurrent requests
   // This helps prevent race conditions when multiple webhooks arrive simultaneously
-  const randomDelay = Math.floor(Math.random() * 200);
+  const randomDelay = Math.floor(Math.random() * 500);
   await new Promise(resolve => setTimeout(resolve, randomDelay));
 
   // Check again after delay to catch deals created by concurrent requests
