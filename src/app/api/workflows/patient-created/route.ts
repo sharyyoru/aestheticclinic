@@ -244,6 +244,65 @@ export async function POST(request: Request) {
             });
           }
         }
+
+        if (actionType === "trigger_retell_call") {
+          // Trigger Retell AI call
+          try {
+            const url = new URL(request.url);
+            const baseUrl = `${url.protocol}//${url.host}`;
+
+            const callResponse = await fetch(`${baseUrl}/api/workflows/trigger-retell-call`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                patient_id: patient.id,
+                phone_number: patient.phone || config.phone_number,
+                agent_id: config.agent_id || null,
+                dynamic_variables: {
+                  ...config.dynamic_variables,
+                  service_interest: config.service_name || "",
+                },
+                metadata: {
+                  workflow_id: workflow.id,
+                  workflow_name: workflow.name,
+                  enrollment_id: enrollmentId,
+                },
+              }),
+            });
+
+            if (callResponse.ok) {
+              const callResult = await callResponse.json();
+              actionsRun += 1;
+
+              if (enrollmentId) {
+                await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                  enrollment_id: enrollmentId,
+                  step_type: "action",
+                  step_action: "trigger_retell_call",
+                  step_config: config,
+                  status: "completed",
+                  executed_at: new Date().toISOString(),
+                  result: { call_id: callResult.call?.call_id },
+                });
+              }
+            } else {
+              throw new Error(`Retell API error: ${callResponse.status}`);
+            }
+          } catch (callError) {
+            console.error("[Workflow] Failed to trigger Retell call:", callError);
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "trigger_retell_call",
+                step_config: config,
+                status: "failed",
+                executed_at: new Date().toISOString(),
+                result: { error: callError instanceof Error ? callError.message : "Unknown error" },
+              });
+            }
+          }
+        }
       }
     }
     } // Close workflows if block
