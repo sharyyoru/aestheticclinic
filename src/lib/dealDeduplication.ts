@@ -3,17 +3,27 @@ import { SupabaseClient } from "@supabase/supabase-js";
 /**
  * Deal Deduplication Utility
  * 
- * Prevents duplicate deal creation by checking if a deal with the same title
- * AND matching patient name already exists.
- * This catches both duplicate deals AND duplicate patients.
+ * Provides two strategies for preventing duplicate deals:
+ * 1. By patient ID and service (for existing patients)
+ * 2. By title and patient name (for new patients from leads - prevents duplicate patients)
  */
 
-export type DealCheckParams = {
+// Strategy 1: Check by patient ID (for existing patients)
+export type DealCheckByPatientParams = {
+  patientId: string;
+  serviceId?: string | null;
+  withinHours?: number; // Default: 6 hours
+};
+
+// Strategy 2: Check by title and name (for new patients from leads)
+export type DealCheckByNameParams = {
   title: string;
   patientFirstName: string;
   patientLastName: string;
   withinHours?: number; // Default: 24 hours
 };
+
+export type DealCheckParams = DealCheckByPatientParams | DealCheckByNameParams;
 
 export type ExistingDeal = {
   id: string;
@@ -26,20 +36,81 @@ export type ExistingDeal = {
 };
 
 /**
+ * Check if a deal already exists by patient ID.
+ * Used when patient already exists in the system.
+ */
+async function findRecentDealByPatient(
+  supabase: SupabaseClient,
+  params: DealCheckByPatientParams
+): Promise<ExistingDeal | null> {
+  const { patientId, serviceId, withinHours = 6 } = params;
+
+  const cutoffDate = new Date();
+  cutoffDate.setTime(cutoffDate.getTime() - withinHours * 60 * 60 * 1000);
+  const cutoffIso = cutoffDate.toISOString();
+
+  let query = supabase
+    .from("deals")
+    .select(`
+      id, 
+      title, 
+      created_at, 
+      patient_id, 
+      service_id,
+      patients!inner (
+        first_name,
+        last_name
+      )
+    `)
+    .eq("patient_id", patientId)
+    .gte("created_at", cutoffIso)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (serviceId) {
+    query = query.eq("service_id", serviceId);
+  }
+
+  const { data } = await query.returns<Array<{
+    id: string;
+    title: string;
+    created_at: string;
+    patient_id: string;
+    service_id: string | null;
+    patients: {
+      first_name: string;
+      last_name: string;
+    };
+  }>>();
+
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  const deal = data[0];
+  return {
+    id: deal.id,
+    title: deal.title,
+    created_at: deal.created_at,
+    patient_id: deal.patient_id,
+    service_id: deal.service_id,
+    patient_first_name: deal.patients.first_name,
+    patient_last_name: deal.patients.last_name,
+  };
+}
+
+/**
  * Check if a deal with this exact title AND matching patient name already exists.
+ * Used for lead imports to prevent both duplicate deals AND duplicate patients.
  * 
  * A deal is considered duplicate if:
  * 1. Same title (exact match)
  * 2. Patient has same first_name AND last_name (case-insensitive)
  * 3. Created within the specified time window (default 24 hours)
- * 
- * This prevents both:
- * - Multiple deals for the same patient
- * - Duplicate patients created from the same lead
  */
-export async function findRecentDeal(
+async function findRecentDealByName(
   supabase: SupabaseClient,
-  params: DealCheckParams
+  params: DealCheckByNameParams
 ): Promise<ExistingDeal | null> {
   const { title, patientFirstName, patientLastName, withinHours = 24 } = params;
 
@@ -125,6 +196,20 @@ export async function findRecentDeal(
   });
 
   return null;
+}
+
+/**
+ * Main entry point - routes to appropriate deduplication strategy
+ */
+export async function findRecentDeal(
+  supabase: SupabaseClient,
+  params: DealCheckParams
+): Promise<ExistingDeal | null> {
+  if ('patientId' in params) {
+    return findRecentDealByPatient(supabase, params);
+  } else {
+    return findRecentDealByName(supabase, params);
+  }
 }
 
 /**

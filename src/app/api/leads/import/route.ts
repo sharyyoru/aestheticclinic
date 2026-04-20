@@ -357,9 +357,8 @@ export async function POST(request: NextRequest) {
 
         // Check if deal already exists for this patient with same service (within 6 hours)
         const dealCheck = await shouldCreateDeal(supabaseAdmin, {
-          title: `${firstName} ${lastName} - ${finalServiceInterest}`,
-          patientFirstName: firstName,
-          patientLastName: lastName,
+          patientId,
+          serviceId: serviceId || undefined,
           withinHours: 6,
         });
 
