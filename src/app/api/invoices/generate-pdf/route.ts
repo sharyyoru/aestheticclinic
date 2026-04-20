@@ -172,6 +172,17 @@ export async function POST(request: NextRequest) {
       // So billingEntityData already has the IBAN and address we need
       // No need to fetch a separate billing entity
     }
+
+    // SYMMETRIC FALLBACK: invoice has doctor_user_id but no provider_id
+    // (self-employed doctor, or setup where the doctor is their own biller).
+    // Without this, Sumex SetEsrQR fails with [622] "Kreditor: Die Adressangaben
+    // sind nicht vollständig" because provStreet/provZip/provCity default to "".
+    if (!billingEntityData && staffData) {
+      billingEntityData = staffData;
+      console.log(
+        `[GeneratePDF] No provider_id on invoice; using doctor (${staffData.name}) as billing entity.`,
+      );
+    }
     // ── Detect insurance (Tiers Payant / Tiers Garant) invoice and generate specialized PDF ──
     // Treat as insurance if:
     // 1. There's an actual insurer OR payment method is Insurance
