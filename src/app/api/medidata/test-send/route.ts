@@ -109,37 +109,26 @@ export async function POST(request: NextRequest) {
           }).eq("id", invoiceId);
         }
 
-        // ── 2. Fetch line items (or create a default one) ──
-        let { data: lineItems } = await supabaseAdmin
+        // ── 2. Fetch line items — NO FALLBACK ──
+        // Sending an invoice with synthetic/placeholder line items is billing
+        // for services not rendered. We previously auto-inserted a default
+        // "00.0010 Konsultation" row when the invoice had none; that bug is
+        // the root cause of the 7 partially-paid invoices. Never again.
+        const { data: lineItems } = await supabaseAdmin
           .from("invoice_line_items")
           .select("*")
           .eq("invoice_id", invoiceId)
           .order("sort_order");
 
         if (!lineItems || lineItems.length === 0) {
-          // Create a default line item based on the invoice total
-          const { data: newItem } = await supabaseAdmin.from("invoice_line_items").insert({
-            invoice_id: invoiceId,
-            sort_order: 1,
-            code: "00.0010",
-            name: "Konsultation, erste 5 Min.",
-            quantity: 1,
-            unit_price: inv.total_amount,
-            total_price: inv.total_amount,
-            tariff_code: 1,
-            date_begin: inv.treatment_date || new Date().toISOString(),
-            provider_gln: inv.doctor_gln || inv.provider_gln || config.clinic_gln,
-            responsible_gln: inv.doctor_gln || inv.provider_gln || config.clinic_gln,
-            billing_role: "both",
-            session_number: 1,
-            tp_al: inv.total_amount,
-            tp_tl: 0,
-            tp_al_value: 1,
-            tp_tl_value: 1,
-            price_al: inv.total_amount,
-            price_tl: 0,
-          }).select("*");
-          lineItems = newItem || [];
+          results.push({
+            invoiceId,
+            invoiceNumber: inv.invoice_number,
+            doctor: inv.doctor_name || "?",
+            success: false,
+            error: "No line items on invoice — refusing to send. Add real service line items first.",
+          });
+          continue;
         }
 
         // ── 3. Build Sumex1 XML ──
@@ -162,7 +151,9 @@ export async function POST(request: NextRequest) {
           const amount = Number(li.total_price) || 0;
           return {
             tariffType,
-            code: li.code || li.tardoc_code || "00.0010",
+            // No fallback code — if this row has no code, the invoice is
+            // broken and the caller must fix it before sending.
+            code: li.code || li.tardoc_code || "",
             quantity: Number(li.quantity) || 1,
             sessionNumber: li.session_number || idx + 1,
             dateBegin: li.date_begin ? new Date(li.date_begin).toISOString().split("T")[0] : treatmentDate,

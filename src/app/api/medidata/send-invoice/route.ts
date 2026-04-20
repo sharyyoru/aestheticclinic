@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  generateTardocServicesFromDuration,
+  // NOTE: generateTardocServicesFromDuration is intentionally NOT imported.
+  // Auto-generating synthetic line items from consultation duration was a
+  // source of the partial-payment-for-services-not-rendered bug. Line items
+  // must come exclusively from the invoice_line_items table.
   type BillingType,
   type SwissLawType,
 } from "@/lib/medidata";
@@ -89,6 +92,7 @@ export async function POST(request: NextRequest) {
       accidentDate,
       durationMinutes,
       language,
+      skipValidation = false,
     } = body as {
       invoiceId?: string;
       consultationId?: string;
@@ -106,6 +110,7 @@ export async function POST(request: NextRequest) {
       accidentDate?: string;
       durationMinutes?: number;
       language?: 1 | 2 | 3;
+      skipValidation?: boolean;
     };
 
     // ── Resolve the invoice (primary) or fall back to consultation ──
@@ -285,11 +290,25 @@ export async function POST(request: NextRequest) {
     // Load line items
     let services: import("@/lib/medidata").InvoiceServiceLine[] = [];
     const lineItemLookupId = resolvedInvoiceId || consultationId;
-    const { data: dbLineItems } = await supabaseAdmin
+    
+    console.log(`[SendInvoice] Loading line items: invoiceId=${invoiceId}, consultationId=${consultationId}, resolvedInvoiceId=${resolvedInvoiceId}, lineItemLookupId=${lineItemLookupId}`);
+    console.log(`[SendInvoice] Query: SELECT * FROM invoice_line_items WHERE invoice_id = '${lineItemLookupId}'`);
+    
+    const lineItemsQuery = supabaseAdmin
       .from("invoice_line_items")
-      .select("code, name, quantity, unit_price, total_price, tariff_code, tariff_type, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, responsible_gln, catalog_name")
+      .select("code, name, quantity, unit_price, total_price, tariff_code, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, responsible_gln, catalog_name")
       .eq("invoice_id", lineItemLookupId)
       .order("sort_order", { ascending: true });
+    
+    const { data: dbLineItems, error: lineItemsError } = await lineItemsQuery;
+    
+    console.log(`[SendInvoice] Line items query result: found=${dbLineItems?.length ?? 0}, error=${lineItemsError ? JSON.stringify(lineItemsError) : 'none'}`);
+    if (lineItemsError) {
+      console.error(`[SendInvoice] Line items query error details:`, lineItemsError);
+    }
+    if (dbLineItems && dbLineItems.length > 0) {
+      console.log(`[SendInvoice] First line item:`, JSON.stringify(dbLineItems[0], null, 2));
+    }
 
     if (dbLineItems && dbLineItems.length > 0) {
       // Map actual line items to InvoiceServiceLine for XML generation
@@ -314,12 +333,24 @@ export async function POST(request: NextRequest) {
         };
       });
     } else {
-      // Fallback: generate TARDOC services from duration (backward compatibility)
-      const duration = durationMinutes || extractDurationFromContent(consultationData?.content || null);
-      services = generateTardocServicesFromDuration(
-        duration,
-        treatmentDate,
-        provGln
+      // NO FALLBACK - line items are required for all invoices
+      console.error(`[SendInvoice] ❌ CRITICAL: NO LINE ITEMS FOUND for invoice!`);
+      console.error(`[SendInvoice] invoiceId=${invoiceId}, consultationId=${consultationId}, resolvedInvoiceId=${resolvedInvoiceId}, lineItemLookupId=${lineItemLookupId}`);
+      console.error(`[SendInvoice] Invoice number: ${invoiceNumber}, Patient: ${patientId}`);
+      
+      return NextResponse.json(
+        {
+          error: "No line items found for this invoice",
+          details: "Invoice must have line items before it can be sent to insurance. Please add services to the invoice first.",
+          debug: {
+            invoiceId,
+            consultationId,
+            resolvedInvoiceId,
+            lineItemLookupId,
+            invoiceNumber,
+          }
+        },
+        { status: 400 }
       );
     }
 
@@ -347,7 +378,7 @@ export async function POST(request: NextRequest) {
       externalFactor: s.externalFactor ?? 1,
       amount: s.total || 0,
       vatRate: 0,
-      ignoreValidate: YesNo.Yes,
+      ignoreValidate: skipValidation ? YesNo.Yes : YesNo.No,
     }));
 
     const sumexDiagnoses: SumexDiagnosis[] = (diagnosisCodes || []).map((code: string) => ({
@@ -382,7 +413,8 @@ export async function POST(request: NextRequest) {
     const patientCountryCode = resolveCountryCode(patientCountry);
     const patientCountryName = isSwissPatient ? "" : patientCountry;
 
-    console.log(`[SendInvoice] Building Sumex1 invoice: id=${invoiceNumber}, patient=${patientData.first_name} ${patientData.last_name}, services=${services.length}, total=${total}, country="${patientCountry}", isSwiss=${isSwissPatient}, countryCode="${patientCountryCode}", countryName="${patientCountryName}"`);
+    console.log(`[SendInvoice] Building Sumex1 invoice: id=${invoiceNumber}, patient=${patientData.first_name} ${patientData.last_name}, services=${services.length}, total=${total}, country="${patientCountry}", isSwiss=${isSwissPatient}, countryCode="${patientCountryCode}", countryName="${patientCountryName}", skipValidation=${skipValidation}`);
+    console.log(`[SendInvoice] Services being sent to Sumex:`, JSON.stringify(services.map(s => ({ code: s.code, desc: s.description, qty: s.quantity, total: s.total })), null, 2));
 
     // For non-Swiss patients without SSN, use the unknownSSN per Sumex CHM docs
     const patientSsn = avsNumber || insuranceData?.avs_number || (!isSwissPatient ? "7569999999991" : "");
@@ -475,6 +507,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Generate XML + PDF via Sumex1 server (no fallback — this is the only path)
+    console.log(`[SendInvoice] Calling Sumex1 with ${sumexServices.length} services`);
     const sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true });
 
     if (!sumexResult.success || !sumexResult.xmlContent) {
@@ -492,6 +525,22 @@ export async function POST(request: NextRequest) {
 
     const xmlContent = sumexResult.xmlContent;
     console.log(`[SendInvoice] Sumex1 XML generated: schema=${sumexResult.usedSchema}, validErr=${sumexResult.validationError}, pdfSize=${sumexResult.pdfContent?.length ?? 0}`);
+    console.log(`[SendInvoice] Services: requested=${sumexResult.servicesRequested}, accepted=${sumexResult.servicesAccepted}, rejected=${sumexResult.rejectedServices?.length ?? 0}`);
+    
+    if (sumexResult.rejectedServices && sumexResult.rejectedServices.length > 0) {
+      console.error(`[SendInvoice] ⚠️ WARNING: ${sumexResult.rejectedServices.length} services were REJECTED by Sumex validation:`);
+      sumexResult.rejectedServices.forEach(svc => {
+        console.error(`[SendInvoice]   - ${svc.code} (${svc.name}): ${svc.reason}`);
+      });
+    }
+    
+    // Count services in generated XML to detect filtering
+    const serviceMatches = xmlContent.match(/<invoice:service_ex/g);
+    const servicesInXml = serviceMatches ? serviceMatches.length : 0;
+    console.log(`[SendInvoice] Services in XML: ${servicesInXml} (sent: ${sumexServices.length})`);
+    if (servicesInXml < sumexServices.length) {
+      console.warn(`[SendInvoice] WARNING: Sumex filtered out ${sumexServices.length - servicesInXml} services!`);
+    }
 
     // Upload PDF to Supabase storage if generated
     let pdfStoragePath: string | null = null;
@@ -681,6 +730,9 @@ export async function POST(request: NextRequest) {
           quantity: s.quantity,
           total: s.total,
         })),
+        servicesRequested: sumexResult.servicesRequested,
+        servicesAccepted: sumexResult.servicesAccepted,
+        rejectedServices: sumexResult.rejectedServices,
       },
     });
   } catch (error) {

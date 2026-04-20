@@ -778,6 +778,9 @@ export type SumexBuildResult = {
   timestamp?: number;
   error?: string;
   abortInfo?: string;
+  rejectedServices?: Array<{ code: string; name: string; reason: string }>;
+  servicesRequested?: number;
+  servicesAccepted?: number;
 };
 
 /**
@@ -1070,7 +1073,12 @@ export async function buildInvoiceRequest(
 
     // --- AddService / AddServiceEx (auto-route based on tariff type) ---
     // TARMED (001) and TARDOC (007) MUST use AddServiceEx; others use AddService
+    const rejectedServices: Array<{ code: string; name: string; reason: string }> = [];
+    let servicesRequested = 0;
+    let servicesAccepted = 0;
+    
     if (input.services && input.services.length > 0) {
+      servicesRequested = input.services.length;
       const simpleServices = input.services.filter(s => s.tariffType !== "007" && s.tariffType !== "001");
       const tarmedServices = input.services.filter(s => s.tariffType === "001");
       const tardocServices = input.services.filter(s => s.tariffType === "007");
@@ -1108,7 +1116,15 @@ export async function buildInvoiceRequest(
         );
         if (!addRes.pbStatus) {
           const abortInfo = await getAbortInfo(mgr);
-          console.warn(`${LOG_PREFIX} AddService ${svc.code} rejected: ${abortInfo}`);
+          console.error(`${LOG_PREFIX} ❌ AddService REJECTED: ${svc.code} (${svc.serviceName}) - Reason: ${abortInfo}`);
+          rejectedServices.push({
+            code: svc.code,
+            name: svc.serviceName || "",
+            reason: abortInfo || "Unknown validation error",
+          });
+        } else {
+          console.log(`${LOG_PREFIX} ✓ AddService OK: ${svc.code}`);
+          servicesAccepted++;
         }
       }
 
@@ -1186,7 +1202,15 @@ export async function buildInvoiceRequest(
           );
           if (!addRes.pbStatus) {
             const abortInfo = await getAbortInfo(mgr);
-            console.warn(`${LOG_PREFIX} AddServiceEx TARMED ${svc.code} rejected: ${abortInfo}`);
+            console.error(`${LOG_PREFIX} ❌ AddServiceEx TARMED REJECTED: ${svc.code} (${svc.serviceName}) - Reason: ${abortInfo}`);
+            rejectedServices.push({
+              code: svc.code,
+              name: svc.serviceName || "",
+              reason: abortInfo || "Unknown validation error",
+            });
+          } else {
+            console.log(`${LOG_PREFIX} ✓ AddServiceEx TARMED OK: ${svc.code}`);
+            servicesAccepted++;
           }
         }
       }
@@ -1244,7 +1268,16 @@ export async function buildInvoiceRequest(
           );
           if (!addRes.pbStatus) {
             const abortInfo = await getAbortInfo(mgr);
-            console.warn(`${LOG_PREFIX} AddServiceEx (auto) ${svc.code} rejected: ${abortInfo}`);
+            console.error(`${LOG_PREFIX} ❌ AddServiceEx REJECTED: ${svc.code} (${svc.serviceName}) - Reason: ${abortInfo}`);
+            console.error(`${LOG_PREFIX} Service details: tariff=${svc.tariffType}, qty=${svc.quantity}, unit=${unitMT}, factor=${unitFactorMT}, ext=${extFactorMT}, amount=${computedAmountMT}`);
+            rejectedServices.push({
+              code: svc.code,
+              name: svc.serviceName || "",
+              reason: abortInfo || "Unknown validation error",
+            });
+          } else {
+            console.log(`${LOG_PREFIX} ✓ AddServiceEx OK: ${svc.code} (${svc.serviceName})`);
+            servicesAccepted++;
           }
         }
       }
@@ -1464,6 +1497,9 @@ export async function buildInvoiceRequest(
       validationError: xmlRes.plValidationError,
       usedSchema: xmlRes.pbstrUsedSchema,
       timestamp: xmlRes.plTimestamp,
+      rejectedServices: rejectedServices.length > 0 ? rejectedServices : undefined,
+      servicesRequested,
+      servicesAccepted,
     };
 
     // --- Print / PDF (optional) ---
@@ -1586,6 +1622,274 @@ export async function loadInvoiceRequestXML(
       success: true,
       resultHandle: loadRes.pIGeneralInvoiceResult,
       managerHandle: mgrHandle,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Load an existing generalInvoiceRequest XML from content (not file path) into the manager.
+ * Uses POST with XML content as body, similar to response manager.
+ */
+export async function loadInvoiceRequestXMLFromContent(
+  xmlContent: string,
+  fileName: string = "invoice.xml",
+): Promise<LoadXMLResult> {
+  const factory = await reqGet<{ pIGeneralInvoiceRequestManager: number }>(
+    "IGeneralInvoiceRequestManager/GetCreateGeneralInvoiceRequestManager",
+  );
+  const mgrHandle = factory.pIGeneralInvoiceRequestManager;
+
+  try {
+    // LoadXML — POST with octet-stream body containing the XML content
+    const loadParams = new URLSearchParams({
+      pIGeneralInvoiceRequestManager: String(mgrHandle),
+      bstrInputFile: fileName,
+    });
+    const loadUrl = `${SUMEX_REQUEST_BASE_URL}/IGeneralInvoiceRequestManager/LoadXML?${loadParams}`;
+    console.log(`${LOG_PREFIX} Request LoadXML POST to ${loadUrl}`);
+
+    const xmlBytes = new TextEncoder().encode(xmlContent);
+    const loadFetch = await fetch(loadUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(xmlBytes.length),
+      },
+      body: xmlBytes,
+      cache: "no-store",
+    });
+
+    if (!loadFetch.ok) {
+      const errBody = await loadFetch.text().catch(() => "");
+      return { success: false, error: `LoadXML POST failed: ${loadFetch.status} ${errBody}` };
+    }
+
+    const loadRes = (await loadFetch.json()) as {
+      pIGeneralInvoiceRequest: number;
+      pIGeneralInvoiceResult: number;
+      pbStatus: boolean;
+    };
+
+    if (!loadRes.pbStatus) {
+      const abortInfo = await getAbortInfo(mgrHandle);
+      return { success: false, error: `LoadXML failed: ${abortInfo}` };
+    }
+
+    console.log(`${LOG_PREFIX} Request loaded from content, resultHandle=${loadRes.pIGeneralInvoiceResult}`);
+
+    return {
+      success: true,
+      resultHandle: loadRes.pIGeneralInvoiceResult,
+      managerHandle: mgrHandle,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Generate a Storno (cancellation) XML from an existing invoice XML.
+ * This is a simplified approach that directly modifies the XML string.
+ */
+export async function generateStornoFromXMLSimple(
+  originalXmlContent: string,
+  reason: string = "Technical error - incorrect service data",
+  options?: {
+    /**
+     * Override the `<invoice:transport to="…">` attribute (ELA receiver GLN).
+     * Use this when the receiver stored on the original XML has since become
+     * unreachable (e.g. the insurer's ELA subscription changed, was revoked,
+     * or the original was misconfigured). The receiver GLN is looked up fresh
+     * from swiss_insurers at send time in the cancel-invoice route.
+     */
+    transportToGln?: string;
+  },
+): Promise<{ success: boolean; xmlContent?: string; error?: string }> {
+  try {
+    // Change request_subtype from "0" (normal) to "3" (storno)
+    // The request_subtype attribute is in the <invoice:payload> element
+    let stornoXml = originalXmlContent.replace(
+      /(<invoice:payload[^>]*\s+request_subtype\s*=\s*["'])0(["'])/gi,
+      '$13$2'
+    );
+    
+    // Also handle if it says "normal" instead of "0"
+    stornoXml = stornoXml.replace(
+      /(<invoice:payload[^>]*\s+request_subtype\s*=\s*["'])normal(["'])/gi,
+      '$1storno$2'
+    );
+
+    // Update the request_timestamp to current time
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    stornoXml = stornoXml.replace(
+      /(<invoice:payload[^>]*\s+request_timestamp\s*=\s*["'])\d+(["'])/gi,
+      `$1${currentTimestamp}$2`
+    );
+    
+    // Update invoice request_timestamp as well
+    stornoXml = stornoXml.replace(
+      /(<invoice:invoice[^>]*\s+request_timestamp\s*=\s*["'])\d+(["'])/gi,
+      `$1${currentTimestamp}$2`
+    );
+
+    // Add or update remark if there's a remark element.
+    // Per geninv-req-v50 schema, <invoice:remark> must live inside <invoice:body>
+    // (after <invoice:prolog>), NOT as a direct child of <invoice:invoice>.
+    const escapedReason = reason
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    if (stornoXml.includes('<invoice:remark>')) {
+      stornoXml = stornoXml.replace(
+        /<invoice:remark>[\s\S]*?<\/invoice:remark>/,
+        `<invoice:remark>${escapedReason}</invoice:remark>`
+      );
+    } else if (/<invoice:prolog[\s\S]*?<\/invoice:prolog>/.test(stornoXml)) {
+      // Insert remark right after </invoice:prolog> (its schema-valid position).
+      stornoXml = stornoXml.replace(
+        /(<\/invoice:prolog>)/,
+        `$1\n        <invoice:remark>${escapedReason}</invoice:remark>`
+      );
+    } else if (/<invoice:prolog[^>]*\/>/.test(stornoXml)) {
+      // Self-closing prolog form.
+      stornoXml = stornoXml.replace(
+        /(<invoice:prolog[^>]*\/>)/,
+        `$1\n        <invoice:remark>${escapedReason}</invoice:remark>`
+      );
+    } else {
+      // Fallback: insert as first child of <invoice:body>.
+      stornoXml = stornoXml.replace(
+        /(<invoice:body[^>]*>)/,
+        `$1\n        <invoice:remark>${escapedReason}</invoice:remark>`
+      );
+    }
+
+    // Optionally override the ELA transport receiver GLN. This is needed when
+    // the original receiver is no longer an active MediData participant
+    // (UPLOAD:UNKNOWN-RECEIVER-ORGANIZATION). The caller supplies the current
+    // receiver_gln from swiss_insurers so the storno can be routed to the new
+    // receiver instead of the stale one baked into the original XML.
+    if (options?.transportToGln && /^\d{13}$/.test(options.transportToGln)) {
+      stornoXml = stornoXml.replace(
+        /(<invoice:transport\b[^>]*\bto\s*=\s*["'])\d{13}(["'])/i,
+        `$1${options.transportToGln}$2`,
+      );
+    }
+
+    return {
+      success: true,
+      xmlContent: stornoXml,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Generate a Storno (cancellation) XML from an existing invoice XML.
+ * Loads the original XML, changes the request subtype to Storno, and regenerates.
+ */
+export async function generateStornoFromXML(
+  originalXmlContent: string,
+  reason: string = "Technical error - incorrect service data",
+): Promise<{ success: boolean; xmlContent?: string; error?: string; details?: string }> {
+  try {
+    // Load the original XML
+    const loadResult = await loadInvoiceRequestXMLFromContent(originalXmlContent, "original.xml");
+    
+    if (!loadResult.success || !loadResult.resultHandle || !loadResult.managerHandle) {
+      return {
+        success: false,
+        error: "Failed to load original XML",
+        details: loadResult.error,
+      };
+    }
+
+    const mgrHandle = loadResult.managerHandle;
+    const resultHandle = loadResult.resultHandle;
+
+    // Get the request handle from the result
+    const reqHandleRes = await reqGet<{ pIGeneralInvoiceRequest: number }>(
+      `IGeneralInvoiceResult/GetRequest?pIGeneralInvoiceResult=${resultHandle}`,
+    );
+    const reqHandle = reqHandleRes.pIGeneralInvoiceRequest;
+
+    // Change the request subtype to Storno
+    await reqPost("IGeneralInvoiceRequest", "SetRequest", {
+      pIGeneralInvoiceRequest: reqHandle,
+      eRequestSubtype: RequestSubtype.Storno,
+    });
+
+    // Set the remark/reason
+    await reqPost("IGeneralInvoiceRequest", "SetRemark", {
+      pIGeneralInvoiceRequest: reqHandle,
+      bstrRemark: reason,
+    });
+
+    // Generate the Storno XML
+    const getXmlRes = await reqPost<{
+      pIGeneralInvoiceResult: number;
+      pbStatus: boolean;
+      pbstrOutputFile: string;
+      plValidationError: number;
+    }>(
+      "IGeneralInvoiceRequestManager",
+      "GetXML",
+      {
+        pIGeneralInvoiceRequestManager: mgrHandle,
+        lGenerationAttributes: 0,
+      },
+    );
+
+    if (!getXmlRes.pbStatus) {
+      const abortInfo = await getAbortInfo(mgrHandle);
+      return {
+        success: false,
+        error: "GetXML failed",
+        details: abortInfo,
+      };
+    }
+
+    // Read the generated XML file
+    let xmlContent: string | undefined;
+    if (getXmlRes.pbstrOutputFile) {
+      try {
+        const baseOrigin = new URL(SUMEX_REQUEST_BASE_URL).origin;
+        const fileUrl = `${baseOrigin}${getXmlRes.pbstrOutputFile}`;
+        const fileRes = await fetch(fileUrl, { cache: "no-store" });
+        if (fileRes.ok) {
+          xmlContent = await fileRes.text();
+        }
+      } catch (err) {
+        return {
+          success: false,
+          error: "Failed to download generated XML",
+          details: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
+
+    if (!xmlContent) {
+      return {
+        success: false,
+        error: "No XML content generated",
+      };
+    }
+
+    return {
+      success: true,
+      xmlContent,
     };
   } catch (error) {
     return {

@@ -53,7 +53,7 @@ type PatientInsurance = {
 type InsuranceBillingModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  consultationId: string; // This is the invoice ID
+  invoiceId: string; // The invoice.id from the invoices table
   patientId: string;
   patientName: string;
   invoiceAmount: number | null;
@@ -64,7 +64,7 @@ type InsuranceBillingModalProps = {
 export default function InsuranceBillingModal({
   isOpen,
   onClose,
-  consultationId,
+  invoiceId,
   patientId,
   patientName,
   invoiceAmount,
@@ -227,7 +227,7 @@ export default function InsuranceBillingModal({
 
   // Load invoice line items and patient insurance data when modal opens
   useEffect(() => {
-    if (!isOpen || !consultationId) return;
+    if (!isOpen || !invoiceId) return;
     let cancelled = false;
 
     async function loadData() {
@@ -237,7 +237,7 @@ export default function InsuranceBillingModal({
       const { data: items } = await supabaseClient
         .from("invoice_line_items")
         .select("id, code, tardoc_code, tariff_code, name, quantity, unit_price, total_price, tp_al, tp_tl, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, catalog_name")
-        .eq("invoice_id", consultationId)
+        .eq("invoice_id", invoiceId)
         .order("sort_order", { ascending: true });
 
       if (!cancelled && items) {
@@ -279,7 +279,7 @@ export default function InsuranceBillingModal({
         const { data: inv } = await supabaseClient
           .from("invoices")
           .select("billing_type, health_insurance_law, treatment_reason, diagnosis_codes, reminder_level, accident_date")
-          .eq("id", consultationId)
+          .eq("id", invoiceId)
           .maybeSingle();
 
         if (!cancelled && inv) {
@@ -300,7 +300,7 @@ export default function InsuranceBillingModal({
 
     void loadData();
     return () => { cancelled = true; };
-  }, [isOpen, consultationId, patientId]);
+  }, [isOpen, invoiceId, patientId]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -338,7 +338,7 @@ export default function InsuranceBillingModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          consultationId,
+          invoiceId,
           patientId,
           billingType,
           lawType,
@@ -386,8 +386,7 @@ export default function InsuranceBillingModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          invoiceId: consultationId,
-          consultationId,
+          invoiceId,
           patientId,
           billingType,
           lawType,
@@ -439,7 +438,7 @@ export default function InsuranceBillingModal({
           medical_case_number: caseNumber || null,
           accident_date: lawType === 'UVG' && accidentDate ? accidentDate : null,
         })
-        .eq("id", consultationId);
+        .eq("id", invoiceId);
 
       setSuccess(data.submission);
       onSuccess?.(data.submission);

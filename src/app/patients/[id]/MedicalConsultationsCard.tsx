@@ -8527,7 +8527,7 @@ export default function MedicalConsultationsCard({
           setInsuranceBillingModalOpen(false);
           setInsuranceBillingTarget(null);
         }}
-        consultationId={insuranceBillingTarget?.id || ""}
+        invoiceId={insuranceBillingTarget?.invoice_id || insuranceBillingTarget?.id || ""}
         patientId={patientId}
         patientName={insuranceBillingTarget?.title || "Patient"}
         invoiceAmount={insuranceBillingTarget?.invoice_total_amount || null}

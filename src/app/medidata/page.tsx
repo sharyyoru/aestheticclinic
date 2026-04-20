@@ -12,10 +12,15 @@ import type { MediDataInvoiceStatus } from "@/lib/medidata";
 
 type Tab = "submissions" | "responses" | "participants" | "notifications";
 
+type SubmissionKind = "normal" | "storno";
+
 type Submission = {
   id: string;
   invoice_id: string | null;
   invoice_number: string;
+  is_storno?: boolean | null;
+  parent_submission_id?: string | null;
+  storno_reason?: string | null;
   patient?: {
     id: string;
     first_name: string | null;
@@ -255,6 +260,8 @@ export default function MediDataDashboard() {
   const [submissionsCount, setSubmissionsCount] = useState(0);
   const [submissionSearch, setSubmissionSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  // Normal vs Storno sub-tab inside the Submissions tab. Default: normal.
+  const [submissionKind, setSubmissionKind] = useState<SubmissionKind>("normal");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -320,6 +327,14 @@ export default function MediDataDashboard() {
       // Status filter
       if (statusFilter) {
         query = query.eq("status", statusFilter);
+      }
+
+      // Normal vs Storno filter. The `is_storno` column is nullable on legacy
+      // rows, so treat NULL as `false` (i.e. legacy rows belong to "normal").
+      if (submissionKind === "storno") {
+        query = query.eq("is_storno", true);
+      } else {
+        query = query.or("is_storno.is.null,is_storno.eq.false");
       }
 
       // Date range filter
@@ -432,7 +447,7 @@ export default function MediDataDashboard() {
       console.error("Error fetching submissions:", e);
     }
     setSubsLoading(false);
-  }, [submissionSearch, submissionsPage, statusFilter, dateFrom, dateTo]);
+  }, [submissionSearch, submissionsPage, statusFilter, dateFrom, dateTo, submissionKind]);
 
   // ── Fetch responses from local DB ──
   const fetchResponses = useCallback(async () => {
@@ -743,6 +758,12 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
   }, [submissionSearch]);
 
   useEffect(() => {
+    // Reset paging + collapse any open row when switching Normal/Storno.
+    setSubmissionsPage(0);
+    setExpandedSub(null);
+  }, [submissionKind]);
+
+  useEffect(() => {
     try {
       const stored = window.localStorage.getItem(AUTO_POLL_STORAGE_KEY);
       if (stored) setLastPolledAt(stored);
@@ -908,13 +929,39 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
       {/* ── Tab: Submissions ── */}
       {tab === "submissions" && (
         <div className="space-y-4">
+          {/* Normal vs Storno sub-tabs */}
+          <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs font-medium">
+            {([
+              { id: "normal" as const, label: "Normal submissions" },
+              { id: "storno" as const, label: "Storno (cancellations)" },
+            ]).map((k) => (
+              <button
+                key={k.id}
+                type="button"
+                onClick={() => setSubmissionKind(k.id)}
+                className={
+                  "rounded-full px-4 py-1.5 transition " +
+                  (submissionKind === k.id
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:text-slate-700")
+                }
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-800">Invoice Submissions</h2>
+              <h2 className="text-lg font-semibold text-slate-800">
+                {submissionKind === "storno" ? "Storno Submissions" : "Invoice Submissions"}
+              </h2>
               <p className="text-xs text-slate-500">
                 {submissionsCount > 0
                   ? `Showing ${submissionsPage * SUBMISSIONS_PAGE_SIZE + 1}-${Math.min((submissionsPage + 1) * SUBMISSIONS_PAGE_SIZE, submissionsCount)} of ${submissionsCount}`
-                  : "No submissions found"}
+                  : submissionKind === "storno"
+                    ? "No storno submissions found"
+                    : "No submissions found"}
               </p>
             </div>
             <div className="flex items-center gap-2">

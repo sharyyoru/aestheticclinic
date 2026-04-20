@@ -27,10 +27,59 @@ export async function POST() {
       statusUpdates: { checked: 0, updated: 0 },
     };
 
+    // Helper: when a storno submission transitions to a terminal state,
+    // cascade the outcome to its parent (the original invoice submission).
+    // - storno accepted  → parent becomes `cancelled`
+    // - storno rejected  → parent stays as-is, rejection note added to history
+    async function cascadeStornoOutcome(stornoRow: {
+      id: string;
+      is_storno?: boolean | null;
+      parent_submission_id?: string | null;
+    }, newStornoStatus: string, reason?: string | null) {
+      if (!stornoRow.is_storno || !stornoRow.parent_submission_id) return;
+      if (newStornoStatus === "accepted") {
+        const { data: parent } = await supabaseAdmin
+          .from("medidata_submissions")
+          .select("id, status")
+          .eq("id", stornoRow.parent_submission_id)
+          .single();
+        if (parent && parent.status !== "cancelled") {
+          await supabaseAdmin
+            .from("medidata_submissions")
+            .update({ status: "cancelled", updated_at: new Date().toISOString() })
+            .eq("id", parent.id);
+          await supabaseAdmin.from("medidata_submission_history").insert({
+            submission_id: parent.id,
+            previous_status: parent.status,
+            new_status: "cancelled",
+            changed_by: null,
+            notes: `Cancelled via accepted storno submission ${stornoRow.id}.`,
+          });
+        }
+      } else if (newStornoStatus === "rejected") {
+        // Storno was rejected by MediData/insurer — the original stays live.
+        // Record a history note (new_status = parent's current status) so the
+        // table's not-null constraint is satisfied.
+        const { data: parent } = await supabaseAdmin
+          .from("medidata_submissions")
+          .select("status")
+          .eq("id", stornoRow.parent_submission_id)
+          .single();
+        const parentStatus = parent?.status ?? "pending";
+        await supabaseAdmin.from("medidata_submission_history").insert({
+          submission_id: stornoRow.parent_submission_id,
+          previous_status: parentStatus,
+          new_status: parentStatus,
+          changed_by: null,
+          notes: `Storno submission ${stornoRow.id} was rejected by MediData${reason ? ` (${reason})` : ""}. Original submission status unchanged.`,
+        });
+      }
+    }
+
     // ── 1. Poll pending submission statuses ──
     const { data: pendingSubs } = await supabaseAdmin
       .from("medidata_submissions")
-      .select("id, medidata_message_id, status")
+      .select("id, medidata_message_id, status, is_storno, parent_submission_id")
       .in("status", ["pending", "transmitted"])
       .not("medidata_message_id", "is", null)
       .limit(20);
@@ -80,6 +129,11 @@ export async function POST() {
               response_code: medidataStatus,
               response_message: errorReason || null,
             });
+
+            // Cascade storno outcome to parent submission (if this is a storno).
+            if (newStatus === "rejected" || newStatus === "accepted") {
+              await cascadeStornoOutcome(sub as any, newStatus, errorReason);
+            }
 
             results.statusUpdates.updated++;
           }
@@ -132,12 +186,12 @@ export async function POST() {
         const corrRef = (dl as any).correlationReference || (dl as any).documentReference || "";
         const transmissionRef = ref; // The download's transmissionReference is the unique upload ID
         let submissionId: string | null = null;
-        let matchedSub: { id: string; status: string } | null = null;
+        let matchedSub: { id: string; status: string; is_storno?: boolean | null; parent_submission_id?: string | null } | null = null;
 
         // First try matching by transmission reference (most reliable - unique per upload)
         const { data: subByRef } = await supabaseAdmin
           .from("medidata_submissions")
-          .select("id, status")
+          .select("id, status, is_storno, parent_submission_id")
           .eq("medidata_message_id", transmissionRef)
           .limit(1)
           .single();
@@ -149,7 +203,7 @@ export async function POST() {
           // Only use this if transmission ref didn't match
           const { data: subByInv } = await supabaseAdmin
             .from("medidata_submissions")
-            .select("id, status")
+            .select("id, status, is_storno, parent_submission_id")
             .eq("invoice_number", corrRef)
             .not("medidata_message_id", "is", null)
             .order("created_at", { ascending: false })
@@ -201,6 +255,11 @@ export async function POST() {
                 response_code: parsed.statusOut,
                 response_message: `Insurer response: ${parsed.type}${parsed.explanation ? ` — ${parsed.explanation}` : ""}`,
               });
+
+              // Cascade storno outcome to parent submission (if this is a storno).
+              if (newStatus === "accepted" || newStatus === "rejected") {
+                await cascadeStornoOutcome(matchedSub as any, newStatus, parsed.explanation || null);
+              }
             }
           }
         }
@@ -299,14 +358,18 @@ export async function POST() {
 
         // Find related submission
         let submissionId: string | null = null;
+        let matchedNotifSub: { id: string; status: string; is_storno: boolean | null; parent_submission_id: string | null } | null = null;
         if (n.transmissionReference) {
           const { data: sub } = await supabaseAdmin
             .from("medidata_submissions")
-            .select("id")
+            .select("id, status, is_storno, parent_submission_id")
             .eq("medidata_message_id", n.transmissionReference)
             .limit(1)
             .single();
-          if (sub) submissionId = sub.id;
+          if (sub) {
+            submissionId = sub.id;
+            matchedNotifSub = sub as any;
+          }
         }
 
         // Extract message text (MediData sends multilingual object {de, fr, it})
@@ -333,6 +396,45 @@ export async function POST() {
           submission_id: submissionId,
           medidata_created_at: n.created || null,
         });
+
+        // If this is a hard transmission error (XSD validation, upload failure,
+        // etc.) and the submission is still live, mark it as `rejected` and
+        // cascade to its storno parent if applicable. This ensures a broken
+        // storno doesn't leave the original stuck in a fake `cancelled` state.
+        const isErrorSeverity = (n.severity || "").toUpperCase() === "ERROR";
+        const isUploadError = errorCode?.startsWith("UPLOAD:") || errorCode === "UPLOAD:XML-NOT-VALID";
+        if (
+          isErrorSeverity &&
+          isUploadError &&
+          matchedNotifSub &&
+          matchedNotifSub.status !== "rejected" &&
+          matchedNotifSub.status !== "cancelled" &&
+          matchedNotifSub.status !== "accepted"
+        ) {
+          await supabaseAdmin
+            .from("medidata_submissions")
+            .update({
+              status: "rejected",
+              medidata_response_code: errorCode,
+              medidata_response_message: messageText,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", matchedNotifSub.id);
+
+          await supabaseAdmin.from("medidata_submission_history").insert({
+            submission_id: matchedNotifSub.id,
+            previous_status: matchedNotifSub.status,
+            new_status: "rejected",
+            response_code: errorCode,
+            response_message: messageText,
+            changed_by: null,
+            notes: `MediData rejected transmission (${errorCode || "unknown"}).`,
+          });
+
+          // Cascade: if this was a storno, the original stays live — record a
+          // note so operators know the cancellation attempt failed.
+          await cascadeStornoOutcome(matchedNotifSub, "rejected", errorCode);
+        }
 
         // Confirm notification
         const confirmed = await confirmNotification(notifId);

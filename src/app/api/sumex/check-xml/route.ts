@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
       // Legacy compat: also accept consultationId as alias
       consultationId,
       patientId: bodyPatientId,
+      skipValidation = false,
     } = body;
 
     const resolvedInvoiceId = invoiceId || consultationId;
@@ -200,6 +201,8 @@ export async function POST(request: NextRequest) {
     // GLN must be exactly 13 digits; fall back to billing entity GLN if invalid
     const isValidGln = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
 
+    console.log(`[CheckXML] skipValidation=${skipValidation}`);
+
     const sumexServices: SumexServiceInput[] = (dbLineItems || []).map((item: any) => {
       // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
       const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
@@ -221,7 +224,7 @@ export async function POST(request: NextRequest) {
         externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : 1,
         amount: item.total_price || 0,
         vatRate: 0,
-        ignoreValidate: YesNo.Yes,
+        ignoreValidate: skipValidation ? YesNo.Yes : YesNo.No,
       };
     });
 
