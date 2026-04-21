@@ -8,14 +8,25 @@ import {
 
 /**
  * Gemini models in order of preference. Each has its own quota so if one is
- * rate-limited we can fall back to the next. gemini-2.0-flash is preferred,
- * then gemini-1.5-flash (also free tier), then gemini-1.5-flash-8b (fastest/cheapest).
+ * rate-limited we can fall back to the next. Gemini 1.5 models were
+ * deprecated in September 2025 and return 404, so we only use 2.x models.
  */
 const MODEL_FALLBACK_CHAIN = [
   "gemini-2.0-flash",
-  "gemini-1.5-flash",
-  "gemini-1.5-flash-8b",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash-lite",
 ];
+
+/** Errors that indicate the model itself doesn't exist / isn't usable. */
+function isModelNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes("404") ||
+    message.toLowerCase().includes("not found") ||
+    message.toLowerCase().includes("is not supported")
+  );
+}
 
 export type GenerateArgs = {
   apiKey: string;
@@ -92,6 +103,14 @@ export async function generateContentWithFallback(
 
         if (rateLimited) {
           // 429: skip remaining retries for this model and move to next fallback
+          break;
+        }
+
+        if (isModelNotFoundError(err)) {
+          // Model doesn't exist (deprecated / not enabled): skip to next fallback
+          if (verbose) {
+            console.warn(`[gemini] model=${modelName} unavailable, moving to next fallback`);
+          }
           break;
         }
 
