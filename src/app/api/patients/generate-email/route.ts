@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { generateContentWithFallback } from "@/lib/geminiWithFallback";
+import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
 
 export const runtime = "nodejs";
-
-const geminiApiKey = process.env.GEMINI_API_KEY;
-
-let genAI: GoogleGenerativeAI | null = null;
-if (geminiApiKey) {
-  genAI = new GoogleGenerativeAI(geminiApiKey);
-}
+export const maxDuration = 60;
 
 type GeneratePatientEmailRequestBody = {
   patientId?: string;
@@ -20,7 +15,8 @@ type GeneratePatientEmailRequestBody = {
 
 export async function POST(request: Request) {
   try {
-    if (!genAI) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
         { error: "Missing GEMINI_API_KEY environment variable" },
         { status: 500 },
@@ -69,30 +65,17 @@ export async function POST(request: Request) {
         ? patientSummaryLines.join("\n")
         : "Basic identity and contact details are not available.";
 
-    // Fetch knowledgebase context if topic IDs are provided
-    let knowledgebaseContext = "";
-    if (knowledgebaseTopicIds.length > 0) {
-      const { data: messages } = await supabaseAdmin
-        .from("knowledge_messages")
-        .select("content, role, knowledge_topics!inner(title)")
-        .in("topic_id", knowledgebaseTopicIds)
-        .order("created_at", { ascending: true });
-
-      if (messages && messages.length > 0) {
-        const contextLines: string[] = [];
-        for (const msg of messages) {
-          const topicTitle = (msg as any).knowledge_topics?.title || "Unknown Topic";
-          const roleLabel = msg.role === "assistant" ? "AI Assistant" : "User";
-          contextLines.push(`[${topicTitle} - ${roleLabel}]:`);
-          contextLines.push(msg.content);
-          contextLines.push("");
-        }
-        knowledgebaseContext = contextLines.join("\n");
-      }
-    }
+    // Always inject the AI Knowledge Base. If specific topic IDs are passed,
+    // scope to those; otherwise include ALL active topics so the AI draws on
+    // every clinic-specific note, procedure, and policy we've captured.
+    const knowledgeBaseSection = await buildKnowledgeBaseSection(
+      knowledgebaseTopicIds.length > 0
+        ? { topicIds: knowledgebaseTopicIds }
+        : {},
+    );
 
     const systemPrompt =
-      "You are an email assistant for Aesthetics Clinic. You write concise, empathetic, medically appropriate emails to a single patient. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML). All prices must be in CHF (Swiss Francs), not any other currency.";
+      "You are an email assistant for Aesthetics Clinic. You write concise, empathetic, medically appropriate emails to a single patient. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML). All prices must be in CHF (Swiss Francs), not any other currency. When the clinic's AI Knowledge Base is provided, treat it as the PRIMARY source of truth for clinic-specific facts, services, policies, pricing guidance, and tone of voice.";
 
     const userPrompt = `
 We are composing a one-off email to this specific patient.
@@ -104,14 +87,8 @@ Goal / context for the email:
 ${description}
 
 Tone: ${tone}.
-
-${knowledgebaseContext ? `
-RELEVANT KNOWLEDGE BASE CONTEXT:
-Use the following information from the knowledge base to inform your response. This contains relevant clinic policies, procedures, or information that should guide the email content:
-
-${knowledgebaseContext}
-
-` : ""}Requirements:
+${knowledgeBaseSection}
+Requirements:
 - Output STRICT JSON only, no markdown, with shape: {"subject": string, "body": string}.
 - 'body' must be plain text suitable for pasting into an email textarea; use paragraphs separated by blank lines.
 - Start with a natural greeting to the patient (for example, "Dear ${firstName || "patient"},").
@@ -124,14 +101,12 @@ Main Email Address: info@aesthetics-ge.ch
 Book an appointment: https://aestheticclinic.vercel.app/book-appointment/location
 `;
 
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash",
+    const result = await generateContentWithFallback({
+      apiKey,
       systemInstruction: systemPrompt,
-    });
-
-    const result = await model.generateContent({
+      generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      generationConfig: { temperature: 0.7 },
+      verbose: true,
     });
 
     const rawContent = result.response.text() || "";

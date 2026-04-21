@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback } from "@/lib/geminiWithFallback";
+import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
 
 export const runtime = "nodejs";
-
-const geminiApiKey = process.env.GEMINI_API_KEY;
-
-let genAI: GoogleGenerativeAI | null = null;
-if (geminiApiKey) {
-  genAI = new GoogleGenerativeAI(geminiApiKey);
-}
+export const maxDuration = 60;
 
 type TemplateVariable = {
   category?: string;
@@ -122,7 +117,8 @@ function createUnlayerDesign(paragraphs: string[]): object {
 
 export async function POST(request: Request) {
   try {
-    if (!genAI) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
       return NextResponse.json(
         { error: "Missing GEMINI_API_KEY environment variable" },
         { status: 500 },
@@ -152,12 +148,16 @@ export async function POST(request: Request) {
             })
             .join("\n");
 
+    // Pull ALL active knowledge base topics so the AI uses clinic-specific
+    // policies, pricing, protocols and tone when composing the email.
+    const knowledgeBaseSection = await buildKnowledgeBaseSection();
+
     const systemPrompt =
-      "You are an expert email copywriter for Aesthetics Clinic. You generate clear, concise, empathetic emails for patients. Always output strict JSON. All prices must be in CHF (Swiss Francs), not any other currency.";
+      "You are an expert email copywriter for Aesthetics Clinic. You generate clear, concise, empathetic emails for patients. Always output strict JSON. All prices must be in CHF (Swiss Francs), not any other currency. When the clinic's AI Knowledge Base is provided, treat it as the PRIMARY source of truth for clinic-specific facts, services, policies, pricing guidance, and tone of voice.";
 
     const userPrompt = `
 Write a patient-facing email for a medical clinic workflow.
-
+${knowledgeBaseSection}
 Goal / context:
 ${description}
 
@@ -182,14 +182,12 @@ Example output:
 {"subject": "Your Appointment Confirmation", "paragraphs": ["<p>Dear {{patient.first_name}},</p>", "<p>We're excited to confirm your upcoming appointment.</p>", "<p><strong>Date:</strong> {{appointment.date}}<br><strong>Time:</strong> {{appointment.time}}</p>", "<p>We look forward to seeing you!</p>", "<p>Best regards,<br>The {{clinic.name}} Team</p>", "<p>Main Telephone Number: +41 22 732 22 23<br>Main Email Address: info@aesthetics-ge.ch<br>Book an appointment: https://aestheticclinic.vercel.app/book-appointment/location</p>"]}
 `;
 
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash",
+    const result = await generateContentWithFallback({
+      apiKey,
       systemInstruction: systemPrompt,
-    });
-
-    const result = await model.generateContent({
+      generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      generationConfig: { temperature: 0.7 },
+      verbose: true,
     });
 
     const rawContent = result.response.text() || "";

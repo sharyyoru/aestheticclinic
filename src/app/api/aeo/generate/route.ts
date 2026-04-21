@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback } from "@/lib/geminiWithFallback";
+import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -33,7 +34,8 @@ const articleTypeInstructions: Record<string, string> = {
 };
 
 async function generateSingleArticle(
-  model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
+  apiKey: string,
+  knowledgeBaseSection: string,
   keyword: string,
   relatedKeywords: string[],
   questions: string[],
@@ -49,7 +51,7 @@ async function generateSingleArticle(
     : "";
 
   const prompt = `You are an expert SEO content writer specializing in aesthetic medicine and cosmetic procedures for a European audience.
-
+${knowledgeBaseSection}
 Write a ${articleType} article in ${languageNames[language]} about "${keyword}" for ${targetAudience}.
 
 **Primary Keyword:** ${keyword}
@@ -76,6 +78,7 @@ ${mediaUrls.length > 0 ? "- Include the provided media images at appropriate poi
 - Mention that results may vary and professional consultation is recommended
 - Focus on the Swiss/European market context
 - Reference Swiss quality standards where appropriate
+- When the clinic's AI Knowledge Base is provided above, use it as the PRIMARY source of truth for clinic-specific claims, services, policies, pricing guidance, and tone. Do not contradict it.
 
 **Output Format:**
 Return the article in markdown format with:
@@ -85,7 +88,12 @@ Return the article in markdown format with:
 4. A "Key Takeaways" section at the end
 5. A subtle call-to-action for booking a consultation`;
 
-  const result = await model.generateContent(prompt);
+  const result = await generateContentWithFallback({
+    apiKey,
+    generationConfig: { temperature: 0.7, topP: 0.95, maxOutputTokens: 8192 },
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    verbose: true,
+  });
   const response = result.response;
   const content = response.text();
 
@@ -137,24 +145,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Keyword is required" }, { status: 400 });
     }
 
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.95,
-        maxOutputTokens: 8192,
-      },
-    });
+    if (!GEMINI_API_KEY) {
+      return NextResponse.json(
+        { error: "Missing GEMINI_API_KEY environment variable" },
+        { status: 500 },
+      );
+    }
+
+    // Pull ALL active knowledge base topics so generated articles reflect
+    // clinic-specific services, policies, pricing, and tone.
+    const knowledgeBaseSection = await buildKnowledgeBaseSection();
 
     // If multiple languages requested, generate all versions
     if (languages && languages.length > 0) {
       const articles: Record<string, unknown> = {};
-      
+
       for (const lang of languages) {
         try {
           const article = await generateSingleArticle(
-            model,
+            GEMINI_API_KEY,
+            knowledgeBaseSection,
             keyword,
             relatedKeywords,
             questions,
@@ -166,7 +176,7 @@ export async function POST(request: NextRequest) {
             mediaUrls
           );
           articles[lang] = article;
-        } catch (err) {
+        } catch {
           articles[lang] = { error: `Failed to generate ${languageNames[lang]} version` };
         }
       }
@@ -180,7 +190,8 @@ export async function POST(request: NextRequest) {
 
     // Single language generation
     const article = await generateSingleArticle(
-      model,
+      GEMINI_API_KEY,
+      knowledgeBaseSection,
       keyword,
       relatedKeywords,
       questions,

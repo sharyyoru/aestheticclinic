@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Part } from "@google/generative-ai";
 import { createClient } from "@supabase/supabase-js";
 import { generateContentWithFallback } from "@/lib/geminiWithFallback";
+import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -81,6 +82,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Topic not found" }, { status: 404 });
     }
 
+    // Also pull context from OTHER topics owned by the same user so the model
+    // can cross-reference information across the entire knowledge base, not
+    // just the currently-selected topic's thread history.
+    const crossTopicContext = await buildKnowledgeBaseSection({
+      userId,
+    });
+
     const systemInstruction = `You are an intelligent AI assistant helping users build a knowledge base. Your role is to:
 
 1. **Analyze and understand** any documents, images, or text provided by the user
@@ -95,7 +103,7 @@ When analyzing images or documents:
 - Identify key themes, topics, or entities
 - Provide relevant insights and connections
 
-Always be helpful, accurate, and thorough. If you're unsure about something, say so. Format your responses using markdown for better readability.`;
+Always be helpful, accurate, and thorough. If you're unsure about something, say so. Format your responses using markdown for better readability.${crossTopicContext}`;
 
     // Process attachments for the latest user message
     const latestMessage = messages[messages.length - 1];

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateContentWithFallback } from "@/lib/geminiWithFallback";
+import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,6 +54,13 @@ export async function POST(request: Request) {
     if (patientId) {
       systemInstruction +=
         "\n\nThis chat has been linked to a specific patient in the clinic's CRM. When staff refer to 'this patient' or 'the patient', assume they mean that linked patient. However, you still must never insert real patient details directly; always refer to them using the CRM template variables like {{patient.first_name}} and {{patient.last_name}} rather than concrete values.";
+    }
+
+    // Inject the clinic's AI Knowledge Base so Aliice answers using clinic-specific
+    // facts, services, policies, pricing, protocols, and tone of voice.
+    const knowledgeBaseSection = await buildKnowledgeBaseSection();
+    if (knowledgeBaseSection) {
+      systemInstruction += knowledgeBaseSection;
     }
 
     // Build Gemini-format contents. Gemini requires:
