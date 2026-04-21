@@ -80,17 +80,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Topic not found" }, { status: 404 });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash",
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 8192,
-      },
-    });
-
     const systemInstruction = `You are an intelligent AI assistant helping users build a knowledge base. Your role is to:
 
 1. **Analyze and understand** any documents, images, or text provided by the user
@@ -106,6 +95,18 @@ When analyzing images or documents:
 - Provide relevant insights and connections
 
 Always be helpful, accurate, and thorough. If you're unsure about something, say so. Format your responses using markdown for better readability.`;
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction,
+      generationConfig: {
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 8192,
+      },
+    });
 
     // Process attachments for the latest user message
     const latestMessage = messages[messages.length - 1];
@@ -161,31 +162,70 @@ Always be helpful, accurate, and thorough. If you're unsure about something, say
       }
     }
 
-    // Build conversation history
-    const history = messages
+    if (parts.length === 0) {
+      return NextResponse.json(
+        { error: "Message must contain text or attachments" },
+        { status: 400 },
+      );
+    }
+
+    // Build conversation history (all messages except the last one)
+    const historyMapped = messages
       .slice(0, -1)
-      .filter(msg => msg.role !== "system")
-      .map(msg => ({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }],
+      .filter((msg) => msg.role !== "system" && msg.content?.trim())
+      .map((msg) => ({
+        role: (msg.role === "assistant" ? "model" : "user") as "user" | "model",
+        parts: [{ text: msg.content }] as Part[],
       }));
 
-    // Start chat with history
-    const chat = model.startChat({
-      history,
-      systemInstruction: {
-        role: "user",
-        parts: [{ text: systemInstruction }],
-      },
-    });
+    // Drop leading model entries (Gemini requires history starts with user)
+    while (historyMapped.length > 0 && historyMapped[0].role !== "user") {
+      historyMapped.shift();
+    }
 
-    // Send the message with attachments
-    const result = await chat.sendMessage(parts);
+    // Collapse consecutive same-role entries to guarantee alternation
+    const historyContents: Array<{ role: "user" | "model"; parts: Part[] }> = [];
+    for (const entry of historyMapped) {
+      const prev = historyContents[historyContents.length - 1];
+      if (prev && prev.role === entry.role) {
+        const prevPart = prev.parts[0];
+        const nextPart = entry.parts[0];
+        if ("text" in prevPart && "text" in nextPart) {
+          prev.parts[0] = { text: (prevPart.text || "") + "\n\n" + (nextPart.text || "") };
+        } else {
+          prev.parts.push(...entry.parts);
+        }
+      } else {
+        historyContents.push({ role: entry.role, parts: [...entry.parts] });
+      }
+    }
+
+    // Append the current user turn
+    const contents: Array<{ role: "user" | "model"; parts: Part[] }> = [
+      ...historyContents,
+      { role: "user", parts },
+    ];
+
+    // Ensure the final turn is user
+    if (contents[contents.length - 1].role !== "user") {
+      return NextResponse.json(
+        { error: "Last message must be from the user" },
+        { status: 400 },
+      );
+    }
+
+    // Use generateContent directly (more robust than startChat)
+    const result = await model.generateContent({ contents });
     const response = result.response;
     const text = response.text();
 
-    if (!text) {
-      return NextResponse.json({ error: "No response from AI" }, { status: 502 });
+    if (!text || !text.trim()) {
+      const blockReason =
+        response.promptFeedback?.blockReason || "Empty response from AI";
+      return NextResponse.json(
+        { error: `No response from AI: ${blockReason}` },
+        { status: 502 },
+      );
     }
 
     // Save user message to database
@@ -272,9 +312,10 @@ Always be helpful, accurate, and thorough. If you're unsure about something, say
       },
     });
   } catch (error) {
-    console.error("Error in /api/prompt/chat:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("[/api/prompt/chat] Error:", error);
     return NextResponse.json(
-      { error: "Failed to generate response" },
+      { error: `Failed to generate response: ${message}` },
       { status: 500 }
     );
   }
