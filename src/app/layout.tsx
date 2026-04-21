@@ -10,6 +10,7 @@ import HeaderCommentsButton from "@/components/HeaderCommentsButton";
 import HeaderNotificationsButton from "@/components/HeaderNotificationsButton";
 import HeaderDealNotificationsButton from "@/components/HeaderDealNotificationsButton";
 import HeaderTasksButton from "@/components/HeaderTasksButton";
+import HeaderPromptButton from "@/components/HeaderPromptButton";
 import HeaderWhatsAppButton from "@/components/HeaderWhatsAppButton";
 import GlobalPatientSearch from "@/components/GlobalPatientSearch";
 import { CommentsUnreadProvider } from "@/components/CommentsUnreadContext";
@@ -494,6 +495,7 @@ export default function RootLayout({
                     <GlobalPatientSearch />
                     <div className="flex items-center gap-2 text-slate-500">
                       <HeaderTasksButton />
+                      <HeaderPromptButton />
                       <HeaderDealNotificationsButton />
                       <HeaderNotificationsButton />
                       <HeaderCommentsButton />
