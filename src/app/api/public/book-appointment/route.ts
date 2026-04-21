@@ -442,6 +442,37 @@ export async function POST(request: Request) {
       );
     }
 
+    // Create "Organize Anesthesia" task assigned to aileen.bodenmann@aesthetics-ge.ch
+    try {
+      const { data: aileenUser } = await supabase
+        .from("users")
+        .select("id, full_name, email")
+        .eq("email", "aileen.bodenmann@aesthetics-ge.ch")
+        .single();
+
+      const { error: taskError } = await supabase
+        .from("tasks")
+        .insert({
+          name: "Organize Anesthesia",
+          content: `Auto-created on appointment booking for patient: ${patientName}`,
+          status: "not_started",
+          priority: "medium",
+          type: "todo",
+          activity_date: appointmentDateObj.toISOString(),
+          assigned_user_id: aileenUser?.id || null,
+          assigned_user_name: aileenUser?.full_name || aileenUser?.email || "aileen.bodenmann@aesthetics-ge.ch",
+          patient_id: patientId,
+        });
+
+      if (taskError) {
+        console.error("✗ Failed to create Organize Anesthesia task:", taskError);
+      } else {
+        console.log("✓ Created Organize Anesthesia task for patient:", patientId);
+      }
+    } catch (err) {
+      console.error("✗ Error creating Organize Anesthesia task:", err);
+    }
+
     // If this is a new patient, trigger the patient-created workflow to create deal and task
     if (isNewPatient) {
       try {
