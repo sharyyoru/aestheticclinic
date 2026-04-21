@@ -611,7 +611,6 @@ export default function InvoicesPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             invoiceId: v.invoiceId,
-            consultationId: v.invoiceId,
             patientId: v.patientId,
             billingType: v.billingType || "TG",
             lawType: v.lawType || "KVG",
@@ -914,7 +913,7 @@ export default function InvoicesPage() {
         <InsuranceBillingModal
           isOpen={insuranceModalOpen}
           onClose={() => { setInsuranceModalOpen(false); setInsuranceTarget(null); }}
-          consultationId={insuranceTarget.id}
+          invoiceId={insuranceTarget.id}
           patientId={insuranceTarget.patient_id || ""}
           patientName={patientName(insuranceTarget.patient_id)}
           invoiceAmount={Number(insuranceTarget.total_amount) || null}

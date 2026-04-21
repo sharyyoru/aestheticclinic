@@ -4262,6 +4262,8 @@ export default function MedicalConsultationsCard({
                           invoice_paid_amount: null,
                           cash_receipt_path: null,
                           invoice_pdf_path: null,
+                          invoice_number: null,
+                          email_sent_at: null,
                           payment_link_token: null,
                           payrexx_payment_link: null,
                           payrexx_payment_status: null,
