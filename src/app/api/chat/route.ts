@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type ChatMessage = {
   role: "user" | "assistant" | "system";
@@ -19,9 +20,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
     const { messages, patientId } = (await request.json()) as {
       messages?: ChatMessage[];
       patientId?: string | null;
@@ -34,12 +32,13 @@ export async function POST(request: Request) {
       );
     }
 
+    // Sanitize and filter
     const trimmed = messages
       .map((message) => ({
         role: message.role,
         content: message.content?.toString().slice(0, 8000) ?? "",
       }))
-      .filter((message) => message.content.trim().length > 0);
+      .filter((message) => message.content.trim().length > 0 && message.role !== "system");
 
     if (trimmed.length === 0) {
       return NextResponse.json(
@@ -56,35 +55,62 @@ export async function POST(request: Request) {
         "\n\nThis chat has been linked to a specific patient in the clinic's CRM. When staff refer to 'this patient' or 'the patient', assume they mean that linked patient. However, you still must never insert real patient details directly; always refer to them using the CRM template variables like {{patient.first_name}} and {{patient.last_name}} rather than concrete values.";
     }
 
-    // Convert messages to Gemini format
-    const history = trimmed
-      .filter((msg) => msg.role !== "system")
-      .slice(0, -1)
-      .map((msg) => ({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }],
-      }));
-
-    const lastUserMessage = trimmed.filter((msg) => msg.role !== "system").slice(-1)[0];
-
-    const chat = model.startChat({
-      history,
+    const genAI = new GoogleGenerativeAI(apiKey);
+    // Pass systemInstruction on the model (correct SDK placement)
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction,
       generationConfig: {
         temperature: 0.6,
-      },
-      systemInstruction: {
-        role: "user",
-        parts: [{ text: systemInstruction }],
+        maxOutputTokens: 4096,
       },
     });
 
-    const result = await chat.sendMessage(lastUserMessage?.content || "");
+    // Build Gemini-format contents. Gemini requires:
+    //  - history starts with a "user" role
+    //  - roles alternate (user, model, user, model ...)
+    //  - last entry must be "user"
+    const mapped = trimmed.map((msg) => ({
+      role: msg.role === "assistant" ? ("model" as const) : ("user" as const),
+      parts: [{ text: msg.content }],
+    }));
+
+    // Drop any leading "model" entries (history must start with user)
+    while (mapped.length > 0 && mapped[0].role !== "user") {
+      mapped.shift();
+    }
+
+    // Collapse consecutive same-role entries (merge their text) to guarantee alternation
+    const contents: Array<{ role: "user" | "model"; parts: { text: string }[] }> = [];
+    for (const entry of mapped) {
+      const prev = contents[contents.length - 1];
+      if (prev && prev.role === entry.role) {
+        prev.parts[0].text += "\n\n" + entry.parts[0].text;
+      } else {
+        contents.push({ role: entry.role, parts: [{ text: entry.parts[0].text }] });
+      }
+    }
+
+    // Ensure the final entry is a user message; if the last entry is a model message,
+    // the client shouldn't have asked for a response, so return an error.
+    if (contents.length === 0 || contents[contents.length - 1].role !== "user") {
+      return NextResponse.json(
+        { error: "Last message must be from the user" },
+        { status: 400 },
+      );
+    }
+
+    // Use generateContent directly with the built contents (more robust than startChat)
+    const result = await model.generateContent({ contents });
     const response = result.response;
     const text = response.text();
 
-    if (!text) {
+    if (!text || !text.trim()) {
+      // Surface block reason when possible
+      const blockReason =
+        response.promptFeedback?.blockReason || "Empty response from Gemini";
       return NextResponse.json(
-        { error: "No response from Gemini" },
+        { error: `No response from Gemini: ${blockReason}` },
         { status: 502 },
       );
     }
@@ -96,9 +122,11 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("Error in /api/chat", error);
+    const message =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("[/api/chat] Error:", error);
     return NextResponse.json(
-      { error: "Failed to generate chat response" },
+      { error: `Failed to generate chat response: ${message}` },
       { status: 500 },
     );
   }
