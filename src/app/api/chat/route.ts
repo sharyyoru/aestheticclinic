@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback } from "@/lib/geminiWithFallback";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -55,17 +55,6 @@ export async function POST(request: Request) {
         "\n\nThis chat has been linked to a specific patient in the clinic's CRM. When staff refer to 'this patient' or 'the patient', assume they mean that linked patient. However, you still must never insert real patient details directly; always refer to them using the CRM template variables like {{patient.first_name}} and {{patient.last_name}} rather than concrete values.";
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    // Pass systemInstruction on the model (correct SDK placement)
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      systemInstruction,
-      generationConfig: {
-        temperature: 0.6,
-        maxOutputTokens: 4096,
-      },
-    });
-
     // Build Gemini-format contents. Gemini requires:
     //  - history starts with a "user" role
     //  - roles alternate (user, model, user, model ...)
@@ -100,8 +89,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Use generateContent directly with the built contents (more robust than startChat)
-    const result = await model.generateContent({ contents });
+    // Use helper with retry + model fallback (handles 429 / quota exhaustion)
+    const result = await generateContentWithFallback({
+      apiKey,
+      systemInstruction,
+      generationConfig: {
+        temperature: 0.6,
+        maxOutputTokens: 4096,
+      },
+      contents,
+      verbose: true,
+    });
     const response = result.response;
     const text = response.text();
 
@@ -122,11 +120,24 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    const message =
+    const rawMessage =
       error instanceof Error ? error.message : "Unknown error";
     console.error("[/api/chat] Error:", error);
+    const isQuota =
+      rawMessage.includes("429") ||
+      rawMessage.toLowerCase().includes("quota") ||
+      rawMessage.toLowerCase().includes("resource exhausted");
+    if (isQuota) {
+      return NextResponse.json(
+        {
+          error:
+            "AI is temporarily unavailable due to quota limits across all Gemini models. Please try again in a few minutes. If this persists, upgrade the Gemini API plan or add billing to the Google Cloud project.",
+        },
+        { status: 429 },
+      );
+    }
     return NextResponse.json(
-      { error: `Failed to generate chat response: ${message}` },
+      { error: `Failed to generate chat response: ${rawMessage}` },
       { status: 500 },
     );
   }
