@@ -21,6 +21,11 @@ import InvoiceStatusBadge from "@/components/InvoiceStatusBadge";
 import TardocAccordionTree from "@/components/TardocAccordionTree";
 import AcfAccordionTree from "@/components/AcfAccordionTree";
 import { type MediDataInvoiceStatus } from "@/lib/medidata";
+import {
+  MATERIEL_406_TARIFF_CODE,
+  searchMateriel406,
+  getMateriel406Item,
+} from "@/lib/materiel406";
 
 type TaskPriority = "low" | "medium" | "high";
 
@@ -376,9 +381,10 @@ export default function MedicalConsultationsCard({
   );
   const [invoicePaymentMethod, setInvoicePaymentMethod] = useState("");
   const [invoiceProviderId, setInvoiceProviderId] = useState<string>("");
-  const [invoiceMode, setInvoiceMode] = useState<"group" | "individual" | "tardoc" | "flatrate">(
+  const [invoiceMode, setInvoiceMode] = useState<"group" | "individual" | "tardoc" | "flatrate" | "materiel">(
     "individual", // default to Individual Services
   );
+  const [materielSearchQuery, setMaterielSearchQuery] = useState("");
   const [selectedTardocCode, setSelectedTardocCode] = useState("");
   const [invoiceCanton, setInvoiceCanton] = useState<SwissCanton>(DEFAULT_CANTON);
   const [invoiceLawType, setInvoiceLawType] = useState("KVG");
@@ -1055,6 +1061,8 @@ export default function MedicalConsultationsCard({
                     ? `<span class="ml-1 inline-flex rounded bg-red-50 px-1 text-[8px] font-medium text-red-600">TARDOC</span>`
                     : item.tariff_code === 5 || item.tariff_code === 590 || item.catalog_name === "ACF" || item.catalog_name === "SURGERY_FLAT_RATE"
                     ? `<span class="ml-1 inline-flex rounded bg-violet-50 px-1 text-[8px] font-medium text-violet-600">ACF</span>`
+                    : item.tariff_code === 406 || item.catalog_name === "MATERIEL"
+                    ? `<span class="ml-1 inline-flex rounded bg-emerald-50 px-1 text-[8px] font-medium text-emerald-600">406</span>`
                     : "";
                   const sideLabel = item.side_type === 1 ? "Left" : item.side_type === 2 ? "Right" : item.side_type === 3 ? "Both" : "None";
                   const tardocDetails = isTardoc
@@ -2420,6 +2428,7 @@ export default function MedicalConsultationsCard({
         const reconstructedLines: InvoiceServiceLine[] = (lineItems || []).map((li: any) => {
           const isTardocLine = !!li.tardoc_code;
           const isAcfLine = li.catalog_name === "ACF" || li.catalog_name === "TMA";
+          const isMaterielLine = li.catalog_name === "MATERIEL" || li.tariff_code === 406;
           let serviceId: string;
           if (isTardocLine) {
             serviceId = `tardoc-${li.tardoc_code}`;
@@ -2427,6 +2436,8 @@ export default function MedicalConsultationsCard({
             serviceId = `tma-${li.code || li.name}`;
           } else if (isAcfLine) {
             serviceId = `flatrate-${li.code || li.name}`;
+          } else if (isMaterielLine) {
+            serviceId = `materiel-${li.code || li.name}`;
           } else {
             serviceId = li.service_id || li.id;
           }
@@ -3785,11 +3796,14 @@ export default function MedicalConsultationsCard({
                             const isTardocLine = line.serviceId.startsWith("tardoc-");
                             const isFlatRateLine = line.serviceId.startsWith("flatrate-");
                             const isTmaLine = line.serviceId.startsWith("tma-");
+                            const isMaterielLine = line.serviceId.startsWith("materiel-");
                             const isAcfRelated = isFlatRateLine || isTmaLine;
                             const tardocCode = isTardocLine ? line.serviceId.replace("tardoc-", "") : null;
                             const flatRateCode = isFlatRateLine ? line.serviceId.replace("flatrate-", "") : null;
                             const tmaCode = isTmaLine ? line.serviceId.replace("tma-", "") : null;
-                            const service = (isTardocLine || isAcfRelated) ? null : invoiceServices.find((s) => s.id === line.serviceId);
+                            const materielCode = isMaterielLine ? line.serviceId.replace("materiel-", "") : null;
+                            const materielItem = isMaterielLine && materielCode ? getMateriel406Item(materielCode) : null;
+                            const service = (isTardocLine || isAcfRelated || isMaterielLine) ? null : invoiceServices.find((s) => s.id === line.serviceId);
                             const quantity = line.quantity > 0 ? line.quantity : 1;
                             const resolvedUnitPrice = (() => {
                               if (line.unitPrice !== null && Number.isFinite(line.unitPrice)) return Math.max(0, line.unitPrice);
@@ -3804,15 +3818,15 @@ export default function MedicalConsultationsCard({
                             const tardocRecordId = isTardocLine ? (line.tardocRecordId ?? tardocSearchResults.find((r: any) => r.code === tardocCode)?.recordId ?? null) : null;
                             const tardocSection = isTardocLine ? (line.tardocSection ?? tardocSearchResults.find((r: any) => r.code === tardocCode)?.section ?? null) : null;
 
-                            // Determine tariff code: 7=TARDOC, 5=ACF Flat Rate / TMA, null=regular
-                            const tariffCode = isTardocLine ? 7 : isAcfRelated ? ACF_TARIFF_CODE : null;
+                            // Determine tariff code: 7=TARDOC, 5=ACF Flat Rate / TMA, 406=Matériel, null=regular
+                            const tariffCode = isTardocLine ? 7 : isAcfRelated ? ACF_TARIFF_CODE : isMaterielLine ? MATERIEL_406_TARIFF_CODE : null;
                             // Derive tariff type string from tariff code (zero-padded to 3 digits)
                             const tariffType = tariffCode != null ? String(tariffCode).padStart(3, "0") : null;
 
                             return {
-                              name: line.customName || service?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : tmaCode ? `TMA ${tmaCode}` : "Service"),
-                              code: isTardocLine ? tardocCode : isFlatRateLine ? flatRateCode : isTmaLine ? tmaCode : (service as any)?.code || String(idx + 1).padStart(3, '0'),
-                              service_id: (isTardocLine || isAcfRelated) ? null : line.serviceId,
+                              name: line.customName || service?.name || materielItem?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : tmaCode ? `TMA ${tmaCode}` : materielCode ? `Matériel ${materielCode}` : "Service"),
+                              code: isTardocLine ? tardocCode : isFlatRateLine ? flatRateCode : isTmaLine ? tmaCode : isMaterielLine ? materielCode : (service as any)?.code || String(idx + 1).padStart(3, '0'),
+                              service_id: (isTardocLine || isAcfRelated || isMaterielLine) ? null : line.serviceId,
                               quantity,
                               unit_price: resolvedUnitPrice,
                               total_price: resolvedUnitPrice * quantity,
@@ -3829,9 +3843,9 @@ export default function MedicalConsultationsCard({
                               external_factor_tt: 1,
                               price_al: isTardocLine ? Math.round(tardocTpMT * taxPointValue * 100) / 100 : 0,
                               price_tl: isTardocLine ? Math.round(tardocTpTT * taxPointValue * 100) / 100 : 0,
-                              provider_gln: (isTardocLine || isAcfRelated) ? selectedProviderGln : null,
-                              responsible_gln: (isTardocLine || isAcfRelated) ? selectedProviderGln : null,
-                              billing_role: (isTardocLine || isAcfRelated) ? "both" : null,
+                              provider_gln: (isTardocLine || isAcfRelated || isMaterielLine) ? selectedProviderGln : null,
+                              responsible_gln: (isTardocLine || isAcfRelated || isMaterielLine) ? selectedProviderGln : null,
+                              billing_role: (isTardocLine || isAcfRelated || isMaterielLine) ? "both" : null,
                               record_id: tardocRecordId,
                               ref_code: isAcfRelated ? (line.acfRefCode || null) : isTardocLine ? (line.tardocRefCode || null) : (null as string | null),
                               section_code: tardocSection,
@@ -3839,8 +3853,8 @@ export default function MedicalConsultationsCard({
                               service_attributes: 0,
                               side_type: isAcfRelated ? (line.acfSideType ?? 0) : isTardocLine ? (line.tardocSideType ?? 0) : 0,
                               date_begin: scheduledAtIso || null,
-                              catalog_name: isTardocLine ? "TARDOC" : isFlatRateLine ? "ACF" : isTmaLine ? "TMA" : null,
-                              catalog_nature: (isTardocLine || isAcfRelated) ? "TARIFF_CATALOG" : null,
+                              catalog_name: isTardocLine ? "TARDOC" : isFlatRateLine ? "ACF" : isTmaLine ? "TMA" : isMaterielLine ? "MATERIEL" : null,
+                              catalog_nature: (isTardocLine || isAcfRelated || isMaterielLine) ? "TARIFF_CATALOG" : null,
                             };
                           });
 
@@ -4919,6 +4933,18 @@ export default function MedicalConsultationsCard({
                             >
                               Flat Rate
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => setInvoiceMode("materiel")}
+                              className={
+                                "flex-1 px-2 py-1.5 text-center text-[10px] font-medium " +
+                                (invoiceMode === "materiel"
+                                  ? "bg-emerald-600 text-white"
+                                  : "bg-transparent text-slate-600")
+                              }
+                            >
+                              Matériel 406
+                            </button>
                           </div>
 
                           {invoiceMode === "individual" ? (
@@ -5496,6 +5522,77 @@ export default function MedicalConsultationsCard({
                               />
                               <p className="text-[9px] text-slate-400">
                                 ACF - Ambulatory Case Flatrates (tariff {ACF_TARIFF_TYPE_DISPLAY}). Live data from Sumex1 acfValidator.
+                              </p>
+                            </div>
+                          ) : invoiceMode === "materiel" ? (
+                            <div className="space-y-2 px-3 py-3">
+                              <div className="space-y-1">
+                                <span className="block text-[10px] font-medium text-slate-600">
+                                  Search Matériel / Medicaments (Tarif 406)
+                                </span>
+                                <input
+                                  type="text"
+                                  value={materielSearchQuery}
+                                  onChange={(e) => setMaterielSearchQuery(e.target.value)}
+                                  placeholder="e.g. Vicryl, 0001, Propofol..."
+                                  className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                />
+                              </div>
+                              {(() => {
+                                const results = searchMateriel406(materielSearchQuery);
+                                if (results.length === 0) {
+                                  return (
+                                    <p className="py-2 text-center text-[10px] text-slate-400">
+                                      No matching items.
+                                    </p>
+                                  );
+                                }
+                                return (
+                                  <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/50">
+                                    <div className="sticky top-0 z-10 grid grid-cols-[20px_52px_minmax(0,1fr)_56px_40px] items-center gap-0.5 border-b border-slate-200 bg-slate-100 px-1.5 py-1 text-[9px] font-semibold text-slate-500">
+                                      <span />
+                                      <span>CODE</span>
+                                      <span>DESCRIPTION</span>
+                                      <span className="text-right">CHF</span>
+                                      <span className="text-right">TYPE</span>
+                                    </div>
+                                    {results.map((item) => (
+                                      <div
+                                        key={item.code}
+                                        className="grid grid-cols-[20px_52px_minmax(0,1fr)_56px_40px] items-center gap-0.5 border-b border-slate-100 px-1.5 py-1 text-[10px] hover:bg-emerald-50/50"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setInvoiceServiceLines((prev) => [
+                                              ...prev,
+                                              {
+                                                serviceId: `materiel-${item.code}`,
+                                                quantity: 1,
+                                                unitPrice: item.price,
+                                                groupId: null,
+                                                discountPercent: null,
+                                                customName: `[406] ${item.code} - ${item.name}`,
+                                              },
+                                            ]);
+                                          }}
+                                          className="flex h-4 w-4 items-center justify-center rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                                          title="Add to invoice"
+                                        >
+                                          <span className="text-[10px] font-bold leading-none">+</span>
+                                        </button>
+                                        <span className="font-mono text-[9px] font-semibold text-slate-700">{item.code}</span>
+                                        <span className="text-[10px] text-slate-700 line-clamp-1">{item.name}</span>
+                                        <span className="text-right font-mono text-[10px] font-semibold text-slate-800">{item.price.toFixed(2)}</span>
+                                        <span className="text-right font-mono text-[9px] text-slate-500">{item.subtariff}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                              <p className="text-[9px] text-slate-400">
+                                Tarif 406 v101 (01/01/2026 – 31/12/2099). VAT exempt. 2001 = Medicaments, 2002 = Matériel.
+                                Showing {searchMateriel406(materielSearchQuery).length} item(s).
                               </p>
                             </div>
                           ) : null}
