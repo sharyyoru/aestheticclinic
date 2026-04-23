@@ -64,14 +64,17 @@ export async function POST(request: Request) {
       "chat_conversations",
       "consultations",
       "crisalix_reconstructions",
+      "deal_notifications",
       "deals",
       "documents",
       "email_reply_notifications",
       "emails",
       "invoices",
+      "marketing_campaign_recipients",
       "medidata_submissions",
       "patient_consultation_data",
       "patient_documents",
+      "patient_form_submissions",
       "patient_health_background",
       "patient_insurances",
       "patient_intake_photos",
@@ -88,6 +91,8 @@ export async function POST(request: Request) {
       "tasks",
       "whatsapp_conversations",
       "whatsapp_messages",
+      "whatsapp_queue",
+      "workflow_enrollments",
     ];
 
     // Storage buckets to check
@@ -279,6 +284,8 @@ export async function POST(request: Request) {
     // Track file path mappings for database updates
     const filePathMappings: { bucket: string; oldPath: string; newPath: string }[] = [];
 
+    const tableUpdateFailures: string[] = [];
+
     for (const patientId of patientIdsToMerge) {
       console.log(`Merging data from patient ${patientId} to ${primaryPatientId}`);
 
@@ -291,8 +298,13 @@ export async function POST(request: Request) {
           .select("id");
 
         if (error) {
-          // Log but continue - table might not exist or have no records
-          console.log(`Note: Could not update ${tableName}:`, error.message);
+          // 42P01 = table doesn't exist (benign); anything else is a real failure
+          if (error.code === "42P01") {
+            console.log(`Note: Table ${tableName} does not exist, skipping.`);
+          } else {
+            console.error(`WARN: Failed to update ${tableName}.patient_id for ${patientId}:`, error.message);
+            tableUpdateFailures.push(`${tableName} (${error.message})`);
+          }
         } else if (data && data.length > 0 && !tablesUpdated.includes(tableName)) {
           tablesUpdated.push(tableName);
         }
@@ -463,6 +475,44 @@ export async function POST(request: Request) {
       }
     }
 
+    // 3c. Update tables with non-standard patient reference columns.
+    // These use a column other than `patient_id` to reference patients.
+    // The FK has no ON DELETE CASCADE, so we MUST update before deletion.
+    const nonStandardPatientRefs = [
+      { table: "embed_form_leads", column: "converted_to_patient_id" },
+    ];
+
+    for (const patientId of patientIdsToMerge) {
+      for (const { table, column } of nonStandardPatientRefs) {
+        console.log(`Updating ${table}.${column}: ${patientId} → ${primaryPatientId}`);
+        const { data, error } = await supabase
+          .from(table)
+          .update({ [column]: primaryPatientId })
+          .eq(column, patientId)
+          .select("id");
+
+        if (error) {
+          console.error(`FAILED to update ${table}.${column} for patient ${patientId}:`, error);
+          // Also try setting to null as fallback so deletion isn't blocked
+          const { error: nullError } = await supabase
+            .from(table)
+            .update({ [column]: null })
+            .eq(column, patientId);
+          if (nullError) {
+            console.error(`FAILED to null out ${table}.${column} for patient ${patientId}:`, nullError);
+            return NextResponse.json(
+              { error: `Cannot update ${table}.${column}: ${error.message}. Merge aborted to prevent data loss.` },
+              { status: 500 }
+            );
+          }
+          console.log(`Set ${table}.${column} to null for patient ${patientId} as fallback`);
+        } else {
+          console.log(`Updated ${data?.length ?? 0} rows in ${table}.${column}`);
+          if (data && data.length > 0 && !tablesUpdated.includes(table)) tablesUpdated.push(table);
+        }
+      }
+    }
+
     // 4. Delete the merged patients
     const { error: deleteError } = await supabase
       .from("patients")
@@ -471,12 +521,15 @@ export async function POST(request: Request) {
 
     if (deleteError) {
       console.error("Error deleting merged patients:", deleteError);
+      const failureHint = tableUpdateFailures.length > 0
+        ? ` Table update failures that may have caused this: ${tableUpdateFailures.join("; ")}`
+        : "";
       // Provide more context about the error - likely a foreign key constraint
       const errorMessage = deleteError.message?.includes("violates foreign key constraint")
-        ? `Failed to delete merged patients: A related record still references this patient. Details: ${deleteError.message}`
-        : `Failed to delete merged patients: ${deleteError.message || "Unknown error"}`;
+        ? `Failed to delete merged patients: A related record still references this patient. ${deleteError.message}${failureHint}`
+        : `Failed to delete merged patients: ${deleteError.message || "Unknown error"}${failureHint}`;
       return NextResponse.json(
-        { error: errorMessage, details: deleteError },
+        { error: errorMessage, details: deleteError, tableUpdateFailures },
         { status: 500 }
       );
     }

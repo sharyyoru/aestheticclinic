@@ -387,6 +387,8 @@ export default function MedicalConsultationsCard({
   const [materielSearchQuery, setMaterielSearchQuery] = useState("");
   const [selectedTardocCode, setSelectedTardocCode] = useState("");
   const [invoiceCanton, setInvoiceCanton] = useState<SwissCanton>(DEFAULT_CANTON);
+  const [taxPointOverride, setTaxPointOverride] = useState<number | null>(null);
+  const effectiveTaxPointValue = taxPointOverride ?? CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
   const [invoiceLawType, setInvoiceLawType] = useState("KVG");
   const [invoiceAccidentDate, setInvoiceAccidentDate] = useState("");
   const [tardocSearchQuery, setTardocSearchQuery] = useState("");
@@ -3674,7 +3676,7 @@ export default function MedicalConsultationsCard({
                         const hasAcfLines = invoiceServiceLines.some((l) => l.serviceId.startsWith("flatrate-") || l.serviceId.startsWith("tma-"));
                         const hasTardocLines = invoiceServiceLines.some((l) => l.serviceId.startsWith("tardoc-"));
                         const isTardocInvoice = hasTardocLines;
-                        const taxPointValue = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                        const taxPointValue = effectiveTaxPointValue;
 
                         // ── ACF Validation: validate flat rate services before saving ──
                         let workingServiceLines = [...invoiceServiceLines];
@@ -5134,23 +5136,60 @@ export default function MedicalConsultationsCard({
                             </div>
                           ) : invoiceMode === "tardoc" ? (
                             <div className="space-y-2 px-3 py-3">
-                              {/* Canton + Law Type */}
-                              <div className="grid grid-cols-2 gap-2">
+                              {/* Canton + TPV + Law Type */}
+                              <div className="grid grid-cols-[1fr_70px_1fr] gap-2">
                                 <div className="space-y-1">
                                   <span className="block text-[10px] font-medium text-slate-600">
-                                    Canton (Tax Point Value)
+                                    Canton
                                   </span>
                                   <select
                                     value={invoiceCanton}
-                                    onChange={(e) => setInvoiceCanton(e.target.value as SwissCanton)}
+                                    onChange={(e) => {
+                                      setInvoiceCanton(e.target.value as SwissCanton);
+                                      setTaxPointOverride(null);
+                                    }}
                                     className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                                   >
                                     {Object.entries(CANTON_TAX_POINT_VALUES).map(([code, value]) => (
                                       <option key={code} value={code}>
-                                        {code} - CHF {value.toFixed(2)}/pt
+                                        {code} - {value.toFixed(2)}
                                       </option>
                                     ))}
                                   </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="block text-[10px] font-medium text-slate-600">
+                                    TPV
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={0.01}
+                                    max={5}
+                                    step={0.01}
+                                    value={effectiveTaxPointValue}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      if (!isNaN(val) && val > 0) {
+                                        const cantonDefault = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                                        setTaxPointOverride(val === cantonDefault ? null : val);
+                                      }
+                                    }}
+                                    title="Tax point value (CHF/pt). Change if insurer requires a different rate."
+                                    className={`block w-full rounded-lg border px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 ${
+                                      taxPointOverride !== null
+                                        ? "border-amber-400 bg-amber-50"
+                                        : "border-slate-200 bg-white"
+                                    }`}
+                                  />
+                                  {taxPointOverride !== null && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setTaxPointOverride(null)}
+                                      className="text-[9px] text-amber-600 hover:text-amber-800"
+                                    >
+                                      Reset to {(CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96).toFixed(2)}
+                                    </button>
+                                  )}
                                 </div>
                                 <div className="space-y-1">
                                   <span className="block text-[10px] font-medium text-slate-600">
@@ -5213,7 +5252,7 @@ export default function MedicalConsultationsCard({
                                               type="button"
                                               className="w-full text-left px-3 py-2 text-[11px] text-slate-800 hover:bg-sky-50 border-b border-slate-100 last:border-0"
                                               onClick={() => {
-                                                const tpv = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                                                const tpv = effectiveTaxPointValue;
                                                 const newLines: InvoiceServiceLine[] = (g.tardoc_group_items || []).map((item: any) => {
                                                   const rawCode: string = item.tardoc_code || "";
                                                   const isAcf = rawCode.startsWith("acf:");
@@ -5385,7 +5424,7 @@ export default function MedicalConsultationsCard({
                                     <span />
                                   </div>
                                   {tardocSearchResults.map((svc: any) => {
-                                    const tpv = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                                    const tpv = effectiveTaxPointValue;
                                     const price = svc.priceCHF ?? Math.round((svc.tpMT + svc.tpTT) * tpv * 100) / 100;
                                     return (
                                       <div
@@ -5440,7 +5479,7 @@ export default function MedicalConsultationsCard({
                                 <TardocAccordionTree
                                   canton={invoiceCanton}
                                   onAddService={(svc: any) => {
-                                    const tpv = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                                    const tpv = effectiveTaxPointValue;
                                     const price = svc.priceCHF ?? Math.round(((svc.tpMT || 0) + (svc.tpTT || 0)) * tpv * 100) / 100;
                                     setInvoiceServiceLines((prev) => [
                                       ...prev,
@@ -6121,7 +6160,7 @@ export default function MedicalConsultationsCard({
                                       </div>
                                       <div className="flex items-center gap-1">
                                         <span className="text-[9px] text-slate-400">TPV:</span>
-                                        <span className="font-mono text-[10px] font-medium text-slate-700">{(CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96).toFixed(2)}</span>
+                                        <span className="font-mono text-[10px] font-medium text-slate-700">{(effectiveTaxPointValue).toFixed(2)}</span>
                                       </div>
                                       <div className="flex items-center gap-1">
                                         <span className="text-[9px] text-slate-400">Ext.F:</span>
@@ -6144,7 +6183,7 @@ export default function MedicalConsultationsCard({
                                       <div className="flex items-center gap-1">
                                         <span className="text-[9px] text-slate-400">Total:</span>
                                         <span className="font-mono text-[10px] font-semibold text-slate-800">
-                                          {(((line.tardocTpMT ?? 0) + (line.tardocTpTT ?? 0)) * (CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96) * quantity * (line.tardocExternalFactor ?? 1)).toFixed(2)}
+                                          {(((line.tardocTpMT ?? 0) + (line.tardocTpTT ?? 0)) * (effectiveTaxPointValue) * quantity * (line.tardocExternalFactor ?? 1)).toFixed(2)}
                                         </span>
                                       </div>
                                     </div>
