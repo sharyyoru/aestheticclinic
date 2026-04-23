@@ -134,6 +134,30 @@ export async function POST(request: NextRequest) {
         // ── 3. Build Sumex1 XML ──
         const doctorGln = inv.doctor_gln || inv.provider_gln || config.clinic_gln;
         const doctorZsr = inv.doctor_zsr || inv.provider_zsr || config.clinic_zsr;
+
+        // Look up provider's configured specialty codes by GLN.
+        // Fail if not configured — no fallback defaults allowed.
+        let providerQualDignities: string[] | null = null;
+        if (doctorGln) {
+          const { data: provRow } = await supabaseAdmin
+            .from("providers")
+            .select("qual_dignities")
+            .eq("gln", doctorGln)
+            .maybeSingle();
+          if (provRow?.qual_dignities && Array.isArray(provRow.qual_dignities) && provRow.qual_dignities.length > 0) {
+            providerQualDignities = provRow.qual_dignities;
+          }
+        }
+        if (!providerQualDignities) {
+          results.push({
+            invoiceId,
+            invoiceNumber: inv.invoice_number,
+            doctor: inv.doctor_name || "?",
+            success: false,
+            error: "Provider specialty codes (qual_dignities) not configured. Set them in Settings > Providers & Billing.",
+          });
+          continue;
+        }
         const canton = inv.treatment_canton || config.clinic_canton || "GE";
         const invoiceDate = typeof inv.invoice_date === "string" ? inv.invoice_date.split("T")[0] : new Date().toISOString().split("T")[0];
         const treatmentDate = inv.treatment_date ? new Date(inv.treatment_date).toISOString().split("T")[0] : invoiceDate;
@@ -213,6 +237,7 @@ export async function POST(request: NextRequest) {
           },
           providerGln: doctorGln,
           providerZsr: doctorZsr,
+          qualDignities: providerQualDignities, // Per-provider specialty codes (required — must be configured)
           providerAddress: {
             familyName: (inv.doctor_name || "").split(" ").slice(-1)[0] || config.clinic_name,
             givenName: (inv.doctor_name || "").split(" ").slice(0, -1).join(" "),

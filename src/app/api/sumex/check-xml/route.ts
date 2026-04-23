@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     if (invoice.provider_id) {
       const { data: provRow } = await supabaseAdmin
         .from("providers")
-        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, phone, vatuid")
+        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, phone, vatuid, qual_dignities")
         .eq("id", invoice.provider_id)
         .single();
       if (provRow) billingEntity = provRow;
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     if (invoice.doctor_user_id && invoice.doctor_user_id !== invoice.provider_id) {
       const { data: staffRow } = await supabaseAdmin
         .from("providers")
-        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title")
+        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, qual_dignities")
         .eq("id", invoice.doctor_user_id)
         .single();
       if (staffRow) staffEntity = staffRow;
@@ -208,6 +208,15 @@ export async function POST(request: NextRequest) {
       const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
       const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
       const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
+      
+      // For TARDOC (007), use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors
+      // For other tariffs, use unit_price as unit
+      const isTardoc = tariffType === "007";
+      const unit = isTardoc && item.tp_al !== undefined && item.tp_al !== null ? item.tp_al : (item.unit_price || 0);
+      const unitFactor = isTardoc && item.tp_al_value !== undefined && item.tp_al_value !== null ? item.tp_al_value : 1;
+      const unitTT = isTardoc && item.tp_tl !== undefined && item.tp_tl !== null ? item.tp_tl : undefined;
+      const unitFactorTT = isTardoc && item.tp_tl_value !== undefined && item.tp_tl_value !== null ? item.tp_tl_value : undefined;
+      
       return {
         tariffType,
         code: item.code || "",
@@ -219,8 +228,10 @@ export async function POST(request: NextRequest) {
         responsibleGln: svcRespGln,
         side: (item.side_type as 0 | 1 | 2 | 3) ?? 0,
         serviceName: item.name || "",
-        unit: item.unit_price || 0,
-        unitFactor: 1,
+        unit,
+        unitFactor,
+        unitTT,
+        unitFactorTT,
         externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : 1,
         amount: item.total_price || 0,
         vatRate: 0,
@@ -275,6 +286,12 @@ export async function POST(request: NextRequest) {
       },
       providerGln: pickValidGln(staffEntity?.gln, invoice.doctor_gln, provGln),
       providerZsr: staffEntity?.zsr || invoice.doctor_zsr || provZsr || undefined,
+      qualDignities:
+        (staffEntity?.qual_dignities && staffEntity.qual_dignities.length > 0)
+          ? staffEntity.qual_dignities
+          : (billingEntity?.qual_dignities && billingEntity.qual_dignities.length > 0)
+            ? billingEntity.qual_dignities
+            : (() => { throw new Error("Provider specialty codes (qual_dignities) not configured. Set them in Settings > Providers & Billing."); })(),
       providerAddress: {
         familyName: staffEntity?.name || invoice.doctor_name || provName,
         givenName: "",

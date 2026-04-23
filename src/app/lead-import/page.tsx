@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { parseLeadsCSV, generateLeadsSummary, type ParsedLead } from "@/lib/csvParser";
+import { parseLeadsFile, generateLeadsSummary, type ParsedLead } from "@/lib/csvParser";
 import { formatSwissPhone, extractLeadPhones, isValidSwissPhone, formatSwissPhoneDisplay } from "@/lib/phoneFormatter";
 
 type ImportStep = "upload" | "preview" | "confirm" | "importing" | "complete";
@@ -42,8 +42,16 @@ export default function LeadImportPage() {
     const selectedFile = event.target.files?.[0];
     if (!selectedFile) return;
 
-    if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
-      setError("Please select a CSV file");
+    const lower = selectedFile.name.toLowerCase();
+    const isSupported =
+      lower.endsWith(".csv") ||
+      lower.endsWith(".tsv") ||
+      lower.endsWith(".xlsx") ||
+      lower.endsWith(".xls") ||
+      lower.endsWith(".numbers"); // let parser produce the friendly export-me message
+
+    if (!isSupported) {
+      setError("Unsupported file type. Please upload a .csv, .xlsx, or .xls file.");
       return;
     }
 
@@ -51,11 +59,10 @@ export default function LeadImportPage() {
     setError(null);
 
     try {
-      const text = await selectedFile.text();
-      const parsedLeads = parseLeadsCSV(text, selectedFile.name);
-      
+      const parsedLeads = await parseLeadsFile(selectedFile);
+
       if (parsedLeads.length === 0) {
-        setError("No leads found in CSV file");
+        setError("No leads found in file");
         return;
       }
 
@@ -63,8 +70,8 @@ export default function LeadImportPage() {
       setConfirmedService(parsedLeads[0]?.detectedService || "");
       setStep("preview");
     } catch (err) {
-      console.error("Error parsing CSV:", err);
-      setError(err instanceof Error ? err.message : "Failed to parse CSV file");
+      console.error("Error parsing file:", err);
+      setError(err instanceof Error ? err.message : "Failed to parse file");
     }
   }
 
@@ -173,7 +180,7 @@ export default function LeadImportPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Lead Import</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Import leads from CSV files and enroll them in automated workflows
+            Import leads from CSV / Excel files and enroll them in automated workflows
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -220,19 +227,19 @@ export default function LeadImportPage() {
                 </svg>
               </div>
             </div>
-            <h2 className="mb-2 text-xl font-semibold text-slate-900">Upload Lead CSV File</h2>
+            <h2 className="mb-2 text-xl font-semibold text-slate-900">Upload Lead File</h2>
             <p className="mb-6 text-sm text-slate-600">
-              Select a CSV file exported from your lead generation platform
+              Select a .csv, .xlsx or .xls file exported from TikTok Ads, Meta Ads, Google Sheets, Numbers, Excel, etc.
             </p>
             
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-sky-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-sky-700">
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              Choose CSV File
+              Choose File
               <input
                 type="file"
-                accept=".csv"
+                accept=".csv,.tsv,.xlsx,.xls,.numbers,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={handleFileSelect}
                 className="sr-only"
               />
@@ -243,12 +250,14 @@ export default function LeadImportPage() {
                 Expected Format
               </h3>
               <div className="space-y-1 text-xs text-slate-700">
-                <p>• CSV file with headers</p>
-                <p>• Required: Created, Name, Email or Phone</p>
-                <p>• Optional: Source, Form, Channel, Stage, Labels</p>
-                <p>• Phone numbers will be auto-formatted for Switzerland</p>
-                <p>• Service will be detected from filename</p>
-                <p>• <strong>Multilingual support:</strong> Columns in any language (EN, FR, DE, ES, RU, UK)</p>
+                <p>• CSV or Excel (.xlsx / .xls) file with headers in the first row</p>
+                <p>• Required: Name + at least one of Email / Phone</p>
+                <p>• Optional: Created, Source, Form, Channel, Stage, Labels</p>
+                <p>• Phone numbers are auto-formatted for Switzerland</p>
+                <p>• Service is detected from filename or per-lead Form column</p>
+                <p>• <strong>Multilingual support:</strong> Columns in EN, FR, DE, ES, RU, UK</p>
+                <p>• <strong>TikTok / Meta Ads:</strong> native exports (ad_name, campaign_name, form_name, created_time, Adresse e-mail, Nom, Numéro de téléphone...) are recognised automatically</p>
+                <p>• <strong>Apple Numbers (.numbers):</strong> please export to CSV or Excel first (File → Export To)</p>
               </div>
             </div>
           </div>

@@ -172,7 +172,12 @@ export async function POST(request: NextRequest) {
           await fetch(`${baseUrl}/api/workflows/patient-created`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ patient_id: patientId }),
+            body: JSON.stringify({
+              patient_id: patientId,
+              service: service || null,
+              location: location || null,
+              form_type: formType,
+            }),
           });
         } else {
           // For existing patients, create deal and task directly

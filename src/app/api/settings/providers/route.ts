@@ -8,6 +8,7 @@ type ProviderPayload = {
   name?: string | null;
   role?: ProviderRole;
   specialty?: string | null;
+  qual_dignities?: string[] | string | null;
   email?: string | null;
   phone?: string | null;
   gln?: string | null;
@@ -74,7 +75,7 @@ export async function GET() {
     const [{ data: providers, error: providersError }, { data: users, error: usersError }] = await Promise.all([
       supabaseAdmin
         .from("providers")
-        .select("id, name, role, specialty, email, phone, gln, zsr, salutation, title, street, street_no, zip_code, city, canton, vatuid, iban, created_at")
+        .select("id, name, role, specialty, qual_dignities, email, phone, gln, zsr, salutation, title, street, street_no, zip_code, city, canton, vatuid, iban, created_at")
         .order("role", { ascending: true })
         .order("name", { ascending: true }),
       supabaseAdmin
@@ -134,10 +135,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
+    // Normalize qual_dignities: accept string[] or comma-separated string;
+    // trim, dedupe, drop empties. Empty result => null (fallback to default).
+    const normalizeDignities = (value: unknown): string[] | null => {
+      let arr: string[];
+      if (Array.isArray(value)) {
+        arr = value.map((v) => String(v));
+      } else if (typeof value === "string") {
+        arr = value.split(/[\s,]+/);
+      } else {
+        return null;
+      }
+      const cleaned = Array.from(new Set(arr.map((s) => s.trim()).filter((s) => s.length > 0)));
+      return cleaned.length > 0 ? cleaned : null;
+    };
+
     const payload = {
       name,
       role,
       specialty: normalizeOptional(body.specialty),
+      qual_dignities: normalizeDignities(body.qual_dignities),
       email: normalizeOptional(body.email),
       phone: normalizeOptional(body.phone),
       gln: normalizeOptional(body.gln),
@@ -172,12 +189,12 @@ export async function POST(request: NextRequest) {
           .from("providers")
           .update(payload)
           .eq("id", body.id)
-          .select("id, name, role, specialty, email, phone, gln, zsr, salutation, title, street, street_no, zip_code, city, canton, vatuid, iban, created_at")
+          .select("id, name, role, specialty, qual_dignities, email, phone, gln, zsr, salutation, title, street, street_no, zip_code, city, canton, vatuid, iban, created_at")
           .single()
       : supabaseAdmin
           .from("providers")
           .insert(payload)
-          .select("id, name, role, specialty, email, phone, gln, zsr, salutation, title, street, street_no, zip_code, city, canton, vatuid, iban, created_at")
+          .select("id, name, role, specialty, qual_dignities, email, phone, gln, zsr, salutation, title, street, street_no, zip_code, city, canton, vatuid, iban, created_at")
           .single();
 
     const { data: provider, error } = await operation;

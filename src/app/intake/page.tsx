@@ -305,12 +305,15 @@ export default function IntakePage() {
 
       if (subError) throw subError;
 
-      // Trigger patient_created workflow
+      // Trigger patient_created workflow ONLY for new patients
       try {
         await fetch("/api/workflows/patient-created", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ patient_id: newPatient?.id }),
+          body: JSON.stringify({
+            patient_id: newPatient?.id,
+            skip_deal_creation: true,
+          }),
         });
       } catch {
         // Don't block on workflow trigger failure

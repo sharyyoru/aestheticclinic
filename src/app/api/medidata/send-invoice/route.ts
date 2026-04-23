@@ -241,7 +241,7 @@ export async function POST(request: NextRequest) {
     if (invoiceRecord?.provider_id) {
       const { data: provRow } = await supabaseAdmin
         .from("providers")
-        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, phone, vatuid")
+        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, phone, vatuid, qual_dignities")
         .eq("id", invoiceRecord.provider_id)
         .single();
       if (provRow) billingEntity = provRow;
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
     if (invoiceRecord?.doctor_user_id && invoiceRecord.doctor_user_id !== invoiceRecord.provider_id) {
       const { data: staffRow } = await supabaseAdmin
         .from("providers")
-        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, salutation, title")
+        .select("id, name, gln, zsr, street, street_no, zip_code, city, canton, salutation, title, qual_dignities")
         .eq("id", invoiceRecord.doctor_user_id)
         .single();
       if (staffRow) staffEntity = staffRow;
@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
     
     const lineItemsQuery = supabaseAdmin
       .from("invoice_line_items")
-      .select("code, name, quantity, unit_price, total_price, tariff_code, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, responsible_gln, catalog_name")
+      .select("code, name, quantity, unit_price, total_price, tariff_code, external_factor_mt, side_type, session_number, ref_code, date_begin, provider_gln, responsible_gln, catalog_name, tp_al, tp_tl, tp_al_value, tp_tl_value")
       .eq("invoice_id", lineItemLookupId)
       .order("sort_order", { ascending: true });
     
@@ -330,6 +330,11 @@ export async function POST(request: NextRequest) {
           sideType: item.tariff_code === 5 ? (item.side_type ?? 0) : undefined,
           sessionNumber: item.session_number ?? 1,
           refCode: item.ref_code || undefined,
+          // Tax point fields for TARDOC
+          tpAl: item.tp_al,
+          tpTl: item.tp_tl,
+          tpAlValue: item.tp_al_value,
+          tpTlValue: item.tp_tl_value,
         };
       });
     } else {
@@ -362,24 +367,36 @@ export async function POST(request: NextRequest) {
     const resolvedInsurerName = insurerName || invoiceRecord?.insurance_name || insuranceData?.provider_name || 'Unknown Insurer';
 
     // Build Sumex1 input — Sumex1 server is the ONLY XML generation path
-    const sumexServices: SumexServiceInput[] = services.map(s => ({
-      tariffType: s.tariffType || "999",
-      code: s.code,
-      referenceCode: s.refCode || "",
-      quantity: s.quantity,
-      sessionNumber: s.sessionNumber ?? 1,
-      dateBegin: s.date,
-      providerGln: s.providerGln || provGln,
-      responsibleGln: s.providerGln || provGln,
-      side: (s.sideType as 0 | 1 | 2 | 3) ?? 0,
-      serviceName: s.description || "",
-      unit: s.unitPrice || 0,
-      unitFactor: 1,
-      externalFactor: s.externalFactor ?? 1,
-      amount: s.total || 0,
-      vatRate: 0,
-      ignoreValidate: skipValidation ? YesNo.Yes : YesNo.No,
-    }));
+    const sumexServices: SumexServiceInput[] = services.map(s => {
+      // For TARDOC (007), use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors
+      // For other tariffs, use unitPrice as unit
+      const isTardoc = s.tariffType === "007";
+      const unit = isTardoc && s.tpAl !== undefined ? s.tpAl : (s.unitPrice || 0);
+      const unitFactor = isTardoc && s.tpAlValue !== undefined ? s.tpAlValue : 1;
+      const unitTT = isTardoc && s.tpTl !== undefined ? s.tpTl : undefined;
+      const unitFactorTT = isTardoc && s.tpTlValue !== undefined ? s.tpTlValue : undefined;
+      
+      return {
+        tariffType: s.tariffType || "999",
+        code: s.code,
+        referenceCode: s.refCode || "",
+        quantity: s.quantity,
+        sessionNumber: s.sessionNumber ?? 1,
+        dateBegin: s.date,
+        providerGln: s.providerGln || provGln,
+        responsibleGln: s.providerGln || provGln,
+        side: (s.sideType as 0 | 1 | 2 | 3) ?? 0,
+        serviceName: s.description || "",
+        unit,
+        unitFactor,
+        unitTT,
+        unitFactorTT,
+        externalFactor: s.externalFactor ?? 1,
+        amount: s.total || 0,
+        vatRate: 0,
+        ignoreValidate: skipValidation ? YesNo.Yes : YesNo.No,
+      };
+    });
 
     const sumexDiagnoses: SumexDiagnosis[] = (diagnosisCodes || []).map((code: string) => ({
       type: DiagnosisType.ICD,
@@ -446,6 +463,12 @@ export async function POST(request: NextRequest) {
       },
       providerGln: pickValidGln(staffEntity?.gln, invoiceRecord?.doctor_gln, provGln),
       providerZsr: staffEntity?.zsr || invoiceRecord?.doctor_zsr || provZsr || undefined,
+      qualDignities:
+        (staffEntity?.qual_dignities && staffEntity.qual_dignities.length > 0)
+          ? staffEntity.qual_dignities
+          : (billingEntity?.qual_dignities && billingEntity.qual_dignities.length > 0)
+            ? billingEntity.qual_dignities
+            : (() => { throw new Error("Provider specialty codes (qual_dignities) not configured. Set them in Settings > Providers & Billing."); })(),
       providerAddress: {
         familyName: staffEntity?.name || invoiceRecord?.doctor_name || consultationData?.doctor_name || provName,
         givenName: "",

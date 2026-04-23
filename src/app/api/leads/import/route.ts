@@ -23,6 +23,7 @@ type ImportLead = {
   bestPhone: string | null;
   service: string;
   detectedService: string | null;
+  platform: 'tiktok' | null;
   validationIssues: string[];
 };
 
@@ -237,18 +238,109 @@ export async function POST(request: NextRequest) {
       serviceCache.set(svc.name.toLowerCase(), svc);
     }
 
+    // --- TikTok auto-services: find-or-create "TikTok" category + per-service entries ---
+    // Each entry in TIKTOK_AUTO_SERVICES is auto-created under the TikTok category
+    // if missing. TikTok leads whose detected service matches one of these names
+    // (case-insensitive) get routed to that service; otherwise they fall back to
+    // Consultation (the first entry).
+    const TIKTOK_AUTO_SERVICES = ["Consultation", "MIA"] as const;
+    const hasTikTokLeads = (leads as ImportLead[]).some((l) => l.platform === "tiktok");
+    const tiktokServices = new Map<string, { id: string; name: string }>(); // key = name.toLowerCase()
+
+    if (hasTikTokLeads) {
+      console.log(`[Lead Import] TikTok leads detected — ensuring TikTok category + services exist: ${TIKTOK_AUTO_SERVICES.join(", ")}`);
+
+      // Find or create the TikTok category
+      let tiktokCategoryId: string | undefined;
+      const { data: existingCat } = await supabaseAdmin
+        .from("service_categories")
+        .select("id")
+        .eq("name", "TikTok")
+        .maybeSingle();
+
+      if (existingCat) {
+        tiktokCategoryId = existingCat.id;
+      } else {
+        const { data: newCat, error: catErr } = await supabaseAdmin
+          .from("service_categories")
+          .insert({ name: "TikTok", description: "Services auto-created from TikTok Ads lead imports" })
+          .select("id")
+          .single();
+        if (catErr) {
+          console.error("[Lead Import] Failed to create TikTok category:", catErr);
+        }
+        tiktokCategoryId = newCat?.id;
+        console.log("[Lead Import] Created TikTok service category:", tiktokCategoryId);
+      }
+
+      if (tiktokCategoryId) {
+        // Ensure each auto-service exists under the TikTok category
+        for (const svcName of TIKTOK_AUTO_SERVICES) {
+          const { data: existingSvc } = await supabaseAdmin
+            .from("services")
+            .select("id, name")
+            .eq("category_id", tiktokCategoryId)
+            .ilike("name", svcName)
+            .maybeSingle();
+
+          if (existingSvc) {
+            tiktokServices.set(existingSvc.name.toLowerCase(), { id: existingSvc.id, name: existingSvc.name });
+          } else {
+            const { data: newSvc, error: svcErr } = await supabaseAdmin
+              .from("services")
+              .insert({
+                name: svcName,
+                category_id: tiktokCategoryId,
+                description: "Auto-created from TikTok lead import",
+                is_active: true,
+              })
+              .select("id, name")
+              .single();
+            if (svcErr) {
+              console.error(`[Lead Import] Failed to create TikTok/${svcName} service:`, svcErr);
+            } else {
+              tiktokServices.set(newSvc!.name.toLowerCase(), { id: newSvc!.id, name: newSvc!.name });
+              console.log(`[Lead Import] Created TikTok/${svcName} service:`, newSvc!.id);
+            }
+          }
+        }
+      }
+    }
+
     // Helper: resolve a service interest string to a HubSpot service (match only, never create)
-    function resolveService(serviceInterest: string): { id: string; name: string } {
+    function resolveService(serviceInterest: string, platform: ImportLead["platform"]): { id: string; name: string } {
       // Check cache first
       const cacheKey = serviceInterest.toLowerCase().trim();
       const cached = serviceCache.get(cacheKey);
       if (cached) return cached;
+
+      // TikTok-specific routing: if the detected service name matches one of our
+      // auto-created TikTok services (e.g. "MIA"), prefer that over fuzzy Hubspot
+      // matching so MIA ads land under the TikTok/MIA service.
+      if (platform === "tiktok") {
+        const tiktokMatch = tiktokServices.get(cacheKey);
+        if (tiktokMatch) {
+          console.log(`[Lead Import] TikTok lead — matched TikTok/${tiktokMatch.name} service for "${serviceInterest}"`);
+          serviceCache.set(cacheKey, tiktokMatch);
+          return tiktokMatch;
+        }
+      }
 
       // Try fuzzy match against existing services
       const matched = matchServiceToHubspot(serviceInterest, hubspotServices);
       if (matched) {
         serviceCache.set(cacheKey, matched);
         return matched;
+      }
+
+      // TikTok fallback: use the auto-created Consultation service
+      if (platform === "tiktok") {
+        const consultation = tiktokServices.get("consultation");
+        if (consultation) {
+          console.log(`[Lead Import] TikTok lead — using TikTok/Consultation service for "${serviceInterest}"`);
+          serviceCache.set(cacheKey, consultation);
+          return consultation;
+        }
       }
 
       // No match — leave service_id blank, store the raw interest as the name
@@ -291,7 +383,7 @@ export async function POST(request: NextRequest) {
 
         // Resolve per-lead service from detectedService (Form column), fallback to global service
         const leadServiceInterest = lead.detectedService || service;
-        const resolvedService = resolveService(leadServiceInterest);
+        const resolvedService = resolveService(leadServiceInterest, lead.platform);
         const serviceId = resolvedService.id || null;
         const finalServiceInterest = resolvedService.name;
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldCreateDeal } from "@/lib/dealDeduplication";
+import { resolveEmbedService } from "@/lib/embedServiceResolver";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -11,7 +12,7 @@ const SALES_TEAM_NAMES = ["Charline", "Elite", "Audrey", "Bubuque", "Victoria"];
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { patient_id } = body;
+    const { patient_id, service, location, form_type, skip_deal_creation } = body;
 
     if (!patient_id) {
       return NextResponse.json(
@@ -43,13 +44,29 @@ export async function POST(request: Request) {
     // ========================================
     // AUTO-CREATE DEAL UNDER "REQUEST FOR INFORMATION"
     // ========================================
-    
-    // Check if patient already has a recent deal (within 6 hours) to avoid duplicates
+
+    if (skip_deal_creation) {
+      console.log(`[patient-created] Skipping deal creation for patient ${patient_id} (skip_deal_creation=true)`);
+    }
+
+    // Resolve embed form service → service_id (skipped if no deal will be created)
+    const resolved = skip_deal_creation ? null : await resolveEmbedService(supabaseAdmin, service);
+    const serviceId = resolved?.id || null;
+    const serviceName = resolved?.name || service || null;
+
+    // Build deal title with service if available
+    const dealTitle = serviceName
+      ? `${patient.first_name} ${patient.last_name} - ${serviceName}`
+      : `${patient.first_name} ${patient.last_name} - New Inquiry`;
+
+    // Check if patient already has a recent deal (within 24 hours) to avoid duplicates
     const dealCheck = await shouldCreateDeal(supabaseAdmin, {
-      patientId: patient_id,
+      title: dealTitle,
+      patientFirstName: patient.first_name,
+      patientLastName: patient.last_name,
     });
 
-    if (dealCheck.shouldCreate) {
+    if (!skip_deal_creation && dealCheck.shouldCreate) {
       // Get "Request for Information" stage
       const { data: requestStage } = await supabaseAdmin
         .from("deal_stages")
@@ -59,28 +76,36 @@ export async function POST(request: Request) {
         .single();
 
       if (requestStage) {
+        // Build notes
+        const noteParts = [
+          `Auto-created from ${form_type || "intake"} form submission on ${new Date().toLocaleDateString()}`,
+        ];
+        if (serviceName) noteParts.push(`Service Interest: ${serviceName}`);
+        if (location) noteParts.push(`Preferred Location: ${location}`);
+
         // Create new deal
         const { error: dealError } = await supabaseAdmin
           .from("deals")
           .insert({
             patient_id: patient_id,
             stage_id: requestStage.id,
-            title: `${patient.first_name} ${patient.last_name} - New Inquiry`,
+            title: dealTitle,
             pipeline: "sales",
-            notes: `Auto-created from intake form submission on ${new Date().toLocaleDateString()}`,
+            service_id: serviceId || undefined,
+            notes: noteParts.join("\n"),
           });
 
         if (!dealError) {
           dealCreated = true;
           actionsRun += 1;
-          console.log(`Created deal for patient ${patient_id} in stage "${requestStage.name}"`);
+          console.log(`Created deal for patient ${patient_id} in stage "${requestStage.name}" — service: ${serviceName || "(none)"}`);
         } else {
           console.error("Failed to create deal:", dealError);
         }
       } else {
         console.warn("Could not find 'Request for Information' stage");
       }
-    } else {
+    } else if (!skip_deal_creation && !dealCheck.shouldCreate) {
       console.log(`Skipped deal creation for patient ${patient_id} — recent deal exists: ${dealCheck.existingDeal.id}`);
     }
 

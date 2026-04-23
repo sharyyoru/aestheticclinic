@@ -145,6 +145,13 @@ export type InvoiceServiceLine = {
   sideType?: number; // 0=none, 1=left, 2=right, 3=bilateral
   sessionNumber?: number; // lSessionNumber (default 1)
   refCode?: string; // ICD-10 reference code
+  // TARDOC tax point fields (optional)
+  // AL = Ärztliche Leistung (Medical/Physician component)
+  tpAl?: number; // Tax point AL (medical technical)
+  tpAlValue?: number; // Tax point AL value (CHF per point)
+  // TL = Technische Leistung (Technical component)
+  tpTl?: number; // Tax point TL (technical)
+  tpTlValue?: number; // Tax point TL value (CHF per point)
 };
 
 // Complete invoice request data

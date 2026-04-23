@@ -17,6 +17,7 @@ type ProviderRecord = {
   name: string | null;
   role: ProviderRole;
   specialty: string | null;
+  qual_dignities: string[] | null;
   email: string | null;
   phone: string | null;
   gln: string | null;
@@ -47,6 +48,7 @@ type ProviderForm = {
   name: string;
   role: ProviderRole;
   specialty: string;
+  qual_dignities: string;
   email: string;
   phone: string;
   gln: string;
@@ -67,6 +69,7 @@ const EMPTY_FORM: ProviderForm = {
   name: "",
   role: "doctor",
   specialty: "",
+  qual_dignities: "",
   email: "",
   phone: "",
   gln: "",
@@ -95,6 +98,9 @@ function mapProviderToForm(provider: ProviderRecord): ProviderForm {
     name: provider.name || "",
     role: provider.role,
     specialty: provider.specialty || "",
+    qual_dignities: (provider.qual_dignities && provider.qual_dignities.length > 0)
+      ? provider.qual_dignities.join(", ")
+      : "",
     email: provider.email || "",
     phone: provider.phone || "",
     gln: provider.gln || "",
@@ -178,6 +184,11 @@ export default function ProvidersBillingSettingsTab() {
   async function handleSave() {
     if (!form.name.trim()) {
       setFormError("Name is required.");
+      return;
+    }
+
+    if (!form.qual_dignities.trim()) {
+      setFormError("Specialty Codes (FMH Dignity) are required. Enter at least one code (e.g. 2000).");
       return;
     }
 
@@ -397,6 +408,21 @@ export default function ProvidersBillingSettingsTab() {
                   <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">Specialty</label>
                   <input value={form.specialty} onChange={(e) => updateForm("specialty", e.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400/30" />
                 </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                  Specialty Codes (FMH Dignity) — comma-separated
+                </label>
+                <input
+                  value={form.qual_dignities}
+                  onChange={(e) => updateForm("qual_dignities", e.target.value)}
+                  placeholder="2000"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400/30 font-mono"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Required — Swiss FMH qualitative dignity codes sent to Sumex/TARDOC. Enter at least one code (e.g. <code className="font-mono">2000</code>). Separate multiple codes with commas (e.g. <code className="font-mono">2000, 3000, 1000</code>).
+                </p>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

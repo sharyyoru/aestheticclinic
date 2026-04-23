@@ -291,8 +291,10 @@ export type InvoiceServiceInput = {
   responsibleGln: string;
   side?: SideType;
   serviceName?: string;  // auto-expanded if validator installed
-  unit?: number;         // tax points — auto-expanded if 0
-  unitFactor?: number;   // tax point value
+  unit?: number;         // tax points MT (medical/physician) — auto-expanded if 0
+  unitFactor?: number;   // tax point value MT
+  unitTT?: number;       // tax points TT (technical) — for TARDOC
+  unitFactorTT?: number; // tax point value TT — for TARDOC
   externalFactor?: number;
   amount?: number;       // auto-expanded if 0
   vatRate?: number;
@@ -400,6 +402,8 @@ export type SumexInvoiceInput = {
   providerGlnLocation?: string;
   providerAddress: InvoiceAddress;
   providerZsr?: string;
+  qualDignity?: string; // Swiss FMH specialty code (e.g., "3000" for Dermatology) - deprecated, use qualDignities
+  qualDignities?: string[]; // Array of Swiss FMH specialty codes for multiple qualifications
 
   // Insurance (required for TP)
   insuranceGln?: string;
@@ -734,6 +738,7 @@ async function initServiceExInput(
   });
 
   // 2. SetPhysician — provider/responsible GLN, medical & billing role
+  console.log(`${LOG_PREFIX} SetPhysician for GLN: ${input.providerGln}`);
   await reqPost("IServiceExInput", "SetPhysician", {
     pIServiceExInput: handle,
     eMedicalRole: MedicalRoleType.SelfEmployed,
@@ -742,6 +747,22 @@ async function initServiceExInput(
     bstrResponsibleGLN: input.providerGln,
     bstrMedicalSectionCode: "",
   });
+
+  // 2b. AddDignity — add multiple qualitative dignities for the provider
+  // Different TARDOC services require different dignities, so we add all relevant ones
+  const dignities = input.qualDignities;
+  if (!dignities || dignities.length === 0) {
+    throw new Error("qualDignities is required. Configure provider specialty codes in Settings > Providers & Billing.");
+  }
+  console.log(`${LOG_PREFIX} Adding ${dignities.length} dignities for GLN: ${input.providerGln}`);
+  for (const dignity of dignities) {
+    await reqPost("IServiceExInput", "AddDignity", {
+      pIServiceExInput: handle,
+      bstrGLN: input.providerGln,
+      bstrQLCode: dignity,
+    });
+    console.log(`${LOG_PREFIX} ✓ Added dignity: ${dignity}`);
+  }
 
   // 3. SetPatient — birthdate and sex
   await reqPost("IServiceExInput", "SetPatient", {
@@ -1231,7 +1252,14 @@ export async function buildInvoiceRequest(
           const unitFactorMT = svc.unitFactor ?? 1;
           const extFactorMT = svc.externalFactor ?? 1;
           const computedAmountMT = Math.round(svc.quantity * unitMT * unitFactorMT * 1 * extFactorMT * 100) / 100;
-          console.log(`${LOG_PREFIX} AddServiceEx ${svc.code}: qty=${svc.quantity} unitMT=${unitMT} factor=${unitFactorMT} ext=${extFactorMT} => amountMT=${computedAmountMT} (passed amount=${svc.amount})`);
+          
+          // TL (Technical) component for TARDOC
+          const unitTT = svc.unitTT ?? 0;
+          const unitFactorTT = svc.unitFactorTT ?? 1;
+          const extFactorTT = 1; // Usually 1 for TL
+          const computedAmountTT = Math.round(svc.quantity * unitTT * unitFactorTT * 1 * extFactorTT * 100) / 100;
+          
+          console.log(`${LOG_PREFIX} AddServiceEx ${svc.code}: qty=${svc.quantity} unitMT=${unitMT} factor=${unitFactorMT} ext=${extFactorMT} => amountMT=${computedAmountMT}, unitTT=${unitTT} factorTT=${unitFactorTT} => amountTT=${computedAmountTT} (passed amount=${svc.amount})`);
 
           const addRes = await reqPost<{ plID: number; pbStatus: boolean }>(
             "IGeneralInvoiceRequest",
@@ -1254,12 +1282,12 @@ export async function buildInvoiceRequest(
               dUnitInternalScalingFactorMT: 1,
               dUnitExternalScalingFactorMT: extFactorMT,
               dAmountMT: computedAmountMT,
-              dUnitTT: 0,
-              dUnitFactorTT: 1,
+              dUnitTT: unitTT,
+              dUnitFactorTT: unitFactorTT,
               dUnitInternalScalingFactorTT: 1,
-              dUnitExternalScalingFactorTT: 1,
-              dAmountTT: 0,
-              dAmount: computedAmountMT,
+              dUnitExternalScalingFactorTT: extFactorTT,
+              dAmountTT: computedAmountTT,
+              dAmount: computedAmountMT + computedAmountTT,
               dVatRate: svc.vatRate ?? 0,
               bstrRemark: svc.remark || "",
               eIgnoreValidate: svc.ignoreValidate ?? YesNo.Yes,

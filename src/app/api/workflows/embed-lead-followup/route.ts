@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldCreateDeal } from "@/lib/dealDeduplication";
+import { resolveEmbedService } from "@/lib/embedServiceResolver";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
     // Check if patient already has a recent deal (within 6 hours) to avoid duplicates
     const dealCheck = await shouldCreateDeal(supabaseAdmin, {
       patientId: patient_id,
+      withinHours: 6,
     });
 
     if (dealCheck.shouldCreate) {
@@ -67,16 +69,21 @@ export async function POST(request: Request) {
         .single();
 
       if (requestStage) {
+        // Resolve embed form service → service_id
+        const resolved = await resolveEmbedService(supabaseAdmin, service);
+        const serviceId = resolved?.id || null;
+        const serviceName = resolved?.name || service || null;
+
         // Build deal title with service if available
-        const dealTitle = service 
-          ? `${patient.first_name} ${patient.last_name} - ${service}`
+        const dealTitle = serviceName
+          ? `${patient.first_name} ${patient.last_name} - ${serviceName}`
           : `${patient.first_name} ${patient.last_name} - Embed Form Inquiry`;
 
         // Build notes with all available info
         const noteParts = [
           `Auto-created from ${form_type} embed form on ${new Date().toLocaleDateString()}`,
         ];
-        if (service) noteParts.push(`Service Interest: ${service}`);
+        if (serviceName) noteParts.push(`Service Interest: ${serviceName}`);
         if (location) noteParts.push(`Preferred Location: ${location}`);
 
         // Create new deal
@@ -87,6 +94,7 @@ export async function POST(request: Request) {
             stage_id: requestStage.id,
             title: dealTitle,
             pipeline: "sales",
+            service_id: serviceId || undefined,
             notes: noteParts.join("\n"),
           })
           .select("id")

@@ -26,7 +26,8 @@ export type LeadCSVRow = {
 const COLUMN_MAPPINGS: { [key: string]: string[] } = {
   'Created': [
     'created', 'створено', 'créé', 'erstellt', 'creado', 'criado',
-    'data', 'date', 'datum', 'fecha', 'дата', 'date created'
+    'data', 'date', 'datum', 'fecha', 'дата', 'date created',
+    'created_time', 'created time', 'submitted at' // TikTok / Meta
   ],
   'Name': [
     'name', 'ім\'я', 'nom', 'nombre', 'nome', 'имя',
@@ -34,19 +35,23 @@ const COLUMN_MAPPINGS: { [key: string]: string[] } = {
   ],
   'Email': [
     'email', 'електронна пошта', 'e-mail', 'correo', 'correio',
-    'електронна адреса', 'эл. почта', 'email address'
+    'електронна адреса', 'эл. почта', 'email address',
+    'adresse e-mail', 'adresse email' // TikTok FR
   ],
   'Phone': [
     'phone', 'телефон', 'téléphone', 'telefon', 'teléfono',
-    'phone number', 'mobile', 'cell', 'mobile number'
+    'phone number', 'mobile', 'cell', 'mobile number',
+    'numéro de téléphone', 'numero de telephone' // TikTok FR
   ],
   'Source': [
     'source', 'джерело', 'источник', 'source', 'origen', 'fonte',
-    'lead source', 'campaign source'
+    'lead source', 'campaign source',
+    'campaign_name', 'campaign name', 'ad_name', 'ad name' // TikTok
   ],
   'Form': [
     'form', 'форма', 'formulaire', 'formular', 'formulario',
-    'form name', 'landing page'
+    'form name', 'landing page',
+    'form_name' // TikTok / Meta
   ],
   'Channel': [
     'channel', 'канал', 'canal', 'kanal',
@@ -75,26 +80,32 @@ const COLUMN_MAPPINGS: { [key: string]: string[] } = {
 };
 
 /**
- * Map CSV header to standard column name
+ * Map a single CSV header to its standard column name, along with the match
+ * quality: 2 = exact alias match, 1 = partial (substring) match, 0 = none.
  */
-function mapColumnName(header: string): string | null {
+function mapColumnNameScored(header: string): { standard: string | null; score: 0 | 1 | 2 } {
   const normalized = header.trim().toLowerCase();
-  
-  // First pass: exact matches only
+
+  // Exact match
   for (const [standardName, variations] of Object.entries(COLUMN_MAPPINGS)) {
     if (variations.some(v => normalized === v)) {
-      return standardName;
+      return { standard: standardName, score: 2 };
     }
   }
-  
-  // Second pass: partial matches (includes)
+
+  // Partial match
   for (const [standardName, variations] of Object.entries(COLUMN_MAPPINGS)) {
     if (variations.some(v => normalized.includes(v))) {
-      return standardName;
+      return { standard: standardName, score: 1 };
     }
   }
-  
-  return null;
+
+  return { standard: null, score: 0 };
+}
+
+/** Backwards-compatible wrapper */
+function mapColumnName(header: string): string | null {
+  return mapColumnNameScored(header).standard;
 }
 
 export type ParsedLead = {
@@ -114,6 +125,8 @@ export type ParsedLead = {
     whatsapp: string | null;
   };
   detectedService: string | null;
+  /** Detected ad-platform origin, e.g. 'tiktok'. null = unknown / generic CSV */
+  platform: 'tiktok' | null;
   validationIssues: string[];
 };
 
@@ -121,6 +134,9 @@ export type ParsedLead = {
  * Service detection patterns shared by filename and form detection
  */
 const SERVICE_PATTERNS: { pattern: RegExp; service: string }[] = [
+  // MIA must be checked BEFORE generic breast augmentation so that TikTok
+  // MIA ads (e.g. "MIA Breast Augmentation") route to the MIA service.
+  { pattern: /\bmia\b/i, service: 'MIA' },
   { pattern: /breast\s+augment/i, service: 'Breast Augmentation' },
   { pattern: /breast\s+implant/i, service: 'Breast Implants Replacement' },
   { pattern: /breast\s+reduc|breast\s+lift|mastopexy/i, service: 'Breast Reduction/Lifting' },
@@ -220,8 +236,28 @@ function parseLeadDate(dateStr: string): Date | null {
   if (!dateStr) return null;
 
   try {
-    // Format: "01/01/2026 2:42pm"
-    const parts = dateStr.split(' ');
+    const trimmed = dateStr.trim();
+
+    // TikTok/Meta ISO format: "2026-04-12 06:35:39(UTC+01:00)" or "2026-04-12T06:35:39Z"
+    const isoMatch = trimmed.match(
+      /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?(?:\s*\(?UTC([+-]\d{2}):?(\d{2})\)?)?/i,
+    );
+    if (isoMatch) {
+      const [, y, mo, d, h, mi, s, tzH, tzM] = isoMatch;
+      if (tzH !== undefined) {
+        // Build ISO string with explicit timezone offset
+        const iso = `${y}-${mo}-${d}T${h}:${mi}:${s || "00"}${tzH}:${tzM || "00"}`;
+        const dt = new Date(iso);
+        if (!Number.isNaN(dt.getTime())) return dt;
+      }
+      return new Date(
+        parseInt(y), parseInt(mo) - 1, parseInt(d),
+        parseInt(h), parseInt(mi), s ? parseInt(s) : 0,
+      );
+    }
+
+    // Legacy format: "01/01/2026 2:42pm"
+    const parts = trimmed.split(' ');
     if (parts.length < 2) return null;
 
     const datePart = parts[0]; // "01/01/2026"
@@ -264,18 +300,27 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
     throw new Error('CSV file is empty or has no data rows');
   }
 
-  // Parse header and map to standard names
+  // Parse header and map to standard names with match scores.
   const rawHeaders = lines[0].split(',').map(h => h.trim());
-  const mappedHeaders = rawHeaders.map(h => mapColumnName(h) || h);
-  
+  const scored = rawHeaders.map(h => mapColumnNameScored(h));
+  const mappedHeaders = scored.map((r, i) => r.standard || rawHeaders[i]);
+
   console.log('[CSV Parser] Raw headers:', rawHeaders);
   console.log('[CSV Parser] Mapped headers:', mappedHeaders);
-  
-  // Create a mapping of standard name to original header index
+
+  // Build standard-name → index map. Two-pass: exact matches (score=2)
+  // claim first, then partial matches (score=1) fill remaining slots.
+  // Prevents TikTok's `campaign_name` / `ad_name` / `form_id` (partial
+  // aliases) from overriding the actual `Source` / `form_name` columns.
   const columnMap = new Map<string, number>();
-  mappedHeaders.forEach((mapped, idx) => {
-    if (mapped) {
-      columnMap.set(mapped, idx);
+  scored.forEach((r, idx) => {
+    if (r.standard && r.score === 2 && !columnMap.has(r.standard)) {
+      columnMap.set(r.standard, idx);
+    }
+  });
+  scored.forEach((r, idx) => {
+    if (r.standard && r.score === 1 && !columnMap.has(r.standard)) {
+      columnMap.set(r.standard, idx);
     }
   });
   
@@ -292,6 +337,17 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
     throw new Error('Missing contact information: Need at least Email or Phone column');
   }
 
+  // Detect ad-platform from raw column headers.
+  // TikTok exports contain distinctive columns like created_time, ad_name,
+  // campaign_name, form_name, form_id, is_organic, platform.
+  const TIKTOK_HEADERS = ['created_time', 'ad_name', 'campaign_name', 'form_name', 'form_id', 'is_organic'];
+  const lowerHeaders = rawHeaders.map(h => h.trim().toLowerCase());
+  const tiktokHits = TIKTOK_HEADERS.filter(th => lowerHeaders.includes(th)).length;
+  const detectedPlatform: ParsedLead['platform'] = tiktokHits >= 2 ? 'tiktok' : null;
+  if (detectedPlatform) {
+    console.log(`[CSV Parser] Detected platform: ${detectedPlatform} (${tiktokHits} header matches)`);
+  }
+
   const filenameService = detectServiceFromFilename(filename);
   const leads: ParsedLead[] = [];
 
@@ -303,20 +359,17 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
     try {
       const values = parseCSVLine(line);
       const rowData: { [key: string]: string } = {};
-      
-      // Map values using the column mapping
-      mappedHeaders.forEach((mappedCol, idx) => {
-        if (mappedCol) {
-          let value = values[idx] || '';
-          
-          // Smart phone number normalization: Excel strips leading zeros
-          // If column is a phone field and value is numeric, add leading 0
-          if ((mappedCol === 'Phone' || mappedCol === 'Secondary phone number' || mappedCol === 'WhatsApp number') && value) {
-            value = normalizePhoneNumber(value);
-          }
-          
-          rowData[mappedCol] = value;
+
+      // Map values via the first-match-wins columnMap (built from mappedHeaders above)
+      columnMap.forEach((idx, mappedCol) => {
+        let value = values[idx] || '';
+
+        // Smart phone number normalization: Excel strips leading zeros
+        if ((mappedCol === 'Phone' || mappedCol === 'Secondary phone number' || mappedCol === 'WhatsApp number') && value) {
+          value = normalizePhoneNumber(value);
         }
+
+        rowData[mappedCol] = value;
       });
 
       const validationIssues: string[] = [];
@@ -355,6 +408,7 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
           whatsapp: rowData['WhatsApp number'] || null,
         },
         detectedService: leadDetectedService,
+        platform: detectedPlatform,
         validationIssues,
       };
 
@@ -375,6 +429,7 @@ export function parseLeadsCSV(csvContent: string, filename: string): ParsedLead[
         labels: [],
         phones: { primary: null, secondary: null, whatsapp: null },
         detectedService: filenameService,
+        platform: detectedPlatform,
         validationIssues: [`Failed to parse row: ${error}`],
       });
     }
@@ -508,4 +563,48 @@ export function generateLeadsSummary(leads: ParsedLead[]) {
     detectedService,
     serviceBreakdown,
   };
+}
+
+/**
+ * Convert an XLSX (or XLS) file to the same CSV string that `parseLeadsCSV` expects.
+ * Reads the first sheet, preserves empty cells, and properly quotes values
+ * containing commas / newlines / quotes.
+ *
+ * Use this for Excel exports from Numbers, Google Sheets, Meta Ads, TikTok Ads, etc.
+ */
+export async function xlsxFileToCSV(file: File): Promise<string> {
+  // Dynamic import so the 900KB SheetJS bundle is only loaded when needed
+  const XLSX = await import("xlsx");
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: false });
+  const firstSheetName = wb.SheetNames[0];
+  if (!firstSheetName) throw new Error("Workbook has no sheets");
+  const sheet = wb.Sheets[firstSheetName];
+  // Use sheet_to_csv which already handles quoting + escaping correctly
+  return XLSX.utils.sheet_to_csv(sheet, { blankrows: false, strip: false, forceQuotes: false });
+}
+
+/**
+ * Parse leads from any supported spreadsheet File: .csv, .tsv, .xlsx, .xls.
+ * Rejects .numbers (Apple Numbers binary format) with a friendly message
+ * asking the user to export as CSV or Excel.
+ */
+export async function parseLeadsFile(file: File): Promise<ParsedLead[]> {
+  const name = file.name.toLowerCase();
+
+  if (name.endsWith(".numbers")) {
+    throw new Error(
+      "Apple Numbers files (.numbers) cannot be imported directly. " +
+      "In Numbers, open the file then choose File → Export To → CSV (or Excel) and upload that instead.",
+    );
+  }
+
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    const csv = await xlsxFileToCSV(file);
+    return parseLeadsCSV(csv, file.name);
+  }
+
+  // Default: CSV / TSV (text-based)
+  const text = await file.text();
+  return parseLeadsCSV(text, file.name);
 }
