@@ -56,8 +56,6 @@ export default function MarketingCampaignsPage() {
   const [campaignName, setCampaignName] = useState("");
   const [templateId, setTemplateId] = useState<string>("");
   const [subjectOverride, setSubjectOverride] = useState("");
-  const [fromUserEmail, setFromUserEmail] = useState<string | null>(null);
-  const [fromUserName, setFromUserName] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
   // Preview state
@@ -86,10 +84,6 @@ export default function MarketingCampaignsPage() {
         const user = authData?.user;
         if (isMounted && user) {
           setUserId(user.id);
-          setFromUserEmail(user.email ?? null);
-          const meta = (user.user_metadata || {}) as Record<string, unknown>;
-          const name = [meta.first_name, meta.last_name].filter(Boolean).join(" ");
-          setFromUserName(name || null);
           setTestEmail(user.email ?? "");
         }
 
@@ -186,8 +180,6 @@ export default function MarketingCampaignsPage() {
           filter,
           testEmail: testEmail.trim(),
           userId,
-          fromUserEmail,
-          fromUserName,
         }),
       });
       const data = await resp.json();
@@ -228,14 +220,13 @@ export default function MarketingCampaignsPage() {
           subject: subjectOverride || undefined,
           filter,
           userId,
-          fromUserEmail,
-          fromUserName,
         }),
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Send failed");
+      const failMsg = data.firstError ? ` — first error: ${data.firstError}` : "";
       setSendResult(
-        `Campaign sent — ${data.sent} delivered${data.failed ? `, ${data.failed} failed` : ""} (${data.status}).`,
+        `Campaign ${data.status} — ${data.sent} delivered${data.failed ? `, ${data.failed} failed` : ""}.${failMsg}`,
       );
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Send failed");
@@ -518,6 +509,11 @@ export default function MarketingCampaignsPage() {
           {/* Campaign & Template */}
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-sm font-semibold text-slate-900 mb-3">Campaign</h2>
+
+            <div className="mb-3 rounded-md bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+              <strong className="text-slate-800">From:</strong> Aesthetics Clinic &lt;info@aesthetics-ge.ch&gt;
+              <span className="ml-1 text-slate-400">(fixed for deliverability)</span>
+            </div>
 
             <label className="block mb-3">
               <span className="text-xs font-medium text-slate-600">Campaign name (internal)</span>

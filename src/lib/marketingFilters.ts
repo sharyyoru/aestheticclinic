@@ -163,24 +163,52 @@ export async function fetchAudience(
 }
 
 /**
- * Substitute {{patient.first_name}} etc. in the given string using values
- * from the patient row. Unknown variables are left as-is so the user sees
- * that something is missing rather than silently getting an empty string.
+ * Substitute {{patient.first_name}} (and tolerant variants) in the given string
+ * using values from the patient row.
+ *
+ * Accepts any of:
+ *   {{patient.first_name}}   — canonical
+ *   {patient.first_name}     — single-brace
+ *   {patient.first_name}}    — mismatched (common typo)
+ *   {{patient.first_name}    — mismatched (common typo)
+ *   {{ patient.first_name }} — whitespace around key
+ *
+ * Also accepts a few aliases: {{first_name}}, {{firstName}}, {{name}}.
+ *
+ * Unknown variables are left as-is so the user sees something is missing
+ * rather than silently getting an empty string.
  */
 export function substitutePatientVariables(
   input: string,
   patient: PatientRow,
 ): string {
+  if (!input) return "";
   const fullName = [patient.first_name, patient.last_name].filter(Boolean).join(" ");
   const vars: Record<string, string> = {
     "patient.first_name": patient.first_name ?? "",
     "patient.last_name": patient.last_name ?? "",
     "patient.full_name": fullName,
+    "patient.name": fullName,
     "patient.email": patient.email ?? "",
     "patient.phone": patient.phone ?? "",
+    // Friendly aliases
+    "first_name": patient.first_name ?? "",
+    "firstname": patient.first_name ?? "",
+    "firstName": patient.first_name ?? "",
+    "last_name": patient.last_name ?? "",
+    "lastname": patient.last_name ?? "",
+    "lastName": patient.last_name ?? "",
+    "full_name": fullName,
+    "fullname": fullName,
+    "fullName": fullName,
+    "name": fullName,
+    "email": patient.email ?? "",
+    "phone": patient.phone ?? "",
   };
 
-  return input.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, key) => {
+  // Match ONE-OR-MORE opening braces, a variable key (letters/digits/_./space),
+  // then ONE-OR-MORE closing braces. This tolerates `{x}`, `{{x}}`, `{x}}`, `{{x}`.
+  return input.replace(/\{+\s*([a-zA-Z0-9_.]+)\s*\}+/g, (match, key) => {
     if (Object.prototype.hasOwnProperty.call(vars, key)) {
       return vars[key];
     }

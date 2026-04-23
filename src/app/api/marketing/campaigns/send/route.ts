@@ -19,33 +19,36 @@ type SendRequestBody = {
   listId?: string | null;
   testEmail?: string | null;     // when set, only send a single test to this address
   userId?: string | null;
-  fromUserEmail?: string | null;
-  fromUserName?: string | null;
 };
 
 const mailgunApiKey = process.env.MAILGUN_API_KEY;
 const mailgunDomain = process.env.MAILGUN_DOMAIN;
-const mailgunFromEmail = process.env.MAILGUN_FROM_EMAIL;
-const mailgunFromName = process.env.MAILGUN_FROM_NAME || "Clinic";
 const mailgunApiBaseUrl =
   process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
+
+// Marketing emails ALWAYS come from the clinic's branded address for
+// deliverability (DKIM/SPF alignment) and consistent branding. Do not
+// let the caller override this.
+const MARKETING_FROM_EMAIL = "info@aesthetics-ge.ch";
+const MARKETING_FROM_NAME = "Aesthetics Clinic";
 
 type MailgunSendArgs = {
   to: string;
   subject: string;
   html: string;
-  fromEmail?: string | null;
-  fromName?: string | null;
   emailIdForTracking?: string | null;
 };
 
-async function sendViaMailgun(args: MailgunSendArgs): Promise<{ ok: boolean; error?: string; messageId?: string }> {
+async function sendViaMailgun(args: MailgunSendArgs): Promise<{ ok: boolean; error?: string; messageId?: string; status?: number }> {
   if (!mailgunApiKey || !mailgunDomain) {
-    return { ok: false, error: "Mailgun not configured" };
+    return { ok: false, error: "Mailgun not configured (missing MAILGUN_API_KEY or MAILGUN_DOMAIN)" };
   }
-  const fromAddress = (args.fromEmail && args.fromEmail.trim()) || mailgunFromEmail || `clinic@${mailgunDomain}`;
-  const fromName = (args.fromName && args.fromName.trim()) || mailgunFromName;
+  // Marketing emails ALWAYS come from the clinic's branded address, regardless
+  // of what the caller passes. This ensures SPF/DKIM alignment with the
+  // Mailgun sending domain and consistent brand identity.
+  const fromAddress = MARKETING_FROM_EMAIL;
+  const fromName = MARKETING_FROM_NAME;
 
   let html = args.html;
   if (args.emailIdForTracking) {
@@ -74,13 +77,22 @@ async function sendViaMailgun(args: MailgunSendArgs): Promise<{ ok: boolean; err
       headers: { Authorization: `Basic ${auth}` },
       body: form,
     });
+    const text = await resp.text().catch(() => "");
+    let json: { id?: string; message?: string } = {};
+    try { json = JSON.parse(text); } catch { /* non-JSON response */ }
     if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      return { ok: false, error: `Mailgun ${resp.status}: ${text.slice(0, 200)}` };
+      console.error("[marketing/send] Mailgun rejected send", {
+        status: resp.status,
+        to: args.to,
+        from: `${fromName} <${fromAddress}>`,
+        body: text.slice(0, 500),
+      });
+      return { ok: false, status: resp.status, error: `Mailgun ${resp.status}: ${text.slice(0, 300)}` };
     }
-    const json = await resp.json().catch(() => ({}));
-    return { ok: true, messageId: json?.id ?? undefined };
+    console.log("[marketing/send] Mailgun accepted", { to: args.to, messageId: json?.id });
+    return { ok: true, messageId: json?.id, status: resp.status };
   } catch (err) {
+    console.error("[marketing/send] Mailgun fetch threw", err);
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -148,12 +160,15 @@ export async function POST(request: Request) {
 
       const subject = substitutePatientVariables(subjectToUse, samplePatient);
       const html = substitutePatientVariables(template.html, samplePatient);
+      console.log("[marketing/send] Test send", {
+        to: body.testEmail.trim(),
+        subject: `[TEST] ${subject}`,
+        samplePatient: samplePatient.id,
+      });
       const result = await sendViaMailgun({
         to: body.testEmail.trim(),
         subject: `[TEST] ${subject}`,
         html,
-        fromEmail: body.fromUserEmail,
-        fromName: body.fromUserName,
       });
       if (!result.ok) {
         return NextResponse.json({ error: result.error || "Test send failed" }, { status: 502 });
@@ -164,6 +179,13 @@ export async function POST(request: Request) {
     // ----- REAL CAMPAIGN: fan out to all recipients -----
     const { rows: recipients } = await fetchAudience(supabaseAdmin, filter, {
       limit: MAX_CAMPAIGN_RECIPIENTS,
+    });
+    console.log("[marketing/send] Campaign start", {
+      campaignName: body.campaignName,
+      templateId: body.templateId,
+      subject: subjectToUse,
+      recipientCount: recipients.length,
+      sampleEmails: recipients.slice(0, 3).map((r) => r.email),
     });
     if (recipients.length === 0) {
       return NextResponse.json(
@@ -214,6 +236,7 @@ export async function POST(request: Request) {
     const BATCH_DELAY_MS = 300;
     let sent = 0;
     let failed = 0;
+    let firstError: string | null = null;
 
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const batch = recipients.slice(i, i + BATCH_SIZE);
@@ -224,32 +247,38 @@ export async function POST(request: Request) {
             return;
           }
 
-          // Create an email record in CRM for tracking
-          const { data: emailRow } = await supabaseAdmin
-            .from("emails")
-            .insert({
-              patient_id: patient.id,
-              to_address: patient.email,
-              from_address:
-                (body.fromUserEmail && body.fromUserEmail.trim()) ||
-                mailgunFromEmail ||
-                (mailgunDomain ? `clinic@${mailgunDomain}` : ""),
-              subject: substitutePatientVariables(subjectToUse, patient),
-              body: substitutePatientVariables(template.html, patient),
-              direction: "outbound",
-              status: "sending",
-            })
-            .select("id")
-            .single();
-
-          const emailId: string | null = emailRow?.id ?? null;
+          // Create an email record in CRM for tracking (best-effort; do not
+          // block the Mailgun send if this fails).
+          let emailId: string | null = null;
+          try {
+            const { data: emailRow, error: emailErr } = await supabaseAdmin
+              .from("emails")
+              .insert({
+                patient_id: patient.id,
+                to_address: patient.email,
+                from_address: MARKETING_FROM_EMAIL,
+                subject: substitutePatientVariables(subjectToUse, patient),
+                body: substitutePatientVariables(template.html, patient),
+                direction: "outbound",
+                status: "sending",
+              })
+              .select("id")
+              .single();
+            if (emailErr) {
+              console.warn("[marketing/send] emails row insert failed", {
+                patientId: patient.id,
+                error: emailErr.message,
+              });
+            }
+            emailId = emailRow?.id ?? null;
+          } catch (err) {
+            console.warn("[marketing/send] emails row insert threw", err);
+          }
 
           const result = await sendViaMailgun({
             to: patient.email,
             subject: substitutePatientVariables(subjectToUse, patient),
             html: substitutePatientVariables(template.html, patient),
-            fromEmail: body.fromUserEmail,
-            fromName: body.fromUserName,
             emailIdForTracking: emailId,
           });
 
@@ -273,6 +302,11 @@ export async function POST(request: Request) {
               .eq("patient_id", patient.id);
           } else {
             failed += 1;
+            if (!firstError) firstError = result.error ?? "Unknown error";
+            console.error("[marketing/send] recipient failed", {
+              to: patient.email,
+              error: result.error,
+            });
             if (emailId) {
               await supabaseAdmin
                 .from("emails")
@@ -315,6 +349,15 @@ export async function POST(request: Request) {
       })
       .eq("id", campaign.id);
 
+    console.log("[marketing/send] Campaign complete", {
+      campaignId: campaign.id,
+      totalRecipients: recipients.length,
+      sent,
+      failed,
+      status: finalStatus,
+      firstError,
+    });
+
     return NextResponse.json({
       ok: true,
       campaignId: campaign.id,
@@ -322,6 +365,7 @@ export async function POST(request: Request) {
       sent,
       failed,
       status: finalStatus,
+      firstError,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
