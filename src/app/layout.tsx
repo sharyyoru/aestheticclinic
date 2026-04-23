@@ -339,6 +339,33 @@ export default function RootLayout({
                 </div>
                 <div className="border-b border-slate-100/80">
                   <Link
+                    href="/marketing"
+                    className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/70 text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.18)] backdrop-blur group-hover:bg-sky-500/90 group-hover:text-white">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 11l18-8-8 18-2-8-8-2z" />
+                      </svg>
+                    </span>
+                    <span>Marketing</span>
+                  </Link>
+                  <Link
+                    href="/marketing/campaigns"
+                    className="group flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-500 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm pl-[52px]"
+                  >
+                    <span>New Campaign</span>
+                  </Link>
+                </div>
+                <div className="border-b border-slate-100/80">
+                  <Link
                     href="/controllers"
                     className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
                   >
