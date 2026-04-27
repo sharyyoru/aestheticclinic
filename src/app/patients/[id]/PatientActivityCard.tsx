@@ -2922,11 +2922,29 @@ export default function PatientActivityCard({
 
                       const isOutbound = email.direction === "outbound";
 
+                      // Convert HTML to clean text preview (same logic as emails tab)
                       const preview = email.body
                         ? email.body
-                            .replace(/<br\s*\/?>(?=\s*\n?)/gi, " ")
-                            .replace(/<\/(p|div|li|tr|h[1-6])>/gi, " ")
+                            // Remove style tags and their content completely
+                            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+                            // Remove script tags
+                            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+                            // Remove HTML comments
+                            .replace(/<!--[\s\S]*?-->/g, " ")
+                            // Replace block-level closing tags with spaces
+                            .replace(/<\/(p|div|li|tr|h[1-6]|section|article|header|footer|main|aside|nav)>/gi, " ")
+                            // Replace <br> tags with spaces
+                            .replace(/<br\s*\/?>/gi, " ")
+                            // Remove all remaining HTML tags
                             .replace(/<[^>]+>/g, " ")
+                            // Decode common HTML entities
+                            .replace(/&nbsp;/g, " ")
+                            .replace(/&amp;/g, "&")
+                            .replace(/&lt;/g, "<")
+                            .replace(/&gt;/g, ">")
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#39;/g, "'")
+                            // Collapse whitespace and trim
                             .replace(/\s+/g, " ")
                             .trim()
                         : "";
@@ -3344,13 +3362,33 @@ export default function PatientActivityCard({
                   const isOutbound = email.direction === "outbound";
                   const isInbound = email.direction === "inbound";
 
+                  // Convert HTML email body to clean text preview
                   const preview = email.body
                     ? email.body
-                        .replace(/<br\s*\/?>(?=\s*\n?)/gi, " ")
-                        .replace(/<\/(p|div|li|tr|h[1-6])>/gi, " ")
+                        // Remove style tags and their content completely
+                        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+                        // Remove script tags
+                        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+                        // Remove HTML comments
+                        .replace(/<!--[\s\S]*?-->/g, " ")
+                        // Replace block-level closing tags with spaces
+                        .replace(/<\/(p|div|li|tr|h[1-6]|section|article|header|footer|main|aside|nav)>/gi, " ")
+                        // Replace <br> tags with spaces
+                        .replace(/<br\s*\/?>/gi, " ")
+                        // Remove all remaining HTML tags
                         .replace(/<[^>]+>/g, " ")
+                        // Decode common HTML entities
+                        .replace(/&nbsp;/g, " ")
+                        .replace(/&amp;/g, "&")
+                        .replace(/&lt;/g, "<")
+                        .replace(/&gt;/g, ">")
+                        .replace(/&quot;/g, '"')
+                        .replace(/&#39;/g, "'")
+                        // Collapse multiple whitespace
                         .replace(/\s+/g, " ")
                         .trim()
+                        // Limit to reasonable preview length
+                        .slice(0, 200)
                     : "";
 
                   const attachCountEntry = emailAttachmentCounts.find(
@@ -4690,10 +4728,23 @@ export default function PatientActivityCard({
               </p>
               <div
                 className="prose prose-xs max-w-none text-slate-800 [&_*]:text-[11px]"
-                dangerouslySetInnerHTML={{ 
-                  __html: viewEmail.direction === "inbound" 
-                    ? stripEmailSignature(viewEmail.body, true) 
-                    : viewEmail.body 
+                dangerouslySetInnerHTML={{
+                  __html: (() => {
+                    // Decode HTML entities first, then strip signature for inbound
+                    const decodeHtmlEntities = (html: string) => {
+                      return html
+                        .replace(/&nbsp;/g, " ")
+                        .replace(/&amp;/g, "&")
+                        .replace(/&lt;/g, "<")
+                        .replace(/&gt;/g, ">")
+                        .replace(/&quot;/g, '"')
+                        .replace(/&#39;/g, "'");
+                    };
+                    const decodedBody = decodeHtmlEntities(viewEmail.body || "");
+                    return viewEmail.direction === "inbound"
+                      ? stripEmailSignature(decodedBody, true)
+                      : decodedBody;
+                  })(),
                 }}
               />
             </div>
