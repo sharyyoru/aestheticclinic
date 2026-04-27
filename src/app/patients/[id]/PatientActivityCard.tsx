@@ -267,6 +267,8 @@ export default function PatientActivityCard({
   const [emailAiTopicsDropdownOpen, setEmailAiTopicsDropdownOpen] = useState(false);
 
   const [emailFilter, setEmailFilter] = useState<EmailFilter>("inbound");
+  const [emailPage, setEmailPage] = useState(1);
+  const EMAILS_PER_PAGE = 12;
   const [viewEmail, setViewEmail] = useState<PatientEmail | null>(null);
 
   const [emailScheduleEnabled, setEmailScheduleEnabled] = useState(false);
@@ -3289,7 +3291,7 @@ export default function PatientActivityCard({
               <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/80 px-1 py-0.5">
                 <button
                   type="button"
-                  onClick={() => setEmailFilter("all")}
+                  onClick={() => { setEmailFilter("all"); setEmailPage(1); }}
                   className={
                     "rounded-full px-2 py-0.5 text-[11px] " +
                     (emailFilter === "all"
@@ -3301,7 +3303,7 @@ export default function PatientActivityCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEmailFilter("inbound")}
+                  onClick={() => { setEmailFilter("inbound"); setEmailPage(1); }}
                   className={
                     "rounded-full px-2 py-0.5 text-[11px] " +
                     (emailFilter === "inbound"
@@ -3313,7 +3315,7 @@ export default function PatientActivityCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEmailFilter("outbound")}
+                  onClick={() => { setEmailFilter("outbound"); setEmailPage(1); }}
                   className={
                     "rounded-full px-2 py-0.5 text-[11px] " +
                     (emailFilter === "outbound"
@@ -3325,7 +3327,7 @@ export default function PatientActivityCard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEmailFilter("scheduled")}
+                  onClick={() => { setEmailFilter("scheduled"); setEmailPage(1); }}
                   className={
                     "rounded-full px-2 py-0.5 text-[11px] " +
                     (emailFilter === "scheduled"
@@ -3348,7 +3350,13 @@ export default function PatientActivityCard({
               </p>
             ) : (
               <div className="space-y-2">
-                {sortedEmails.map((email, index) => {
+                {(() => {
+                  const totalPages = Math.ceil(sortedEmails.length / EMAILS_PER_PAGE);
+                  const startIndex = (emailPage - 1) * EMAILS_PER_PAGE;
+                  const paginatedEmails = sortedEmails.slice(startIndex, startIndex + EMAILS_PER_PAGE);
+                  return (
+                    <>
+                      {paginatedEmails.map((email, index) => {
                   const timestampRaw = email.sent_at ?? email.created_at;
                   const tsDate = timestampRaw ? new Date(timestampRaw) : null;
                   const tsLabel =
@@ -3492,7 +3500,44 @@ export default function PatientActivityCard({
                       </div>
                     </button>
                   );
-                })}
+                  })}
+                </>
+              );
+            })()}
+              </div>
+            )}
+            {sortedEmails.length > EMAILS_PER_PAGE && (
+              <div className="flex items-center justify-between border-t border-slate-200 pt-3">
+                <p className="text-[11px] text-slate-500">
+                  Showing {((emailPage - 1) * EMAILS_PER_PAGE) + 1}-{Math.min(emailPage * EMAILS_PER_PAGE, sortedEmails.length)} of {sortedEmails.length} emails
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setEmailPage(p => Math.max(1, p - 1))}
+                    disabled={emailPage === 1}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
+                    title="Previous page"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <span className="text-[11px] text-slate-600 px-2">
+                    Page {emailPage} of {Math.ceil(sortedEmails.length / EMAILS_PER_PAGE)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setEmailPage(p => Math.min(Math.ceil(sortedEmails.length / EMAILS_PER_PAGE), p + 1))}
+                    disabled={emailPage >= Math.ceil(sortedEmails.length / EMAILS_PER_PAGE)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
+                    title="Next page"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             )}
           </div>
