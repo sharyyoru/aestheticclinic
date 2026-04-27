@@ -3254,7 +3254,7 @@ export default function PatientActivityCard({
           </div>
         )}
         {activeTab === "emails" && (
-          <div className="flex flex-col h-[calc(100vh-12rem)] min-h-[500px] -mx-4 -mb-4 sm:-mx-6 sm:-mb-6">
+          <div className="flex flex-col h-[calc(100vh-10rem)] min-h-[400px] -mx-4 -mb-4 sm:-mx-6 sm:-mb-6">
             {/* Toolbar */}
             <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-slate-200 bg-slate-50/50">
               <div className="flex items-center gap-2">
@@ -3346,8 +3346,8 @@ export default function PatientActivityCard({
               </div>
             ) : (
               <div className="flex flex-1 overflow-hidden">
-                {/* Left column: Email list */}
-                <div className={`${viewEmail ? 'hidden lg:block lg:w-[45%] xl:w-[40%]' : 'w-full'} border-r border-slate-200 overflow-y-auto bg-slate-50/30`}>
+                {/* Left column: Email list - always visible with fixed width */}
+                <div className="w-[40%] md:w-[38%] lg:w-[35%] xl:w-[320px] border-r border-slate-200 overflow-y-auto bg-slate-50/30 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent hover:scrollbar-thumb-slate-300">
                   <div className="divide-y divide-slate-100">
                     {(() => {
                       const totalPages = Math.ceil(sortedEmails.length / EMAILS_PER_PAGE);
@@ -3483,12 +3483,12 @@ export default function PatientActivityCard({
                   </div>
                 </div>
 
-                {/* Right column: Email detail */}
-                <div className={`${viewEmail ? 'flex-1' : 'hidden'} flex flex-col overflow-hidden bg-white`}>
+                {/* Right column: Email detail - always visible with placeholder */}
+                <div className="flex-1 flex flex-col overflow-hidden bg-white min-w-0">
                   {viewEmail ? (
                     <>
                       {/* Detail header */}
-                      <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-slate-200 bg-slate-50/50">
+                      <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-slate-200 bg-slate-50/50 shrink-0">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -3512,16 +3512,6 @@ export default function PatientActivityCard({
                                 </>
                               )}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => setViewEmail(null)}
-                              className="lg:hidden ml-auto inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                              title="Back to list"
-                            >
-                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
                           </div>
                           <h2 className="text-sm font-semibold text-slate-900 break-words">
                             {viewEmail.subject}
@@ -3558,7 +3548,7 @@ export default function PatientActivityCard({
                       </div>
 
                       {/* Detail body - scrollable */}
-                      <div className="flex-1 overflow-y-auto p-4">
+                      <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent hover:scrollbar-thumb-slate-300">
                         <div className="prose prose-xs max-w-none text-slate-800 [&_*]:text-[11px]">
                           <div
                             dangerouslySetInnerHTML={{
@@ -3608,7 +3598,7 @@ export default function PatientActivityCard({
                                         <span className="truncate">{att.file_name}</span>
                                       )}
                                     </div>
-                                    {kb !== null && <span className="text-slate-400">{kb} KB</span>}
+                                    {kb !== null && <span className="text-slate-400 shrink-0">{kb} KB</span>}
                                   </li>
                                 );
                               })}
@@ -3618,7 +3608,7 @@ export default function PatientActivityCard({
                       </div>
 
                       {/* Detail footer actions */}
-                      <div className="flex items-center gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50/50">
+                      <div className="flex items-center gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50/50 shrink-0">
                         <button
                           type="button"
                           onClick={() => {
@@ -3659,22 +3649,14 @@ export default function PatientActivityCard({
                           </svg>
                           Create Task
                         </button>
-                        <div className="flex-1" />
-                        <button
-                          type="button"
-                          onClick={() => setViewEmail(null)}
-                          className="hidden lg:inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-                        >
-                          Close
-                        </button>
                       </div>
                     </>
                   ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                      <svg className="h-12 w-12 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-300 bg-slate-50/30">
+                      <svg className="h-16 w-16 mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                       </svg>
-                      <p className="text-[11px]">Select an email to view details</p>
+                      <p className="text-[12px] font-medium text-slate-400">Select an email to see preview</p>
                     </div>
                   )}
                 </div>
