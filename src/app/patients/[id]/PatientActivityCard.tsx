@@ -4678,7 +4678,7 @@ export default function PatientActivityCard({
       ) : null}
 
       {viewEmail ? (
-        <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm py-6 sm:py-8">
+        <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm p-4 sm:p-6">
           <div className={`w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border-2 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)] ${
             viewEmail.direction === "outbound"
               ? "border-sky-300 bg-gradient-to-b from-sky-50/95 to-white/95"
