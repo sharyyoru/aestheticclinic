@@ -3254,11 +3254,64 @@ export default function PatientActivityCard({
           </div>
         )}
         {activeTab === "emails" && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[11px] text-slate-500">
-                Emails associated with this patient. Compose emails here.
-              </p>
+          <div className="flex flex-col h-[calc(100vh-12rem)] min-h-[500px] -mx-4 -mb-4 sm:-mx-6 sm:-mb-6">
+            {/* Toolbar */}
+            <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-slate-200 bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-500">
+                  {sortedEmails.length} email{sortedEmails.length !== 1 ? 's' : ''}
+                </span>
+                <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/80 px-1 py-0.5">
+                  <button
+                    type="button"
+                    onClick={() => { setEmailFilter("all"); setEmailPage(1); setViewEmail(null); }}
+                    className={
+                      "rounded-full px-2 py-0.5 text-[11px] " +
+                      (emailFilter === "all"
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-600 hover:text-slate-900")
+                    }
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEmailFilter("inbound"); setEmailPage(1); setViewEmail(null); }}
+                    className={
+                      "rounded-full px-2 py-0.5 text-[11px] " +
+                      (emailFilter === "inbound"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "text-slate-600 hover:text-emerald-700")
+                    }
+                  >
+                    📥 Received
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEmailFilter("outbound"); setEmailPage(1); setViewEmail(null); }}
+                    className={
+                      "rounded-full px-2 py-0.5 text-[11px] " +
+                      (emailFilter === "outbound"
+                        ? "bg-sky-600 text-white shadow-sm"
+                        : "text-slate-600 hover:text-sky-700")
+                    }
+                  >
+                    📤 Sent
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setEmailFilter("scheduled"); setEmailPage(1); setViewEmail(null); }}
+                    className={
+                      "rounded-full px-2 py-0.5 text-[11px] " +
+                      (emailFilter === "scheduled"
+                        ? "bg-amber-600 text-white shadow-sm"
+                        : "text-slate-600 hover:text-amber-700")
+                    }
+                  >
+                    ⏱ Scheduled
+                  </button>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -3268,275 +3321,362 @@ export default function PatientActivityCard({
                 }}
                 className="inline-flex items-center gap-1 rounded-full border border-sky-200/80 bg-sky-600 px-3 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700"
               >
-                <span className="inline-flex h-3 w-3 items-center justify-center">
-                  <svg
-                    className="h-3 w-3"
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M4 4h12v12H4z" />
-                    <path d="M5 7l5 4 5-4" />
-                  </svg>
-                </span>
-                <span>Compose email</span>
+                <svg className="h-3 w-3" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M4 4h12v12H4z" />
+                  <path d="M5 7l5 4 5-4" />
+                </svg>
+                Compose
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 text-[11px] text-slate-500">
-              <span className="hidden sm:inline">Filter</span>
-              <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-slate-50/80 px-1 py-0.5">
-                <button
-                  type="button"
-                  onClick={() => { setEmailFilter("all"); setEmailPage(1); }}
-                  className={
-                    "rounded-full px-2 py-0.5 text-[11px] " +
-                    (emailFilter === "all"
-                      ? "bg-slate-900 text-white shadow-sm"
-                      : "text-slate-600 hover:text-slate-900")
-                  }
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEmailFilter("inbound"); setEmailPage(1); }}
-                  className={
-                    "rounded-full px-2 py-0.5 text-[11px] " +
-                    (emailFilter === "inbound"
-                      ? "bg-emerald-600 text-white shadow-sm"
-                      : "text-slate-600 hover:text-emerald-700")
-                  }
-                >
-                  📥 Received
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEmailFilter("outbound"); setEmailPage(1); }}
-                  className={
-                    "rounded-full px-2 py-0.5 text-[11px] " +
-                    (emailFilter === "outbound"
-                      ? "bg-sky-600 text-white shadow-sm"
-                      : "text-slate-600 hover:text-sky-700")
-                  }
-                >
-                  📤 Sent
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEmailFilter("scheduled"); setEmailPage(1); }}
-                  className={
-                    "rounded-full px-2 py-0.5 text-[11px] " +
-                    (emailFilter === "scheduled"
-                      ? "bg-amber-600 text-white shadow-sm"
-                      : "text-slate-600 hover:text-amber-700")
-                  }
-                >
-                  ⏱ Scheduled
-                </button>
-              </div>
-            </div>
-
+            {/* Two-column layout */}
             {emailsLoading ? (
-              <p className="text-[11px] text-slate-500">Loading emails...</p>
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-[11px] text-slate-500">Loading emails...</p>
+              </div>
             ) : emailsError ? (
-              <p className="text-[11px] text-red-600">{emailsError}</p>
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-[11px] text-red-600">{emailsError}</p>
+              </div>
             ) : sortedEmails.length === 0 ? (
-              <p className="text-[11px] text-slate-500">
-                No emails yet. Compose the first email for this patient.
-              </p>
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-[11px] text-slate-500">
+                  No emails yet. Compose the first email for this patient.
+                </p>
+              </div>
             ) : (
-              <div className="space-y-2">
-                {(() => {
-                  const totalPages = Math.ceil(sortedEmails.length / EMAILS_PER_PAGE);
-                  const startIndex = (emailPage - 1) * EMAILS_PER_PAGE;
-                  const paginatedEmails = sortedEmails.slice(startIndex, startIndex + EMAILS_PER_PAGE);
-                  return (
+              <div className="flex flex-1 overflow-hidden">
+                {/* Left column: Email list */}
+                <div className={`${viewEmail ? 'hidden lg:block lg:w-[45%] xl:w-[40%]' : 'w-full'} border-r border-slate-200 overflow-y-auto bg-slate-50/30`}>
+                  <div className="divide-y divide-slate-100">
+                    {(() => {
+                      const totalPages = Math.ceil(sortedEmails.length / EMAILS_PER_PAGE);
+                      const startIndex = (emailPage - 1) * EMAILS_PER_PAGE;
+                      const paginatedEmails = sortedEmails.slice(startIndex, startIndex + EMAILS_PER_PAGE);
+                      return (
+                        <>
+                          {paginatedEmails.map((email, index) => {
+                            const timestampRaw = email.sent_at ?? email.created_at;
+                            const tsDate = timestampRaw ? new Date(timestampRaw) : null;
+                            const tsLabel = tsDate && !Number.isNaN(tsDate.getTime())
+                              ? formatSwissDateTime(tsDate)
+                              : null;
+
+                            const isOutbound = email.direction === "outbound";
+                            const isSelected = viewEmail?.id === email.id;
+
+                            // Convert HTML email body to clean text preview
+                            const preview = email.body
+                              ? email.body
+                                  .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+                                  .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+                                  .replace(/<!--[\s\S]*?-->/g, " ")
+                                  .replace(/<\/(p|div|li|tr|h[1-6]|section|article|header|footer|main|aside|nav)>/gi, " ")
+                                  .replace(/<br\s*\/?>/gi, " ")
+                                  .replace(/<[^>]+>/g, " ")
+                                  .replace(/&nbsp;/g, " ")
+                                  .replace(/&amp;/g, "&")
+                                  .replace(/&lt;/g, "<")
+                                  .replace(/&gt;/g, ">")
+                                  .replace(/&quot;/g, '"')
+                                  .replace(/&#39;/g, "'")
+                                  .replace(/\s+/g, " ")
+                                  .trim()
+                                  .slice(0, 200)
+                              : "";
+
+                            const attachCountEntry = emailAttachmentCounts.find(
+                              (entry) => entry.email_id === email.id,
+                            );
+                            const attachCount = attachCountEntry?.count ?? 0;
+
+                            return (
+                              <button
+                                key={`${email.id}-${index}`}
+                                type="button"
+                                onClick={() => setViewEmail(email)}
+                                className={`w-full px-4 py-3 text-left transition-colors hover:bg-slate-100 ${
+                                  isSelected 
+                                    ? 'bg-sky-50 border-l-2 border-l-sky-500' 
+                                    : 'border-l-2 border-l-transparent'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                      <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-medium ${
+                                        isOutbound
+                                          ? "bg-sky-100 text-sky-700"
+                                          : "bg-emerald-100 text-emerald-700"
+                                      }`}>
+                                        {isOutbound ? "SENT" : "RECEIVED"}
+                                      </span>
+                                      <span className="font-medium text-slate-900 text-[12px] truncate">
+                                        {email.subject || "(No subject)"}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 truncate">
+                                      {isOutbound ? `To: ${email.to_address}` : `From: ${email.from_address || "Unknown"}`}
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-slate-600 line-clamp-2">
+                                      {preview || " "}
+                                    </p>
+                                    <div className="mt-1.5 flex items-center gap-2">
+                                      {attachCount > 0 && (
+                                        <span className="text-[10px] text-slate-400">📎 {attachCount}</span>
+                                      )}
+                                      <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9px] ${
+                                        email.status === "read" ? "bg-emerald-100 text-emerald-700" :
+                                        email.status === "failed" ? "bg-red-100 text-red-700" :
+                                        email.status === "queued" ? "bg-amber-100 text-amber-700" :
+                                        "bg-slate-100 text-slate-600"
+                                      }`}>
+                                        {email.status === "read" ? "✓ Read" :
+                                         email.status === "failed" ? "✗ Failed" :
+                                         email.status === "queued" ? "⏱ Scheduled" :
+                                         "● Sent"}
+                                      </span>
+                                      {tsLabel && (
+                                        <span className="text-[10px] text-slate-400">{tsLabel}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                          {sortedEmails.length > EMAILS_PER_PAGE && (
+                            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                              <p className="text-[10px] text-slate-500">
+                                {((emailPage - 1) * EMAILS_PER_PAGE) + 1}-{Math.min(emailPage * EMAILS_PER_PAGE, sortedEmails.length)} of {sortedEmails.length}
+                              </p>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEmailPage(p => Math.max(1, p - 1))}
+                                  disabled={emailPage === 1}
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 disabled:opacity-40 hover:bg-slate-50"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                  </svg>
+                                </button>
+                                <span className="text-[10px] text-slate-600 px-1">
+                                  {emailPage}/{Math.ceil(sortedEmails.length / EMAILS_PER_PAGE)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setEmailPage(p => Math.min(Math.ceil(sortedEmails.length / EMAILS_PER_PAGE), p + 1))}
+                                  disabled={emailPage >= Math.ceil(sortedEmails.length / EMAILS_PER_PAGE)}
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 disabled:opacity-40 hover:bg-slate-50"
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Right column: Email detail */}
+                <div className={`${viewEmail ? 'flex-1' : 'hidden'} flex flex-col overflow-hidden bg-white`}>
+                  {viewEmail ? (
                     <>
-                      {paginatedEmails.map((email, index) => {
-                  const timestampRaw = email.sent_at ?? email.created_at;
-                  const tsDate = timestampRaw ? new Date(timestampRaw) : null;
-                  const tsLabel =
-                    tsDate && !Number.isNaN(tsDate.getTime())
-                      ? formatSwissDateTime(tsDate)
-                      : null;
-
-                  // CRITICAL: direction field determines inbox vs outbox
-                  // outbound = sent BY the clinic (manual compose or automation)
-                  // inbound = received FROM the patient (replies via webhook)
-                  const isOutbound = email.direction === "outbound";
-                  const isInbound = email.direction === "inbound";
-
-                  // Convert HTML email body to clean text preview
-                  const preview = email.body
-                    ? email.body
-                        // Remove style tags and their content completely
-                        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
-                        // Remove script tags
-                        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
-                        // Remove HTML comments
-                        .replace(/<!--[\s\S]*?-->/g, " ")
-                        // Replace block-level closing tags with spaces
-                        .replace(/<\/(p|div|li|tr|h[1-6]|section|article|header|footer|main|aside|nav)>/gi, " ")
-                        // Replace <br> tags with spaces
-                        .replace(/<br\s*\/?>/gi, " ")
-                        // Remove all remaining HTML tags
-                        .replace(/<[^>]+>/g, " ")
-                        // Decode common HTML entities
-                        .replace(/&nbsp;/g, " ")
-                        .replace(/&amp;/g, "&")
-                        .replace(/&lt;/g, "<")
-                        .replace(/&gt;/g, ">")
-                        .replace(/&quot;/g, '"')
-                        .replace(/&#39;/g, "'")
-                        // Collapse multiple whitespace
-                        .replace(/\s+/g, " ")
-                        .trim()
-                        // Limit to reasonable preview length
-                        .slice(0, 200)
-                    : "";
-
-                  const attachCountEntry = emailAttachmentCounts.find(
-                    (entry) => entry.email_id === email.id,
-                  );
-                  const attachCount = attachCountEntry?.count ?? 0;
-
-                  return (
-                    <button
-                      key={`${email.id}-${index}`}
-                      type="button"
-                      onClick={() => setViewEmail(email)}
-                      className={`w-full rounded-lg border-2 px-3 py-2 text-left text-[11px] shadow-sm transition hover:shadow-md ${
-                        isOutbound
-                          ? "border-sky-200 bg-sky-50/60 hover:border-sky-300 hover:bg-sky-50"
-                          : "border-emerald-200 bg-emerald-50/60 hover:border-emerald-300 hover:bg-emerald-50"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            {/* Direction badge with icon */}
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                isOutbound
-                                  ? "bg-sky-500 text-white"
-                                  : "bg-emerald-500 text-white"
-                              }`}
-                            >
-                              {isOutbound ? (
+                      {/* Detail header */}
+                      <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-slate-200 bg-slate-50/50">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              viewEmail.direction === "outbound"
+                                ? "bg-sky-500 text-white"
+                                : "bg-emerald-500 text-white"
+                            }`}>
+                              {viewEmail.direction === "outbound" ? (
                                 <>
                                   <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                                   </svg>
-                                  SENT
+                                  SENT BY CLINIC
                                 </>
                               ) : (
                                 <>
                                   <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                   </svg>
-                                  RECEIVED
+                                  RECEIVED FROM PATIENT
                                 </>
                               )}
                             </span>
-                            <span className="font-medium text-slate-900 truncate max-w-[200px] sm:max-w-xs">
-                              {email.subject}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setViewEmail(null)}
+                              className="lg:hidden ml-auto inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                              title="Back to list"
+                            >
+                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
                           </div>
-                          {/* Show different info based on direction */}
-                          <p className="text-[10px] text-slate-600">
-                            {isOutbound ? (
+                          <h2 className="text-sm font-semibold text-slate-900 break-words">
+                            {viewEmail.subject}
+                          </h2>
+                          <p className="text-[10px] text-slate-600 mt-1">
+                            {viewEmail.direction === "outbound" ? (
                               <>
                                 <span className="font-medium text-sky-700">To:</span>{" "}
-                                <span className="font-medium">{email.to_address}</span>
-                                {email.from_address && (
-                                  <span className="text-slate-400"> • From: {email.from_address}</span>
+                                <span className="font-medium">{viewEmail.to_address}</span>
+                                {viewEmail.from_address && (
+                                  <span className="text-slate-400"> • From: {viewEmail.from_address}</span>
                                 )}
                               </>
                             ) : (
                               <>
                                 <span className="font-medium text-emerald-700">From:</span>{" "}
-                                <span className="font-medium">{email.from_address || "Unknown"}</span>
-                                <span className="text-slate-400"> • To: {email.to_address}</span>
+                                <span className="font-medium">{viewEmail.from_address || "Unknown"}</span>
+                                <span className="text-slate-400"> • To: {viewEmail.to_address}</span>
                               </>
                             )}
                           </p>
-                        </div>
-                        {tsLabel ? (
-                          <p className="shrink-0 text-[10px] text-slate-500 font-medium">
-                            {tsLabel}
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            {viewEmail.sent_at && (
+                              <>
+                                Sent at <span className="font-medium">{formatSwissDateTime(viewEmail.sent_at)}</span>
+                              </>
+                            )}
+                            {" "}• Status <span className={`font-medium capitalize ${viewEmail.status === "read" ? "text-emerald-600" : viewEmail.status === "failed" ? "text-red-600" : ""}`}>{viewEmail.status}</span>
+                            {viewEmail.read_at && (
+                              <span className="ml-1 text-emerald-500">(opened {formatSwissDateTime(viewEmail.read_at)})</span>
+                            )}
                           </p>
-                        ) : null}
+                        </div>
                       </div>
-                      <p className="mt-1.5 line-clamp-2 text-[11px] text-slate-700">
-                        {preview || " "}
-                      </p>
-                      <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-                        {attachCount > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] text-slate-600">
-                            <span>📎</span>
-                            <span>{attachCount}</span>
-                          </span>
-                        )}
-                        <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium ${
-                          email.status === "read" ? "bg-emerald-100 text-emerald-700" :
-                          email.status === "failed" ? "bg-red-100 text-red-700" :
-                          email.status === "queued" ? "bg-amber-100 text-amber-700" :
-                          "bg-slate-100 text-slate-600"
-                        }`}>
-                          {email.status === "read" ? "✓ Read" :
-                           email.status === "failed" ? "✗ Failed" :
-                           email.status === "queued" ? "⏱ Scheduled" :
-                           "● Sent"}
-                        </span>
-                        {email.read_at && (
-                          <span className="text-[9px] text-emerald-600">
-                            Opened {formatSwissDate(email.read_at)}
-                          </span>
-                        )}
+
+                      {/* Detail body - scrollable */}
+                      <div className="flex-1 overflow-y-auto p-4">
+                        <div className="prose prose-xs max-w-none text-slate-800 [&_*]:text-[11px]">
+                          <div
+                            dangerouslySetInnerHTML={{
+                              __html: (() => {
+                                const decodeHtmlEntities = (html: string) => {
+                                  return html
+                                    .replace(/&nbsp;/g, " ")
+                                    .replace(/&amp;/g, "&")
+                                    .replace(/&lt;/g, "<")
+                                    .replace(/&gt;/g, ">")
+                                    .replace(/&quot;/g, '"')
+                                    .replace(/&#39;/g, "'");
+                                };
+                                const decodedBody = decodeHtmlEntities(viewEmail.body || "");
+                                return viewEmail.direction === "inbound"
+                                  ? stripEmailSignature(decodedBody, true)
+                                  : decodedBody;
+                              })(),
+                            }}
+                          />
+                        </div>
+
+                        {/* Attachments */}
+                        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2">
+                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                            Attachments
+                          </p>
+                          {viewEmailAttachmentsLoading ? (
+                            <p className="text-[10px] text-slate-500">Loading attachments...</p>
+                          ) : viewEmailAttachmentsError ? (
+                            <p className="text-[10px] text-red-600">{viewEmailAttachmentsError}</p>
+                          ) : viewEmailAttachments.length === 0 ? (
+                            <p className="text-[10px] text-slate-400">No attachments.</p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {viewEmailAttachments.map((att) => {
+                                const kb = att.file_size ? Math.round(att.file_size / 1024) : null;
+                                return (
+                                  <li key={att.id} className="flex items-center justify-between gap-2 text-[10px]">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[9px]">📎</span>
+                                      {att.public_url ? (
+                                        <a href={att.public_url} target="_blank" rel="noreferrer" className="truncate text-sky-700 hover:underline">
+                                          {att.file_name}
+                                        </a>
+                                      ) : (
+                                        <span className="truncate">{att.file_name}</span>
+                                      )}
+                                    </div>
+                                    {kb !== null && <span className="text-slate-400">{kb} KB</span>}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
                       </div>
-                    </button>
-                  );
-                  })}
-                </>
-              );
-            })()}
-              </div>
-            )}
-            {sortedEmails.length > EMAILS_PER_PAGE && (
-              <div className="flex items-center justify-between border-t border-slate-200 pt-3">
-                <p className="text-[11px] text-slate-500">
-                  Showing {((emailPage - 1) * EMAILS_PER_PAGE) + 1}-{Math.min(emailPage * EMAILS_PER_PAGE, sortedEmails.length)} of {sortedEmails.length} emails
-                </p>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setEmailPage(p => Math.max(1, p - 1))}
-                    disabled={emailPage === 1}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
-                    title="Previous page"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <span className="text-[11px] text-slate-600 px-2">
-                    Page {emailPage} of {Math.ceil(sortedEmails.length / EMAILS_PER_PAGE)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setEmailPage(p => Math.min(Math.ceil(sortedEmails.length / EMAILS_PER_PAGE), p + 1))}
-                    disabled={emailPage >= Math.ceil(sortedEmails.length / EMAILS_PER_PAGE)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50"
-                    title="Next page"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
+
+                      {/* Detail footer actions */}
+                      <div className="flex items-center gap-2 px-4 py-3 border-t border-slate-200 bg-slate-50/50">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const replyTo = viewEmail.direction === "inbound" ? viewEmail.from_address : viewEmail.to_address;
+                            const replySubject = viewEmail.subject?.startsWith("Re: ") ? viewEmail.subject : `Re: ${viewEmail.subject || ""}`;
+                            setEmailTo(replyTo || "");
+                            setEmailSubject(replySubject);
+                            setEmailBody("");
+                            setEmailSaveError(null);
+                            setEmailAttachments([]);
+                            setEmailAttachmentsError(null);
+                            setViewEmail(null);
+                            setEmailModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-full border border-sky-200/80 bg-sky-50 px-3 py-1.5 text-[11px] font-medium text-sky-700 shadow-sm hover:bg-sky-100"
+                        >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                          </svg>
+                          Reply
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTaskName(`Follow up: ${viewEmail.subject}`);
+                            setTaskContent(`Follow-up task for email: "${viewEmail.subject}"\nFrom: ${viewEmail.from_address || "N/A"}\nTo: ${viewEmail.to_address}`);
+                            setTaskType("email");
+                            setTaskPriority("medium");
+                            setEditTask(null);
+                            setTaskSaveError(null);
+                            setCreateTaskModalOpen(true);
+                            setViewEmail(null);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-[11px] font-medium text-amber-700 shadow-sm hover:bg-amber-100"
+                        >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                          Create Task
+                        </button>
+                        <div className="flex-1" />
+                        <button
+                          type="button"
+                          onClick={() => setViewEmail(null)}
+                          className="hidden lg:inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                      <svg className="h-12 w-12 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <p className="text-[11px]">Select an email to view details</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -4673,226 +4813,6 @@ export default function PatientActivityCard({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      ) : null}
-
-      {viewEmail ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-slate-900/40 backdrop-blur-sm p-4 sm:p-6">
-          <div className={`w-full max-w-lg max-h-[calc(100vh-3rem)] overflow-y-auto rounded-2xl border-2 p-4 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)] ${
-            viewEmail.direction === "outbound"
-              ? "border-sky-300 bg-gradient-to-b from-sky-50/95 to-white/95"
-              : "border-emerald-300 bg-gradient-to-b from-emerald-50/95 to-white/95"
-          }`}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      viewEmail.direction === "outbound"
-                        ? "bg-sky-500 text-white"
-                        : "bg-emerald-500 text-white"
-                    }`}
-                  >
-                    {viewEmail.direction === "outbound" ? (
-                      <>
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
-                        SENT BY CLINIC
-                      </>
-                    ) : (
-                      <>
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                        RECEIVED FROM PATIENT
-                      </>
-                    )}
-                  </span>
-                </div>
-                <h2 className="text-sm font-semibold text-slate-900 line-clamp-2">
-                  {viewEmail.subject}
-                </h2>
-                <p className="text-[10px] text-slate-600">
-                  {viewEmail.direction === "outbound" ? (
-                    <>
-                      <span className="font-medium text-sky-700">To:</span>{" "}
-                      <span className="font-medium">{viewEmail.to_address}</span>
-                      {viewEmail.from_address && (
-                        <span className="text-slate-400"> • From: {viewEmail.from_address}</span>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-medium text-emerald-700">From:</span>{" "}
-                      <span className="font-medium">{viewEmail.from_address || "Unknown"}</span>
-                      <span className="text-slate-400"> • To: {viewEmail.to_address}</span>
-                    </>
-                  )}
-                </p>
-                <p className="text-[10px] text-slate-500">
-                  {viewEmailTimestampLabel ? (
-                    <>
-                      Sent at {" "}
-                      <span className="font-medium">{viewEmailTimestampLabel}</span>
-                    </>
-                  ) : null}
-                  {" "}• Status {" "}
-                  <span className={`font-medium capitalize ${viewEmail.status === "read" ? "text-emerald-600" : viewEmail.status === "failed" ? "text-red-600" : ""}`}>{viewEmail.status}</span>
-                  {viewEmail.read_at && (
-                    <span className="ml-1 text-emerald-500">
-                      (opened {formatSwissDateTime(viewEmail.read_at)})
-                    </span>
-                  )}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setViewEmail(null)}
-                className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-500 shadow-sm hover:bg-slate-50"
-              >
-                <span className="sr-only">Close</span>
-                <svg
-                  className="h-3 w-3"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M5 5l10 10" />
-                  <path d="M15 5L5 15" />
-                </svg>
-              </button>
-            </div>
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-800">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Message
-              </p>
-              <div
-                className="prose prose-xs max-w-none text-slate-800 [&_*]:text-[11px]"
-                dangerouslySetInnerHTML={{
-                  __html: (() => {
-                    // Decode HTML entities first, then strip signature for inbound
-                    const decodeHtmlEntities = (html: string) => {
-                      return html
-                        .replace(/&nbsp;/g, " ")
-                        .replace(/&amp;/g, "&")
-                        .replace(/&lt;/g, "<")
-                        .replace(/&gt;/g, ">")
-                        .replace(/&quot;/g, '"')
-                        .replace(/&#39;/g, "'");
-                    };
-                    const decodedBody = decodeHtmlEntities(viewEmail.body || "");
-                    return viewEmail.direction === "inbound"
-                      ? stripEmailSignature(decodedBody, true)
-                      : decodedBody;
-                  })(),
-                }}
-              />
-            </div>
-            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-800">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Attachments
-              </p>
-              {viewEmailAttachmentsLoading ? (
-                <p className="text-[10px] text-slate-500">Loading attachments...</p>
-              ) : viewEmailAttachmentsError ? (
-                <p className="text-[10px] text-red-600">{viewEmailAttachmentsError}</p>
-              ) : viewEmailAttachments.length === 0 ? (
-                <p className="text-[10px] text-slate-400">No attachments.</p>
-              ) : (
-                <ul className="space-y-1 text-[10px] text-slate-700">
-                  {viewEmailAttachments.map((att) => {
-                    const kb = att.file_size ? Math.round(att.file_size / 1024) : null;
-
-                    return (
-                      <li key={att.id} className="flex items-center justify-between gap-2">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[9px] text-slate-700">
-                            📎
-                          </span>
-                          {att.public_url ? (
-                            <a
-                              href={att.public_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="truncate text-[10px] text-sky-700 hover:underline"
-                            >
-                              {att.file_name}
-                            </a>
-                          ) : (
-                            <span className="truncate">{att.file_name}</span>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2 text-[9px] text-slate-500">
-                          {kb !== null ? <span>{kb} KB</span> : null}
-                          {att.mime_type ? <span className="hidden sm:inline">{att.mime_type}</span> : null}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  // Reply to email - pre-fill compose modal
-                  const replyTo = viewEmail.direction === "inbound" 
-                    ? viewEmail.from_address 
-                    : viewEmail.to_address;
-                  const replySubject = viewEmail.subject?.startsWith("Re: ") 
-                    ? viewEmail.subject 
-                    : `Re: ${viewEmail.subject || ""}`;
-                  
-                  setEmailTo(replyTo || "");
-                  setEmailSubject(replySubject);
-                  setEmailBody("");
-                  setEmailSaveError(null);
-                  setEmailAttachments([]);
-                  setEmailAttachmentsError(null);
-                  setViewEmail(null);
-                  setEmailModalOpen(true);
-                }}
-                className="inline-flex items-center gap-1 rounded-full border border-sky-200/80 bg-sky-50 px-3 py-1.5 text-[11px] font-medium text-sky-700 shadow-sm hover:bg-sky-100"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                </svg>
-                Reply
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  // Create follow-up task from email
-                  setTaskName(`Follow up: ${viewEmail.subject}`);
-                  setTaskContent(`Follow-up task for email: "${viewEmail.subject}"\nFrom: ${viewEmail.from_address || "N/A"}\nTo: ${viewEmail.to_address}`);
-                  setTaskType("email");
-                  setTaskPriority("medium");
-                  setEditTask(null);
-                  setTaskSaveError(null);
-                  setCreateTaskModalOpen(true);
-                  setViewEmail(null);
-                }}
-                className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-[11px] font-medium text-amber-700 shadow-sm hover:bg-amber-100"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Create Follow-up Task
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewEmail(null)}
-                className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
       ) : null}
