@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 
 type InvoiceRow = {
   id: string;
@@ -20,6 +22,13 @@ type InvoiceRow = {
   created_by_user_id: string | null;
   created_by_name: string | null;
   is_archived: boolean;
+};
+
+type InvoiceLineItem = {
+  id: string;
+  invoice_id: string;
+  name: string;
+  service_id: string | null;
 };
 
 type PatientInfo = {
@@ -43,6 +52,7 @@ type NormalizedInvoice = InvoiceRow & {
   ownerKey: string;
   ownerLabel: string;
   statusLabel: string;
+  serviceNames: string[];
 };
 
 type Summary = {
@@ -73,6 +83,18 @@ type OwnerSummaryRow = {
   totalComplimentary: number;
 };
 
+type DoctorSummaryRow = {
+  doctorKey: string;
+  doctorName: string;
+  invoiceCount: number;
+  totalAmount: number;
+  totalPaid: number;
+  totalUnpaid: number;
+  firstInvoiceDate: string | null;
+  lastInvoiceDate: string | null;
+  services: string[];
+};
+
 function formatCurrency(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return "0.00 CHF";
   return `${amount.toFixed(2)} CHF`;
@@ -91,6 +113,7 @@ function formatShortDate(iso: string | null | undefined): string {
 
 export default function FinancialsPage() {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [invoiceItems, setInvoiceItems] = useState<InvoiceLineItem[]>([]);
   const [patientsById, setPatientsById] = useState<PatientsById>({});
   const [providersById, setProvidersById] = useState<ProvidersById>({});
   const [loading, setLoading] = useState(false);
@@ -98,9 +121,17 @@ export default function FinancialsPage() {
 
   const [patientFilter, setPatientFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [doctorFilter, setDoctorFilter] = useState<string>("all");
+  const [serviceFilter, setServiceFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [invoiceCountMin, setInvoiceCountMin] = useState<string>("");
+  const [invoiceCountMax, setInvoiceCountMax] = useState<string>("");
   const [showOnlyUnpaid, setShowOnlyUnpaid] = useState(false);
   const [invoicePage, setInvoicePage] = useState(0);
   const [patientPage, setPatientPage] = useState(0);
+  const [doctorPage, setDoctorPage] = useState(0);
+  const [activeView, setActiveView] = useState<"overview" | "doctors">("overview");
   const ROWS_PER_PAGE = 50;
 
   useEffect(() => {
@@ -132,6 +163,23 @@ export default function FinancialsPage() {
 
         const rows = data as InvoiceRow[];
         setInvoices(rows);
+
+        // Fetch invoice line items for service filtering
+        const invoiceIds = rows.map((r) => r.id);
+        if (invoiceIds.length > 0) {
+          const { data: itemsData, error: itemsError } = await supabaseClient
+            .from("invoice_line_items")
+            .select("id, invoice_id, name, service_id")
+            .in("invoice_id", invoiceIds.slice(0, 1000)); // Limit to avoid query size issues
+
+          if (!itemsError && itemsData) {
+            setInvoiceItems(itemsData as InvoiceLineItem[]);
+          } else {
+            setInvoiceItems([]);
+          }
+        } else {
+          setInvoiceItems([]);
+        }
 
         const patientIds = Array.from(
           new Set(
@@ -262,6 +310,11 @@ export default function FinancialsPage() {
         ? "Cancelled"
         : "Unpaid";
 
+      // Get service names for this invoice
+      const serviceNames = invoiceItems
+        .filter((item) => item.invoice_id === row.id)
+        .map((item) => item.name);
+
       return {
         ...row,
         amount,
@@ -270,9 +323,10 @@ export default function FinancialsPage() {
         ownerKey,
         ownerLabel,
         statusLabel,
+        serviceNames,
       };
     });
-  }, [invoices, patientsById, providersById]);
+  }, [invoices, patientsById, providersById, invoiceItems]);
 
   const patientOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -296,27 +350,71 @@ export default function FinancialsPage() {
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [normalizedInvoices]);
 
+  const doctorOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of normalizedInvoices) {
+      const key = row.doctor_user_id || row.doctor_name || "unknown";
+      const label = row.doctor_name || (key === "unknown" ? "Unassigned" : key);
+      if (!map.has(key)) {
+        map.set(key, label);
+      }
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [normalizedInvoices]);
+
+  const serviceOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of normalizedInvoices) {
+      for (const serviceName of row.serviceNames) {
+        if (serviceName) set.add(serviceName);
+      }
+    }
+    return Array.from(set).sort();
+  }, [normalizedInvoices]);
+
   const filteredInvoices = useMemo(() => {
     return normalizedInvoices.filter((row) => {
+      // Patient filter
       if (patientFilter !== "all" && row.patient_id !== patientFilter) {
         return false;
       }
+      // Owner filter
       if (ownerFilter !== "all" && row.ownerKey !== ownerFilter) {
         return false;
       }
+      // Doctor filter
+      if (doctorFilter !== "all") {
+        const rowDoctorKey = row.doctor_user_id || row.doctor_name || "unknown";
+        if (rowDoctorKey !== doctorFilter) return false;
+      }
+      // Service filter
+      if (serviceFilter !== "all") {
+        if (!row.serviceNames.some((name) => name === serviceFilter)) {
+          return false;
+        }
+      }
+      // Date range filter
+      if (dateFrom && row.invoice_date) {
+        if (row.invoice_date < dateFrom) return false;
+      }
+      if (dateTo && row.invoice_date) {
+        if (row.invoice_date > dateTo) return false;
+      }
+      // Unpaid only filter
       if (showOnlyUnpaid) {
         if (row.is_complimentary) return false;
         if (row.isPaid) return false;
       }
       return true;
     });
-  }, [normalizedInvoices, patientFilter, ownerFilter, showOnlyUnpaid]);
+  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
   // Reset pages when filters change
   useEffect(() => {
     setInvoicePage(0);
     setPatientPage(0);
-  }, [patientFilter, ownerFilter, showOnlyUnpaid]);
+    setDoctorPage(0);
+  }, [patientFilter, ownerFilter, doctorFilter, serviceFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
   const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / ROWS_PER_PAGE));
   const paginatedInvoices = useMemo(() => {
@@ -444,11 +542,215 @@ export default function FinancialsPage() {
     );
   }, [filteredInvoices]);
 
+  const doctorSummaryRows: DoctorSummaryRow[] = useMemo(() => {
+    const byDoctor = new Map<string, DoctorSummaryRow>();
+
+    for (const row of filteredInvoices) {
+      const key = row.doctor_user_id || row.doctor_name || "unknown";
+      const name = row.doctor_name || (key === "unknown" ? "Unassigned" : key);
+
+      let existing = byDoctor.get(key);
+      if (!existing) {
+        existing = {
+          doctorKey: key,
+          doctorName: name,
+          invoiceCount: 0,
+          totalAmount: 0,
+          totalPaid: 0,
+          totalUnpaid: 0,
+          firstInvoiceDate: null,
+          lastInvoiceDate: null,
+          services: [],
+        };
+      }
+
+      const amount = row.amount;
+      if (Number.isFinite(amount) && amount > 0) {
+        existing.invoiceCount += 1;
+
+        if (!row.is_complimentary) {
+          existing.totalAmount += amount;
+          if (row.isPaid) {
+            existing.totalPaid += amount;
+          } else {
+            existing.totalUnpaid += amount;
+          }
+        }
+
+        // Track date range
+        if (row.invoice_date) {
+          if (!existing.firstInvoiceDate || row.invoice_date < existing.firstInvoiceDate) {
+            existing.firstInvoiceDate = row.invoice_date;
+          }
+          if (!existing.lastInvoiceDate || row.invoice_date > existing.lastInvoiceDate) {
+            existing.lastInvoiceDate = row.invoice_date;
+          }
+        }
+
+        // Collect services
+        for (const serviceName of row.serviceNames) {
+          if (serviceName && !existing.services.includes(serviceName)) {
+            existing.services.push(serviceName);
+          }
+        }
+      }
+
+      byDoctor.set(key, existing);
+    }
+
+    return Array.from(byDoctor.values()).sort(
+      (a, b) => b.totalAmount - a.totalAmount,
+    );
+  }, [filteredInvoices]);
+
+  // Apply invoice count filter to doctor rows
+  const filteredDoctorRows = useMemo(() => {
+    const min = parseInt(invoiceCountMin, 10);
+    const max = parseInt(invoiceCountMax, 10);
+
+    return doctorSummaryRows.filter((row) => {
+      if (!Number.isNaN(min) && row.invoiceCount < min) return false;
+      if (!Number.isNaN(max) && row.invoiceCount > max) return false;
+      return true;
+    });
+  }, [doctorSummaryRows, invoiceCountMin, invoiceCountMax]);
+
+  const totalDoctorPages = Math.max(1, Math.ceil(filteredDoctorRows.length / ROWS_PER_PAGE));
+  const paginatedDoctorRows = useMemo(() => {
+    const start = doctorPage * ROWS_PER_PAGE;
+    return filteredDoctorRows.slice(start, start + ROWS_PER_PAGE);
+  }, [filteredDoctorRows, doctorPage, ROWS_PER_PAGE]);
+
   const [activeTab, setActiveTab] = useState<"overview" | "receipts" | "import_history">("overview");
 
   function handleExportPdf() {
     if (typeof window === "undefined") return;
-    window.print();
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 15;
+
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Financial Report", pageWidth / 2, 20, { align: "center" });
+
+    // Date range info
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    const today = new Date().toLocaleDateString();
+    doc.text(`Generated on: ${today}`, pageWidth / 2, 28, { align: "center" });
+
+    if (dateFrom || dateTo) {
+      const dateRange = `${dateFrom || "Start"} - ${dateTo || "End"}`;
+      doc.text(`Period: ${dateRange}`, pageWidth / 2, 34, { align: "center" });
+    }
+
+    // Summary section
+    let y = 45;
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Summary", margin, y);
+
+    const summaryData = [
+      ["Total Billed", formatCurrency(summary.totalAmount)],
+      ["Total Paid", formatCurrency(summary.totalPaid)],
+      ["Outstanding", formatCurrency(summary.totalUnpaid)],
+      ["Complimentary", formatCurrency(summary.totalComplimentary)],
+      ["Invoice Count", summary.invoiceCount.toString()],
+    ];
+
+    (doc as any).autoTable({
+      startY: y + 5,
+      head: [["Metric", "Value"]],
+      body: summaryData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      styles: { fontSize: 9, cellPadding: 3 },
+      margin: { left: margin, right: margin },
+    });
+
+    // Doctor summary section
+    y = (doc as any).lastAutoTable.finalY + 15;
+
+    // Check if we need a new page
+    if (y > 250) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Doctor Performance", margin, y);
+
+    const doctorData = filteredDoctorRows.map((row) => [
+      row.doctorName,
+      row.invoiceCount.toString(),
+      formatCurrency(row.totalAmount),
+      formatCurrency(row.totalPaid),
+      formatCurrency(row.totalUnpaid),
+      row.services.slice(0, 3).join(", ") + (row.services.length > 3 ? "..." : ""),
+    ]);
+
+    (doc as any).autoTable({
+      startY: y + 5,
+      head: [["Doctor", "Invoices", "Billed", "Paid", "Unpaid", "Services"]],
+      body: doctorData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 20, halign: "center" },
+        2: { cellWidth: 30, halign: "right" },
+        3: { cellWidth: 30, halign: "right" },
+        4: { cellWidth: 30, halign: "right" },
+        5: { cellWidth: "auto" },
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    // Patient summary section
+    y = (doc as any).lastAutoTable.finalY + 15;
+
+    // Check if we need a new page
+    if (y > 250) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Top Patients", margin, y);
+
+    const patientData = patientSummaryRows.slice(0, 20).map((row) => [
+      row.patientName,
+      row.invoiceCount.toString(),
+      formatCurrency(row.totalAmount),
+      formatCurrency(row.totalPaid),
+      formatCurrency(row.totalUnpaid),
+    ]);
+
+    (doc as any).autoTable({
+      startY: y + 5,
+      head: [["Patient", "Invoices", "Billed", "Paid", "Unpaid"]],
+      body: patientData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: "auto" },
+        1: { cellWidth: 20, halign: "center" },
+        2: { cellWidth: 30, halign: "right" },
+        3: { cellWidth: 30, halign: "right" },
+        4: { cellWidth: 30, halign: "right" },
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    // Save the PDF
+    const filename = `financial_report_${new Date().toISOString().split("T")[0]}.pdf`;
+    doc.save(filename);
   }
   return (
     <div className="space-y-4">
@@ -509,11 +811,43 @@ export default function FinancialsPage() {
       </div>
 
       {activeTab === "overview" && <>
+      {/* ── View Toggle & Filters ─────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 financials-hide-on-print">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-600">View:</span>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+            <button
+              type="button"
+              onClick={() => setActiveView("overview")}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                activeView === "overview"
+                  ? "bg-sky-500 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView("doctors")}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                activeView === "doctors"
+                  ? "bg-sky-500 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              Doctors
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-3 financials-hide-on-print">
+        {/* Patient Filter */}
         <select
           value={patientFilter}
           onChange={(event) => setPatientFilter(event.target.value)}
-          className="min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
         >
           <option value="all">All patients</option>
           {patientOptions.map(([id, name]) => (
@@ -523,18 +857,90 @@ export default function FinancialsPage() {
           ))}
         </select>
 
+        {/* Owner Filter */}
         <select
           value={ownerFilter}
           onChange={(event) => setOwnerFilter(event.target.value)}
-          className="min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
         >
-          <option value="all">All invoice owners</option>
+          <option value="all">All owners</option>
           {ownerOptions.map(([key, label]) => (
             <option key={key} value={key}>
               {label}
             </option>
           ))}
         </select>
+
+        {/* Doctor Filter */}
+        <select
+          value={doctorFilter}
+          onChange={(event) => setDoctorFilter(event.target.value)}
+          className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        >
+          <option value="all">All doctors</option>
+          {doctorOptions.map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+
+        {/* Service Filter */}
+        <select
+          value={serviceFilter}
+          onChange={(event) => setServiceFilter(event.target.value)}
+          className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        >
+          <option value="all">All services</option>
+          {serviceOptions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+
+        {/* Date Range */}
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => setDateFrom(event.target.value)}
+            className="w-[130px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            placeholder="From"
+          />
+          <span className="text-xs text-slate-400">to</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(event) => setDateTo(event.target.value)}
+            className="w-[130px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            placeholder="To"
+          />
+        </div>
+
+        {/* Invoice Count Range (Doctor View Only) */}
+        {activeView === "doctors" && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Invoices:</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="Min"
+              value={invoiceCountMin}
+              onChange={(event) => setInvoiceCountMin(event.target.value)}
+              className="w-[70px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+            <span className="text-xs text-slate-400">-</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="Max"
+              value={invoiceCountMax}
+              onChange={(event) => setInvoiceCountMax(event.target.value)}
+              className="w-[70px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </div>
+        )}
 
         <label className="inline-flex items-center gap-2 text-xs text-slate-600">
           <input
@@ -543,8 +949,27 @@ export default function FinancialsPage() {
             onChange={(event) => setShowOnlyUnpaid(event.target.checked)}
             className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
           />
-          <span>Show only unpaid invoices</span>
+          <span>Unpaid only</span>
         </label>
+
+        {/* Clear Filters */}
+        <button
+          type="button"
+          onClick={() => {
+            setPatientFilter("all");
+            setOwnerFilter("all");
+            setDoctorFilter("all");
+            setServiceFilter("all");
+            setDateFrom("");
+            setDateTo("");
+            setInvoiceCountMin("");
+            setInvoiceCountMax("");
+            setShowOnlyUnpaid(false);
+          }}
+          className="text-xs text-slate-500 hover:text-slate-700 underline"
+        >
+          Clear all
+        </button>
       </div>
 
       <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
@@ -821,6 +1246,114 @@ export default function FinancialsPage() {
           </>
         )}
       </div>
+
+      {/* ── Doctors View ────────────────────────────────────────────────── */}
+      {activeView === "doctors" && (
+        <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Doctor Performance Report
+              </h2>
+              <p className="text-[11px] text-slate-500">
+                Summary by doctor with invoice counts, date ranges, and services.
+              </p>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {filteredDoctorRows.length > 0
+                ? `${doctorPage * ROWS_PER_PAGE + 1}–${Math.min((doctorPage + 1) * ROWS_PER_PAGE, filteredDoctorRows.length)} of ${filteredDoctorRows.length} doctors`
+                : "No doctors match the current filters."}
+            </p>
+          </div>
+
+          {filteredDoctorRows.length === 0 ? (
+            <p className="text-[11px] text-slate-500">
+              No doctors match the current filters.
+            </p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-[11px]">
+                  <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="py-2 pr-3 font-medium">Doctor</th>
+                      <th className="py-2 pr-3 font-medium text-center"># of Invoices</th>
+                      <th className="py-2 pr-3 font-medium">From Date</th>
+                      <th className="py-2 pr-3 font-medium">To Date</th>
+                      <th className="py-2 pr-3 font-medium">Billed</th>
+                      <th className="py-2 pr-3 font-medium">Paid</th>
+                      <th className="py-2 pr-3 font-medium">Unpaid</th>
+                      <th className="py-2 pr-0 font-medium">Services</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedDoctorRows.map((row) => (
+                      <tr key={row.doctorKey} className="align-top hover:bg-slate-50/50">
+                        <td className="py-2 pr-3 font-medium text-slate-900">
+                          {row.doctorName}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-700 text-center font-semibold">
+                          {row.invoiceCount}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-600">
+                          {formatShortDate(row.firstInvoiceDate)}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-600">
+                          {formatShortDate(row.lastInvoiceDate)}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-700 font-medium">
+                          {formatCurrency(row.totalAmount)}
+                        </td>
+                        <td className="py-2 pr-3 text-emerald-600">
+                          {formatCurrency(row.totalPaid)}
+                        </td>
+                        <td className="py-2 pr-3 text-amber-600">
+                          {formatCurrency(row.totalUnpaid)}
+                        </td>
+                        <td className="py-2 pr-0">
+                          <div className="max-w-[200px] truncate" title={row.services.join(", ")}>
+                            {row.services.length > 0 ? (
+                              <span className="text-[10px] text-slate-500">
+                                {row.services.slice(0, 2).join(", ")}
+                                {row.services.length > 2 && ` +${row.services.length - 2} more`}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">-</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {totalDoctorPages > 1 && (
+                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                  <button
+                    type="button"
+                    disabled={doctorPage === 0}
+                    onClick={() => setDoctorPage((p) => Math.max(0, p - 1))}
+                    className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-[11px] text-slate-500">
+                    Page {doctorPage + 1} of {totalDoctorPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={doctorPage >= totalDoctorPages - 1}
+                    onClick={() => setDoctorPage((p) => Math.min(totalDoctorPages - 1, p + 1))}
+                    className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
       </>}
       {activeTab === "receipts" && <BankPaymentReceipts />}
       {activeTab === "import_history" && <PaymentImportHistory />}
