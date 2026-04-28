@@ -29,7 +29,13 @@ type InvoiceLineItem = {
   invoice_id: string;
   name: string;
   service_id: string | null;
+  tardoc_code: string | null;
+  catalog_nature: "TARIFF_CATALOG" | "CUSTOM" | null;
+  uncovered_benefit: boolean;
+  code: string | null;
 };
+
+type ItemType = "all" | "service" | "tardoc" | "insurance" | "material";
 
 type PatientInfo = {
   id: string;
@@ -123,8 +129,10 @@ export default function FinancialsPage() {
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [doctorFilter, setDoctorFilter] = useState<string>("all");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
+  const [itemTypeFilter, setItemTypeFilter] = useState<ItemType>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+  const [customDateRange, setCustomDateRange] = useState<{ label: string; from: string; to: string } | null>(null);
   const [invoiceCountMin, setInvoiceCountMin] = useState<string>("");
   const [invoiceCountMax, setInvoiceCountMax] = useState<string>("");
   const [showOnlyUnpaid, setShowOnlyUnpaid] = useState(false);
@@ -164,12 +172,12 @@ export default function FinancialsPage() {
         const rows = data as InvoiceRow[];
         setInvoices(rows);
 
-        // Fetch invoice line items for service filtering
+        // Fetch invoice line items for service and item type filtering
         const invoiceIds = rows.map((r) => r.id);
         if (invoiceIds.length > 0) {
           const { data: itemsData, error: itemsError } = await supabaseClient
             .from("invoice_line_items")
-            .select("id, invoice_id, name, service_id")
+            .select("id, invoice_id, name, service_id, tardoc_code, catalog_nature, uncovered_benefit, code")
             .in("invoice_id", invoiceIds.slice(0, 1000)); // Limit to avoid query size issues
 
           if (!itemsError && itemsData) {
@@ -372,6 +380,22 @@ export default function FinancialsPage() {
     return Array.from(set).sort();
   }, [normalizedInvoices]);
 
+  // Helper function to determine item type
+  function getItemType(item: InvoiceLineItem): "service" | "tardoc" | "insurance" | "material" {
+    if (item.service_id) return "service";
+    if (item.tardoc_code) return "tardoc";
+    if (item.code && !item.uncovered_benefit) return "insurance";
+    return "material";
+  }
+
+  // Check if invoice has items of a specific type
+  function invoiceHasItemType(invoiceId: string, type: ItemType): boolean {
+    if (type === "all") return true;
+    const items = invoiceItems.filter((item) => item.invoice_id === invoiceId);
+    if (items.length === 0) return false;
+    return items.some((item) => getItemType(item) === type);
+  }
+
   const filteredInvoices = useMemo(() => {
     return normalizedInvoices.filter((row) => {
       // Patient filter
@@ -393,6 +417,12 @@ export default function FinancialsPage() {
           return false;
         }
       }
+      // Item type filter
+      if (itemTypeFilter !== "all") {
+        if (!invoiceHasItemType(row.id, itemTypeFilter)) {
+          return false;
+        }
+      }
       // Date range filter
       if (dateFrom && row.invoice_date) {
         if (row.invoice_date < dateFrom) return false;
@@ -407,14 +437,14 @@ export default function FinancialsPage() {
       }
       return true;
     });
-  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilter, dateFrom, dateTo, showOnlyUnpaid]);
+  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid, invoiceItems]);
 
   // Reset pages when filters change
   useEffect(() => {
     setInvoicePage(0);
     setPatientPage(0);
     setDoctorPage(0);
-  }, [patientFilter, ownerFilter, doctorFilter, serviceFilter, dateFrom, dateTo, showOnlyUnpaid]);
+  }, [patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
   const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / ROWS_PER_PAGE));
   const paginatedInvoices = useMemo(() => {
@@ -899,12 +929,54 @@ export default function FinancialsPage() {
           ))}
         </select>
 
+        {/* Item Type Filter */}
+        <select
+          value={itemTypeFilter}
+          onChange={(event) => setItemTypeFilter(event.target.value as ItemType)}
+          className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          title="Filter by invoice item type"
+        >
+          <option value="all">All item types</option>
+          <option value="service">Services</option>
+          <option value="tardoc">Tardoc</option>
+          <option value="insurance">Insurance</option>
+          <option value="material">Material</option>
+        </select>
+
+        {/* Custom Date Presets */}
+        <select
+          value={customDateRange ? `${customDateRange.from}|${customDateRange.to}` : "custom"}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === "custom") {
+              setCustomDateRange(null);
+              return;
+            }
+            const [from, to, label] = value.split("|");
+            setDateFrom(from);
+            setDateTo(to);
+            setCustomDateRange({ label: label || "Custom", from, to });
+          }}
+          className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        >
+          <option value="custom">Custom date...</option>
+          <option value={`${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0]}|${new Date().toISOString().split("T")[0]}|This Month`}>This Month</option>
+          <option value={`${new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split("T")[0]}|${new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split("T")[0]}|Last Month`}>Last Month</option>
+          <option value={`${new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0]}|${new Date().toISOString().split("T")[0]}|This Year`}>This Year</option>
+          <option value={`${new Date(new Date().getFullYear() - 1, 0, 1).toISOString().split("T")[0]}|${new Date(new Date().getFullYear() - 1, 11, 31).toISOString().split("T")[0]}|Last Year`}>Last Year</option>
+          <option value={`${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}|${new Date().toISOString().split("T")[0]}|Last 7 Days`}>Last 7 Days</option>
+          <option value={`${new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}|${new Date().toISOString().split("T")[0]}|Last 30 Days`}>Last 30 Days</option>
+        </select>
+
         {/* Date Range */}
         <div className="flex items-center gap-2">
           <input
             type="date"
             value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
+            onChange={(event) => {
+              setDateFrom(event.target.value);
+              setCustomDateRange(null);
+            }}
             className="w-[130px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             placeholder="From"
           />
@@ -912,7 +984,10 @@ export default function FinancialsPage() {
           <input
             type="date"
             value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
+            onChange={(event) => {
+              setDateTo(event.target.value);
+              setCustomDateRange(null);
+            }}
             className="w-[130px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             placeholder="To"
           />
@@ -960,8 +1035,10 @@ export default function FinancialsPage() {
             setOwnerFilter("all");
             setDoctorFilter("all");
             setServiceFilter("all");
+            setItemTypeFilter("all");
             setDateFrom("");
             setDateTo("");
+            setCustomDateRange(null);
             setInvoiceCountMin("");
             setInvoiceCountMax("");
             setShowOnlyUnpaid(false);
