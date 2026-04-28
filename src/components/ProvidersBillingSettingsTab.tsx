@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type ProviderRole = "billing_entity" | "doctor" | "nurse" | "technician";
 
@@ -116,6 +116,77 @@ function mapProviderToForm(provider: ProviderRecord): ProviderForm {
     iban: provider.iban || "",
     linked_user_id: provider.linked_user?.id || "",
   };
+}
+
+function DignityTagInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const tags = value
+    ? value.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  function addTag(raw: string) {
+    const code = raw.trim().toUpperCase();
+    if (!code) return;
+    if (!tags.includes(code)) {
+      onChange([...tags, code].join(", "));
+    }
+    setInput("");
+  }
+
+  function removeTag(code: string) {
+    onChange(tags.filter((t) => t !== code).join(", "));
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(input);
+    } else if (e.key === "Backspace" && input === "" && tags.length > 0) {
+      removeTag(tags[tags.length - 1]);
+    }
+  }
+
+  return (
+    <div>
+      <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
+        Specialty Codes (FMH Dignity)
+      </label>
+      <div
+        onClick={() => inputRef.current?.focus()}
+        className="flex min-h-[38px] w-full cursor-text flex-wrap gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 outline-none focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-400/30"
+      >
+        {tags.map((tag) => (
+          <span
+            key={tag}
+            className="flex items-center gap-1 rounded-md bg-sky-100 px-2 py-0.5 font-mono text-xs font-semibold text-sky-800"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
+              className="ml-0.5 text-sky-500 hover:text-sky-700 leading-none"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => { if (input.trim()) addTag(input); }}
+          placeholder={tags.length === 0 ? "Type a code and press Enter (e.g. 2000)" : ""}
+          className="min-w-[140px] flex-1 bg-transparent font-mono text-sm text-slate-800 outline-none placeholder:text-slate-300"
+        />
+      </div>
+      <p className="mt-1 text-[10px] text-slate-400">
+        Required — Swiss FMH qualitative dignity codes for Sumex/TARDOC. Press <kbd className="rounded border border-slate-200 px-1 font-sans">Enter</kbd> or <kbd className="rounded border border-slate-200 px-1 font-sans">,</kbd> to add each code. Common codes: <code className="font-mono">2000</code> (General), <code className="font-mono">1301</code> (Plastic surgery).
+      </p>
+    </div>
+  );
 }
 
 export default function ProvidersBillingSettingsTab() {
@@ -410,20 +481,10 @@ export default function ProvidersBillingSettingsTab() {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-slate-400">
-                  Specialty Codes (FMH Dignity) — comma-separated
-                </label>
-                <input
-                  value={form.qual_dignities}
-                  onChange={(e) => updateForm("qual_dignities", e.target.value)}
-                  placeholder="2000"
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400/30 font-mono"
-                />
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Required — Swiss FMH qualitative dignity codes sent to Sumex/TARDOC. Enter at least one code (e.g. <code className="font-mono">2000</code>). Separate multiple codes with commas (e.g. <code className="font-mono">2000, 3000, 1000</code>).
-                </p>
-              </div>
+              <DignityTagInput
+                value={form.qual_dignities}
+                onChange={(v) => updateForm("qual_dignities", v)}
+              />
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
