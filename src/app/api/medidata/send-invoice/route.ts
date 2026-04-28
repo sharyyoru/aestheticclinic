@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
       treatmentReason = 'disease',
       insurerGln,
       insurerName,
+      insurerAddress: bodyInsurerAddress,
       policyNumber,
       avsNumber,
       caseNumber,
@@ -104,6 +105,7 @@ export async function POST(request: NextRequest) {
       treatmentReason?: string;
       insurerGln?: string;
       insurerName?: string;
+      insurerAddress?: { street?: string; zip?: string; city?: string };
       policyNumber?: string;
       avsNumber?: string;
       caseNumber?: string;
@@ -311,10 +313,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (dbLineItems && dbLineItems.length > 0) {
+      // Filter out TMA gesture codes — they are grouper inputs only, not billing lines.
+      // The grouped ACF flat rate codes (catalog_name='ACF') are the actual billing lines.
+      const billableLineItems = dbLineItems.filter((item: any) => item.catalog_name !== "TMA");
+
       // Map actual line items to InvoiceServiceLine for XML generation
-      services = dbLineItems.map((item: any) => {
+      services = billableLineItems.map((item: any, idx: number) => {
         // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
         const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
+        const isAcf = tariffType === "005";
+        // ACF (005) with ignoreValidate=Yes: use sessionNumber=1 (simple tariff default per docs)
+        const rawSession = item.session_number ?? 1;
+        const sessionNumber = isAcf ? 1 : rawSession;
         return {
           code: item.code || "",
           tariffType,
@@ -328,7 +338,7 @@ export async function POST(request: NextRequest) {
           // ACF/TARDOC-specific fields
           externalFactor: (item.tariff_code === 5 || item.tariff_code === 7) ? (item.external_factor_mt ?? 1) : undefined,
           sideType: item.tariff_code === 5 ? (item.side_type ?? 0) : undefined,
-          sessionNumber: item.session_number ?? 1,
+          sessionNumber,
           refCode: item.ref_code || undefined,
           // Tax point fields for TARDOC
           tpAl: item.tp_al,
@@ -337,6 +347,14 @@ export async function POST(request: NextRequest) {
           tpTlValue: item.tp_tl_value,
         };
       });
+
+      if (services.length === 0) {
+        console.error(`[SendInvoice] ❌ All line items are TMA gesture codes (grouper inputs). No billable ACF flat rate codes found.`);
+        return NextResponse.json(
+          { error: "No billable services found. TMA gesture codes must be grouped into ACF flat rate codes first." },
+          { status: 400 },
+        );
+      }
     } else {
       // NO FALLBACK - line items are required for all invoices
       console.error(`[SendInvoice] ❌ CRITICAL: NO LINE ITEMS FOUND for invoice!`);
@@ -376,6 +394,7 @@ export async function POST(request: NextRequest) {
       const unitTT = isTardoc && s.tpTl !== undefined ? s.tpTl : undefined;
       const unitFactorTT = isTardoc && s.tpTlValue !== undefined ? s.tpTlValue : undefined;
       
+      const isAcf = (s.tariffType || "999") === "005";
       return {
         tariffType: s.tariffType || "999",
         code: s.code,
@@ -394,11 +413,25 @@ export async function POST(request: NextRequest) {
         externalFactor: s.externalFactor ?? 1,
         amount: s.total || 0,
         vatRate: 0,
-        ignoreValidate: skipValidation ? YesNo.Yes : YesNo.No,
+        // ACF 005: always skip validation — already grouped by standalone acfValidator.
+        ignoreValidate: (isAcf || skipValidation) ? YesNo.Yes : YesNo.No,
       };
     });
 
-    const sumexDiagnoses: SumexDiagnosis[] = (diagnosisCodes || []).map((code: string) => ({
+    // Fallback: extract ICD codes from ACF line items' ref_code if none provided
+    let resolvedDiagCodes: string[] = (diagnosisCodes || []).filter((c: string) => c && c.length >= 2);
+    if (resolvedDiagCodes.length === 0 && services.some((s: any) => s.tariffType === "005")) {
+      const acfRefCodes = [...new Set(
+        services
+          .filter((s: any) => s.tariffType === "005" && s.refCode && s.refCode.length >= 2)
+          .map((s: any) => s.refCode as string)
+      )];
+      if (acfRefCodes.length > 0) {
+        console.log(`[SendInvoice] No diagnosis codes provided, extracted from ACF ref_codes: ${acfRefCodes.join(", ")}`);
+        resolvedDiagCodes = acfRefCodes;
+      }
+    }
+    const sumexDiagnoses: SumexDiagnosis[] = resolvedDiagCodes.map((code: string) => ({
       type: DiagnosisType.ICD,
       code,
     }));
@@ -482,9 +515,9 @@ export async function POST(request: NextRequest) {
       insuranceGln: resolvedInsurerGln,
       insuranceAddress: resolvedInsurerGln ? {
         companyName: swissInsurer?.name || resolvedInsurerName,
-        street: swissInsurer?.address_street || "N/A",
-        zip: swissInsurer?.address_postal_code || "0000",
-        city: swissInsurer?.address_city || "N/A",
+        street: bodyInsurerAddress?.street || swissInsurer?.address_street || "N/A",
+        zip: bodyInsurerAddress?.zip || swissInsurer?.address_postal_code || "0000",
+        city: bodyInsurerAddress?.city || swissInsurer?.address_city || "N/A",
         stateCode: swissInsurer?.address_canton || canton,
       } : undefined,
       patientSex: mapSumexSex(patientData.gender || "male"),

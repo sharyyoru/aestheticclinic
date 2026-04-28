@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
       consultationId,
       patientId: bodyPatientId,
       skipValidation = false,
+      insurerAddress: bodyInsurerAddress,
     } = body;
 
     const resolvedInvoiceId = invoiceId || consultationId;
@@ -122,16 +123,24 @@ export async function POST(request: NextRequest) {
     let insurerGln = "";
     let insurerName = "";
     let receiverGln = "";
+    let insurerStreet = "";
+    let insurerZip = "";
+    let insurerCity = "";
+    let insurerCanton = "";
     if (invoice.insurer_id) {
       const { data: insurerRow } = await supabaseAdmin
         .from("swiss_insurers")
-        .select("name, gln, receiver_gln")
+        .select("name, gln, receiver_gln, address_street, address_postal_code, address_city, address_canton")
         .eq("id", invoice.insurer_id)
         .single();
       if (insurerRow) {
         insurerGln = insurerRow.gln || "";
         insurerName = insurerRow.name || "";
         receiverGln = insurerRow.receiver_gln || insurerGln;
+        insurerStreet = insurerRow.address_street || "";
+        insurerZip = insurerRow.address_postal_code || "";
+        insurerCity = insurerRow.address_city || "";
+        insurerCanton = insurerRow.address_canton || "";
       }
     }
 
@@ -151,13 +160,17 @@ export async function POST(request: NextRequest) {
         if (ins.insurer_id && !receiverGln) {
           const { data: siRow } = await supabaseAdmin
             .from("swiss_insurers")
-            .select("name, gln, receiver_gln")
+            .select("name, gln, receiver_gln, address_street, address_postal_code, address_city, address_canton")
             .eq("id", ins.insurer_id)
             .single();
           if (siRow) {
             insurerGln = insurerGln || siRow.gln || "";
             insurerName = insurerName || siRow.name || "";
             receiverGln = siRow.receiver_gln || insurerGln;
+            insurerStreet = insurerStreet || siRow.address_street || "";
+            insurerZip = insurerZip || siRow.address_postal_code || "";
+            insurerCity = insurerCity || siRow.address_city || "";
+            insurerCanton = insurerCanton || siRow.address_canton || "";
           }
         }
       }
@@ -203,9 +216,14 @@ export async function POST(request: NextRequest) {
 
     console.log(`[CheckXML] skipValidation=${skipValidation}`);
 
-    const sumexServices: SumexServiceInput[] = (dbLineItems || []).map((item: any) => {
+    // Filter out TMA gesture codes — they are grouper inputs only, not billing lines.
+    // The grouped ACF flat rate codes (catalog_name='ACF') are the actual billing lines.
+    const billableLineItems = (dbLineItems || []).filter((item: any) => item.catalog_name !== "TMA");
+
+    const sumexServices: SumexServiceInput[] = billableLineItems.map((item: any, idx: number) => {
       // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
       const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
+      const isAcf = tariffType === "005";
       const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
       const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
       
@@ -216,13 +234,17 @@ export async function POST(request: NextRequest) {
       const unitFactor = isTardoc && item.tp_al_value !== undefined && item.tp_al_value !== null ? item.tp_al_value : 1;
       const unitTT = isTardoc && item.tp_tl !== undefined && item.tp_tl !== null ? item.tp_tl : undefined;
       const unitFactorTT = isTardoc && item.tp_tl_value !== undefined && item.tp_tl_value !== null ? item.tp_tl_value : undefined;
+
+      // ACF (005) with ignoreValidate=Yes: use sessionNumber=1 (simple tariff default per docs)
+      const rawSession = item.session_number ?? 1;
+      const sessionNumber = isAcf ? 1 : rawSession;
       
       return {
         tariffType,
         code: item.code || "",
         referenceCode: item.ref_code || "",
         quantity: item.quantity || 1,
-        sessionNumber: item.session_number ?? 1,
+        sessionNumber,
         dateBegin: item.date_begin || treatmentDate,
         providerGln: svcGln,
         responsibleGln: svcRespGln,
@@ -235,7 +257,9 @@ export async function POST(request: NextRequest) {
         externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : 1,
         amount: item.total_price || 0,
         vatRate: 0,
-        ignoreValidate: skipValidation ? YesNo.Yes : YesNo.No,
+        // ACF 005: always skip validation — already grouped by standalone acfValidator.
+        // The Invoice Manager's internal ACF grouper requires TMA session setup we don't use.
+        ignoreValidate: (isAcf || skipValidation) ? YesNo.Yes : YesNo.No,
       };
     });
 
@@ -248,12 +272,24 @@ export async function POST(request: NextRequest) {
 
     // ── Diagnosis codes from invoice ──
     // Filter to valid ICD codes only (must be at least 2 chars, e.g. "Z42.1")
-    const diagCodes: string[] = Array.isArray(invoice.diagnosis_codes)
+    let diagCodes: string[] = Array.isArray(invoice.diagnosis_codes)
       ? invoice.diagnosis_codes
           .filter((d: any) => d.type === "ICD" || typeof d === "string")
           .map((d: any) => (typeof d === "string" ? d : d.code))
           .filter((c: string) => c && c.length >= 2)
       : [];
+    // Fallback: extract ICD codes from ACF line items' ref_code if invoice has none
+    if (diagCodes.length === 0 && billableLineItems.some((item: any) => item.tariff_code === 5)) {
+      const acfRefCodes = [...new Set(
+        billableLineItems
+          .filter((item: any) => item.ref_code && item.ref_code.length >= 2 && item.tariff_code === 5)
+          .map((item: any) => item.ref_code as string)
+      )];
+      if (acfRefCodes.length > 0) {
+        console.log(`[CheckXML] No diagnosis codes on invoice, extracted from ACF ref_codes: ${acfRefCodes.join(", ")}`);
+        diagCodes = acfRefCodes;
+      }
+    }
     const sumexDiagnoses: SumexDiagnosis[] = diagCodes.map(code => ({
       type: DiagnosisType.ICD,
       code: String(code),
@@ -305,10 +341,10 @@ export async function POST(request: NextRequest) {
       insuranceGln: insurerGln || undefined,
       insuranceAddress: insurerGln ? {
         companyName: insurerName,
-        street: "",
-        zip: "",
-        city: "",
-        stateCode: "",
+        street: bodyInsurerAddress?.street || insurerStreet || "N/A",
+        zip: bodyInsurerAddress?.zip || insurerZip || "0000",
+        city: bodyInsurerAddress?.city || insurerCity || "N/A",
+        stateCode: insurerCanton || provCanton,
       } : undefined,
       patientSex: mapSumexSex(patient.gender || "male"),
       patientBirthdate: patient.dob || "1990-01-01",

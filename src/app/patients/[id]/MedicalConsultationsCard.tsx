@@ -3851,7 +3851,7 @@ export default function MedicalConsultationsCard({
                               record_id: tardocRecordId,
                               ref_code: isAcfRelated ? (line.acfRefCode || null) : isTardocLine ? (line.tardocRefCode || null) : (null as string | null),
                               section_code: tardocSection,
-                              session_number: 1,
+                              session_number: isAcfRelated ? (idx + 16) : 1,
                               service_attributes: 0,
                               side_type: isAcfRelated ? (line.acfSideType ?? 0) : isTardocLine ? (line.tardocSideType ?? 0) : 0,
                               date_begin: scheduledAtIso || null,
@@ -4014,6 +4014,15 @@ export default function MedicalConsultationsCard({
                           invoicePayload.health_insurance_law = invoiceLawType;
                           if (invoiceLawType === "UVG" && invoiceAccidentDate) {
                             invoicePayload.accident_date = invoiceAccidentDate;
+                          }
+                          // Extract ICD diagnosis codes from ACF line ref_codes (populated by TMA grouper)
+                          const acfIcdCodes = [...new Set(
+                            invoiceLines
+                              .filter((l) => l.ref_code && l.ref_code.length >= 2 && l.catalog_name === "ACF")
+                              .map((l) => l.ref_code!)
+                          )];
+                          if (acfIcdCodes.length > 0) {
+                            invoicePayload.diagnosis_codes = acfIcdCodes.map((c) => ({ code: c, type: "ICD" }));
                           }
                         }
 
