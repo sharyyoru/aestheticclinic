@@ -161,6 +161,7 @@ type Deal = {
 type ServiceOption = {
   id: string;
   name: string;
+  category_name: string;
 };
 
 function formatDateTimeLocal(date: Date) {
@@ -525,25 +526,10 @@ export default function PatientActivityCard({
 
     async function loadServices() {
       try {
-        // First get the Hubspot category
-        const { data: categoryData, error: categoryError } = await supabaseClient
-          .from("service_categories")
-          .select("id")
-          .eq("name", "Hubspot")
-          .single();
-
-        if (!isMounted) return;
-
-        if (categoryError || !categoryData) {
-          setServiceOptions([]);
-          return;
-        }
-
-        // Then get services from Hubspot category only
+        // Fetch services with their category names from all categories
         const { data, error } = await supabaseClient
           .from("services")
-          .select("id, name")
-          .eq("category_id", categoryData.id)
+          .select("id, name, category_name:service_categories(name)")
           .order("name", { ascending: true });
 
         if (!isMounted) return;
@@ -553,7 +539,16 @@ export default function PatientActivityCard({
           return;
         }
 
-        setServiceOptions(data as ServiceOption[]);
+        const excludedCategories = ["Prestations Perso", "Private Insurance", "Esthetique"];
+        const mapped = (data as any[])
+          .filter((s) => !excludedCategories.includes(s.category_name?.name))
+          .map((s) => ({
+            id: s.id,
+            name: s.name,
+            category_name: s.category_name?.name ?? "Uncategorized",
+          })) as ServiceOption[];
+
+        setServiceOptions(mapped);
       } catch {
         if (!isMounted) return;
         setServiceOptions([]);
@@ -1754,6 +1749,21 @@ export default function PatientActivityCard({
     setDealServiceId(serviceId);
     setDealServiceSearch(serviceName);
     setDealServiceDropdownOpen(false);
+  }
+
+  function getGroupedFilteredServices(query: string): Map<string, ServiceOption[]> {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? serviceOptions.filter((s) => (s.name || "").toLowerCase().includes(q))
+      : serviceOptions;
+
+    const groups = new Map<string, ServiceOption[]>();
+    for (const s of filtered) {
+      const cat = s.category_name || "Uncategorized";
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat)!.push(s);
+    }
+    return groups;
   }
 
   function handleDealServiceClear() {
@@ -4646,27 +4656,27 @@ export default function PatientActivityCard({
                         </button>
                       )}
                       {dealServiceDropdownOpen && (() => {
-                        const query = dealServiceSearch.trim().toLowerCase();
-                        const filteredServices = serviceOptions
-                          .filter((s) => {
-                            const hay = (s.name || "").toLowerCase();
-                            return hay.includes(query);
-                          })
-                          .slice(0, 6);
-
-                        if (filteredServices.length === 0) return null;
+                        const groups = getGroupedFilteredServices(dealServiceSearch);
+                        if (groups.size === 0) return null;
 
                         return (
-                          <div className="absolute top-full left-0 right-0 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
-                            {filteredServices.map((service) => (
-                              <button
-                                key={service.id}
-                                type="button"
-                                onClick={() => handleDealServiceSelect(service.id, service.name)}
-                                className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
-                              >
-                                {service.name}
-                              </button>
+                          <div className="absolute top-full left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[10px] shadow-lg z-10">
+                            {Array.from(groups.entries()).map(([category, services]) => (
+                              <div key={category}>
+                                <div className="sticky top-0 bg-slate-50 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-slate-500 border-b border-slate-100">
+                                  {category}
+                                </div>
+                                {services.map((service) => (
+                                  <button
+                                    key={service.id}
+                                    type="button"
+                                    onClick={() => handleDealServiceSelect(service.id, service.name)}
+                                    className="block w-full cursor-pointer px-2 py-1 text-left text-slate-700 hover:bg-slate-50"
+                                  >
+                                    {service.name}
+                                  </button>
+                                ))}
+                              </div>
                             ))}
                           </div>
                         );
