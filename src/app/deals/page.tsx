@@ -7,6 +7,122 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 import { formatSwissShortDate, formatSwissTime } from "@/lib/swissTimezone";
 
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  allLabel,
+  width = "w-48",
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  placeholder: string;
+  allLabel: string;
+  width?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selectedLabel =
+    value === "all" || !value
+      ? ""
+      : options.find((o) => o.value === value)?.label ?? "";
+
+  const displayValue = open ? query : selectedLabel;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [{ value: "all", label: allLabel }, ...options];
+    return [
+      { value: "all", label: allLabel },
+      ...options.filter((o) => o.label.toLowerCase().includes(q)),
+    ];
+  }, [options, query, allLabel]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [open]);
+
+  function handleSelect(val: string) {
+    onChange(val);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function handleClear(e: React.MouseEvent) {
+    e.stopPropagation();
+    onChange("all");
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <div ref={containerRef} className={`relative ${width}`}>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={displayValue}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => {
+            setOpen(true);
+            setQuery("");
+          }}
+          placeholder={value === "all" || !value ? placeholder : ""}
+          className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 pr-7 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+        />
+        {value && value !== "all" && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-20 mt-1 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white text-[11px] shadow-lg">
+          {filtered.length === 0 ? (
+            <div className="px-2 py-1.5 text-slate-400">No results</div>
+          ) : (
+            filtered.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => handleSelect(opt.value)}
+                className={`block w-full cursor-pointer px-2 py-1.5 text-left ${
+                  opt.value === value
+                    ? "bg-sky-50 text-sky-700 font-medium"
+                    : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type DealStageType =
   | "lead"
   | "consultation"
@@ -362,7 +478,9 @@ export default function DealsPage() {
         map.set(id, name);
       }
     });
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [deals]);
 
   // Board deals should use the same filtered deals as the list view
@@ -637,30 +755,20 @@ export default function DealsPage() {
             {/* Global filters (applies to list + board) */}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <select
+                <SearchableSelect
                   value={stageFilter}
-                  onChange={(event) => setStageFilter(event.target.value)}
-                  className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  <option value="all">All stages</option>
-                  {dealStages.map((stage) => (
-                    <option key={stage.id} value={stage.id}>
-                      {stage.name}
-                    </option>
-                  ))}
-                </select>
-                <select
+                  onChange={setStageFilter}
+                  options={dealStages.map((s) => ({ value: s.id, label: s.name }))}
+                  placeholder="All stages"
+                  allLabel="All stages"
+                />
+                <SearchableSelect
                   value={serviceFilter}
-                  onChange={(event) => setServiceFilter(event.target.value)}
-                  className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  <option value="all">All services</option>
-                  {uniqueServices.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setServiceFilter}
+                  options={uniqueServices.map((s) => ({ value: s.id, label: s.name }))}
+                  placeholder="All services"
+                  allLabel="All services"
+                />
                 
                 {/* Contact Owner Smart Search */}
                 <div className="relative">
