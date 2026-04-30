@@ -520,6 +520,7 @@ export default function MedicalConsultationsCard({
   const [editConsultationTarget, setEditConsultationTarget] = useState<ConsultationRow | null>(null);
   const [editConsultationTitle, setEditConsultationTitle] = useState("");
   const [editConsultationContent, setEditConsultationContent] = useState("");
+  const editConsultationContentRef = useRef<HTMLDivElement | null>(null);
   const [editConsultationDoctorId, setEditConsultationDoctorId] = useState("");
   const [editConsultationDate, setEditConsultationDate] = useState("");
   const [editConsultationHour, setEditConsultationHour] = useState("");
@@ -1489,6 +1490,14 @@ export default function MedicalConsultationsCard({
       setEditConsultationMinute("");
     }
     setEditConsultationModalOpen(true);
+    // Seed the contentEditable div's innerHTML once after mount so the HTML renders.
+    // We avoid using dangerouslySetInnerHTML in JSX because it would re-apply on every
+    // keystroke and reset the cursor to the start.
+    setTimeout(() => {
+      if (editConsultationContentRef.current) {
+        editConsultationContentRef.current.innerHTML = row.content || "";
+      }
+    }, 0);
   }
 
   async function handleSaveEditInvoice() {
@@ -4654,7 +4663,7 @@ export default function MedicalConsultationsCard({
                     </div>
                     <div className="relative">
                       <div
-                        className="min-h-[80px] max-h-64 overflow-y-auto px-2 py-1.5 text-[11px] text-slate-900 focus:outline-none"
+                        className="min-h-[80px] max-h-64 overflow-y-auto px-2 py-1.5 text-[11px] text-slate-900 focus:outline-none prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
                         contentEditable
                         onInput={(event) => {
                           const html = (event.currentTarget as HTMLDivElement).innerHTML;
@@ -7162,13 +7171,12 @@ export default function MedicalConsultationsCard({
                       {/* Content/Notes */}
                       {isNotes && row.content ? (
                         <div
-                          className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 text-[12px] leading-relaxed text-slate-700"
-                          style={{ whiteSpace: "pre-wrap" }}
+                          className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 text-[12px] leading-relaxed text-slate-700 prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
                           dangerouslySetInnerHTML={{ __html: row.content }}
                         />
                       ) : (isPrescription || isInvoice) && row.content ? (
                         <div
-                          className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 text-[12px] leading-relaxed text-slate-700"
+                          className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 text-[12px] leading-relaxed text-slate-700 prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
                           dangerouslySetInnerHTML={{ __html: row.content }}
                         />
                       ) : null}
@@ -8295,13 +8303,64 @@ export default function MedicalConsultationsCard({
 
               <div className="space-y-1">
                 <label className="block text-[11px] font-medium text-slate-700">Content / Notes</label>
-                <textarea
-                  value={editConsultationContent}
-                  onChange={(e) => setEditConsultationContent(e.target.value)}
-                  rows={8}
-                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Enter consultation notes..."
-                />
+                <div className="rounded-lg border border-slate-200 bg-white">
+                  <div className="flex items-center gap-1 border-b border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-500">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (typeof document !== "undefined") {
+                          document.execCommand("bold");
+                          if (editConsultationContentRef.current) {
+                            setEditConsultationContent(editConsultationContentRef.current.innerHTML);
+                          }
+                        }
+                      }}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      B
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (typeof document !== "undefined") {
+                          document.execCommand("italic");
+                          if (editConsultationContentRef.current) {
+                            setEditConsultationContent(editConsultationContentRef.current.innerHTML);
+                          }
+                        }
+                      }}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-[11px] font-medium italic text-slate-700 hover:bg-slate-100"
+                    >
+                      I
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        if (typeof document !== "undefined") {
+                          document.execCommand("insertUnorderedList");
+                          if (editConsultationContentRef.current) {
+                            setEditConsultationContent(editConsultationContentRef.current.innerHTML);
+                          }
+                        }
+                      }}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 bg-white text-[13px] text-slate-700 hover:bg-slate-100"
+                    >
+                      7
+                    </button>
+                  </div>
+                  <div
+                    ref={editConsultationContentRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={(e) =>
+                      setEditConsultationContent((e.currentTarget as HTMLDivElement).innerHTML)
+                    }
+                    className="min-h-[180px] max-h-[400px] overflow-y-auto px-3 py-2 text-xs text-slate-900 focus:outline-none prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                  />
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
