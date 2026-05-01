@@ -6887,6 +6887,29 @@ export default function MedicalConsultationsCard({
                               {scheduledLabel}
                             </div>
                           )}
+                          {(() => {
+                            const idForDisplay = isInvoice ? row.invoice_id : row.id;
+                            const idLabel = isInvoice ? "Invoice ID" : "Consultation ID";
+                            if (!idForDisplay) return null;
+                            return (
+                              <button
+                                type="button"
+                                title={`${idLabel}: ${idForDisplay} (click to copy)`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    navigator.clipboard?.writeText(idForDisplay);
+                                  } catch {}
+                                }}
+                                className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] text-slate-500 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                <span className="tracking-tight">{idForDisplay.slice(0, 8)}…</span>
+                              </button>
+                            );
+                          })()}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-1.5">

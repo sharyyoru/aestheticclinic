@@ -413,6 +413,29 @@ export default function RootLayout({
                 </div>
                 <div className="border-b border-slate-100/80">
                   <Link
+                    href="/statistics"
+                    className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/70 text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.18)] backdrop-blur group-hover:bg-sky-500/90 group-hover:text-white">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 3v18h18" />
+                        <path d="M7 14l4-4 4 4 5-5" />
+                      </svg>
+                    </span>
+                    <span>Statistics</span>
+                  </Link>
+                </div>
+                <div className="border-b border-slate-100/80">
+                  <Link
                     href="/chat"
                     className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
                   >
@@ -456,6 +479,29 @@ export default function RootLayout({
                       </svg>
                     </span>
                     <span>Client Onboarding</span>
+                  </Link>
+                </div>
+                <div className="border-b border-slate-100/80">
+                  <Link
+                    href="/invoice-linker"
+                    className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/70 text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.18)] backdrop-blur group-hover:bg-sky-500/90 group-hover:text-white">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                      </svg>
+                    </span>
+                    <span>Invoice Linker</span>
                   </Link>
                 </div>
                 <div className="border-b border-slate-100/80">
