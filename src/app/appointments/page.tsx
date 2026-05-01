@@ -1138,6 +1138,7 @@ export default function CalendarPage() {
     "Assistante",
     "Yosra",
     "Ngadande Vera",
+    "Sofien Seneina",
   ];
 
   useEffect(() => {
