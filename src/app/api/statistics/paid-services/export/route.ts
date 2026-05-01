@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { exportServices } from "../../invoiced-services/export/route";
+import { exportServices } from "@/lib/statisticsServicesExport";
 
 export const dynamic = "force-dynamic";
 

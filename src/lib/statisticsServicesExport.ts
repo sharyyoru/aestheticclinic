@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchPaidInvoices } from "@/lib/statisticsFetchers";
+import { fetchServiceLines } from "@/lib/statisticsFetchers";
 import {
   buildStatisticsWorkbook,
   fmtChf,
@@ -7,10 +7,17 @@ import {
   makeFilename,
   type ExcelCell,
 } from "@/lib/statisticsExcel";
+import type { ServiceLineRow } from "@/lib/statisticsAggregator";
 
-export const dynamic = "force-dynamic";
-
-export async function GET(req: NextRequest) {
+export async function exportServices(
+  req: NextRequest,
+  cfg: {
+    dateField: "invoice_date" | "paid_at";
+    paidStatusOnly: boolean;
+    reportTitle: string;
+    filename: string;
+  },
+) {
   try {
     const url = new URL(req.url);
     const from = url.searchParams.get("from");
@@ -25,62 +32,62 @@ export async function GET(req: NextRequest) {
       doctorId: url.searchParams.get("doctorId") || "",
       law: url.searchParams.get("law") || "",
       billingType: url.searchParams.get("billingType") || "",
+      includeCancelled: url.searchParams.get("includeCancelled") === "true",
+      dateField: cfg.dateField,
+      paidStatusOnly: cfg.paidStatusOnly,
     };
-    const rows = await fetchPaidInvoices(params);
+    const rows: ServiceLineRow[] = await fetchServiceLines(params);
 
     const headers = [
-      "Date paiement",
       "Date FA",
+      "Date paiement",
       "No FA",
-      "Concerne",
+      "Statut FA",
       "Entité",
       "Médecin",
       "No patient",
-      "Patient",
-      "Méthode paiement",
-      "TG/TP",
       "Loi",
-      "Montant FA",
-      "Montant payé",
-      "Statut",
-      "Exonéré TVA",
-      "TVA réduite (base)",
-      "TVA réduite (taxe)",
-      "% TVA réduite",
-      "TVA complète (base)",
-      "TVA complète (taxe)",
-      "% TVA complète",
+      "TG/TP",
+      "Catalogue",
+      "Code tarif",
+      "Code",
+      "Désignation",
+      "Quantité",
+      "Prix unitaire",
+      "Total ligne",
+      "Montant payé (ligne)",
+      "Type TVA",
+      "% TVA",
+      "Montant TVA",
     ];
 
     const dataRows: ExcelCell[][] = rows.map((r) => [
-      fmtDate(r.paid_at),
       fmtDate(r.invoice_date),
+      fmtDate(r.paid_at),
       r.invoice_number,
-      r.invoice_title || "",
+      r.invoice_status,
       r.provider_name || "",
       r.doctor_name || "",
       r.patient_id,
-      `${r.patient_last_name || ""} ${r.patient_first_name || ""}`.trim(),
-      r.payment_method || "",
-      r.billing_type || "",
       r.health_insurance_law || "",
-      fmtChf(r.total_amount),
-      fmtChf(r.paid_amount),
-      r.status,
-      fmtChf(r.vat_free_amount),
-      fmtChf(r.vat_reduced_taxable),
-      fmtChf(r.vat_reduced_amount),
-      r.vat_reduced_rate ?? "",
-      fmtChf(r.vat_full_taxable),
-      fmtChf(r.vat_full_amount),
-      r.vat_full_rate ?? "",
+      r.billing_type || "",
+      r.catalog_name || "",
+      r.tariff_code ?? "",
+      r.code || "",
+      r.line_name,
+      r.quantity,
+      fmtChf(r.unit_price),
+      fmtChf(r.total_price),
+      fmtChf(r.line_paid_amount),
+      r.vat_rate || "",
+      r.vat_rate_value ?? "",
+      fmtChf(r.vat_amount),
     ]);
 
-    const sum = (k: keyof (typeof rows)[number]) =>
+    const sum = (k: keyof ServiceLineRow) =>
       rows.reduce((acc, r) => acc + Number(r[k] || 0), 0);
     const totals: ExcelCell[] = [
       "Totaux",
-      rows.length,
       "",
       "",
       "",
@@ -90,22 +97,22 @@ export async function GET(req: NextRequest) {
       "",
       "",
       "",
-      fmtChf(sum("total_amount")),
-      fmtChf(sum("paid_amount")),
       "",
-      fmtChf(sum("vat_free_amount")),
-      fmtChf(sum("vat_reduced_taxable")),
-      fmtChf(sum("vat_reduced_amount")),
       "",
-      fmtChf(sum("vat_full_taxable")),
-      fmtChf(sum("vat_full_amount")),
       "",
+      "",
+      "",
+      fmtChf(sum("total_price")),
+      fmtChf(sum("line_paid_amount")),
+      "",
+      "",
+      fmtChf(sum("vat_amount")),
     ];
 
-    const filename = makeFilename("Journal_des_paiements", from, to);
+    const filename = makeFilename(cfg.filename, from, to);
     const buf = buildStatisticsWorkbook({
       filename,
-      reportTitle: "Journal des paiements (Paid Invoices)",
+      reportTitle: cfg.reportTitle,
       filters: {
         Période: `${from} → ${to}`,
         Entité: params.entityId || "Toutes",
@@ -113,7 +120,7 @@ export async function GET(req: NextRequest) {
         Loi: params.law || "Toutes",
         "TG/TP": params.billingType || "Tous",
       },
-      sheets: [{ name: "Journal", headers, rows: dataRows, totals }],
+      sheets: [{ name: "Détail", headers, rows: dataRows, totals }],
     });
 
     return new NextResponse(buf as unknown as BodyInit, {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchSentInvoices } from "../route";
+import { fetchSentInvoices } from "@/lib/statisticsFetchers";
 import {
   buildStatisticsWorkbook,
   fmtChf,
