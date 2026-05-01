@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 // ===== Types =====
+type InvoiceOrigin = "axenita" | "aliice";
+
 type UnlinkedInvoice = {
   invoice_id: string;
   invoice_number: string;
@@ -18,14 +20,21 @@ type UnlinkedInvoice = {
   patient_dob: string | null;
   doctor_name: string | null;
   provider_name: string | null;
+  origin: InvoiceOrigin;
 };
 
 type PatientConsultation = {
   consultation_id: string;
   title: string | null;
+  content: string | null;
   scheduled_at: string;
   doctor_name: string | null;
   record_type: string;
+  duration_seconds: number | null;
+  diagnosis_code: string | null;
+  ref_icd10: string | null;
+  created_by_name: string | null;
+  invoice_total_amount: number | null;
   linked_invoice_id: string | null;
   linked_invoice_number: string | null;
   linked_invoice_total: number | null;
@@ -63,6 +72,10 @@ export default function InvoiceLinkerPage() {
 
   const [search, setSearch] = useState("");
   const [yearFilter, setYearFilter] = useState("");
+  const [originFilter, setOriginFilter] = useState<"" | InvoiceOrigin>("");
+  const [expandedContentIds, setExpandedContentIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   const [selected, setSelected] = useState<UnlinkedInvoice | null>(null);
   const [consultations, setConsultations] = useState<PatientConsultation[]>([]);
@@ -83,6 +96,7 @@ export default function InvoiceLinkerPage() {
       const qs = new URLSearchParams();
       if (yearFilter) qs.set("year", yearFilter);
       if (search.trim()) qs.set("q", search.trim());
+      if (originFilter) qs.set("origin", originFilter);
       qs.set("limit", "500");
       const res = await fetch(`/api/invoice-linker/unlinked-invoices?${qs.toString()}`);
       const json = await res.json();
@@ -94,7 +108,7 @@ export default function InvoiceLinkerPage() {
     } finally {
       setLoadingInvoices(false);
     }
-  }, [search, yearFilter]);
+  }, [search, yearFilter, originFilter]);
 
   useEffect(() => {
     loadInvoices();
@@ -276,6 +290,32 @@ export default function InvoiceLinkerPage() {
                 ))}
               </select>
             </div>
+            <div className="flex gap-1 rounded-md bg-slate-100 p-0.5 text-[11px]">
+              {(
+                [
+                  { v: "", label: "All origins" },
+                  { v: "axenita", label: "Axenita" },
+                  { v: "aliice", label: "Aliice" },
+                ] as { v: "" | InvoiceOrigin; label: string }[]
+              ).map((opt) => {
+                const active = originFilter === opt.v;
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => setOriginFilter(opt.v)}
+                    className={
+                      "flex-1 rounded px-2 py-1 font-medium transition-colors " +
+                      (active
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -306,9 +346,26 @@ export default function InvoiceLinkerPage() {
                         }
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-slate-900">
-                            #{inv.invoice_number}
-                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-sm font-semibold text-slate-900">
+                              #{inv.invoice_number}
+                            </span>
+                            <span
+                              className={
+                                "rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide " +
+                                (inv.origin === "axenita"
+                                  ? "bg-violet-100 text-violet-700"
+                                  : "bg-emerald-100 text-emerald-700")
+                              }
+                              title={
+                                inv.origin === "axenita"
+                                  ? "Imported from Axenita"
+                                  : "Created natively in Aliice"
+                              }
+                            >
+                              {inv.origin === "axenita" ? "Axenita" : "Aliice"}
+                            </span>
+                          </div>
                           <span className="text-xs font-medium text-slate-600">
                             {chf(inv.total_amount)}
                           </span>
@@ -360,10 +417,26 @@ export default function InvoiceLinkerPage() {
                         {selected.patient_first_name} {selected.patient_last_name}
                       </span>
                     </h2>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Linking invoice <strong>#{selected.invoice_number}</strong>{" "}
-                      ({chf(selected.total_amount)}, {shortDate(selected.invoice_date)})
-                      {selected.title ? ` — ${selected.title}` : ""}
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-500">
+                      <span>Linking invoice</span>
+                      <strong className="text-slate-900">
+                        #{selected.invoice_number}
+                      </strong>
+                      <span
+                        className={
+                          "rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide " +
+                          (selected.origin === "axenita"
+                            ? "bg-violet-100 text-violet-700"
+                            : "bg-emerald-100 text-emerald-700")
+                        }
+                      >
+                        {selected.origin === "axenita" ? "Axenita" : "Aliice"}
+                      </span>
+                      <span>
+                        · {chf(selected.total_amount)} ·{" "}
+                        {shortDate(selected.invoice_date)}
+                      </span>
+                      {selected.title ? <span>· {selected.title}</span> : null}
                     </p>
                   </div>
                   <button
@@ -391,65 +464,156 @@ export default function InvoiceLinkerPage() {
                   <ul className="space-y-2">
                     {consultations.map((c) => {
                       const isLinkedElsewhere = !!c.linked_invoice_id;
+                      const expanded = expandedContentIds.has(c.consultation_id);
+                      const hasContent =
+                        !!c.content && c.content.trim().length > 0;
                       return (
                         <li
                           key={c.consultation_id}
                           className={
-                            "flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm " +
+                            "rounded-lg border px-3 py-2.5 text-sm " +
                             (isLinkedElsewhere
                               ? "border-amber-200 bg-amber-50/50"
                               : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/30")
                           }
                         >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                {c.record_type}
-                              </span>
-                              <span className="text-xs font-medium text-slate-900">
-                                {fullDate(c.scheduled_at)}
-                              </span>
-                              {c.doctor_name && (
-                                <span className="text-xs text-slate-600">
-                                  · {c.doctor_name}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                  {c.record_type}
                                 </span>
+                                <span className="text-xs font-semibold text-slate-900">
+                                  {fullDate(c.scheduled_at)}
+                                </span>
+                                {c.doctor_name && (
+                                  <span className="text-xs text-slate-600">
+                                    · {c.doctor_name}
+                                  </span>
+                                )}
+                                {c.duration_seconds != null &&
+                                  c.duration_seconds > 0 && (
+                                    <span className="text-[11px] text-slate-500">
+                                      · {Math.round(c.duration_seconds / 60)} min
+                                    </span>
+                                  )}
+                                {c.invoice_total_amount != null &&
+                                  c.invoice_total_amount > 0 && (
+                                    <span className="text-[11px] text-slate-500">
+                                      · {chf(c.invoice_total_amount)}
+                                    </span>
+                                  )}
+                              </div>
+                              {c.title && (
+                                <div className="mt-1 text-xs font-medium text-slate-800">
+                                  {c.title}
+                                </div>
+                              )}
+                              {(c.diagnosis_code || c.ref_icd10) && (
+                                <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
+                                  {c.diagnosis_code && (
+                                    <span className="rounded border border-slate-200 bg-white px-1.5 py-0.5">
+                                      Dx: {c.diagnosis_code}
+                                    </span>
+                                  )}
+                                  {c.ref_icd10 && (
+                                    <span className="rounded border border-slate-200 bg-white px-1.5 py-0.5">
+                                      ICD-10: {c.ref_icd10}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {c.created_by_name && (
+                                <div className="mt-1 text-[10px] text-slate-400">
+                                  created by {c.created_by_name}
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  try {
+                                    navigator.clipboard?.writeText(
+                                      c.consultation_id,
+                                    );
+                                  } catch {}
+                                }}
+                                className="mt-1 font-mono text-[10px] text-slate-400 hover:text-indigo-600"
+                                title="Click to copy full ID"
+                              >
+                                {c.consultation_id}
+                              </button>
+                              {isLinkedElsewhere && (
+                                <div className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  Already linked to invoice #
+                                  {c.linked_invoice_number}
+                                  {c.linked_invoice_total != null
+                                    ? ` (${chf(c.linked_invoice_total)})`
+                                    : ""}
+                                </div>
                               )}
                             </div>
-                            {c.title && (
-                              <div className="mt-1 truncate text-xs text-slate-700">
-                                {c.title}
-                              </div>
-                            )}
-                            <div className="mt-1 font-mono text-[10px] text-slate-400">
-                              {c.consultation_id}
-                            </div>
-                            {isLinkedElsewhere && (
-                              <div className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                Already linked to invoice #
-                                {c.linked_invoice_number}
-                                {c.linked_invoice_total != null
-                                  ? ` (${chf(c.linked_invoice_total)})`
-                                  : ""}
-                              </div>
-                            )}
+                            <button
+                              type="button"
+                              disabled={linking}
+                              onClick={() => doLink(c)}
+                              className={
+                                "shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors " +
+                                (isLinkedElsewhere
+                                  ? "border border-amber-400 bg-white text-amber-800 hover:bg-amber-50"
+                                  : "bg-sky-600 text-white hover:bg-sky-700") +
+                                (linking ? " opacity-50" : "")
+                              }
+                            >
+                              {isLinkedElsewhere ? "Re-link" : "Link"}
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            disabled={linking}
-                            onClick={() => doLink(c)}
-                            className={
-                              "shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors " +
-                              (isLinkedElsewhere
-                                ? "border border-amber-400 bg-white text-amber-800 hover:bg-amber-50"
-                                : "bg-sky-600 text-white hover:bg-sky-700") +
-                              (linking ? " opacity-50" : "")
-                            }
-                          >
-                            {isLinkedElsewhere ? "Re-link" : "Link"}
-                          </button>
+                          {hasContent && (
+                            <div className="mt-2 border-t border-slate-100 pt-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedContentIds((prev) => {
+                                    const s = new Set(prev);
+                                    if (s.has(c.consultation_id))
+                                      s.delete(c.consultation_id);
+                                    else s.add(c.consultation_id);
+                                    return s;
+                                  });
+                                }}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:text-sky-900"
+                              >
+                                <svg
+                                  className={
+                                    "h-3 w-3 transition-transform " +
+                                    (expanded ? "rotate-90" : "")
+                                  }
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 5l7 7-7 7"
+                                  />
+                                </svg>
+                                {expanded ? "Hide notes" : "Show notes"}
+                              </button>
+                              {expanded && (
+                                <div
+                                  className="prose prose-xs mt-2 max-h-64 max-w-none overflow-y-auto rounded bg-slate-50 px-3 py-2 text-[12px] leading-snug text-slate-700 [&_h1]:text-sm [&_h2]:text-sm [&_h3]:text-xs [&_img]:max-w-full [&_p]:my-1 [&_table]:text-[11px]"
+                                  // content is rich HTML authored by the clinicians
+                                  dangerouslySetInnerHTML={{
+                                    __html: c.content || "",
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
                         </li>
                       );
                     })}

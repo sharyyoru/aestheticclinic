@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const { data: consults, error: consErr } = await supabaseAdmin
       .from("consultations")
       .select(
-        "id, title, scheduled_at, doctor_name, record_type, created_at",
+        "id, title, content, scheduled_at, doctor_name, record_type, duration_seconds, diagnosis_code, ref_icd10, created_by_name, created_at, invoice_total_amount",
       )
       .eq("patient_id", patientId)
       .eq("is_demo", false)
@@ -69,9 +69,15 @@ export async function GET(req: NextRequest) {
       return {
         consultation_id: c.id,
         title: c.title,
+        content: c.content,
         scheduled_at: c.scheduled_at,
         doctor_name: c.doctor_name,
         record_type: c.record_type,
+        duration_seconds: c.duration_seconds,
+        diagnosis_code: c.diagnosis_code,
+        ref_icd10: c.ref_icd10,
+        created_by_name: c.created_by_name,
+        invoice_total_amount: c.invoice_total_amount,
         linked_invoice_id: existing?.invoice_id ?? null,
         linked_invoice_number: existing?.invoice_number ?? null,
         linked_invoice_total: existing?.total_amount ?? null,

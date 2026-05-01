@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
     const limitRaw = parseInt(url.searchParams.get("limit") || "200", 10);
     const limit = Math.min(Math.max(limitRaw, 1), 500);
 
+    const origin = (url.searchParams.get("origin") || "").toLowerCase(); // "axenita" | "aliice" | ""
+
     let query = supabaseAdmin
       .from("invoices")
       .select(
@@ -30,8 +32,8 @@ export async function GET(req: NextRequest) {
       .eq("is_demo", false)
       .eq("is_archived", false)
       .is("consultation_id", null)
-      // exclude Ralf test account
-      .not("created_by_name", "ilike", "%ralf@mutant.ae%")
+      // exclude Ralf test account (but keep NULL created_by_name rows, which are imports)
+      .or("created_by_name.is.null,created_by_name.not.ilike.%ralf@mutant.ae%")
       .order("invoice_date", { ascending: false })
       .order("invoice_number", { ascending: false })
       .limit(limit);
@@ -55,7 +57,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const rows = (data ?? []).map((r: any) => ({
+    const rawRows = data ?? [];
+
+    // Bulk-classify origin: Axenita (in tmp_invoice_raw) vs Aliice (native)
+    const invoiceNumbers = rawRows
+      .map((r: any) => r.invoice_number)
+      .filter(Boolean);
+    const axenitaSet = new Set<string>();
+    if (invoiceNumbers.length > 0) {
+      const { data: srcRows } = await supabaseAdmin
+        .from("tmp_invoice_raw")
+        .select("invoice_no")
+        .in("invoice_no", invoiceNumbers);
+      for (const s of srcRows ?? []) {
+        if (s.invoice_no) axenitaSet.add(String(s.invoice_no));
+      }
+    }
+
+    let rows = rawRows.map((r: any) => ({
       invoice_id: r.id,
       invoice_number: r.invoice_number,
       invoice_date: r.invoice_date,
@@ -70,7 +89,12 @@ export async function GET(req: NextRequest) {
       patient_dob: r.patients?.dob ?? null,
       doctor_name: r.doctor_name,
       provider_name: r.provider_name,
+      origin: axenitaSet.has(String(r.invoice_number)) ? "axenita" : "aliice",
     }));
+
+    if (origin === "axenita" || origin === "aliice") {
+      rows = rows.filter((r) => r.origin === origin);
+    }
 
     return NextResponse.json({ rows, total: rows.length, limit });
   } catch (err) {
