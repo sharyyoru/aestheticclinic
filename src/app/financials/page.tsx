@@ -33,6 +33,8 @@ type InvoiceLineItem = {
   catalog_nature: "TARIFF_CATALOG" | "CUSTOM" | null;
   uncovered_benefit: boolean;
   code: string | null;
+  quantity: number;
+  total_price: number;
 };
 
 type ItemType = "all" | "service" | "tardoc" | "insurance" | "material";
@@ -99,6 +101,15 @@ type DoctorSummaryRow = {
   firstInvoiceDate: string | null;
   lastInvoiceDate: string | null;
   services: string[];
+};
+
+type ServiceSummaryRow = {
+  serviceName: string;
+  itemType: "service" | "tardoc" | "insurance" | "material";
+  invoiceCount: number;
+  quantity: number;
+  totalRevenue: number;
+  paidRevenue: number;
 };
 
 function formatCurrency(amount: number): string {
@@ -172,19 +183,24 @@ export default function FinancialsPage() {
         const rows = data as InvoiceRow[];
         setInvoices(rows);
 
-        // Fetch invoice line items for service and item type filtering
+        // Fetch invoice line items in batches (Supabase .in() limit is ~500 IDs)
         const invoiceIds = rows.map((r) => r.id);
         if (invoiceIds.length > 0) {
-          const { data: itemsData, error: itemsError } = await supabaseClient
-            .from("invoice_line_items")
-            .select("id, invoice_id, name, service_id, tardoc_code, catalog_nature, uncovered_benefit, code")
-            .in("invoice_id", invoiceIds.slice(0, 1000)); // Limit to avoid query size issues
-
-          if (!itemsError && itemsData) {
-            setInvoiceItems(itemsData as InvoiceLineItem[]);
-          } else {
-            setInvoiceItems([]);
+          const ITEM_BATCH = 400;
+          const allItems: InvoiceLineItem[] = [];
+          for (let bi = 0; bi < invoiceIds.length; bi += ITEM_BATCH) {
+            if (!isMounted) return;
+            const batchIds = invoiceIds.slice(bi, bi + ITEM_BATCH);
+            const { data: batchData, error: batchError } = await supabaseClient
+              .from("invoice_line_items")
+              .select("id, invoice_id, name, service_id, tardoc_code, catalog_nature, uncovered_benefit, code, quantity, total_price")
+              .in("invoice_id", batchIds);
+            if (!batchError && batchData) {
+              allItems.push(...(batchData as InvoiceLineItem[]));
+            }
           }
+          if (!isMounted) return;
+          setInvoiceItems(allItems);
         } else {
           setInvoiceItems([]);
         }
@@ -423,12 +439,11 @@ export default function FinancialsPage() {
           return false;
         }
       }
-      // Date range filter
-      if (dateFrom && row.invoice_date) {
-        if (row.invoice_date < dateFrom) return false;
-      }
-      if (dateTo && row.invoice_date) {
-        if (row.invoice_date > dateTo) return false;
+      // Date range filter — normalize to YYYY-MM-DD for reliable comparison
+      if (row.invoice_date && (dateFrom || dateTo)) {
+        const rowDateStr = row.invoice_date.substring(0, 10); // handles ISO timestamptz
+        if (dateFrom && rowDateStr < dateFrom) return false;
+        if (dateTo && rowDateStr > dateTo) return false;
       }
       // Unpaid only filter
       if (showOnlyUnpaid) {
@@ -444,6 +459,7 @@ export default function FinancialsPage() {
     setInvoicePage(0);
     setPatientPage(0);
     setDoctorPage(0);
+    setServicePage(0);
   }, [patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
   const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / ROWS_PER_PAGE));
@@ -650,6 +666,47 @@ export default function FinancialsPage() {
     const start = doctorPage * ROWS_PER_PAGE;
     return filteredDoctorRows.slice(start, start + ROWS_PER_PAGE);
   }, [filteredDoctorRows, doctorPage, ROWS_PER_PAGE]);
+
+  // Build service breakdown from filtered invoices + their items
+  const serviceSummaryRows: ServiceSummaryRow[] = useMemo(() => {
+    const byService = new Map<string, ServiceSummaryRow>();
+    const filteredIds = new Set(filteredInvoices.map((inv) => inv.id));
+    const filteredInvoiceMap = new Map(filteredInvoices.map((inv) => [inv.id, inv]));
+
+    for (const item of invoiceItems) {
+      if (!filteredIds.has(item.invoice_id)) continue;
+      const key = item.name || "Unknown";
+      let existing = byService.get(key);
+      if (!existing) {
+        existing = {
+          serviceName: key,
+          itemType: getItemType(item),
+          invoiceCount: 0,
+          quantity: 0,
+          totalRevenue: 0,
+          paidRevenue: 0,
+        };
+      }
+      existing.invoiceCount += 1;
+      existing.quantity += Number(item.quantity) || 1;
+      const lineRevenue = Number(item.total_price) || 0;
+      existing.totalRevenue += lineRevenue;
+      const parentInv = filteredInvoiceMap.get(item.invoice_id);
+      if (parentInv && parentInv.isPaid) {
+        existing.paidRevenue += lineRevenue;
+      }
+      byService.set(key, existing);
+    }
+
+    return Array.from(byService.values()).sort((a, b) => b.invoiceCount - a.invoiceCount);
+  }, [filteredInvoices, invoiceItems]);
+
+  const [servicePage, setServicePage] = useState(0);
+  const totalServicePages = Math.max(1, Math.ceil(serviceSummaryRows.length / ROWS_PER_PAGE));
+  const paginatedServiceRows = useMemo(() => {
+    const start = servicePage * ROWS_PER_PAGE;
+    return serviceSummaryRows.slice(start, start + ROWS_PER_PAGE);
+  }, [serviceSummaryRows, servicePage, ROWS_PER_PAGE]);
 
   const [activeTab, setActiveTab] = useState<"overview" | "receipts" | "import_history">("overview");
 
@@ -1311,6 +1368,99 @@ export default function FinancialsPage() {
                         type="button"
                         disabled={invoicePage >= totalInvoicePages - 1}
                         onClick={() => setInvoicePage((p) => Math.min(totalInvoicePages - 1, p + 1))}
+                        className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* ── Services Breakdown */}
+            <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-xs font-semibold text-slate-900">Services &amp; Items</h2>
+                  <p className="text-[10px] text-slate-500">Number of times each item was invoiced in the current filtered view.</p>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  {serviceSummaryRows.length > 0
+                    ? `${servicePage * ROWS_PER_PAGE + 1}–${Math.min((servicePage + 1) * ROWS_PER_PAGE, serviceSummaryRows.length)} of ${serviceSummaryRows.length} items`
+                    : "No items found."}
+                </p>
+              </div>
+              {serviceSummaryRows.length === 0 ? (
+                <p className="text-[11px] text-slate-500">
+                  {invoiceItems.length === 0 ? "Loading item data..." : "No items match the current filters."}
+                </p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-[11px]">
+                      <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="py-1.5 pr-3 font-medium">Item / Service</th>
+                          <th className="py-1.5 pr-3 font-medium">Type</th>
+                          <th className="py-1.5 pr-3 font-medium text-center">Times Invoiced</th>
+                          <th className="py-1.5 pr-3 font-medium text-center">Qty</th>
+                          <th className="py-1.5 pr-3 font-medium">Total Revenue</th>
+                          <th className="py-1.5 pr-0 font-medium">Paid Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {paginatedServiceRows.map((row) => (
+                          <tr key={row.serviceName} className="align-top hover:bg-slate-50/50">
+                            <td className="py-1.5 pr-3 font-medium text-slate-900 max-w-[250px] truncate" title={row.serviceName}>
+                              {row.serviceName}
+                            </td>
+                            <td className="py-1.5 pr-3">
+                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                row.itemType === "service" ? "bg-sky-50 text-sky-700" :
+                                row.itemType === "tardoc" ? "bg-violet-50 text-violet-700" :
+                                row.itemType === "insurance" ? "bg-emerald-50 text-emerald-700" :
+                                "bg-amber-50 text-amber-700"
+                              }`}>
+                                {row.itemType === "service" ? "Service" :
+                                 row.itemType === "tardoc" ? "Tardoc" :
+                                 row.itemType === "insurance" ? "Insurance" : "Material"}
+                              </span>
+                            </td>
+                            <td className="py-1.5 pr-3 text-center font-semibold text-slate-700">
+                              {row.invoiceCount}
+                            </td>
+                            <td className="py-1.5 pr-3 text-center text-slate-600">
+                              {row.quantity}
+                            </td>
+                            <td className="py-1.5 pr-3 text-slate-700">
+                              {row.totalRevenue > 0 ? formatCurrency(row.totalRevenue) : "-"}
+                            </td>
+                            <td className="py-1.5 pr-0 text-emerald-700">
+                              {row.paidRevenue > 0 ? formatCurrency(row.paidRevenue) : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {totalServicePages > 1 && (
+                    <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        disabled={servicePage === 0}
+                        onClick={() => setServicePage((p) => Math.max(0, p - 1))}
+                        className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-[11px] text-slate-500">
+                        Page {servicePage + 1} of {totalServicePages}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={servicePage >= totalServicePages - 1}
+                        onClick={() => setServicePage((p) => Math.min(totalServicePages - 1, p + 1))}
                         className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Next
