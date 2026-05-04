@@ -901,16 +901,41 @@ export default function FinancialsPage() {
                   className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
                 />
               </div>
-              {serviceFilters.size > 0 && (
-                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-1.5">
-                  <span className="text-[11px] text-slate-500">{serviceFilters.size} selected</span>
-                  <button
-                    type="button"
-                    onClick={() => setServiceFilters(new Set())}
-                    className="text-[11px] text-sky-600 hover:text-sky-800 underline"
-                  >
-                    Clear all
-                  </button>
+              {/* Status bar: select-all-results + clear all */}
+              {(serviceFilters.size > 0 || (serviceSearch.trim() && filteredServiceOptions.length > 0)) && (
+                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-1.5 gap-2">
+                  <div className="flex items-center gap-2">
+                    {serviceSearch.trim() && filteredServiceOptions.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setServiceFilters((prev) => {
+                            const next = new Set(prev);
+                            for (const name of filteredServiceOptions) next.add(name);
+                            return next;
+                          });
+                        }}
+                        className="text-[11px] font-medium text-sky-700 hover:text-sky-900 underline whitespace-nowrap"
+                      >
+                        Select all {filteredServiceOptions.length} result{filteredServiceOptions.length !== 1 ? "s" : ""}
+                      </button>
+                    )}
+                    {serviceSearch.trim() && filteredServiceOptions.length > 0 && serviceFilters.size > 0 && (
+                      <span className="text-slate-300">|</span>
+                    )}
+                    {serviceFilters.size > 0 && (
+                      <span className="text-[11px] text-slate-500">{serviceFilters.size} selected</span>
+                    )}
+                  </div>
+                  {serviceFilters.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setServiceFilters(new Set())}
+                      className="text-[11px] text-red-500 hover:text-red-700 underline whitespace-nowrap"
+                    >
+                      Clear all
+                    </button>
+                  )}
                 </div>
               )}
               <ul className="max-h-64 overflow-y-auto py-1 text-xs">
