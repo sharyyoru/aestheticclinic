@@ -5,62 +5,38 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 
-type InvoiceRow = {
-  id: string;
-  patient_id: string | null;
-  invoice_number: string;
-  invoice_date: string | null;
-  doctor_user_id: string | null;
-  doctor_name: string | null;
-  provider_id: string | null;
-  provider_name: string | null;
-  payment_method: string | null;
-  total_amount: number;
-  paid_amount: number | null;
-  status: string;
-  is_complimentary: boolean;
-  created_by_user_id: string | null;
-  created_by_name: string | null;
-  is_archived: boolean;
-};
-
-type InvoiceLineItem = {
-  id: string;
-  invoice_id: string;
-  name: string;
-  service_id: string | null;
-  tardoc_code: string | null;
-  catalog_nature: "TARIFF_CATALOG" | "CUSTOM" | null;
-  uncovered_benefit: boolean;
-  code: string | null;
-  quantity: number;
-  total_price: number;
-};
-
 type ItemType = "all" | "service" | "tardoc" | "insurance" | "material";
 
-type PatientInfo = {
+// Shape returned by /api/financials/summary
+type NormalizedInvoice = {
   id: string;
-  first_name: string | null;
-  last_name: string | null;
-};
-
-type ProviderInfo = {
-  id: string;
-  name: string | null;
-};
-
-type PatientsById = Record<string, PatientInfo>;
-type ProvidersById = Record<string, ProviderInfo>;
-
-type NormalizedInvoice = InvoiceRow & {
-  amount: number;
-  isPaid: boolean;
+  invoice_number: string;
+  invoice_date: string | null;
+  patient_id: string | null;
   patientName: string;
+  doctor_user_id: string | null;
+  doctor_name: string | null;
+  doctorKey: string;
+  doctorLabel: string;
+  provider_id: string | null;
   ownerKey: string;
   ownerLabel: string;
+  payment_method: string | null;
+  amount: number;
+  isPaid: boolean;
+  is_complimentary: boolean;
+  status: string;
   statusLabel: string;
   serviceNames: string[];
+  itemTypes: string[];
+};
+
+type ApiServiceSummary = {
+  serviceName: string;
+  invoiceCount: number;
+  quantity: number;
+  totalRevenue: number;
+  paidRevenue: number;
 };
 
 type Summary = {
@@ -103,14 +79,7 @@ type DoctorSummaryRow = {
   services: string[];
 };
 
-type ServiceSummaryRow = {
-  serviceName: string;
-  itemType: "service" | "tardoc" | "insurance" | "material";
-  invoiceCount: number;
-  quantity: number;
-  totalRevenue: number;
-  paidRevenue: number;
-};
+type ServiceSummaryRow = ApiServiceSummary;
 
 function formatCurrency(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return "0.00 CHF";
@@ -129,10 +98,8 @@ function formatShortDate(iso: string | null | undefined): string {
 }
 
 export default function FinancialsPage() {
-  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceLineItem[]>([]);
-  const [patientsById, setPatientsById] = useState<PatientsById>({});
-  const [providersById, setProvidersById] = useState<ProvidersById>({});
+  const [normalizedInvoices, setNormalizedInvoices] = useState<NormalizedInvoice[]>([]);
+  const [allServiceSummary, setAllServiceSummary] = useState<ApiServiceSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,131 +128,25 @@ export default function FinancialsPage() {
         setLoading(true);
         setError(null);
 
-        const { data, error: invoicesError } = await supabaseClient
-          .from("invoices")
-          .select(
-            "id, patient_id, invoice_number, invoice_date, doctor_user_id, doctor_name, provider_id, provider_name, payment_method, total_amount, paid_amount, status, is_complimentary, created_by_user_id, created_by_name, is_archived",
-          )
-          .eq("is_archived", false)
-          .is("parent_invoice_id", null)
-          .order("invoice_date", { ascending: false });
-
+        const res = await fetch("/api/financials/summary");
         if (!isMounted) return;
 
-        if (invoicesError || !data) {
-          setError(invoicesError?.message ?? "Failed to load invoices.");
-          setInvoices([]);
-          setPatientsById({});
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}));
+          setError(json.error ?? "Failed to load financials.");
           setLoading(false);
           return;
         }
 
-        const rows = data as InvoiceRow[];
-        setInvoices(rows);
+        const json = await res.json();
+        if (!isMounted) return;
 
-        // Fetch invoice line items in batches (Supabase .in() limit is ~500 IDs)
-        const invoiceIds = rows.map((r) => r.id);
-        if (invoiceIds.length > 0) {
-          const ITEM_BATCH = 400;
-          const allItems: InvoiceLineItem[] = [];
-          for (let bi = 0; bi < invoiceIds.length; bi += ITEM_BATCH) {
-            if (!isMounted) return;
-            const batchIds = invoiceIds.slice(bi, bi + ITEM_BATCH);
-            const { data: batchData, error: batchError } = await supabaseClient
-              .from("invoice_line_items")
-              .select("id, invoice_id, name, service_id, tardoc_code, catalog_nature, uncovered_benefit, code, quantity, total_price")
-              .in("invoice_id", batchIds);
-            if (!batchError && batchData) {
-              allItems.push(...(batchData as InvoiceLineItem[]));
-            }
-          }
-          if (!isMounted) return;
-          setInvoiceItems(allItems);
-        } else {
-          setInvoiceItems([]);
-        }
-
-        const patientIds = Array.from(
-          new Set(
-            rows
-              .map((row) => row.patient_id)
-              .filter((id): id is string => typeof id === "string" && !!id),
-          ),
-        );
-
-        // Fetch patients in batches of 50 to avoid URL length limits
-        if (patientIds.length > 0) {
-          const BATCH_SIZE = 50;
-          const map: PatientsById = {};
-
-          for (let i = 0; i < patientIds.length; i += BATCH_SIZE) {
-            if (!isMounted) return;
-            const batch = patientIds.slice(i, i + BATCH_SIZE);
-            const { data: patientsData, error: patientsError } =
-              await supabaseClient
-                .from("patients")
-                .select("id, first_name, last_name")
-                .in("id", batch);
-
-            if (!patientsError && patientsData) {
-              for (const row of patientsData as any[]) {
-                const id = row.id as string;
-                map[id] = {
-                  id,
-                  first_name: (row.first_name as string | null) ?? null,
-                  last_name: (row.last_name as string | null) ?? null,
-                };
-              }
-            }
-          }
-
-          if (!isMounted) return;
-          setPatientsById(map);
-        } else {
-          setPatientsById({});
-        }
-
-        // Fetch providers for invoice owners
-        const providerIds = Array.from(
-          new Set(
-            rows
-              .map((row) => row.provider_id)
-              .filter((id): id is string => typeof id === "string" && !!id),
-          ),
-        );
-
-        if (providerIds.length > 0) {
-          const { data: providersData, error: providersError } =
-            await supabaseClient
-              .from("providers")
-              .select("id, name")
-              .in("id", providerIds);
-
-          if (!isMounted) return;
-
-          if (!providersError && providersData) {
-            const provMap: ProvidersById = {};
-            for (const row of providersData as any[]) {
-              const id = row.id as string;
-              provMap[id] = {
-                id,
-                name: (row.name as string | null) ?? null,
-              };
-            }
-            setProvidersById(provMap);
-          } else {
-            setProvidersById({});
-          }
-        } else {
-          setProvidersById({});
-        }
-
+        setNormalizedInvoices(json.invoices ?? []);
+        setAllServiceSummary(json.serviceSummary ?? []);
         setLoading(false);
       } catch {
         if (!isMounted) return;
-        setError("Failed to load invoices.");
-        setInvoices([]);
-        setPatientsById({});
+        setError("Failed to load financials.");
         setLoading(false);
       }
     }
@@ -296,61 +157,6 @@ export default function FinancialsPage() {
       isMounted = false;
     };
   }, []);
-
-  const normalizedInvoices = useMemo<NormalizedInvoice[]>(() => {
-    if (!invoices || invoices.length === 0) return [];
-
-    return invoices.map((row) => {
-      const patient = row.patient_id ? patientsById[row.patient_id] : undefined;
-      const nameParts = [
-        patient?.first_name ? patient.first_name.trim() : "",
-        patient?.last_name ? patient.last_name.trim() : "",
-      ].filter(Boolean);
-      const patientName =
-        nameParts.join(" ") || row.patient_id || "Unknown patient";
-
-      const amount = Number(row.total_amount) || 0;
-      const isPaid = row.status === "PAID" || row.status === "OVERPAID";
-
-      // Owner: prefer provider (from providers table), then doctor, then creator
-      const provider = row.provider_id ? providersById[row.provider_id] : undefined;
-      const ownerKey =
-        row.provider_id || row.doctor_user_id || row.created_by_user_id || "unknown";
-
-      const ownerLabel =
-        provider?.name ||
-        row.provider_name ||
-        row.doctor_name ||
-        row.created_by_name ||
-        (ownerKey === "unknown" ? "Unassigned" : ownerKey);
-
-      const statusLabel = row.is_complimentary
-        ? "Complimentary"
-        : isPaid
-        ? "Paid"
-        : row.status === "PARTIAL_PAID"
-        ? "Partial"
-        : row.status === "CANCELLED"
-        ? "Cancelled"
-        : "Unpaid";
-
-      // Get service names for this invoice
-      const serviceNames = invoiceItems
-        .filter((item) => item.invoice_id === row.id)
-        .map((item) => item.name);
-
-      return {
-        ...row,
-        amount,
-        isPaid,
-        patientName,
-        ownerKey,
-        ownerLabel,
-        statusLabel,
-        serviceNames,
-      };
-    });
-  }, [invoices, patientsById, providersById, invoiceItems]);
 
   const patientOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -396,20 +202,11 @@ export default function FinancialsPage() {
     return Array.from(set).sort();
   }, [normalizedInvoices]);
 
-  // Helper function to determine item type
-  function getItemType(item: InvoiceLineItem): "service" | "tardoc" | "insurance" | "material" {
-    if (item.service_id) return "service";
-    if (item.tardoc_code) return "tardoc";
-    if (item.code && !item.uncovered_benefit) return "insurance";
-    return "material";
-  }
-
-  // Check if invoice has items of a specific type
-  function invoiceHasItemType(invoiceId: string, type: ItemType): boolean {
+  // Check if invoice has items of a specific type using the pre-computed itemTypes array
+  function invoiceHasItemType(row: NormalizedInvoice, type: ItemType): boolean {
     if (type === "all") return true;
-    const items = invoiceItems.filter((item) => item.invoice_id === invoiceId);
-    if (items.length === 0) return false;
-    return items.some((item) => getItemType(item) === type);
+    if (row.itemTypes.length === 0) return false;
+    return row.itemTypes.includes(type);
   }
 
   const filteredInvoices = useMemo(() => {
@@ -435,7 +232,7 @@ export default function FinancialsPage() {
       }
       // Item type filter
       if (itemTypeFilter !== "all") {
-        if (!invoiceHasItemType(row.id, itemTypeFilter)) {
+        if (!invoiceHasItemType(row, itemTypeFilter)) {
           return false;
         }
       }
@@ -452,7 +249,7 @@ export default function FinancialsPage() {
       }
       return true;
     });
-  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid, invoiceItems]);
+  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
   // Reset pages when filters change
   useEffect(() => {
@@ -667,39 +464,39 @@ export default function FinancialsPage() {
     return filteredDoctorRows.slice(start, start + ROWS_PER_PAGE);
   }, [filteredDoctorRows, doctorPage, ROWS_PER_PAGE]);
 
-  // Build service breakdown from filtered invoices + their items
+  // Filter the pre-computed service summary from the API by current filtered invoice IDs
   const serviceSummaryRows: ServiceSummaryRow[] = useMemo(() => {
-    const byService = new Map<string, ServiceSummaryRow>();
-    const filteredIds = new Set(filteredInvoices.map((inv) => inv.id));
-    const filteredInvoiceMap = new Map(filteredInvoices.map((inv) => [inv.id, inv]));
+    // If no date/filter active, return the full pre-aggregated list from API
+    const isFiltered =
+      patientFilter !== "all" ||
+      ownerFilter !== "all" ||
+      doctorFilter !== "all" ||
+      serviceFilter !== "all" ||
+      itemTypeFilter !== "all" ||
+      dateFrom !== "" ||
+      dateTo !== "" ||
+      showOnlyUnpaid;
 
-    for (const item of invoiceItems) {
-      if (!filteredIds.has(item.invoice_id)) continue;
-      const key = item.name || "Unknown";
-      let existing = byService.get(key);
-      if (!existing) {
-        existing = {
-          serviceName: key,
-          itemType: getItemType(item),
+    if (!isFiltered) return allServiceSummary;
+
+    // When filtered, re-aggregate from invoice serviceNames
+    const byService = new Map<string, ServiceSummaryRow>();
+    for (const inv of filteredInvoices) {
+      for (const svcName of inv.serviceNames) {
+        if (!svcName) continue;
+        const existing = byService.get(svcName) ?? {
+          serviceName: svcName,
           invoiceCount: 0,
           quantity: 0,
           totalRevenue: 0,
           paidRevenue: 0,
         };
+        existing.invoiceCount += 1;
+        byService.set(svcName, existing);
       }
-      existing.invoiceCount += 1;
-      existing.quantity += Number(item.quantity) || 1;
-      const lineRevenue = Number(item.total_price) || 0;
-      existing.totalRevenue += lineRevenue;
-      const parentInv = filteredInvoiceMap.get(item.invoice_id);
-      if (parentInv && parentInv.isPaid) {
-        existing.paidRevenue += lineRevenue;
-      }
-      byService.set(key, existing);
     }
-
     return Array.from(byService.values()).sort((a, b) => b.invoiceCount - a.invoiceCount);
-  }, [filteredInvoices, invoiceItems]);
+  }, [filteredInvoices, allServiceSummary, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
   const [servicePage, setServicePage] = useState(0);
   const totalServicePages = Math.max(1, Math.ceil(serviceSummaryRows.length / ROWS_PER_PAGE));
@@ -1393,7 +1190,7 @@ export default function FinancialsPage() {
               </div>
               {serviceSummaryRows.length === 0 ? (
                 <p className="text-[11px] text-slate-500">
-                  {invoiceItems.length === 0 ? "Loading item data..." : "No items match the current filters."}
+                  {loading ? "Loading item data..." : "No items match the current filters."}
                 </p>
               ) : (
                 <>
@@ -1402,7 +1199,6 @@ export default function FinancialsPage() {
                       <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
                         <tr>
                           <th className="py-1.5 pr-3 font-medium">Item / Service</th>
-                          <th className="py-1.5 pr-3 font-medium">Type</th>
                           <th className="py-1.5 pr-3 font-medium text-center">Times Invoiced</th>
                           <th className="py-1.5 pr-3 font-medium text-center">Qty</th>
                           <th className="py-1.5 pr-3 font-medium">Total Revenue</th>
@@ -1412,20 +1208,8 @@ export default function FinancialsPage() {
                       <tbody className="divide-y divide-slate-100">
                         {paginatedServiceRows.map((row) => (
                           <tr key={row.serviceName} className="align-top hover:bg-slate-50/50">
-                            <td className="py-1.5 pr-3 font-medium text-slate-900 max-w-[250px] truncate" title={row.serviceName}>
+                            <td className="py-1.5 pr-3 font-medium text-slate-900 max-w-[300px] truncate" title={row.serviceName}>
                               {row.serviceName}
-                            </td>
-                            <td className="py-1.5 pr-3">
-                              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                row.itemType === "service" ? "bg-sky-50 text-sky-700" :
-                                row.itemType === "tardoc" ? "bg-violet-50 text-violet-700" :
-                                row.itemType === "insurance" ? "bg-emerald-50 text-emerald-700" :
-                                "bg-amber-50 text-amber-700"
-                              }`}>
-                                {row.itemType === "service" ? "Service" :
-                                 row.itemType === "tardoc" ? "Tardoc" :
-                                 row.itemType === "insurance" ? "Insurance" : "Material"}
-                              </span>
                             </td>
                             <td className="py-1.5 pr-3 text-center font-semibold text-slate-700">
                               {row.invoiceCount}
