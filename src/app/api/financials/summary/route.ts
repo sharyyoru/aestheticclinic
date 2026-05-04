@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // Cache the result in Node.js module scope — survives across requests within the
 // same server instance. Invalidated after CACHE_TTL_MS.
 const CACHE_TTL_MS = 60_000; // 60 seconds
-let cachedAt = 0;
+let cachedAt = 0; // set to 0 so first request always rebuilds
 let cachedPayload: string | null = null;
 
 // ---------------------------------------------------------------------------
@@ -35,9 +35,10 @@ async function fetchAllParallel<T>(
     offsets.map((offset) => {
       let q = supabaseAdmin
         .from(table)
-        .select(selectFields)
-        .range(offset, offset + PAGE - 1);
+        .select(selectFields);
       if (extraFilters) q = extraFilters(q);
+      // range() must come after filters/order
+      q = q.range(offset, offset + PAGE - 1);
       return q;
     }),
   );
