@@ -119,7 +119,7 @@ export default function FinancialsPage() {
   const [patientFilter, setPatientFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [doctorFilter, setDoctorFilter] = useState<string>("all");
-  const [serviceFilter, setServiceFilter] = useState<string>("all");
+  const [serviceFilters, setServiceFilters] = useState<Set<string>>(new Set());
   const [serviceSearch, setServiceSearch] = useState<string>("");
   const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
   const serviceDropdownRef = useRef<HTMLDivElement>(null);
@@ -262,8 +262,8 @@ export default function FinancialsPage() {
       const rowDoctorKey = row.doctor_user_id || row.doctor_name || "unknown";
       if (rowDoctorKey !== doctorFilter) return false;
     }
-    if (serviceFilter !== "all") {
-      if (!row.serviceNames.some((name) => name === serviceFilter)) return false;
+    if (serviceFilters.size > 0) {
+      if (!row.serviceNames.some((name) => serviceFilters.has(name))) return false;
     }
     if (itemTypeFilter !== "all") {
       if (!row.itemTypes.includes(itemTypeFilter)) return false;
@@ -284,7 +284,7 @@ export default function FinancialsPage() {
 
   const filteredInvoices = useMemo(() => {
     return normalizedInvoices.filter((row) => filterInvoice(row, dateFrom, dateTo));
-  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
+  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
   // Comparison period invoices (same filters except date range)
   const comparisonInvoices = useMemo(() => {
@@ -292,7 +292,7 @@ export default function FinancialsPage() {
     return normalizedInvoices.filter((row) =>
       filterInvoice(row, comparisonDateRange.from, comparisonDateRange.to)
     );
-  }, [normalizedInvoices, comparisonDateRange, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, showOnlyUnpaid]);
+  }, [normalizedInvoices, comparisonDateRange, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, showOnlyUnpaid]);
 
   // Reset pages when filters change
   useEffect(() => {
@@ -300,7 +300,7 @@ export default function FinancialsPage() {
     setPatientPage(0);
     setDoctorPage(0);
     setServicePage(0);
-  }, [patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
+  }, [patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
   const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / ROWS_PER_PAGE));
   const paginatedInvoices = useMemo(() => {
@@ -818,20 +818,41 @@ export default function FinancialsPage() {
           ))}
         </select>
 
-        {/* Service Filter — searchable dropdown */}
+        {/* Service Filter — searchable multi-select dropdown */}
         <div ref={serviceDropdownRef} className="relative">
           <button
             type="button"
             onClick={() => setServiceDropdownOpen((o) => !o)}
-            className="flex min-w-[180px] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm hover:border-sky-400 focus:outline-none"
+            className={`flex min-w-[180px] items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs shadow-sm hover:border-sky-400 focus:outline-none ${
+              serviceFilters.size > 0
+                ? "border-sky-400 bg-sky-50 text-sky-900"
+                : "border-slate-200 bg-white text-slate-900"
+            }`}
           >
             <span className="truncate max-w-[140px]">
-              {serviceFilter === "all" ? "All services" : serviceFilter}
+              {serviceFilters.size === 0
+                ? "All services"
+                : serviceFilters.size === 1
+                ? Array.from(serviceFilters)[0]
+                : `${serviceFilters.size} services`}
             </span>
-            <svg className="h-3.5 w-3.5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            <div className="flex items-center gap-1">
+              {serviceFilters.size > 0 && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); setServiceFilters(new Set()); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setServiceFilters(new Set()); } }}
+                  className="flex h-4 w-4 items-center justify-center rounded-full bg-sky-200 text-sky-800 hover:bg-sky-300 text-[10px] font-bold leading-none"
+                >
+                  ×
+                </span>
+              )}
+              <svg className="h-3.5 w-3.5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </div>
           </button>
           {serviceDropdownOpen && (
-            <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-slate-200 bg-white shadow-xl">
+            <div className="absolute left-0 top-full z-50 mt-1 w-80 rounded-lg border border-slate-200 bg-white shadow-xl">
               <div className="p-2 border-b border-slate-100">
                 <input
                   autoFocus
@@ -842,34 +863,54 @@ export default function FinancialsPage() {
                   className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
                 />
               </div>
-              <ul className="max-h-60 overflow-y-auto py-1 text-xs">
-                <li>
+              {serviceFilters.size > 0 && (
+                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-1.5">
+                  <span className="text-[11px] text-slate-500">{serviceFilters.size} selected</span>
                   <button
                     type="button"
-                    onClick={() => { setServiceFilter("all"); setServiceDropdownOpen(false); setServiceSearch(""); }}
-                    className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${
-                      serviceFilter === "all" ? "font-semibold text-sky-700" : "text-slate-700"
-                    }`}
+                    onClick={() => setServiceFilters(new Set())}
+                    className="text-[11px] text-sky-600 hover:text-sky-800 underline"
                   >
-                    All services
+                    Clear all
                   </button>
-                </li>
+                </div>
+              )}
+              <ul className="max-h-64 overflow-y-auto py-1 text-xs">
                 {filteredServiceOptions.length === 0 && (
                   <li className="px-3 py-2 text-slate-400">No services found</li>
                 )}
-                {filteredServiceOptions.map((name) => (
-                  <li key={name}>
-                    <button
-                      type="button"
-                      onClick={() => { setServiceFilter(name); setServiceDropdownOpen(false); setServiceSearch(""); }}
-                      className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${
-                        serviceFilter === name ? "font-semibold text-sky-700 bg-sky-50" : "text-slate-700"
-                      }`}
-                    >
-                      {name}
-                    </button>
-                  </li>
-                ))}
+                {filteredServiceOptions.map((name) => {
+                  const checked = serviceFilters.has(name);
+                  return (
+                    <li key={name}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setServiceFilters((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(name)) next.delete(name);
+                            else next.add(name);
+                            return next;
+                          });
+                        }}
+                        className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left hover:bg-sky-50 ${
+                          checked ? "text-sky-800" : "text-slate-700"
+                        }`}
+                      >
+                        <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
+                          checked ? "border-sky-500 bg-sky-500" : "border-slate-300 bg-white"
+                        }`}>
+                          {checked && (
+                            <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </span>
+                        <span className="truncate">{name}</span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -1017,9 +1058,7 @@ export default function FinancialsPage() {
             setPatientFilter("all");
             setOwnerFilter("all");
             setDoctorFilter("all");
-            setServiceFilter("all");
-            setItemTypeFilter("all");
-            setServiceFilter("all");
+            setServiceFilters(new Set());
             setServiceSearch("");
             setItemTypeFilter("all");
             setDateFrom("");
