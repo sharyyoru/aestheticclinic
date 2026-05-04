@@ -236,26 +236,41 @@ export default function FinancialsPage() {
     return serviceOptions.filter((s) => s.toLowerCase().includes(q));
   }, [serviceOptions, serviceSearch]);
 
+  // Parse a YYYY-MM-DD string as local date (avoids UTC off-by-one)
+  function localDate(s: string): Date {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y!, m! - 1, d!);
+  }
+  function dateStr(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  }
+
   // Compute comparison period date range
-  const comparisonDateRange = useMemo((): { from: string; to: string } | null => {
+  const comparisonDateRange = useMemo((): { from: string; to: string; label: string } | null => {
     if (comparePeriod === "none" || !dateFrom) return null;
-    const from = new Date(dateFrom);
-    const to = dateTo ? new Date(dateTo) : new Date();
-    const diffMs = to.getTime() - from.getTime();
+    const from = localDate(dateFrom);
+    const effectiveTo = dateTo ? dateTo : dateStr(new Date());
+    const to = localDate(effectiveTo);
+    // Number of days in the selected range
+    const diffDays = Math.round((to.getTime() - from.getTime()) / 86400000);
     if (comparePeriod === "prev_period") {
-      const compTo = new Date(from.getTime() - 86400000);
-      const compFrom = new Date(compTo.getTime() - diffMs);
-      return { from: compFrom.toISOString().slice(0, 10), to: compTo.toISOString().slice(0, 10) };
+      const compTo = new Date(from); compTo.setDate(compTo.getDate() - 1);
+      const compFrom = new Date(compTo); compFrom.setDate(compFrom.getDate() - diffDays);
+      const label = `Previous ${diffDays + 1} day${diffDays + 1 !== 1 ? "s" : ""} (${dateStr(compFrom)} – ${dateStr(compTo)})`;
+      return { from: dateStr(compFrom), to: dateStr(compTo), label };
     }
     // prev_year
-    const compFrom = new Date(from);
-    compFrom.setFullYear(compFrom.getFullYear() - 1);
-    const compTo = new Date(to);
-    compTo.setFullYear(compTo.getFullYear() - 1);
-    return { from: compFrom.toISOString().slice(0, 10), to: compTo.toISOString().slice(0, 10) };
+    const compFrom = new Date(from); compFrom.setFullYear(compFrom.getFullYear() - 1);
+    const compTo = new Date(to); compTo.setFullYear(compTo.getFullYear() - 1);
+    const label = `Same period last year (${dateStr(compFrom)} – ${dateStr(compTo)})`;
+    return { from: dateStr(compFrom), to: dateStr(compTo), label };
   }, [comparePeriod, dateFrom, dateTo]);
 
-  function filterInvoice(row: NormalizedInvoice, from: string, to: string): boolean {
+  // Shared non-date filter predicate (stable inline)
+  function matchesNonDateFilters(row: NormalizedInvoice): boolean {
     if (patientFilter !== "all" && row.patient_id !== patientFilter) return false;
     if (ownerFilter !== "all" && row.ownerKey !== ownerFilter) return false;
     if (doctorFilter !== "all") {
@@ -268,31 +283,36 @@ export default function FinancialsPage() {
     if (itemTypeFilter !== "all") {
       if (!row.itemTypes.includes(itemTypeFilter)) return false;
     }
-    if (row.invoice_date && (from || to)) {
-      const d = row.invoice_date.substring(0, 10);
-      if (from && d < from) return false;
-      if (to && d > to) return false;
-    } else if ((from || to) && !row.invoice_date) {
-      return false;
-    }
-    if (showOnlyUnpaid) {
-      if (row.is_complimentary) return false;
-      if (row.isPaid) return false;
-    }
+    return true;
+  }
+
+  function matchesDateRange(row: NormalizedInvoice, from: string, to: string): boolean {
+    if (!from && !to) return true;
+    if (!row.invoice_date) return false;
+    const d = row.invoice_date.substring(0, 10);
+    if (from && d < from) return false;
+    if (to && d > to) return false;
     return true;
   }
 
   const filteredInvoices = useMemo(() => {
-    return normalizedInvoices.filter((row) => filterInvoice(row, dateFrom, dateTo));
+    return normalizedInvoices.filter((row) => {
+      if (!matchesNonDateFilters(row)) return false;
+      if (!matchesDateRange(row, dateFrom, dateTo)) return false;
+      if (showOnlyUnpaid) {
+        if (row.is_complimentary || row.isPaid) return false;
+      }
+      return true;
+    });
   }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
 
-  // Comparison period invoices (same filters except date range)
+  // Comparison period invoices — same non-date filters, different date range, no showOnlyUnpaid
   const comparisonInvoices = useMemo(() => {
     if (!comparisonDateRange) return [];
     return normalizedInvoices.filter((row) =>
-      filterInvoice(row, comparisonDateRange.from, comparisonDateRange.to)
+      matchesNonDateFilters(row) && matchesDateRange(row, comparisonDateRange.from, comparisonDateRange.to)
     );
-  }, [normalizedInvoices, comparisonDateRange, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, showOnlyUnpaid]);
+  }, [normalizedInvoices, comparisonDateRange, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter]);
 
   // Reset pages when filters change
   useEffect(() => {
@@ -1005,17 +1025,22 @@ export default function FinancialsPage() {
         </div>
 
         {/* Compare to period */}
-        {(dateFrom || dateTo) && (
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-medium text-slate-500 whitespace-nowrap">Compare:</span>
           <select
             value={comparePeriod}
             onChange={(e) => setComparePeriod(e.target.value as ComparePeriod)}
-            className="min-w-[160px] rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs text-sky-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            className={`min-w-[170px] rounded-lg border px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 ${
+              comparePeriod !== "none"
+                ? "border-violet-400 bg-violet-50 text-violet-900 focus:border-violet-500 focus:ring-violet-400"
+                : "border-slate-200 bg-white text-slate-700 focus:border-sky-500 focus:ring-sky-500"
+            }`}
           >
             <option value="none">No comparison</option>
             <option value="prev_period">vs. Previous period</option>
             <option value="prev_year">vs. Same period last year</option>
           </select>
-        )}
+        </div>
 
         {/* Invoice Count Range (Doctor View Only) */}
         {activeView === "doctors" && (
@@ -1084,8 +1109,16 @@ export default function FinancialsPage() {
           <>
             {/* Comparison header */}
             {comparisonDateRange && (
-              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-800">
-                Comparing <span className="font-semibold">{dateFrom} – {dateTo || "today"}</span> to <span className="font-semibold">{comparisonDateRange.from} – {comparisonDateRange.to}</span> ({comparisonInvoices.length} invoices in comparison period)
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] text-violet-800">
+                <div className="flex items-center gap-2">
+                  <svg className="h-3.5 w-3.5 shrink-0 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  <span>
+                    <span className="font-semibold">{dateFrom} – {dateTo || "today"}</span>
+                    <span className="mx-1.5 text-violet-400">vs.</span>
+                    <span className="font-semibold">{comparisonDateRange.label}</span>
+                  </span>
+                </div>
+                <span className="shrink-0 text-violet-500">{comparisonInvoices.length} invoices in comparison period</span>
               </div>
             )}
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5 financials-hide-on-print">
