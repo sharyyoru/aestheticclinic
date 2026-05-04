@@ -217,15 +217,63 @@ export default function FinancialsPage() {
   }, [normalizedInvoices]);
 
   const doctorOptions = useMemo(() => {
-    const map = new Map<string, string>();
+    // Deduplicate by normalized label (case-insensitive trim).
+    // For each unique name, prefer a UUID key over a name-string key.
+    const labelToKey = new Map<string, string>();
+    const labelToDisplay = new Map<string, string>();
+    // Track ALL keys that map to the same normalized label (to filter correctly)
+    const normLabelToAllKeys = new Map<string, Set<string>>();
+    let hasUnknown = false;
+
     for (const row of normalizedInvoices) {
-      const key = row.doctor_user_id || row.doctor_name || "unknown";
-      const label = row.doctor_name || (key === "unknown" ? "Unassigned" : key);
-      if (!map.has(key)) {
-        map.set(key, label);
+      const rawLabel = row.doctorLabel || "";
+      if (!rawLabel || rawLabel === "Unassigned") {
+        hasUnknown = true;
+        continue;
+      }
+      const normLabel = rawLabel.trim().toLowerCase();
+      const thisKey = row.doctor_user_id || row.doctor_name || "unknown";
+      // Track all keys for this label
+      if (!normLabelToAllKeys.has(normLabel)) normLabelToAllKeys.set(normLabel, new Set());
+      normLabelToAllKeys.get(normLabel)!.add(thisKey);
+      // Prefer UUID key as the canonical key
+      const isUuid = Boolean(row.doctor_user_id && row.doctor_user_id.includes("-"));
+      if (!labelToKey.has(normLabel) || isUuid) {
+        labelToKey.set(normLabel, thisKey);
+        labelToDisplay.set(normLabel, rawLabel.trim());
       }
     }
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+
+    const entries: [string, string][] = [];
+    for (const [normLabel, key] of labelToKey.entries()) {
+      entries.push([key, labelToDisplay.get(normLabel)!]);
+    }
+    entries.sort((a, b) => a[1].localeCompare(b[1]));
+    if (hasUnknown) entries.push(["__unknown__", "⚠ Unknown / Unassigned"]);
+    return entries;
+  }, [normalizedInvoices]);
+
+  // Map from canonical doctor key -> all raw keys that share the same normalized label
+  const doctorKeyAliases = useMemo(() => {
+    const labelToAllKeys = new Map<string, Set<string>>();
+    for (const row of normalizedInvoices) {
+      const rawLabel = row.doctorLabel || "";
+      if (!rawLabel || rawLabel === "Unassigned") continue;
+      const normLabel = rawLabel.trim().toLowerCase();
+      const thisKey = row.doctor_user_id || row.doctor_name || "unknown";
+      if (!labelToAllKeys.has(normLabel)) labelToAllKeys.set(normLabel, new Set());
+      labelToAllKeys.get(normLabel)!.add(thisKey);
+    }
+    // Build canonical-key -> Set<all keys> map
+    const result = new Map<string, Set<string>>();
+    for (const [, allKeys] of labelToAllKeys.entries()) {
+      // canonical = prefer UUID
+      let canonical = "";
+      for (const k of allKeys) { if (k.includes("-")) { canonical = k; break; } }
+      if (!canonical) canonical = Array.from(allKeys)[0]!;
+      result.set(canonical, allKeys);
+    }
+    return result;
   }, [normalizedInvoices]);
 
   // Close service dropdown on outside click
@@ -292,8 +340,16 @@ export default function FinancialsPage() {
     if (patientFilter !== "all" && row.patient_id !== patientFilter) return false;
     if (ownerFilter !== "all" && row.ownerKey !== ownerFilter) return false;
     if (doctorFilter !== "all") {
-      const rowDoctorKey = row.doctor_user_id || row.doctor_name || "unknown";
-      if (rowDoctorKey !== doctorFilter) return false;
+      const rowKey = row.doctor_user_id || row.doctor_name || "unknown";
+      if (doctorFilter === "__unknown__") {
+        // match invoices with no doctor or unassigned
+        if (row.doctorLabel && row.doctorLabel !== "Unassigned") return false;
+      } else {
+        // match via alias set so UUID-keyed and name-keyed invoices both match
+        const aliases = doctorKeyAliases.get(doctorFilter);
+        const matched = aliases ? aliases.has(rowKey) : rowKey === doctorFilter;
+        if (!matched) return false;
+      }
     }
     if (serviceFilters.size > 0) {
       if (!row.serviceNames.some((name) => serviceFilters.has(name))) return false;
