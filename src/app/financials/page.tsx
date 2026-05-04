@@ -5,6 +5,33 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 
+// ---------------------------------------------------------------------------
+// Module-level prefetch: starts the moment this JS module is parsed/imported,
+// before the component even mounts. Subsequent calls reuse the same promise.
+// ---------------------------------------------------------------------------
+let _prefetchPromise: Promise<any> | null = null;
+
+function prefetchFinancials(): Promise<any> {
+  if (!_prefetchPromise) {
+    _prefetchPromise = fetch("/api/financials/summary", { cache: "default" })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .catch((e) => {
+        // Reset so next mount can retry
+        _prefetchPromise = null;
+        throw e;
+      });
+  }
+  return _prefetchPromise;
+}
+
+// Kick off immediately when module loads (not inside a component)
+if (typeof window !== "undefined") {
+  prefetchFinancials().catch(() => {});
+}
+
 type ItemType = "all" | "service" | "tardoc" | "insurance" | "material";
 
 // Shape returned by /api/financials/summary
@@ -145,17 +172,8 @@ export default function FinancialsPage() {
         setLoading(true);
         setError(null);
 
-        const res = await fetch("/api/financials/summary");
-        if (!isMounted) return;
-
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          setError(json.error ?? "Failed to load financials.");
-          setLoading(false);
-          return;
-        }
-
-        const json = await res.json();
+        // Reuse the module-level prefetch (already in-flight or resolved)
+        const json = await prefetchFinancials();
         if (!isMounted) return;
 
         setNormalizedInvoices(json.invoices ?? []);
