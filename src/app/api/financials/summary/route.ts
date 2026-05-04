@@ -97,6 +97,18 @@ function normalizeInvoices(invoiceRows: any[], itemsByInvoice: Map<string, any[]
         items.map((i: any) => i.name as string | null).filter(Boolean) as string[],
       ),
     ];
+    // Canonical code per line item: tardoc_code > code > tariff_code as string
+    const serviceCodes = [
+      ...new Set(
+        items
+          .map((i: any) =>
+            (i.tardoc_code as string | null) ??
+            (i.code as string | null) ??
+            (i.tariff_code != null ? String(i.tariff_code) : null)
+          )
+          .filter(Boolean) as string[],
+      ),
+    ];
     const itemTypes = [...new Set(items.map(classifyItemType))];
 
     return {
@@ -119,6 +131,7 @@ function normalizeInvoices(invoiceRows: any[], itemsByInvoice: Map<string, any[]
       status: row.status as string,
       statusLabel,
       serviceNames,
+      serviceCodes,
       itemTypes,
     };
   });
@@ -150,7 +163,7 @@ async function buildPayload(): Promise<string> {
 
   // Only fetch columns needed for classification — no catalog_nature, tariff_code
   const lineFields = `invoice_id, name, service_id, quantity, total_price,
-    tardoc_code, code`;
+    tardoc_code, code, tariff_code`;
 
   const [invoiceRows, lineItemRows] = await Promise.all([
     fetchAllParallel<any>(
@@ -212,14 +225,21 @@ async function buildPayload(): Promise<string> {
     .sort((a, b) => b.invoiceCount - a.invoiceCount);
 
   // ---- 6. Lite line items for client-side breakdown ----
-  const lineItemsLite = lineItemRows.map((item: any) => ({
-    invoice_id: item.invoice_id as string,
-    name: (item.name ?? null) as string | null,
-    service_id: (item.service_id ?? null) as string | null,
-    quantity: Number(item.quantity) || 1,
-    total_price: Number(item.total_price) || 0,
-    item_type: classifyItemType(item),
-  }));
+  const lineItemsLite = lineItemRows.map((item: any) => {
+    const code: string | null =
+      (item.tardoc_code as string | null) ??
+      (item.code as string | null) ??
+      (item.tariff_code != null ? String(item.tariff_code) : null);
+    return {
+      invoice_id: item.invoice_id as string,
+      name: (item.name ?? null) as string | null,
+      code,
+      service_id: (item.service_id ?? null) as string | null,
+      quantity: Number(item.quantity) || 1,
+      total_price: Number(item.total_price) || 0,
+      item_type: classifyItemType(item),
+    };
+  });
 
   const payload = JSON.stringify({
     invoices: normalized,

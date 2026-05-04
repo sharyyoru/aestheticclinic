@@ -55,6 +55,7 @@ type NormalizedInvoice = {
   status: string;
   statusLabel: string;
   serviceNames: string[];
+  serviceCodes: string[];
   itemTypes: string[];
 };
 
@@ -69,6 +70,7 @@ type ApiServiceSummary = {
 type LineItemLite = {
   invoice_id: string;
   name: string | null;
+  code: string | null;
   service_id: string | null;
   quantity: number;
   total_price: number;
@@ -287,19 +289,31 @@ export default function FinancialsPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  // All unique service names from line items (for searchable dropdown)
+  // All unique service options from line items, keyed by code, searchable by code+name
   const serviceOptions = useMemo(() => {
-    const set = new Set<string>();
+    // Map: code -> name (first seen)
+    const map = new Map<string, string>();
     for (const item of lineItems) {
-      if (item.name) set.add(item.name);
+      const key = item.code || item.name || "";
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, item.name || key);
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return Array.from(map.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => {
+        // Sort numerically if both are numbers, else alphabetically
+        const an = parseFloat(a.code); const bn = parseFloat(b.code);
+        if (!isNaN(an) && !isNaN(bn)) return an - bn;
+        return a.code.localeCompare(b.code);
+      });
   }, [lineItems]);
 
   const filteredServiceOptions = useMemo(() => {
     if (!serviceSearch.trim()) return serviceOptions;
     const q = serviceSearch.toLowerCase();
-    return serviceOptions.filter((s) => s.toLowerCase().includes(q));
+    return serviceOptions.filter(
+      (s) => s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+    );
   }, [serviceOptions, serviceSearch]);
 
   // Parse a YYYY-MM-DD string as local date (avoids UTC off-by-one)
@@ -352,7 +366,8 @@ export default function FinancialsPage() {
       }
     }
     if (serviceFilters.size > 0) {
-      if (!row.serviceNames.some((name) => serviceFilters.has(name))) return false;
+      // serviceFilters holds codes; match against invoice's serviceCodes
+      if (!row.serviceCodes.some((code) => serviceFilters.has(code))) return false;
     }
     if (itemTypeFilter !== "all") {
       if (!row.itemTypes.includes(itemTypeFilter)) return false;
@@ -602,13 +617,13 @@ export default function FinancialsPage() {
   }, [filteredDoctorRows, doctorPage, ROWS_PER_PAGE]);
 
   // Build service summary from actual line items (filtered + optional comparison)
-  const serviceSummaryRows: ServiceSummaryRow[] = useMemo(() => {
+  type ServiceSummaryRowExt = ServiceSummaryRow & { serviceCode: string };
+  const serviceSummaryRows: ServiceSummaryRowExt[] = useMemo(() => {
     const filteredIds = new Set(filteredInvoices.map((inv) => inv.id));
     const compIds = new Set(comparisonInvoices.map((inv) => inv.id));
     const invPaidSet = new Set(filteredInvoices.filter((i) => i.isPaid).map((i) => i.id));
-    const compPaidSet = new Set(comparisonInvoices.filter((i) => i.isPaid).map((i) => i.id));
 
-    const byService = new Map<string, ServiceSummaryRow>();
+    const byService = new Map<string, ServiceSummaryRowExt>();
 
     // Apply item type filter at line-item level
     const itemsToUse = itemTypeFilter === "all"
@@ -616,14 +631,15 @@ export default function FinancialsPage() {
       : lineItems.filter((li) => li.item_type === itemTypeFilter);
 
     for (const item of itemsToUse) {
-      const key = item.name || "Unknown";
+      const code = item.code || item.name || "Unknown";
+      const name = item.name || code;
       const inMain = filteredIds.has(item.invoice_id);
       const inComp = compIds.has(item.invoice_id);
       if (!inMain && !inComp) continue;
 
-      let entry = byService.get(key);
+      let entry = byService.get(code);
       if (!entry) {
-        entry = { serviceName: key, invoiceCount: 0, quantity: 0, totalRevenue: 0, paidRevenue: 0, compCount: 0, compRevenue: 0 };
+        entry = { serviceCode: code, serviceName: name, invoiceCount: 0, quantity: 0, totalRevenue: 0, paidRevenue: 0, compCount: 0, compRevenue: 0 };
       }
       if (inMain) {
         entry.invoiceCount += 1;
@@ -635,7 +651,7 @@ export default function FinancialsPage() {
         entry.compCount = (entry.compCount ?? 0) + 1;
         entry.compRevenue = (entry.compRevenue ?? 0) + item.total_price;
       }
-      byService.set(key, entry);
+      byService.set(code, entry);
     }
 
     return Array.from(byService.values()).sort((a, b) => b.invoiceCount - a.invoiceCount);
@@ -923,12 +939,16 @@ export default function FinancialsPage() {
                 : "border-slate-200 bg-white text-slate-900"
             }`}
           >
-            <span className="truncate max-w-[140px]">
+            <span className="truncate max-w-[160px]">
               {serviceFilters.size === 0
                 ? "All services"
                 : serviceFilters.size === 1
-                ? Array.from(serviceFilters)[0]
-                : `${serviceFilters.size} services`}
+                ? (() => {
+                    const code = Array.from(serviceFilters)[0]!;
+                    const opt = serviceOptions.find((o) => o.code === code);
+                    return opt ? `${opt.code} – ${opt.name}` : code;
+                  })()
+                : `${serviceFilters.size} codes selected`}
             </span>
             <div className="flex items-center gap-1">
               {serviceFilters.size > 0 && (
@@ -967,7 +987,7 @@ export default function FinancialsPage() {
                         onClick={() => {
                           setServiceFilters((prev) => {
                             const next = new Set(prev);
-                            for (const name of filteredServiceOptions) next.add(name);
+                            for (const opt of filteredServiceOptions) next.add(opt.code);
                             return next;
                           });
                         }}
@@ -998,21 +1018,21 @@ export default function FinancialsPage() {
                 {filteredServiceOptions.length === 0 && (
                   <li className="px-3 py-2 text-slate-400">No services found</li>
                 )}
-                {filteredServiceOptions.map((name) => {
-                  const checked = serviceFilters.has(name);
+                {filteredServiceOptions.map((opt) => {
+                  const checked = serviceFilters.has(opt.code);
                   return (
-                    <li key={name}>
+                    <li key={opt.code}>
                       <button
                         type="button"
                         onClick={() => {
                           setServiceFilters((prev) => {
                             const next = new Set(prev);
-                            if (next.has(name)) next.delete(name);
-                            else next.add(name);
+                            if (next.has(opt.code)) next.delete(opt.code);
+                            else next.add(opt.code);
                             return next;
                           });
                         }}
-                        className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left hover:bg-sky-50 ${
+                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sky-50 ${
                           checked ? "text-sky-800" : "text-slate-700"
                         }`}
                       >
@@ -1025,7 +1045,8 @@ export default function FinancialsPage() {
                             </svg>
                           )}
                         </span>
-                        <span className="truncate">{name}</span>
+                        <span className="shrink-0 rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-600">{opt.code}</span>
+                        <span className="truncate text-[11px]">{opt.name !== opt.code ? opt.name : ""}</span>
                       </button>
                     </li>
                   );
@@ -1523,9 +1544,14 @@ export default function FinancialsPage() {
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {paginatedServiceRows.map((row) => (
-                          <tr key={row.serviceName} className="align-top hover:bg-slate-50/50">
-                            <td className="py-1.5 pr-3 font-medium text-slate-900 max-w-[300px] truncate" title={row.serviceName}>
-                              {row.serviceName}
+                          <tr key={(row as any).serviceCode ?? row.serviceName} className="align-top hover:bg-slate-50/50">
+                            <td className="py-1.5 pr-3 max-w-[320px]" title={`${(row as any).serviceCode} – ${row.serviceName}`}>
+                              <div className="flex items-start gap-1.5">
+                                {(row as any).serviceCode && (
+                                  <span className="mt-px shrink-0 rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-500">{(row as any).serviceCode}</span>
+                                )}
+                                <span className="font-medium text-slate-900 leading-snug">{row.serviceName}</span>
+                              </div>
                             </td>
                             <td className="py-1.5 pr-3 text-center font-semibold text-slate-700">
                               {row.invoiceCount}
