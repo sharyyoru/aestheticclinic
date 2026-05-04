@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { notifyDealStageChange } from "@/lib/dealNotifications";
+import { normalizePhone, RETELL_FROM_NUMBER } from "@/lib/retell";
 
 export const runtime = "nodejs";
 
@@ -192,6 +193,28 @@ export async function POST(request: Request) {
             toStage = row;
           }
         }
+      }
+    }
+
+    // ── Retell AI: auto-schedule outbound call if stage is "request for information" ──
+    const stageLowerName = (toStage?.name ?? "").toLowerCase();
+    if (stageLowerName.includes("request for information") || stageLowerName.includes("demande d'information")) {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
+        const retellRes = await fetch(`${baseUrl}/api/retell/schedule-call`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patient_id: patientId, deal_id: dealId }),
+        });
+        if (!retellRes.ok) {
+          const txt = await retellRes.text().catch(() => "");
+          console.error("Failed to schedule Retell call:", retellRes.status, txt);
+        } else {
+          const retellJson = await retellRes.json();
+          console.log("Retell call scheduled:", retellJson);
+        }
+      } catch (retellErr) {
+        console.error("Error scheduling Retell call:", retellErr);
       }
     }
 
@@ -947,7 +970,95 @@ export async function POST(request: Request) {
           }
         }
 
-        // Handle send_whatsapp action type — enqueue via whatsapp_queue (sent by deal owner's WA session)
+        // ── Handle initiate_retell_call action type ──
+        if (action.action_type === "initiate_retell_call") {
+          const config = (action.config || {}) as {
+            delay_hours?: number; // override: default is 1 h
+          };
+
+          const patientPhone = safePatient.phone;
+          if (!patientPhone) {
+            console.log("initiate_retell_call: patient has no phone, skipping");
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "initiate_retell_call",
+                step_config: config,
+                status: "skipped",
+                executed_at: new Date().toISOString(),
+                error_message: "Patient has no phone number",
+              });
+            }
+            continue;
+          }
+
+          if (!RETELL_FROM_NUMBER) {
+            console.error("initiate_retell_call: RETELL_FROM_NUMBER not configured");
+            continue;
+          }
+
+          // Resolve service name
+          let retellServiceName = dealServiceName ?? "our services";
+          const retellUserName = safePatient.first_name ?? "there";
+          const toNumber = normalizePhone(patientPhone);
+          const delayHours = typeof config.delay_hours === "number" ? config.delay_hours : 1;
+          const scheduledFor = new Date(
+            Date.now() + cumulativeDelayMinutes * 60 * 1000 + delayHours * 60 * 60 * 1000,
+          ).toISOString();
+
+          const { data: scheduledCall, error: callInsertError } = await supabaseAdmin
+            .from("retell_scheduled_calls")
+            .insert({
+              patient_id: safePatient.id,
+              deal_id: safeDeal.id,
+              scheduled_for: scheduledFor,
+              status: "pending",
+              user_name: retellUserName,
+              service_name: retellServiceName,
+              to_number: toNumber,
+            })
+            .select("id")
+            .single();
+
+          if (callInsertError) {
+            console.error("initiate_retell_call: DB insert failed:", callInsertError);
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "initiate_retell_call",
+                step_config: config,
+                status: "failed",
+                executed_at: new Date().toISOString(),
+                error_message: callInsertError.message,
+              });
+            }
+          } else {
+            console.log(`Retell call scheduled for ${scheduledFor} → patient ${safePatient.id} (${toNumber})`);
+            actionsRun += 1;
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "initiate_retell_call",
+                step_config: config,
+                status: "scheduled",
+                executed_at: new Date().toISOString(),
+                result: {
+                  scheduled_call_id: (scheduledCall as any).id,
+                  scheduled_for: scheduledFor,
+                  to_number: toNumber,
+                  user_name: retellUserName,
+                  service_name: retellServiceName,
+                },
+              });
+            }
+          }
+          continue;
+        }
+
+        // ── Handle send_whatsapp action type — enqueue via whatsapp_queue (sent by deal owner's WA session)
         if (action.action_type === "send_whatsapp") {
           const config = (action.config || {}) as {
             message_template?: string;
