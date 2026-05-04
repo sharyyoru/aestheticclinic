@@ -1,47 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-// Fetch all rows from v_invoices_enriched in one pass (paginated server-side)
+// ---------------------------------------------------------------------------
+// Fetch all invoices (top-level only) with patient + provider info via joins
+// ---------------------------------------------------------------------------
 async function fetchAllInvoices() {
   const PAGE = 1000;
   let offset = 0;
   const all: any[] = [];
   while (true) {
     const { data, error } = await supabaseAdmin
-      .from("v_invoices_enriched")
+      .from("invoices")
       .select(
-        "invoice_id,invoice_number,invoice_date,patient_id,patient_first_name,patient_last_name,doctor_user_id,doctor_name,provider_id,provider_name,payment_method,total_amount,paid_amount,status,is_complimentary,created_by_name,is_archived",
+        `id,
+         invoice_number,
+         invoice_date,
+         patient_id,
+         doctor_user_id,
+         doctor_name,
+         provider_id,
+         provider_name,
+         payment_method,
+         total_amount,
+         paid_amount,
+         status,
+         is_complimentary,
+         created_by_name,
+         is_archived,
+         patients!invoices_patient_id_fkey(first_name, last_name)`,
       )
       .eq("is_archived", false)
       .is("parent_invoice_id", null)
       .order("invoice_date", { ascending: false })
       .range(offset, offset + PAGE - 1);
 
-    if (error || !data || data.length === 0) break;
+    if (error) {
+      console.error("fetchAllInvoices error:", error.message);
+      break;
+    }
+    if (!data || data.length === 0) break;
     all.push(...data);
     if (data.length < PAGE) break;
     offset += PAGE;
-    if (offset > 100000) break;
+    if (offset > 200000) break;
   }
   return all;
 }
 
-// Fetch all line items from v_invoice_lines_enriched in one pass
+// ---------------------------------------------------------------------------
+// Fetch all invoice line items with service_id included
+// ---------------------------------------------------------------------------
 async function fetchAllLineItems() {
   const PAGE = 2000;
   let offset = 0;
   const all: any[] = [];
   while (true) {
     const { data, error } = await supabaseAdmin
-      .from("v_invoice_lines_enriched")
+      .from("invoice_line_items")
       .select(
-        "line_id,invoice_id,line_name,quantity,total_price,catalog_nature,tariff_code,code,invoice_status,is_archived",
+        `id,
+         invoice_id,
+         name,
+         service_id,
+         quantity,
+         total_price,
+         catalog_nature,
+         tariff_code,
+         tardoc_code,
+         code,
+         uncovered_benefit`,
       )
-      .eq("is_archived", false)
-      .order("line_id", { ascending: false })
+      .order("id", { ascending: false })
       .range(offset, offset + PAGE - 1);
 
-    if (error || !data || data.length === 0) break;
+    if (error) {
+      console.error("fetchAllLineItems error:", error.message);
+      break;
+    }
+    if (!data || data.length === 0) break;
     all.push(...data);
     if (data.length < PAGE) break;
     offset += PAGE;
@@ -50,15 +86,28 @@ async function fetchAllLineItems() {
   return all;
 }
 
+// ---------------------------------------------------------------------------
+// Classify a line item into an item type
+// ---------------------------------------------------------------------------
+function classifyItemType(item: any): "service" | "tardoc" | "insurance" | "material" {
+  if (item.service_id) return "service";
+  if (item.tardoc_code) return "tardoc";
+  if (item.code && item.uncovered_benefit === false) return "insurance";
+  if (item.code) return "insurance";
+  return "material";
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/financials/summary
+// ---------------------------------------------------------------------------
 export async function GET(_req: NextRequest) {
   try {
-    // Fetch invoices and line items in PARALLEL
     const [invoiceRows, lineItemRows] = await Promise.all([
       fetchAllInvoices(),
       fetchAllLineItems(),
     ]);
 
-    // Build a map of invoice_id -> line items
+    // index line items by invoice_id
     const itemsByInvoice = new Map<string, any[]>();
     for (const item of lineItemRows) {
       const id = item.invoice_id as string;
@@ -66,27 +115,28 @@ export async function GET(_req: NextRequest) {
       itemsByInvoice.get(id)!.push(item);
     }
 
+    // index invoice status by invoice_id for line-item paid revenue calc
+    const invoiceStatusById = new Map<string, string>();
+    for (const row of invoiceRows) {
+      invoiceStatusById.set(row.id as string, row.status as string);
+    }
+
     // Normalize invoices
     const normalized = invoiceRows.map((row: any) => {
+      const pat = row.patients as { first_name?: string; last_name?: string } | null;
       const patientName =
-        [row.patient_first_name, row.patient_last_name]
-          .filter(Boolean)
-          .join(" ") || "Unknown patient";
+        [pat?.first_name, pat?.last_name].filter(Boolean).join(" ") ||
+        "Unknown patient";
 
       const amount = Number(row.total_amount) || 0;
       const isPaid = row.status === "PAID" || row.status === "OVERPAID";
 
       const ownerLabel =
-        row.provider_name ||
-        row.doctor_name ||
-        row.created_by_name ||
-        "Unassigned";
-
-      const ownerKey =
-        row.provider_id || row.doctor_user_id || ownerLabel;
+        row.provider_name || row.doctor_name || row.created_by_name || "Unassigned";
+      const ownerKey = row.provider_id || row.doctor_user_id || ownerLabel;
 
       const doctorKey = row.doctor_user_id || row.doctor_name || "unknown";
-      const doctorLabel = row.doctor_name || "Unassigned";
+      const doctorLabel = row.doctor_name || (doctorKey === "unknown" ? "Unassigned" : doctorKey);
 
       const statusLabel = row.is_complimentary
         ? "Complimentary"
@@ -98,26 +148,19 @@ export async function GET(_req: NextRequest) {
         ? "Cancelled"
         : "Unpaid";
 
-      const items = itemsByInvoice.get(row.invoice_id) || [];
-      const serviceNames = items.map((i: any) => i.line_name as string).filter(Boolean);
+      const items = itemsByInvoice.get(row.id as string) || [];
+      const serviceNames = [...new Set(
+        items.map((i: any) => (i.name as string | null)).filter(Boolean) as string[]
+      )];
 
-      // Determine item types present
       const itemTypes = new Set<string>();
       for (const item of items) {
-        if (item.code && item.catalog_nature === "TARIFF_CATALOG" && item.tariff_code) {
-          itemTypes.add("tardoc");
-        } else if (item.code) {
-          itemTypes.add("insurance");
-        } else if (item.line_name) {
-          itemTypes.add("service");
-        } else {
-          itemTypes.add("material");
-        }
+        itemTypes.add(classifyItemType(item));
       }
 
       return {
-        id: row.invoice_id as string,
-        invoice_number: row.invoice_number as string,
+        id: row.id as string,
+        invoice_number: (row.invoice_number ?? "") as string,
         invoice_date: (row.invoice_date as string | null)?.substring(0, 10) ?? null,
         patient_id: row.patient_id as string | null,
         patientName,
@@ -139,38 +182,64 @@ export async function GET(_req: NextRequest) {
       };
     });
 
-    // Pre-aggregate service summary
-    const serviceMap = new Map<string, {
+    // Pre-aggregate global service summary (for unfiltered view)
+    type ServiceEntry = {
       serviceName: string;
       invoiceCount: number;
       quantity: number;
       totalRevenue: number;
       paidRevenue: number;
-    }>();
+      invoiceIds: Set<string>;
+    };
+    const serviceMap = new Map<string, ServiceEntry>();
 
     for (const item of lineItemRows) {
-      const key = (item.line_name as string) || "Unknown";
+      const invId = item.invoice_id as string;
+      const key = (item.name as string | null) || "Unknown";
       let entry = serviceMap.get(key);
       if (!entry) {
-        entry = { serviceName: key, invoiceCount: 0, quantity: 0, totalRevenue: 0, paidRevenue: 0 };
+        entry = {
+          serviceName: key,
+          invoiceCount: 0,
+          quantity: 0,
+          totalRevenue: 0,
+          paidRevenue: 0,
+          invoiceIds: new Set(),
+        };
       }
-      entry.invoiceCount += 1;
+      if (!entry.invoiceIds.has(invId)) {
+        entry.invoiceIds.add(invId);
+        entry.invoiceCount += 1;
+      }
       entry.quantity += Number(item.quantity) || 1;
       const lineTotal = Number(item.total_price) || 0;
       entry.totalRevenue += lineTotal;
-      const isPaidInv =
-        item.invoice_status === "PAID" || item.invoice_status === "OVERPAID";
-      if (isPaidInv) entry.paidRevenue += lineTotal;
+      const invStatus = invoiceStatusById.get(invId) ?? "";
+      if (invStatus === "PAID" || invStatus === "OVERPAID") {
+        entry.paidRevenue += lineTotal;
+      }
       serviceMap.set(key, entry);
     }
 
-    const serviceSummary = Array.from(serviceMap.values()).sort(
-      (a, b) => b.invoiceCount - a.invoiceCount,
-    );
+    const serviceSummary = Array.from(serviceMap.values())
+      .map(({ invoiceIds: _, ...rest }) => rest)
+      .sort((a, b) => b.invoiceCount - a.invoiceCount);
+
+    // Also return raw line items for client-side filtered service breakdown
+    // (lightweight: only the fields needed)
+    const lineItemsLite = lineItemRows.map((item: any) => ({
+      invoice_id: item.invoice_id as string,
+      name: (item.name ?? null) as string | null,
+      service_id: (item.service_id ?? null) as string | null,
+      quantity: Number(item.quantity) || 1,
+      total_price: Number(item.total_price) || 0,
+      item_type: classifyItemType(item),
+    }));
 
     return NextResponse.json({
       invoices: normalized,
       serviceSummary,
+      lineItems: lineItemsLite,
       counts: {
         invoices: normalized.length,
         lineItems: lineItemRows.length,

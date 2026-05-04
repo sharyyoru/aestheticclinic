@@ -39,6 +39,19 @@ type ApiServiceSummary = {
   paidRevenue: number;
 };
 
+type LineItemLite = {
+  invoice_id: string;
+  name: string | null;
+  service_id: string | null;
+  quantity: number;
+  total_price: number;
+  item_type: "service" | "tardoc" | "insurance" | "material";
+};
+
+type ServiceSummaryRow = ApiServiceSummary & { compCount?: number; compRevenue?: number };
+
+type ComparePeriod = "none" | "prev_period" | "prev_year";
+
 type Summary = {
   totalAmount: number;
   totalPaid: number;
@@ -79,8 +92,6 @@ type DoctorSummaryRow = {
   services: string[];
 };
 
-type ServiceSummaryRow = ApiServiceSummary;
-
 function formatCurrency(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return "0.00 CHF";
   return `${amount.toFixed(2)} CHF`;
@@ -100,17 +111,23 @@ function formatShortDate(iso: string | null | undefined): string {
 export default function FinancialsPage() {
   const [normalizedInvoices, setNormalizedInvoices] = useState<NormalizedInvoice[]>([]);
   const [allServiceSummary, setAllServiceSummary] = useState<ApiServiceSummary[]>([]);
+  const [lineItems, setLineItems] = useState<LineItemLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // --- Filters ---
   const [patientFilter, setPatientFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [doctorFilter, setDoctorFilter] = useState<string>("all");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
+  const [serviceSearch, setServiceSearch] = useState<string>("");
+  const [serviceDropdownOpen, setServiceDropdownOpen] = useState(false);
+  const serviceDropdownRef = useRef<HTMLDivElement>(null);
   const [itemTypeFilter, setItemTypeFilter] = useState<ItemType>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
-  const [customDateRange, setCustomDateRange] = useState<{ label: string; from: string; to: string } | null>(null);
+  const [customDatePreset, setCustomDatePreset] = useState<string>("custom");
+  const [comparePeriod, setComparePeriod] = useState<ComparePeriod>("none");
   const [invoiceCountMin, setInvoiceCountMin] = useState<string>("");
   const [invoiceCountMax, setInvoiceCountMax] = useState<string>("");
   const [showOnlyUnpaid, setShowOnlyUnpaid] = useState(false);
@@ -143,6 +160,7 @@ export default function FinancialsPage() {
 
         setNormalizedInvoices(json.invoices ?? []);
         setAllServiceSummary(json.serviceSummary ?? []);
+        setLineItems(json.lineItems ?? []);
         setLoading(false);
       } catch {
         if (!isMounted) return;
@@ -192,64 +210,89 @@ export default function FinancialsPage() {
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [normalizedInvoices]);
 
-  const serviceOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const row of normalizedInvoices) {
-      for (const serviceName of row.serviceNames) {
-        if (serviceName) set.add(serviceName);
+  // Close service dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (serviceDropdownRef.current && !serviceDropdownRef.current.contains(e.target as Node)) {
+        setServiceDropdownOpen(false);
       }
     }
-    return Array.from(set).sort();
-  }, [normalizedInvoices]);
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
-  // Check if invoice has items of a specific type using the pre-computed itemTypes array
-  function invoiceHasItemType(row: NormalizedInvoice, type: ItemType): boolean {
-    if (type === "all") return true;
-    if (row.itemTypes.length === 0) return false;
-    return row.itemTypes.includes(type);
+  // All unique service names from line items (for searchable dropdown)
+  const serviceOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of lineItems) {
+      if (item.name) set.add(item.name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [lineItems]);
+
+  const filteredServiceOptions = useMemo(() => {
+    if (!serviceSearch.trim()) return serviceOptions;
+    const q = serviceSearch.toLowerCase();
+    return serviceOptions.filter((s) => s.toLowerCase().includes(q));
+  }, [serviceOptions, serviceSearch]);
+
+  // Compute comparison period date range
+  const comparisonDateRange = useMemo((): { from: string; to: string } | null => {
+    if (comparePeriod === "none" || !dateFrom) return null;
+    const from = new Date(dateFrom);
+    const to = dateTo ? new Date(dateTo) : new Date();
+    const diffMs = to.getTime() - from.getTime();
+    if (comparePeriod === "prev_period") {
+      const compTo = new Date(from.getTime() - 86400000);
+      const compFrom = new Date(compTo.getTime() - diffMs);
+      return { from: compFrom.toISOString().slice(0, 10), to: compTo.toISOString().slice(0, 10) };
+    }
+    // prev_year
+    const compFrom = new Date(from);
+    compFrom.setFullYear(compFrom.getFullYear() - 1);
+    const compTo = new Date(to);
+    compTo.setFullYear(compTo.getFullYear() - 1);
+    return { from: compFrom.toISOString().slice(0, 10), to: compTo.toISOString().slice(0, 10) };
+  }, [comparePeriod, dateFrom, dateTo]);
+
+  function filterInvoice(row: NormalizedInvoice, from: string, to: string): boolean {
+    if (patientFilter !== "all" && row.patient_id !== patientFilter) return false;
+    if (ownerFilter !== "all" && row.ownerKey !== ownerFilter) return false;
+    if (doctorFilter !== "all") {
+      const rowDoctorKey = row.doctor_user_id || row.doctor_name || "unknown";
+      if (rowDoctorKey !== doctorFilter) return false;
+    }
+    if (serviceFilter !== "all") {
+      if (!row.serviceNames.some((name) => name === serviceFilter)) return false;
+    }
+    if (itemTypeFilter !== "all") {
+      if (!row.itemTypes.includes(itemTypeFilter)) return false;
+    }
+    if (row.invoice_date && (from || to)) {
+      const d = row.invoice_date.substring(0, 10);
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+    } else if ((from || to) && !row.invoice_date) {
+      return false;
+    }
+    if (showOnlyUnpaid) {
+      if (row.is_complimentary) return false;
+      if (row.isPaid) return false;
+    }
+    return true;
   }
 
   const filteredInvoices = useMemo(() => {
-    return normalizedInvoices.filter((row) => {
-      // Patient filter
-      if (patientFilter !== "all" && row.patient_id !== patientFilter) {
-        return false;
-      }
-      // Owner filter
-      if (ownerFilter !== "all" && row.ownerKey !== ownerFilter) {
-        return false;
-      }
-      // Doctor filter
-      if (doctorFilter !== "all") {
-        const rowDoctorKey = row.doctor_user_id || row.doctor_name || "unknown";
-        if (rowDoctorKey !== doctorFilter) return false;
-      }
-      // Service filter
-      if (serviceFilter !== "all") {
-        if (!row.serviceNames.some((name) => name === serviceFilter)) {
-          return false;
-        }
-      }
-      // Item type filter
-      if (itemTypeFilter !== "all") {
-        if (!invoiceHasItemType(row, itemTypeFilter)) {
-          return false;
-        }
-      }
-      // Date range filter — normalize to YYYY-MM-DD for reliable comparison
-      if (row.invoice_date && (dateFrom || dateTo)) {
-        const rowDateStr = row.invoice_date.substring(0, 10); // handles ISO timestamptz
-        if (dateFrom && rowDateStr < dateFrom) return false;
-        if (dateTo && rowDateStr > dateTo) return false;
-      }
-      // Unpaid only filter
-      if (showOnlyUnpaid) {
-        if (row.is_complimentary) return false;
-        if (row.isPaid) return false;
-      }
-      return true;
-    });
+    return normalizedInvoices.filter((row) => filterInvoice(row, dateFrom, dateTo));
   }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
+
+  // Comparison period invoices (same filters except date range)
+  const comparisonInvoices = useMemo(() => {
+    if (!comparisonDateRange) return [];
+    return normalizedInvoices.filter((row) =>
+      filterInvoice(row, comparisonDateRange.from, comparisonDateRange.to)
+    );
+  }, [normalizedInvoices, comparisonDateRange, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, showOnlyUnpaid]);
 
   // Reset pages when filters change
   useEffect(() => {
@@ -464,39 +507,45 @@ export default function FinancialsPage() {
     return filteredDoctorRows.slice(start, start + ROWS_PER_PAGE);
   }, [filteredDoctorRows, doctorPage, ROWS_PER_PAGE]);
 
-  // Filter the pre-computed service summary from the API by current filtered invoice IDs
+  // Build service summary from actual line items (filtered + optional comparison)
   const serviceSummaryRows: ServiceSummaryRow[] = useMemo(() => {
-    // If no date/filter active, return the full pre-aggregated list from API
-    const isFiltered =
-      patientFilter !== "all" ||
-      ownerFilter !== "all" ||
-      doctorFilter !== "all" ||
-      serviceFilter !== "all" ||
-      itemTypeFilter !== "all" ||
-      dateFrom !== "" ||
-      dateTo !== "" ||
-      showOnlyUnpaid;
+    const filteredIds = new Set(filteredInvoices.map((inv) => inv.id));
+    const compIds = new Set(comparisonInvoices.map((inv) => inv.id));
+    const invPaidSet = new Set(filteredInvoices.filter((i) => i.isPaid).map((i) => i.id));
+    const compPaidSet = new Set(comparisonInvoices.filter((i) => i.isPaid).map((i) => i.id));
 
-    if (!isFiltered) return allServiceSummary;
-
-    // When filtered, re-aggregate from invoice serviceNames
     const byService = new Map<string, ServiceSummaryRow>();
-    for (const inv of filteredInvoices) {
-      for (const svcName of inv.serviceNames) {
-        if (!svcName) continue;
-        const existing = byService.get(svcName) ?? {
-          serviceName: svcName,
-          invoiceCount: 0,
-          quantity: 0,
-          totalRevenue: 0,
-          paidRevenue: 0,
-        };
-        existing.invoiceCount += 1;
-        byService.set(svcName, existing);
+
+    // Apply item type filter at line-item level
+    const itemsToUse = itemTypeFilter === "all"
+      ? lineItems
+      : lineItems.filter((li) => li.item_type === itemTypeFilter);
+
+    for (const item of itemsToUse) {
+      const key = item.name || "Unknown";
+      const inMain = filteredIds.has(item.invoice_id);
+      const inComp = compIds.has(item.invoice_id);
+      if (!inMain && !inComp) continue;
+
+      let entry = byService.get(key);
+      if (!entry) {
+        entry = { serviceName: key, invoiceCount: 0, quantity: 0, totalRevenue: 0, paidRevenue: 0, compCount: 0, compRevenue: 0 };
       }
+      if (inMain) {
+        entry.invoiceCount += 1;
+        entry.quantity += item.quantity;
+        entry.totalRevenue += item.total_price;
+        if (invPaidSet.has(item.invoice_id)) entry.paidRevenue += item.total_price;
+      }
+      if (inComp) {
+        entry.compCount = (entry.compCount ?? 0) + 1;
+        entry.compRevenue = (entry.compRevenue ?? 0) + item.total_price;
+      }
+      byService.set(key, entry);
     }
+
     return Array.from(byService.values()).sort((a, b) => b.invoiceCount - a.invoiceCount);
-  }, [filteredInvoices, allServiceSummary, patientFilter, ownerFilter, doctorFilter, serviceFilter, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
+  }, [filteredInvoices, comparisonInvoices, lineItems, itemTypeFilter]);
 
   const [servicePage, setServicePage] = useState(0);
   const totalServicePages = Math.max(1, Math.ceil(serviceSummaryRows.length / ROWS_PER_PAGE));
@@ -769,19 +818,62 @@ export default function FinancialsPage() {
           ))}
         </select>
 
-        {/* Service Filter */}
-        <select
-          value={serviceFilter}
-          onChange={(event) => setServiceFilter(event.target.value)}
-          className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-        >
-          <option value="all">All services</option>
-          {serviceOptions.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
+        {/* Service Filter — searchable dropdown */}
+        <div ref={serviceDropdownRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setServiceDropdownOpen((o) => !o)}
+            className="flex min-w-[180px] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm hover:border-sky-400 focus:outline-none"
+          >
+            <span className="truncate max-w-[140px]">
+              {serviceFilter === "all" ? "All services" : serviceFilter}
+            </span>
+            <svg className="h-3.5 w-3.5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+          </button>
+          {serviceDropdownOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-slate-200 bg-white shadow-xl">
+              <div className="p-2 border-b border-slate-100">
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Search services…"
+                  value={serviceSearch}
+                  onChange={(e) => setServiceSearch(e.target.value)}
+                  className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
+                />
+              </div>
+              <ul className="max-h-60 overflow-y-auto py-1 text-xs">
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => { setServiceFilter("all"); setServiceDropdownOpen(false); setServiceSearch(""); }}
+                    className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${
+                      serviceFilter === "all" ? "font-semibold text-sky-700" : "text-slate-700"
+                    }`}
+                  >
+                    All services
+                  </button>
+                </li>
+                {filteredServiceOptions.length === 0 && (
+                  <li className="px-3 py-2 text-slate-400">No services found</li>
+                )}
+                {filteredServiceOptions.map((name) => (
+                  <li key={name}>
+                    <button
+                      type="button"
+                      onClick={() => { setServiceFilter(name); setServiceDropdownOpen(false); setServiceSearch(""); }}
+                      className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${
+                        serviceFilter === name ? "font-semibold text-sky-700 bg-sky-50" : "text-slate-700"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
 
         {/* Item Type Filter */}
         <select
@@ -799,27 +891,51 @@ export default function FinancialsPage() {
 
         {/* Custom Date Presets */}
         <select
-          value={customDateRange ? `${customDateRange.from}|${customDateRange.to}` : "custom"}
+          value={customDatePreset}
           onChange={(event) => {
             const value = event.target.value;
+            setCustomDatePreset(value);
             if (value === "custom") {
-              setCustomDateRange(null);
               return;
             }
-            const [from, to, label] = value.split("|");
-            setDateFrom(from);
-            setDateTo(to);
-            setCustomDateRange({ label: label || "Custom", from, to });
+            const parts = value.split("|");
+            setDateFrom(parts[0] ?? "");
+            setDateTo(parts[1] ?? "");
           }}
           className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
         >
           <option value="custom">Custom date...</option>
-          <option value={`${new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split("T")[0]}|${new Date().toISOString().split("T")[0]}|This Month`}>This Month</option>
-          <option value={`${new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split("T")[0]}|${new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split("T")[0]}|Last Month`}>Last Month</option>
-          <option value={`${new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0]}|${new Date().toISOString().split("T")[0]}|This Year`}>This Year</option>
-          <option value={`${new Date(new Date().getFullYear() - 1, 0, 1).toISOString().split("T")[0]}|${new Date(new Date().getFullYear() - 1, 11, 31).toISOString().split("T")[0]}|Last Year`}>Last Year</option>
-          <option value={`${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}|${new Date().toISOString().split("T")[0]}|Last 7 Days`}>Last 7 Days</option>
-          <option value={`${new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}|${new Date().toISOString().split("T")[0]}|Last 30 Days`}>Last 30 Days</option>
+          {(() => {
+            const today = new Date();
+            const todayStr = today.toISOString().split("T")[0]!;
+            const y = today.getFullYear();
+            const m = today.getMonth();
+            const dow = today.getDay();
+            const weekStart = new Date(today); weekStart.setDate(today.getDate() - ((dow + 6) % 7));
+            const weekStartStr = weekStart.toISOString().split("T")[0]!;
+            const prevWeekEnd = new Date(weekStart); prevWeekEnd.setDate(weekStart.getDate() - 1);
+            const prevWeekStart = new Date(prevWeekEnd); prevWeekStart.setDate(prevWeekEnd.getDate() - 6);
+            const thisMonthStart = new Date(y, m, 1).toISOString().split("T")[0]!;
+            const lastMonthStart = new Date(y, m - 1, 1).toISOString().split("T")[0]!;
+            const lastMonthEnd = new Date(y, m, 0).toISOString().split("T")[0]!;
+            const thisYearStart = new Date(y, 0, 1).toISOString().split("T")[0]!;
+            const lastYearStart = new Date(y - 1, 0, 1).toISOString().split("T")[0]!;
+            const lastYearEnd = new Date(y - 1, 11, 31).toISOString().split("T")[0]!;
+            const last30 = new Date(Date.now() - 30 * 864e5).toISOString().split("T")[0]!;
+            const last90 = new Date(Date.now() - 90 * 864e5).toISOString().split("T")[0]!;
+            const last365 = new Date(Date.now() - 365 * 864e5).toISOString().split("T")[0]!;
+            return (<>
+              <option value={`${weekStartStr}|${todayStr}`}>This Week</option>
+              <option value={`${prevWeekStart.toISOString().split("T")[0]}|${prevWeekEnd.toISOString().split("T")[0]}`}>Last Week</option>
+              <option value={`${thisMonthStart}|${todayStr}`}>This Month</option>
+              <option value={`${lastMonthStart}|${lastMonthEnd}`}>Last Month</option>
+              <option value={`${thisYearStart}|${todayStr}`}>This Year ({y})</option>
+              <option value={`${lastYearStart}|${lastYearEnd}`}>Last Year ({y - 1})</option>
+              <option value={`${last30}|${todayStr}`}>Last 30 Days</option>
+              <option value={`${last90}|${todayStr}`}>Last 90 Days</option>
+              <option value={`${last365}|${todayStr}`}>Last 365 Days</option>
+            </>);
+          })()}
         </select>
 
         {/* Date Range */}
@@ -829,7 +945,7 @@ export default function FinancialsPage() {
             value={dateFrom}
             onChange={(event) => {
               setDateFrom(event.target.value);
-              setCustomDateRange(null);
+              setCustomDatePreset("custom");
             }}
             className="w-[130px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             placeholder="From"
@@ -840,12 +956,25 @@ export default function FinancialsPage() {
             value={dateTo}
             onChange={(event) => {
               setDateTo(event.target.value);
-              setCustomDateRange(null);
+              setCustomDatePreset("custom");
             }}
             className="w-[130px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             placeholder="To"
           />
         </div>
+
+        {/* Compare to period */}
+        {(dateFrom || dateTo) && (
+          <select
+            value={comparePeriod}
+            onChange={(e) => setComparePeriod(e.target.value as ComparePeriod)}
+            className="min-w-[160px] rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs text-sky-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          >
+            <option value="none">No comparison</option>
+            <option value="prev_period">vs. Previous period</option>
+            <option value="prev_year">vs. Same period last year</option>
+          </select>
+        )}
 
         {/* Invoice Count Range (Doctor View Only) */}
         {activeView === "doctors" && (
@@ -890,9 +1019,13 @@ export default function FinancialsPage() {
             setDoctorFilter("all");
             setServiceFilter("all");
             setItemTypeFilter("all");
+            setServiceFilter("all");
+            setServiceSearch("");
+            setItemTypeFilter("all");
             setDateFrom("");
             setDateTo("");
-            setCustomDateRange(null);
+            setCustomDatePreset("custom");
+            setComparePeriod("none");
             setInvoiceCountMin("");
             setInvoiceCountMax("");
             setShowOnlyUnpaid(false);
@@ -910,38 +1043,48 @@ export default function FinancialsPage() {
           <p className="text-[11px] text-red-600">{error}</p>
         ) : (
           <>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 financials-hide-on-print">
-              <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                <p className="text-[11px] font-medium text-slate-500">
-                  Total billed (non-complimentary)
-                </p>
-                <p className="mt-1 text-base font-semibold text-slate-900">
-                  {formatCurrency(summary.totalAmount)}
-                </p>
+            {/* Comparison header */}
+            {comparisonDateRange && (
+              <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-800">
+                Comparing <span className="font-semibold">{dateFrom} – {dateTo || "today"}</span> to <span className="font-semibold">{comparisonDateRange.from} – {comparisonDateRange.to}</span> ({comparisonInvoices.length} invoices in comparison period)
               </div>
+            )}
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5 financials-hide-on-print">
+              {([
+                { label: "Total billed", val: summary.totalAmount, compVal: comparisonInvoices.reduce((s,i) => s + (i.is_complimentary ? 0 : i.amount), 0) },
+                { label: "Total paid", val: summary.totalPaid, compVal: comparisonInvoices.reduce((s,i) => s + (i.isPaid && !i.is_complimentary ? i.amount : 0), 0) },
+                { label: "Outstanding (unpaid)", val: summary.totalUnpaid, compVal: comparisonInvoices.reduce((s,i) => s + (!i.isPaid && !i.is_complimentary ? i.amount : 0), 0) },
+                { label: "Complimentary", val: summary.totalComplimentary, compVal: comparisonInvoices.reduce((s,i) => s + (i.is_complimentary ? i.amount : 0), 0) },
+              ] as { label: string; val: number; compVal: number }[]).map(({ label, val, compVal }) => {
+                const diff = comparisonDateRange ? val - compVal : 0;
+                const pct = comparisonDateRange && compVal > 0 ? ((diff / compVal) * 100).toFixed(1) : null;
+                return (
+                  <div key={label} className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                    <p className="text-[11px] font-medium text-slate-500">{label}</p>
+                    <p className="mt-1 text-base font-semibold text-slate-900">{formatCurrency(val)}</p>
+                    {comparisonDateRange && (
+                      <p className={`mt-0.5 text-[10px] font-medium ${
+                        diff > 0 ? "text-emerald-600" : diff < 0 ? "text-red-500" : "text-slate-400"
+                      }`}>
+                        {diff > 0 ? "▲" : diff < 0 ? "▼" : ""} {formatCurrency(Math.abs(diff))}
+                        {pct !== null && <span className="ml-1 opacity-70">({pct}%)</span>}
+                        <span className="ml-1 font-normal text-slate-400">vs. {formatCurrency(compVal)}</span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
               <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                <p className="text-[11px] font-medium text-slate-500">
-                  Total paid
-                </p>
-                <p className="mt-1 text-base font-semibold text-slate-900">
-                  {formatCurrency(summary.totalPaid)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                <p className="text-[11px] font-medium text-slate-500">
-                  Outstanding (unpaid)
-                </p>
-                <p className="mt-1 text-base font-semibold text-slate-900">
-                  {formatCurrency(summary.totalUnpaid)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                <p className="text-[11px] font-medium text-slate-500">
-                  Complimentary value
-                </p>
-                <p className="mt-1 text-base font-semibold text-slate-900">
-                  {formatCurrency(summary.totalComplimentary)}
-                </p>
+                <p className="text-[11px] font-medium text-slate-500">Invoices</p>
+                <p className="mt-1 text-base font-semibold text-slate-900">{summary.invoiceCount}</p>
+                {comparisonDateRange && (
+                  <p className={`mt-0.5 text-[10px] font-medium ${
+                    summary.invoiceCount > comparisonInvoices.length ? "text-emerald-600" : summary.invoiceCount < comparisonInvoices.length ? "text-red-500" : "text-slate-400"
+                  }`}>
+                    {summary.invoiceCount > comparisonInvoices.length ? "▲" : summary.invoiceCount < comparisonInvoices.length ? "▼" : ""} {Math.abs(summary.invoiceCount - comparisonInvoices.length)}
+                    <span className="ml-1 font-normal text-slate-400">vs. {comparisonInvoices.length}</span>
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1200,8 +1343,10 @@ export default function FinancialsPage() {
                         <tr>
                           <th className="py-1.5 pr-3 font-medium">Item / Service</th>
                           <th className="py-1.5 pr-3 font-medium text-center">Times Invoiced</th>
+                          {comparisonDateRange && <th className="py-1.5 pr-3 font-medium text-center text-sky-600">Prev #</th>}
                           <th className="py-1.5 pr-3 font-medium text-center">Qty</th>
                           <th className="py-1.5 pr-3 font-medium">Total Revenue</th>
+                          {comparisonDateRange && <th className="py-1.5 pr-3 font-medium text-sky-600">Prev Revenue</th>}
                           <th className="py-1.5 pr-0 font-medium">Paid Revenue</th>
                         </tr>
                       </thead>
@@ -1213,13 +1358,22 @@ export default function FinancialsPage() {
                             </td>
                             <td className="py-1.5 pr-3 text-center font-semibold text-slate-700">
                               {row.invoiceCount}
+                              {comparisonDateRange && row.compCount !== undefined && row.compCount > 0 && (
+                                <span className={`ml-1 text-[10px] font-medium ${
+                                  row.invoiceCount > row.compCount ? "text-emerald-600" : "text-red-500"
+                                }`}>
+                                  ({row.invoiceCount > row.compCount ? "+" : ""}{row.invoiceCount - row.compCount})
+                                </span>
+                              )}
                             </td>
+                            {comparisonDateRange && <td className="py-1.5 pr-3 text-center text-sky-700">{row.compCount ?? 0}</td>}
                             <td className="py-1.5 pr-3 text-center text-slate-600">
                               {row.quantity}
                             </td>
                             <td className="py-1.5 pr-3 text-slate-700">
                               {row.totalRevenue > 0 ? formatCurrency(row.totalRevenue) : "-"}
                             </td>
+                            {comparisonDateRange && <td className="py-1.5 pr-3 text-sky-700">{row.compRevenue ? formatCurrency(row.compRevenue) : "-"}</td>}
                             <td className="py-1.5 pr-0 text-emerald-700">
                               {row.paidRevenue > 0 ? formatCurrency(row.paidRevenue) : "-"}
                             </td>
