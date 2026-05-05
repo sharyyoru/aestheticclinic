@@ -389,9 +389,8 @@ export default function MedicalConsultationsCard({
   const [invoiceCanton, setInvoiceCanton] = useState<SwissCanton>(DEFAULT_CANTON);
   const [taxPointOverride, setTaxPointOverride] = useState<number | null>(null);
   const effectiveTaxPointValue = taxPointOverride ?? CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
-  // ACF flat-rate TPV: defaults to 1.00 (TP = CHF). Override multiplies the flat-rate amount.
-  const [acfTpvOverride, setAcfTpvOverride] = useState<number | null>(null);
-  const effectiveAcfTpv = acfTpvOverride ?? 1.0;
+  // ACF flat-rate lines multiply by the same effective TPV (canton default, or override).
+  const effectiveAcfTpv = effectiveTaxPointValue;
   const [invoiceLawType, setInvoiceLawType] = useState("KVG");
   const [invoiceAccidentDate, setInvoiceAccidentDate] = useState("");
   const [tardocSearchQuery, setTardocSearchQuery] = useState("");
@@ -2482,14 +2481,6 @@ export default function MedicalConsultationsCard({
         });
 
         setInvoiceServiceLines(reconstructedLines);
-
-        // Restore ACF TPV override from any saved ACF/TMA line (all share the invoice-level value)
-        const savedAcfTpv = (lineItems || []).find(
-          (li: any) => (li.catalog_name === "ACF" || li.catalog_name === "TMA") && li.tp_al_value != null,
-        )?.tp_al_value;
-        setAcfTpvOverride(
-          savedAcfTpv && Math.abs(Number(savedAcfTpv) - 1.0) > 0.0001 ? Number(savedAcfTpv) : null,
-        );
 
         // Determine invoice mode from line items
         const hasTardoc = reconstructedLines.some((l) => l.serviceId.startsWith("tardoc-"));
@@ -5584,27 +5575,30 @@ export default function MedicalConsultationsCard({
                                     min={0.01}
                                     max={5}
                                     step={0.01}
-                                    value={effectiveAcfTpv}
+                                    value={effectiveTaxPointValue}
                                     onChange={(e) => {
                                       const val = parseFloat(e.target.value);
                                       if (!isNaN(val) && val > 0) {
-                                        setAcfTpvOverride(val === 1.0 ? null : val);
+                                        const cantonDefault = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+                                        setTaxPointOverride(
+                                          Math.abs(val - cantonDefault) < 0.0001 ? null : val,
+                                        );
                                       }
                                     }}
-                                    title="Tax point value multiplier for ACF flat rates. Default 1.00 (flat rate = CHF). Override to scale all flat-rate amounts."
+                                    title="Tax point value (CHF per tax point). Defaults to the canton value; override to scale all flat-rate amounts."
                                     className={`block w-full rounded-lg border px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 ${
-                                      acfTpvOverride !== null
+                                      taxPointOverride !== null
                                         ? "border-amber-400 bg-amber-50"
                                         : "border-slate-200 bg-white"
                                     }`}
                                   />
-                                  {acfTpvOverride !== null && (
+                                  {taxPointOverride !== null && (
                                     <button
                                       type="button"
-                                      onClick={() => setAcfTpvOverride(null)}
+                                      onClick={() => setTaxPointOverride(null)}
                                       className="text-[9px] text-amber-600 hover:text-amber-800"
                                     >
-                                      Reset to 1.00
+                                      Reset to canton default
                                     </button>
                                   )}
                                 </div>
