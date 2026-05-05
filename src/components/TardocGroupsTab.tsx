@@ -28,6 +28,7 @@ type TardocGroup = {
   description: string | null;
   canton: string;
   law_type: string;
+  tax_point_value: number | null;
   created_by_name: string | null;
   is_active: boolean;
   validation_status: string | null;
@@ -62,6 +63,8 @@ export default function TardocGroupsTab() {
   const [groupDescription, setGroupDescription] = useState("");
   const [groupCanton, setGroupCanton] = useState<SwissCanton>(DEFAULT_CANTON);
   const [groupLawType, setGroupLawType] = useState("KVG");
+  // Manual TPV override for the group. null = use canton default.
+  const [groupTaxPointOverride, setGroupTaxPointOverride] = useState<number | null>(null);
   const [groupItems, setGroupItems] = useState<GroupItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -115,6 +118,7 @@ export default function TardocGroupsTab() {
     setGroupDescription("");
     setGroupCanton(DEFAULT_CANTON);
     setGroupLawType("KVG");
+    setGroupTaxPointOverride(null);
     setGroupItems([]);
     setSaveError(null);
     setValidationResult(null);
@@ -129,6 +133,9 @@ export default function TardocGroupsTab() {
     setGroupDescription(group.description || "");
     setGroupCanton((group.canton || DEFAULT_CANTON) as SwissCanton);
     setGroupLawType(group.law_type || "KVG");
+    setGroupTaxPointOverride(
+      group.tax_point_value != null ? Number(group.tax_point_value) : null,
+    );
     setGroupItems(
       (group.tardoc_group_items || []).map((item, idx) => ({
         ...item,
@@ -368,6 +375,7 @@ export default function TardocGroupsTab() {
         description: groupDescription.trim() || null,
         canton: groupCanton,
         law_type: groupLawType,
+        tax_point_value: groupTaxPointOverride,
         items: itemsPayload,
       };
       if (editingGroup) bodyPayload.id = editingGroup.id;
@@ -424,7 +432,9 @@ export default function TardocGroupsTab() {
     setDeletingId(null);
   }
 
-  const tpv = CANTON_TAX_POINT_VALUES[groupCanton] ?? 0.96;
+  // Effective TPV used in modal (override if set, else canton default)
+  const cantonTpv = CANTON_TAX_POINT_VALUES[groupCanton] ?? 0.96;
+  const tpv = groupTaxPointOverride ?? cantonTpv;
 
   return (
     <>
@@ -463,7 +473,8 @@ export default function TardocGroupsTab() {
               const itemCount = group.tardoc_group_items?.length || 0;
               const totalPrice = (group.tardoc_group_items || []).reduce((sum, item) => {
                 const canton = (group.canton || "GE") as SwissCanton;
-                const tv = CANTON_TAX_POINT_VALUES[canton] ?? 0.96;
+                const cantonTv = CANTON_TAX_POINT_VALUES[canton] ?? 0.96;
+                const tv = group.tax_point_value != null ? Number(group.tax_point_value) : cantonTv;
                 return sum + (item.tp_mt + item.tp_tt) * tv * item.quantity;
               }, 0);
 
@@ -631,6 +642,53 @@ export default function TardocGroupsTab() {
                     <option value="MVG">MVG</option>
                     <option value="VVG">VVG</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Tax Point Value override */}
+              <div>
+                <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                  Tax Point Value (TPV)
+                  <span className="ml-1 font-normal text-slate-400">
+                    — leave empty to use canton default ({cantonTpv.toFixed(2)})
+                  </span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0.01}
+                    max={5}
+                    step={0.01}
+                    value={groupTaxPointOverride ?? ""}
+                    placeholder={cantonTpv.toFixed(2)}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") {
+                        setGroupTaxPointOverride(null);
+                        return;
+                      }
+                      const val = parseFloat(raw);
+                      if (!isNaN(val) && val > 0) setGroupTaxPointOverride(val);
+                    }}
+                    title="Override the canton's tax point value for this group. Applies to TARDOC pricing and validation."
+                    className={`w-32 rounded-lg border px-3 py-1.5 text-xs text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400 ${
+                      groupTaxPointOverride !== null
+                        ? "border-amber-400 bg-amber-50"
+                        : "border-slate-200 bg-white"
+                    }`}
+                  />
+                  {groupTaxPointOverride !== null && (
+                    <button
+                      type="button"
+                      onClick={() => setGroupTaxPointOverride(null)}
+                      className="text-[10px] text-amber-600 hover:text-amber-800"
+                    >
+                      Reset to canton default
+                    </button>
+                  )}
+                  <span className="text-[10px] text-slate-500">
+                    Effective: <span className="font-mono font-semibold text-slate-700">{tpv.toFixed(2)}</span> CHF/pt
+                  </span>
                 </div>
               </div>
 

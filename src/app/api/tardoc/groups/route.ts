@@ -11,7 +11,7 @@ export async function GET() {
     const { data: groups, error } = await supabaseAdmin
       .from("tardoc_groups")
       .select(`
-        id, name, description, canton, law_type,
+        id, name, description, canton, law_type, tax_point_value,
         created_by_name, is_active,
         validation_status, validation_message, last_validated_at,
         created_at, updated_at,
@@ -58,6 +58,7 @@ export async function POST(request: NextRequest) {
       description,
       canton = "GE",
       law_type = "KVG",
+      tax_point_value = null,
       created_by_name,
       items = [],
     } = body as {
@@ -65,6 +66,7 @@ export async function POST(request: NextRequest) {
       description?: string;
       canton?: string;
       law_type?: string;
+      tax_point_value?: number | null;
       created_by_name?: string;
       items?: Array<{
         tardoc_code: string;
@@ -94,6 +96,7 @@ export async function POST(request: NextRequest) {
         description: description?.trim() || null,
         canton,
         law_type,
+        tax_point_value: tax_point_value ?? null,
         created_by_name: created_by_name || null,
         validation_status: "pending",
       })
@@ -149,12 +152,13 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, name, description, canton, law_type, items } = body as {
+    const { id, name, description, canton, law_type, tax_point_value, items } = body as {
       id: string;
       name?: string;
       description?: string;
       canton?: string;
       law_type?: string;
+      tax_point_value?: number | null;
       items?: Array<{
         tardoc_code: string;
         description?: string;
@@ -183,6 +187,7 @@ export async function PUT(request: NextRequest) {
     if (description !== undefined) updateData.description = description?.trim() || null;
     if (canton !== undefined) updateData.canton = canton;
     if (law_type !== undefined) updateData.law_type = law_type;
+    if (tax_point_value !== undefined) updateData.tax_point_value = tax_point_value;
 
     // Reset validation when items change
     if (items !== undefined) {

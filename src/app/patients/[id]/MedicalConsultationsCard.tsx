@@ -389,6 +389,9 @@ export default function MedicalConsultationsCard({
   const [invoiceCanton, setInvoiceCanton] = useState<SwissCanton>(DEFAULT_CANTON);
   const [taxPointOverride, setTaxPointOverride] = useState<number | null>(null);
   const effectiveTaxPointValue = taxPointOverride ?? CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
+  // ACF flat-rate TPV: defaults to 1.00 (TP = CHF). Override multiplies the flat-rate amount.
+  const [acfTpvOverride, setAcfTpvOverride] = useState<number | null>(null);
+  const effectiveAcfTpv = acfTpvOverride ?? 1.0;
   const [invoiceLawType, setInvoiceLawType] = useState("KVG");
   const [invoiceAccidentDate, setInvoiceAccidentDate] = useState("");
   const [tardocSearchQuery, setTardocSearchQuery] = useState("");
@@ -2480,6 +2483,14 @@ export default function MedicalConsultationsCard({
 
         setInvoiceServiceLines(reconstructedLines);
 
+        // Restore ACF TPV override from any saved ACF/TMA line (all share the invoice-level value)
+        const savedAcfTpv = (lineItems || []).find(
+          (li: any) => (li.catalog_name === "ACF" || li.catalog_name === "TMA") && li.tp_al_value != null,
+        )?.tp_al_value;
+        setAcfTpvOverride(
+          savedAcfTpv && Math.abs(Number(savedAcfTpv) - 1.0) > 0.0001 ? Number(savedAcfTpv) : null,
+        );
+
         // Determine invoice mode from line items
         const hasTardoc = reconstructedLines.some((l) => l.serviceId.startsWith("tardoc-"));
         const hasAcf = reconstructedLines.some((l) => l.serviceId.startsWith("flatrate-") || l.serviceId.startsWith("tma-"));
@@ -3695,10 +3706,12 @@ export default function MedicalConsultationsCard({
                           );
 
                           if (acfLines.length > 0) {
-                            // Build validation request from ACF lines
+                            // Build validation request from ACF lines.
+                            // tpValue is the per-invoice ACF TPV multiplier (default 1.00).
                             const acfServicesToValidate = acfLines.map((line, i) => ({
                               code: line.serviceId.replace("flatrate-", ""),
                               tp: line.acfBaseTP ?? line.unitPrice ?? 0,
+                              tpValue: effectiveAcfTpv,
                               date: scheduledAtIso || new Date().toISOString(),
                               side: (line.acfSideType ?? 0) as 0 | 1 | 2 | 3,
                               externalFactor: line.acfExternalFactor ?? 1.0,
@@ -3777,7 +3790,8 @@ export default function MedicalConsultationsCard({
                                       return {
                                         serviceId: `flatrate-${vs.code}`,
                                         quantity: vs.quantity ?? 1,
-                                        unitPrice: vs.amount ?? vs.tp * ef,
+                                        // vs.amount comes from server with tpValue applied; fall back to manual multiply
+                                        unitPrice: vs.amount ?? vs.tp * ef * effectiveAcfTpv,
                                         groupId: null,
                                         discountPercent: null,
                                         customName: `${vs.code}${sideLabel}${factorLabel} - ${(vs.name || "").substring(0, 70)}`,
@@ -3846,8 +3860,8 @@ export default function MedicalConsultationsCard({
                               tardoc_code: tardocCode,
                               tp_al: isAcfRelated ? (line.acfBaseTP ?? resolvedUnitPrice) : tardocTpMT,
                               tp_tl: tardocTpTT,
-                              tp_al_value: isTardocLine ? taxPointValue : 1,
-                              tp_tl_value: isTardocLine ? taxPointValue : 1,
+                              tp_al_value: isTardocLine ? taxPointValue : isAcfRelated ? effectiveAcfTpv : 1,
+                              tp_tl_value: isTardocLine ? taxPointValue : isAcfRelated ? effectiveAcfTpv : 1,
                               tp_al_scale_factor: 1,
                               tp_tl_scale_factor: 1,
                               external_factor_mt: isAcfRelated ? (line.acfExternalFactor ?? 1) : isTardocLine ? (line.tardocExternalFactor ?? 1) : 1,
@@ -5540,6 +5554,78 @@ export default function MedicalConsultationsCard({
                             </div>
                           ) : invoiceMode === "flatrate" ? (
                             <div className="space-y-2 px-3 py-3">
+                              {/* Canton + TPV + Law Type (TPV defaults to 1.00 — flat rates are in CHF) */}
+                              <div className="grid grid-cols-[1fr_70px_1fr] gap-2">
+                                <div className="space-y-1">
+                                  <span className="block text-[10px] font-medium text-slate-600">
+                                    Canton
+                                  </span>
+                                  <select
+                                    value={invoiceCanton}
+                                    onChange={(e) => {
+                                      setInvoiceCanton(e.target.value as SwissCanton);
+                                      setTaxPointOverride(null);
+                                    }}
+                                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                  >
+                                    {Object.entries(CANTON_TAX_POINT_VALUES).map(([code, value]) => (
+                                      <option key={code} value={code}>
+                                        {code} - {value.toFixed(2)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="block text-[10px] font-medium text-slate-600">
+                                    TPV
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min={0.01}
+                                    max={5}
+                                    step={0.01}
+                                    value={effectiveAcfTpv}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      if (!isNaN(val) && val > 0) {
+                                        setAcfTpvOverride(val === 1.0 ? null : val);
+                                      }
+                                    }}
+                                    title="Tax point value multiplier for ACF flat rates. Default 1.00 (flat rate = CHF). Override to scale all flat-rate amounts."
+                                    className={`block w-full rounded-lg border px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 ${
+                                      acfTpvOverride !== null
+                                        ? "border-amber-400 bg-amber-50"
+                                        : "border-slate-200 bg-white"
+                                    }`}
+                                  />
+                                  {acfTpvOverride !== null && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setAcfTpvOverride(null)}
+                                      className="text-[9px] text-amber-600 hover:text-amber-800"
+                                    >
+                                      Reset to 1.00
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="block text-[10px] font-medium text-slate-600">
+                                    Insurance Law
+                                  </span>
+                                  <select
+                                    value={invoiceLawType}
+                                    onChange={(e) => setInvoiceLawType(e.target.value)}
+                                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                  >
+                                    <option value="KVG">KVG</option>
+                                    <option value="UVG">UVG</option>
+                                    <option value="IVG">IVG</option>
+                                    <option value="MVG">MVG</option>
+                                    <option value="VVG">VVG</option>
+                                  </select>
+                                </div>
+                              </div>
+
                               <AcfAccordionTree
                                 patientSex={patientDetails?.gender?.toLowerCase() === "female" ? 1 : 0}
                                 patientBirthdate={patientDetails?.dob || undefined}
@@ -5553,7 +5639,7 @@ export default function MedicalConsultationsCard({
                                   }))}
                                 onAddService={(svc: any) => {
                                   const ef = svc.externalFactor ?? 1.0;
-                                  const adjustedPrice = svc.tp * ef;
+                                  const adjustedPrice = svc.tp * ef * effectiveAcfTpv;
                                   const sideLabel = svc.sideType === 1 ? " [L]" : svc.sideType === 2 ? " [R]" : svc.sideType === 3 ? " [B]" : "";
                                   const factorLabel = ef !== 1.0 ? ` x${ef}` : "";
                                   const consultationIcd10 = consultationRefIcd10.trim();
@@ -5944,7 +6030,7 @@ export default function MedicalConsultationsCard({
                                               return {
                                                 serviceId: `flatrate-${acf.code}`,
                                                 quantity: 1,
-                                                unitPrice: acf.tp ?? 0,
+                                                unitPrice: (acf.tp ?? 0) * effectiveAcfTpv,
                                                 groupId: null,
                                                 discountPercent: null,
                                                 customName: `[ACF] ${acf.code}${sideLabel} - ${(acf.name || "").substring(0, 70)}`,
