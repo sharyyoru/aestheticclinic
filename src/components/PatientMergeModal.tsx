@@ -226,16 +226,25 @@ export default function PatientMergeModal({
       console.log("Merge response status:", response.status, response.statusText);
 
       let data;
+      const responseText = await response.text();
       try {
-        data = await response.json();
+        data = JSON.parse(responseText);
       } catch (jsonError) {
-        console.error("Failed to parse merge response as JSON:", jsonError);
-        throw new Error("Server returned an invalid response. Please try again or contact support.");
+        console.error("Failed to parse merge response as JSON:", jsonError, "Response text:", responseText.substring(0, 500));
+        // Check if it's an HTML error page
+        if (responseText.trim().startsWith("<!DOCTYPE") || responseText.trim().startsWith("<html") || responseText.includes("<body")) {
+          throw new Error(`Server error (${response.status}): The server returned an HTML error page. This usually means the server crashed or timed out. Please check the server logs or try again.`);
+        }
+        // Check if it starts with "An error" (like "An error occurred...")
+        if (responseText.trim().toLowerCase().startsWith("an error")) {
+          throw new Error(`Server error (${response.status}): ${responseText.substring(0, 200)}`);
+        }
+        throw new Error(`Server returned an invalid response (${response.status}). Please try again or contact support.`);
       }
 
       if (!response.ok) {
         console.error("Merge failed:", data);
-        throw new Error(data.error || "Failed to merge patients");
+        throw new Error(data.error || data.message || `Failed to merge patients (${response.status})`);
       }
 
       console.log("Merge successful:", data);

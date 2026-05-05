@@ -606,9 +606,12 @@ function calculateOverlapPositions(
 
 async function sendAppointmentConfirmationEmail(
   appointment: CalendarAppointment,
-): Promise<void> {
+): Promise<{ success: boolean; error?: string }> {
   const patientEmail = appointment.patient?.email ?? null;
-  if (!patientEmail) return;
+  if (!patientEmail) {
+    console.warn(`[Email Confirmation] No email address for patient ${appointment.patient_id} (${appointment.patient?.first_name} ${appointment.patient?.last_name}). Skipping confirmation email.`);
+    return { success: false, error: "No email address on file" };
+  }
 
   try {
     const { data: authData } = await supabaseClient.auth.getUser();
@@ -691,12 +694,14 @@ async function sendAppointmentConfirmationEmail(
       .single();
 
     if (error || !data) {
-      console.error("Failed to insert appointment confirmation email", error);
-      return;
+      console.error("[Email Confirmation] Failed to insert email record:", error);
+      return { success: false, error: error?.message || "Failed to save email record" };
     }
 
+    const emailId = (data as any).id as string;
+
     try {
-      await fetch("/api/emails/send", {
+      const sendResponse = await fetch("/api/emails/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -706,13 +711,22 @@ async function sendAppointmentConfirmationEmail(
           subject,
           html: htmlBody,
           fromUserEmail: fromAddress,
-          emailId: (data as any).id as string,
+          emailId,
+          patientId: appointment.patient_id,
         }),
       });
-    } catch (error) {
+
+      if (!sendResponse.ok) {
+        const errorText = await sendResponse.text().catch(() => "Unknown error");
+        console.error(`[Email Confirmation] Send failed (${sendResponse.status}):`, errorText);
+        // Don't throw - the email is saved as "sent" in DB, but log the failure
+      } else {
+        console.log(`[Email Confirmation] Email sent successfully to ${patientEmail} for appointment ${appointment.id}`);
+      }
+    } catch (sendError) {
       console.error(
-        "Appointment confirmation email saved but failed to send via provider",
-        error,
+        "[Email Confirmation] Appointment confirmation email saved but failed to send via provider:",
+        sendError,
       );
     }
 
@@ -737,8 +751,11 @@ async function sendAppointmentConfirmationEmail(
       }
     }
   } catch (error) {
-    console.error("Failed to prepare appointment confirmation email", error);
+    console.error("[Email Confirmation] Failed to prepare appointment confirmation email:", error);
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
+
+  return { success: true };
 }
 
 export default function CalendarPage() {
