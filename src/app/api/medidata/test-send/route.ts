@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
 
         const sumexServices: SumexServiceInput[] = lineItems.map((li: any, idx: number) => {
           // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-          const tariffType = li.tariff_type || (li.tariff_code ? String(li.tariff_code).padStart(3, "0") : "999");
+          const tariffType = li.tariff_type || (li.tariff_code ? String(li.tariff_code).padStart(3, "0") : "590");
           // When tp_al is populated, use it with the real unitFactor.
           // When tp_al is 0, total_price already includes the factor → use unitFactor=1.
           const hasTpAl = Number(li.tp_al) > 0;

@@ -320,7 +320,7 @@ export async function POST(request: NextRequest) {
       // Map actual line items to InvoiceServiceLine for XML generation
       services = billableLineItems.map((item: any, idx: number) => {
         // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
+        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "590");
         const isAcf = tariffType === "005";
         // ACF (005) with ignoreValidate=Yes: use sessionNumber=1 (simple tariff default per docs)
         const rawSession = item.session_number ?? 1;
@@ -394,9 +394,9 @@ export async function POST(request: NextRequest) {
       const unitTT = isTardoc && s.tpTl !== undefined ? s.tpTl : undefined;
       const unitFactorTT = isTardoc && s.tpTlValue !== undefined ? s.tpTlValue : undefined;
       
-      const isAcf = (s.tariffType || "999") === "005";
+      const isAcf = (s.tariffType || "590") === "005";
       return {
-        tariffType: s.tariffType || "999",
+        tariffType: s.tariffType || "590",
         code: s.code,
         referenceCode: s.refCode || "",
         quantity: s.quantity,

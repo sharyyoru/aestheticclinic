@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
 
       const sumexServices: SumexServiceInput[] = lineItems.map((item: any) => {
         // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
+        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "590");
         const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
         const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
         
@@ -568,7 +568,7 @@ export async function POST(request: NextRequest) {
         const svcRespGln = isValidGln2(item.responsible_gln) ? item.responsible_gln : svcGln;
         
         // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
+        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "590");
         
         // TARMED (tariff_code=1) vs TARDOC (tariff_code=7) have different handling
         const isTardoc = item.tariff_code === 7 || tariffType === "007";

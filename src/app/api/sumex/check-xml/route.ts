@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
 
     const sumexServices: SumexServiceInput[] = billableLineItems.map((item: any, idx: number) => {
       // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-      const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "999");
+      const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "590");
       const isAcf = tariffType === "005";
       const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
       const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
