@@ -643,9 +643,9 @@ export default function EmailTemplateBuilder({
           </div>
         ) : (
           /* Editor View */
-          <div className="flex flex-1 overflow-hidden">
+          <div className="flex flex-1 overflow-hidden h-[calc(100vh-80px)]">
             {/* Sidebar */}
-            <div className="w-80 shrink-0 overflow-auto border-r border-slate-200 bg-slate-50 p-4">
+            <div className="w-80 shrink-0 overflow-auto border-r border-slate-200 bg-slate-50 p-4 h-full">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -855,9 +855,8 @@ export default function EmailTemplateBuilder({
             </div>
 
             {/* Email Editor */}
-            <div className="flex-1 h-full min-h-0">
-              <div className="h-full w-full">
-                <EmailEditor
+            <div className="flex-1 relative h-full">
+              <EmailEditor
                 ref={emailEditorRef}
                 onLoad={onEditorLoad}
                 onReady={onEditorReady}
@@ -873,9 +872,8 @@ export default function EmailTemplateBuilder({
                     theme: "light",
                   },
                 }}
-                style={{ height: '100%', minHeight: '100%' }}
+                style={{ height: '100%', width: '100%' }}
               />
-              </div>
             </div>
           </div>
         )}
