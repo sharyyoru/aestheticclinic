@@ -524,17 +524,68 @@ export default function FinancialsPage() {
   }, [patientSummaryRows, patientPage, ROWS_PER_PAGE]);
 
   const ownerSummaryRows: OwnerSummaryRow[] = useMemo(() => {
+    // Deduplicate owners by normalized label, preferring UUID keys
+    const labelToKey = new Map<string, string>();
+    const labelToDisplay = new Map<string, string>();
+    const normLabelToAllKeys = new Map<string, Set<string>>();
+
+    // Names to exclude from the report
+    const excludedNames = new Set(["wilson", "ralf"]);
+
+    for (const row of filteredInvoices) {
+      const rawLabel = row.ownerLabel || "";
+      if (!rawLabel || rawLabel === "Unassigned") continue;
+
+      // Skip excluded names (case-insensitive)
+      const normLabel = rawLabel.trim().toLowerCase();
+      if (excludedNames.has(normLabel)) continue;
+
+      const thisKey = row.ownerKey || "unknown";
+      if (!normLabelToAllKeys.has(normLabel)) normLabelToAllKeys.set(normLabel, new Set());
+      normLabelToAllKeys.get(normLabel)!.add(thisKey);
+
+      const isUuid = Boolean(row.provider_id || row.doctor_user_id);
+      if (!labelToKey.has(normLabel) || isUuid) {
+        labelToKey.set(normLabel, thisKey);
+        labelToDisplay.set(normLabel, rawLabel.trim());
+      }
+    }
+
+    // Build alias map: canonical key -> all associated keys for filtering
+    const ownerKeyAliases = new Map<string, Set<string>>();
+    for (const [normLabel, key] of labelToKey.entries()) {
+      const aliases = normLabelToAllKeys.get(normLabel);
+      if (aliases) ownerKeyAliases.set(key, aliases);
+    }
+
+    // Aggregate by canonical key
     const byOwner = new Map<string, OwnerSummaryRow>();
 
     for (const row of filteredInvoices) {
-      const key = row.ownerKey || "unknown";
-      const label = row.ownerLabel || "Unassigned";
+      const rawLabel = row.ownerLabel || "";
+      const normLabel = rawLabel.trim().toLowerCase();
 
-      let existing = byOwner.get(key);
+      // Skip excluded names
+      if (excludedNames.has(normLabel)) continue;
+
+      const rowKey = row.ownerKey || "unknown";
+      // Find the canonical key for this row
+      let canonicalKey: string | null = null;
+      for (const [key, aliases] of ownerKeyAliases.entries()) {
+        if (aliases.has(rowKey)) {
+          canonicalKey = key;
+          break;
+        }
+      }
+      if (!canonicalKey) canonicalKey = rowKey;
+
+      const displayLabel = labelToDisplay.get(normLabel) || rawLabel || "Unassigned";
+
+      let existing = byOwner.get(canonicalKey);
       if (!existing) {
         existing = {
-          ownerKey: key,
-          ownerLabel: label,
+          ownerKey: canonicalKey,
+          ownerLabel: displayLabel,
           invoiceCount: 0,
           totalAmount: 0,
           totalPaid: 0,
@@ -569,7 +620,7 @@ export default function FinancialsPage() {
         }
       }
 
-      byOwner.set(key, existing);
+      byOwner.set(canonicalKey, existing);
     }
 
     return Array.from(byOwner.values()).sort(
