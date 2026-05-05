@@ -657,16 +657,18 @@ async function sendAppointmentConfirmationEmail(
       </p>
       <p>
         <strong>Aesthetics Clinic</strong><br />
-        <strong>GENEVE</strong><br />
-        Chemin Rieu 18,1208, Switzerland<br />
-        Rue du Rhône 17, 1204 <br />
+        <strong>RHÔNE</strong><br />
+        Rue du Rhône 17, 1204 Genève (3ème étage)<br />
         📞 0227322223 ✉️ info@aesthetics-ge.ch<br /><br />
-        <strong>GSTAAD</strong><br />
-        Gsteigstrasse 70, 3780, Switzerland<br />
-        📞 +41 337 483 437 ✉️ info@aesthetics-ge.ch<br /><br />
+        <strong>CHAMPEL</strong><br />
+        Chemin Rieu 18, 1208 Genève<br />
+        📞 0227322223 ✉️ info@aesthetics-ge.ch<br /><br />
         <strong>MONTREUX</strong><br />
-        Av Calud Nobs 2, 1820, Switzerland<br />
-        📞 +41 21 991 98 98 ✉️ info@thebeautybooth.shop
+        Avenue Claude Nobs 2, 1820 Montreux<br />
+        📞 +41 21 991 98 98 ✉️ info@thebeautybooth.shop<br /><br />
+        <strong>GSTAAD</strong><br />
+        Alpinastrasse 23, 3780 Gstaad<br />
+        📞 +41 337 483 437 ✉️ info@aesthetics-ge.ch
       </p>
     `;
 
