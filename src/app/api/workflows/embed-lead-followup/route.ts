@@ -50,9 +50,52 @@ export async function POST(request: Request) {
     let taskCreated = false;
 
     // ========================================
-    // AUTO-CREATE DEAL UNDER "REQUEST FOR INFORMATION"
+    // DETERMINE SALES TEAM ASSIGNEE FIRST (Round-Robin)
     // ========================================
-    
+
+    // Get sales team users from auth
+    const { data: authData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
+
+    const salesTeamUsers: Array<{ id: string; name: string }> = [];
+    if (authData?.users) {
+      for (const user of authData.users) {
+        const meta = (user.user_metadata || {}) as Record<string, unknown>;
+        const fullName = (meta["full_name"] as string) ||
+          ((meta["first_name"] as string) && (meta["last_name"] as string)
+            ? `${meta["first_name"]} ${meta["last_name"]}` : null) ||
+          (meta["first_name"] as string) || "";
+
+        // Check if user name matches any sales team member
+        const matchesSalesTeam = SALES_TEAM_NAMES.some(name =>
+          fullName.toLowerCase().includes(name.toLowerCase())
+        );
+
+        if (matchesSalesTeam) {
+          salesTeamUsers.push({ id: user.id, name: fullName });
+        }
+      }
+    }
+
+    // Determine the round-robin assignee (if sales team exists)
+    let roundRobinAssignee: { id: string; name: string } | null = null;
+    if (salesTeamUsers.length > 0) {
+      // Round-robin: Get count of recent tasks to determine next assignee
+      const { count: taskCount } = await supabaseAdmin
+        .from("tasks")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()); // Last 30 days
+
+      const assigneeIndex = (taskCount || 0) % salesTeamUsers.length;
+      roundRobinAssignee = salesTeamUsers[assigneeIndex];
+      console.log(`[embed-lead-followup] Round-robin assignee determined: ${roundRobinAssignee.name} (${roundRobinAssignee.id})`);
+    } else {
+      console.warn("No sales team users found matching:", SALES_TEAM_NAMES);
+    }
+
+    // ========================================
+    // AUTO-CREATE DEAL UNDER "REQUEST FOR INFORMATION" (WITH OWNER)
+    // ========================================
+
     // Check if patient already has a recent deal (within 6 hours) to avoid duplicates
     const dealCheck = await shouldCreateDeal(supabaseAdmin, {
       patientId: patient_id,
@@ -86,30 +129,38 @@ export async function POST(request: Request) {
         if (serviceName) noteParts.push(`Service Interest: ${serviceName}`);
         if (location) noteParts.push(`Preferred Location: ${location}`);
 
-        // Create new deal
+        // Create new deal WITH owner assignment (same as task assignee)
+        const dealInsertData: any = {
+          patient_id: patient_id,
+          stage_id: requestStage.id,
+          title: dealTitle,
+          pipeline: "sales",
+          service_id: serviceId || undefined,
+          notes: noteParts.join("\n"),
+        };
+
+        // Assign deal owner if we have a round-robin assignee
+        if (roundRobinAssignee) {
+          dealInsertData.owner_id = roundRobinAssignee.id;
+          dealInsertData.owner_name = roundRobinAssignee.name;
+        }
+
         const { data: newDeal, error: dealError } = await supabaseAdmin
           .from("deals")
-          .insert({
-            patient_id: patient_id,
-            stage_id: requestStage.id,
-            title: dealTitle,
-            pipeline: "sales",
-            service_id: serviceId || undefined,
-            notes: noteParts.join("\n"),
-          })
+          .insert(dealInsertData)
           .select("id")
           .single();
 
         if (!dealError && newDeal) {
           dealCreated = true;
           actionsRun += 1;
-          console.log(`Created deal for existing patient ${patient_id} from embed form`);
+          console.log(`Created deal for existing patient ${patient_id} from embed form, owner: ${roundRobinAssignee?.name || "none"}`);
 
           // Update the lead with deal ID
           if (lead_id) {
             await supabaseAdmin
               .from("embed_form_leads")
-              .update({ 
+              .update({
                 status: "converted",
                 updated_at: new Date().toISOString(),
               })
@@ -128,41 +179,9 @@ export async function POST(request: Request) {
     // ========================================
     // AUTO-CREATE TASK FOR SALES TEAM (ROUND-ROBIN)
     // ========================================
-    
-    // Get sales team users from auth
-    const { data: authData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 200 });
-    
-    const salesTeamUsers: Array<{ id: string; name: string }> = [];
-    if (authData?.users) {
-      for (const user of authData.users) {
-        const meta = (user.user_metadata || {}) as Record<string, unknown>;
-        const fullName = (meta["full_name"] as string) || 
-          ((meta["first_name"] as string) && (meta["last_name"] as string) 
-            ? `${meta["first_name"]} ${meta["last_name"]}` : null) ||
-          (meta["first_name"] as string) || "";
-        
-        // Check if user name matches any sales team member
-        const matchesSalesTeam = SALES_TEAM_NAMES.some(name => 
-          fullName.toLowerCase().includes(name.toLowerCase())
-        );
-        
-        if (matchesSalesTeam) {
-          salesTeamUsers.push({ id: user.id, name: fullName });
-        }
-      }
-    }
 
-    if (salesTeamUsers.length > 0) {
-      // Round-robin: Get count of recent tasks to determine next assignee
-      const { count: taskCount } = await supabaseAdmin
-        .from("tasks")
-        .select("*", { count: "exact", head: true })
-        .gte("created_at", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()); // Last 30 days
-
-      const assigneeIndex = (taskCount || 0) % salesTeamUsers.length;
-      const assignee = salesTeamUsers[assigneeIndex];
-
-      // Create task
+    if (roundRobinAssignee) {
+      // Create task with the SAME assignee as the deal owner
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 1); // Due tomorrow
 
@@ -186,8 +205,8 @@ export async function POST(request: Request) {
           priority: "high",
           type: "call",
           activity_date: dueDate.toISOString(),
-          assigned_user_id: assignee.id,
-          assigned_user_name: assignee.name,
+          assigned_user_id: roundRobinAssignee.id,
+          assigned_user_name: roundRobinAssignee.name,
           patient_id: patient_id,
           created_by_name: "System",
         });
@@ -195,12 +214,10 @@ export async function POST(request: Request) {
       if (!taskError) {
         taskCreated = true;
         actionsRun += 1;
-        console.log(`Created task for existing patient ${patient_id}, assigned to ${assignee.name}`);
+        console.log(`Created task for existing patient ${patient_id}, assigned to ${roundRobinAssignee.name}`);
       } else {
         console.error("Failed to create task:", taskError);
       }
-    } else {
-      console.warn("No sales team users found matching:", SALES_TEAM_NAMES);
     }
 
     return NextResponse.json({
