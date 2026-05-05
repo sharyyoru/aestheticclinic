@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
@@ -50,6 +51,7 @@ type NormalizedInvoice = {
   ownerLabel: string;
   payment_method: string | null;
   amount: number;
+  paid_amount: number;
   isPaid: boolean;
   is_complimentary: boolean;
   status: string;
@@ -437,9 +439,24 @@ export default function FinancialsPage() {
 
       totalAmount += amount;
 
+      // Calculate paid amount based on status
       if (row.isPaid) {
+        // PAID or OVERPAID - full amount is paid
         totalPaid += amount;
+      } else if (row.status === "PARTIAL_PAID") {
+        // Partial paid - add the paid portion to total paid, remainder to unpaid
+        const paidPortion = row.paid_amount || 0;
+        totalPaid += paidPortion;
+        totalUnpaid += (amount - paidPortion);
+      } else if (row.status === "PARTIAL_LOSS") {
+        // Partial loss - add the paid portion to total paid, subtract the loss portion
+        const paidPortion = row.paid_amount || 0;
+        totalPaid += paidPortion;
+        // The loss portion is not counted as unpaid (it's written off)
+      } else if (row.status === "CANCELLED") {
+        // Cancelled - don't count in paid or unpaid
       } else {
+        // OPEN or other statuses - full amount is unpaid
         totalUnpaid += amount;
       }
     }
@@ -471,9 +488,22 @@ export default function FinancialsPage() {
           existing.totalComplimentary += amount;
         } else {
           existing.totalAmount += amount;
+          // Calculate paid/unpaid based on status
           if (row.isPaid) {
+            // PAID or OVERPAID
             existing.totalPaid += amount;
+          } else if (row.status === "PARTIAL_PAID") {
+            const paidPortion = row.paid_amount || 0;
+            existing.totalPaid += paidPortion;
+            existing.totalUnpaid += (amount - paidPortion);
+          } else if (row.status === "PARTIAL_LOSS") {
+            const paidPortion = row.paid_amount || 0;
+            existing.totalPaid += paidPortion;
+            // Loss portion not counted as unpaid
+          } else if (row.status === "CANCELLED") {
+            // Cancelled - don't count
           } else {
+            // OPEN or other statuses
             existing.totalUnpaid += amount;
           }
         }
@@ -521,8 +551,18 @@ export default function FinancialsPage() {
           existing.totalComplimentary += amount;
         } else {
           existing.totalAmount += amount;
+          // Calculate paid/unpaid based on status
           if (row.isPaid) {
             existing.totalPaid += amount;
+          } else if (row.status === "PARTIAL_PAID") {
+            const paidPortion = row.paid_amount || 0;
+            existing.totalPaid += paidPortion;
+            existing.totalUnpaid += (amount - paidPortion);
+          } else if (row.status === "PARTIAL_LOSS") {
+            const paidPortion = row.paid_amount || 0;
+            existing.totalPaid += paidPortion;
+          } else if (row.status === "CANCELLED") {
+            // Cancelled - don't count
           } else {
             existing.totalUnpaid += amount;
           }
@@ -1244,8 +1284,20 @@ export default function FinancialsPage() {
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5 financials-hide-on-print">
               {([
                 { label: "Total billed", val: summary.totalAmount, compVal: comparisonInvoices.reduce((s,i) => s + (i.is_complimentary ? 0 : i.amount), 0) },
-                { label: "Total paid", val: summary.totalPaid, compVal: comparisonInvoices.reduce((s,i) => s + (i.isPaid && !i.is_complimentary ? i.amount : 0), 0) },
-                { label: "Outstanding (unpaid)", val: summary.totalUnpaid, compVal: comparisonInvoices.reduce((s,i) => s + (!i.isPaid && !i.is_complimentary ? i.amount : 0), 0) },
+                { label: "Total paid", val: summary.totalPaid, compVal: comparisonInvoices.reduce((s,i) => {
+                  if (i.is_complimentary) return s;
+                  if (i.isPaid) return s + i.amount;
+                  if (i.status === "PARTIAL_PAID") return s + (i.paid_amount || 0);
+                  if (i.status === "PARTIAL_LOSS") return s + (i.paid_amount || 0);
+                  return s;
+                }, 0) },
+                { label: "Outstanding (unpaid)", val: summary.totalUnpaid, compVal: comparisonInvoices.reduce((s,i) => {
+                  if (i.is_complimentary) return s;
+                  if (i.isPaid) return s;
+                  if (i.status === "PARTIAL_PAID") return s + (i.amount - (i.paid_amount || 0));
+                  if (i.status === "PARTIAL_LOSS") return s; // Loss portion not counted as unpaid
+                  return s + i.amount;
+                }, 0) },
                 { label: "Complimentary", val: summary.totalComplimentary, compVal: comparisonInvoices.reduce((s,i) => s + (i.is_complimentary ? i.amount : 0), 0) },
               ] as { label: string; val: number; compVal: number }[]).map(({ label, val, compVal }) => {
                 const diff = comparisonDateRange ? val - compVal : 0;
@@ -1313,7 +1365,12 @@ export default function FinancialsPage() {
                           {paginatedPatientRows.map((row) => (
                             <tr key={row.patientId} className="align-top">
                               <td className="py-1.5 pr-3 text-slate-900">
-                                {row.patientName}
+                                <Link
+                                  href={`/patients/${row.patientId}?m_tab=invoice`}
+                                  className="hover:text-sky-600 hover:underline"
+                                >
+                                  {row.patientName}
+                                </Link>
                               </td>
                               <td className="py-1.5 pr-3 text-slate-700">
                                 {row.invoiceCount}

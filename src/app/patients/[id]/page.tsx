@@ -164,11 +164,12 @@ async function getInvoiceSummary(
         case "PARTIAL_PAID":
           totalAmountNonComplimentary += amount;
           totalPartialPaid += paidAmount;
+          totalPaid += paidAmount; // Add partial paid to total paid
           totalUnpaid += amount - paidAmount;
           break;
         case "PARTIAL_LOSS":
           totalAmountNonComplimentary += amount;
-          // Partial loss = original total - what was actually received (after fees/commissions)
+          // Partial loss: paid amount goes to total paid, loss portion is separate
           totalPaid += paidAmount;
           totalPartialLoss += amount - paidAmount;
           break;

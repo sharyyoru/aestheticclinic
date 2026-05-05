@@ -126,6 +126,7 @@ function normalizeInvoices(invoiceRows: any[], itemsByInvoice: Map<string, any[]
       ownerLabel,
       payment_method: row.payment_method as string | null,
       amount,
+      paid_amount: Number(row.paid_amount) || 0,
       isPaid,
       is_complimentary: Boolean(row.is_complimentary),
       status: row.status as string,
