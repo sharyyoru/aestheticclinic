@@ -45,8 +45,27 @@ export async function POST(request: Request) {
   const startedAt = new Date().toISOString();
   let mergeLogId: string | null = null;
   
+  // Validate environment variables
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error("Missing required environment variables");
+    return NextResponse.json(
+      { error: "Server configuration error: Missing database credentials" },
+      { status: 500 }
+    );
+  }
+
+  let body: MergeRequest;
   try {
-    const body = (await request.json()) as MergeRequest;
+    body = (await request.json()) as MergeRequest;
+  } catch (parseError) {
+    console.error("Failed to parse request body:", parseError);
+    return NextResponse.json(
+      { error: "Invalid request body: " + (parseError instanceof Error ? parseError.message : "Could not parse JSON") },
+      { status: 400 }
+    );
+  }
+
+  try {
     const { primaryPatientId, patientIdsToMerge, mergedData, preview, performedByUserId, performedByName } = body;
 
     if (!primaryPatientId || !patientIdsToMerge || patientIdsToMerge.length === 0) {

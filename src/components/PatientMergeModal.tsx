@@ -149,24 +149,38 @@ export default function PatientMergeModal({
     setPreviewData(null);
 
     try {
+      const requestBody = {
+        primaryPatientId,
+        patientIdsToMerge: patientIds.filter(id => id !== primaryPatientId),
+        preview: true,
+      };
+      console.log("Preview merge request:", requestBody);
+
       const response = await fetch("/api/patients/merge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          primaryPatientId,
-          patientIdsToMerge: patientIds.filter(id => id !== primaryPatientId),
-          preview: true,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
+      console.log("Preview response status:", response.status, response.statusText);
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error("Failed to parse preview response as JSON:", jsonError);
+        throw new Error("Server returned an invalid response. Please try again or contact support.");
+      }
 
       if (!response.ok) {
+        console.error("Preview failed:", data);
         throw new Error(data.error || "Failed to preview merge");
       }
 
+      console.log("Preview data:", data);
       setPreviewData(data.data);
     } catch (err) {
+      console.error("Preview error:", err);
       setError(err instanceof Error ? err.message : "Failed to preview merge");
     } finally {
       setPreviewing(false);
@@ -194,27 +208,41 @@ export default function PatientMergeModal({
         performedByName = userData?.full_name || userData?.email || null;
       }
 
+      const requestBody = {
+        primaryPatientId,
+        patientIdsToMerge: patientIds.filter(id => id !== primaryPatientId),
+        mergedData: mergeSelection,
+        performedByUserId: user?.id,
+        performedByName,
+      };
+      console.log("Merge request:", requestBody);
+
       const response = await fetch("/api/patients/merge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          primaryPatientId,
-          patientIdsToMerge: patientIds.filter(id => id !== primaryPatientId),
-          mergedData: mergeSelection,
-          performedByUserId: user?.id,
-          performedByName,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
+      console.log("Merge response status:", response.status, response.statusText);
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error("Failed to parse merge response as JSON:", jsonError);
+        throw new Error("Server returned an invalid response. Please try again or contact support.");
+      }
 
       if (!response.ok) {
+        console.error("Merge failed:", data);
         throw new Error(data.error || "Failed to merge patients");
       }
 
+      console.log("Merge successful:", data);
       onSuccess();
       onClose();
     } catch (err) {
+      console.error("Merge error:", err);
       setError(err instanceof Error ? err.message : "Failed to merge patients");
     } finally {
       setMerging(false);
