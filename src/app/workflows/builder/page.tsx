@@ -1298,9 +1298,9 @@ export default function WorkflowBuilderPage() {
           <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs sm:text-sm text-emerald-700">{success}</div>
         )}
 
-        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6">
+        <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-[calc(100vh-180px)] min-h-[500px]">
           {/* Workflow Canvas */}
-          <div className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm min-h-[400px] overflow-x-auto">
+          <div className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm overflow-x-auto flex flex-col">
             <h2 className="mb-4 text-base font-semibold text-slate-900">Workflow Steps</h2>
             <div className="space-y-0 min-w-[280px]">
               {nodes.map((node, index) => renderNodeCard(node, index))}

@@ -855,8 +855,9 @@ export default function EmailTemplateBuilder({
             </div>
 
             {/* Email Editor */}
-            <div className="flex-1">
-              <EmailEditor
+            <div className="flex-1 h-full min-h-0">
+              <div className="h-full w-full">
+                <EmailEditor
                 ref={emailEditorRef}
                 onLoad={onEditorLoad}
                 onReady={onEditorReady}
@@ -872,7 +873,9 @@ export default function EmailTemplateBuilder({
                     theme: "light",
                   },
                 }}
+                style={{ height: '100%', minHeight: '100%' }}
               />
+              </div>
             </div>
           </div>
         )}
