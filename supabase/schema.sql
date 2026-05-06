@@ -103,7 +103,7 @@ create table if not exists appointments (
   status appointment_status not null default 'scheduled',
   reason text,
   location text,
-  source text check (source in ('manual','ai')) default 'manual',
+  source text check (source in ('manual','ai','online_booking')) default 'manual',
   created_at timestamptz default now()
 );
 

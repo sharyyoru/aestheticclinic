@@ -4,7 +4,11 @@
       "Bash(grep -r \"export const\" D:/Mutant/aestheticclinic/src/lib/supabase*.ts)",
       "Bash(npx tsc:*)",
       "Bash(start:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git pull *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

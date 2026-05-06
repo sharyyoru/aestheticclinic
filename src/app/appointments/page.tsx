@@ -361,6 +361,7 @@ type CalendarAppointment = {
   reason: string | null;
   location: string | null;
   temporary_text: string | null;
+  source?: string | null;
   patient: AppointmentPatient | null;
   provider: {
     id: string;
@@ -954,7 +955,7 @@ export default function CalendarPage() {
         const { data, error } = await supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, temporary_text, patient:patients(id, first_name, last_name, email, phone, dob), provider:providers(id, name)",
+            "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, temporary_text, source, patient:patients(id, first_name, last_name, email, phone, dob), provider:providers(id, name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
@@ -2280,7 +2281,7 @@ export default function CalendarPage() {
         .from("appointments")
         .insert(insertData)
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, source, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -3244,6 +3245,7 @@ export default function CalendarPage() {
                               <div className="flex items-center gap-1 truncate font-medium text-slate-800">
                                 {statusIcon && <span className="flex-shrink-0">{statusIcon}</span>}
                                 {isCopiedPatient && <span className="flex-shrink-0 text-blue-500">📋</span>}
+                                {appt.source === 'online_booking' && <span className="flex-shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-300" title="Booked via online booking">🌐 Online</span>}
                                 <span className={`truncate ${isCopiedPatient ? 'text-blue-600 font-semibold' : ''}`}>{patientName || serviceLabel}</span>
                               </div>
                               <div className="truncate text-[10px] text-slate-500">
@@ -3526,6 +3528,7 @@ export default function CalendarPage() {
                                           <div className="flex items-center gap-1 truncate font-medium text-slate-800">
                                             {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
                                             {isCopiedPatient && <span className="flex-shrink-0 text-blue-500">📋</span>}
+                                            {appt.source === 'online_booking' && <span className="flex-shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-300" title="Booked via online booking">🌐 Online</span>}
                                             <span className={`truncate ${isCopiedPatient ? 'text-blue-600 font-semibold' : ''}`}>{patientName || serviceLabel}</span>
                                           </div>
                                           <div className="truncate text-[9px] text-slate-600">
