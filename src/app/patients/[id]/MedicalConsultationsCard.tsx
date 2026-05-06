@@ -3874,20 +3874,13 @@ export default function MedicalConsultationsCard({
                             };
                           });
 
-                        // For TARDOC: set ref_code on additional TARDOC services (reference to the first TARDOC code)
-                        if (isTardocInvoice) {
-                          const tardocOnlyLines = invoiceLines.filter((l) => !!l.tardoc_code);
-                          if (tardocOnlyLines.length > 1) {
-                            const mainCode = tardocOnlyLines[0]?.tardoc_code;
-                            if (mainCode) {
-                              for (let i = 1; i < tardocOnlyLines.length; i++) {
-                                if (tardocOnlyLines[i].tardoc_code !== mainCode) {
-                                  tardocOnlyLines[i].ref_code = mainCode;
-                                }
-                              }
-                            }
-                          }
-                        }
+                        // TARDOC ref_code is per-line and must come from the user / grouper
+                        // (line.tardocRefCode → invoiceLines[i].ref_code, set above).
+                        // Do NOT auto-assign the first code as a reference for every other line:
+                        // AA (basic consultation) codes are stand-alone and must have no ref_code,
+                        // and only codes carrying TARDOC's IsNeedsRefCode flag may reference a
+                        // *compatible* main service. The Sumex validator will report any genuine
+                        // missing reference; we no longer fabricate one here.
 
                         // Validate TARDOC services with Sumex before creating invoice
                         if (isTardocInvoice && !skipSumexValidation) {
