@@ -3053,8 +3053,7 @@ export default function PatientActivityCard({
                               Deal created: {deal.title || "Untitled deal"}
                             </p>
                             <p className="mt-0.5 text-[10px] text-slate-600">
-                              Pipeline: <span className="font-medium">{pipelineLabel}</span>
-                              {" "}| Stage: {" "}
+                              Stage: {" "}
                               <span className="font-medium">
                                 {stage ? stage.name : "Unknown"}
                               </span>
@@ -4161,10 +4160,6 @@ export default function PatientActivityCard({
                           {deal.title || "Untitled deal"}
                         </p>
                         <p className="text-[11px] text-slate-600">
-                          <span className="font-semibold">Pipeline:</span> {" "}
-                          {pipelineLabel}
-                        </p>
-                        <p className="text-[11px] text-slate-600">
                           <span className="font-semibold">Stage:</span> {" "}
                           {stage ? stage.name : "Unknown"}
                         </p>
@@ -4181,10 +4176,6 @@ export default function PatientActivityCard({
                         <p className="text-[11px] text-slate-600">
                           <span className="font-semibold">Contact Label:</span> {" "}
                           {contactLabel}
-                        </p>
-                        <p className="text-[11px] text-slate-600">
-                          <span className="font-semibold">Contact Owner:</span> {" "}
-                          <span className="font-medium text-emerald-700">{contactOwnerName || "—"}</span>
                         </p>
                         <p className="text-[11px] text-slate-600">
                           <span className="font-semibold">Deal Owner:</span> {" "}
