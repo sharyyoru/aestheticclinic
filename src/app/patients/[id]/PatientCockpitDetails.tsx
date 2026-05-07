@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { Pencil, X } from "lucide-react";
+import AddressAutocompleteInput from "@/components/AddressAutocompleteInput";
 
 type PatientData = {
   id: string;
@@ -57,6 +58,17 @@ export default function PatientCockpitDetails({
       setCountry(patient.country ?? "");
     }
     setOpenModal(type);
+  }
+
+  function handleAddressSelect(components: {
+    street: string;
+    postalCode: string;
+    town: string;
+    country: string;
+  }) {
+    if (components.postalCode) setPostalCode(components.postalCode);
+    if (components.town) setTown(components.town);
+    if (components.country) setCountry(components.country);
   }
 
   async function handleSave() {
@@ -265,11 +277,13 @@ export default function PatientCockpitDetails({
                 <>
                   <label className="block">
                     <span className="text-xs font-medium text-slate-600">Street</span>
-                    <input
-                      type="text"
+                    <AddressAutocompleteInput
                       value={streetAddress}
-                      onChange={(e) => setStreetAddress(e.target.value)}
+                      onChange={setStreetAddress}
+                      onAddressSelect={handleAddressSelect}
+                      placeholder="Start typing street address..."
                       className="mt-1 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
+                      countryBias="ch"
                     />
                   </label>
                   <label className="block">
