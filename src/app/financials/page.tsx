@@ -291,17 +291,23 @@ export default function FinancialsPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  // All unique service options from line items, keyed by code, searchable by code+name
+  // All unique service options from line items, keyed by NORMALIZED code, searchable by code+name
+  // Normalizes codes by trimming whitespace to avoid duplicates like "1000" vs "1000 "
   const serviceOptions = useMemo(() => {
-    // Map: code -> name (first seen)
-    const map = new Map<string, string>();
+    // Map: normalizedCode -> { code, name } (prefer shorter/cleaner code)
+    const map = new Map<string, { code: string; name: string }>();
     for (const item of lineItems) {
-      const key = item.code || item.name || "";
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, item.name || key);
+      const rawCode = item.code || item.name || "";
+      if (!rawCode) continue;
+      const normalizedCode = rawCode.trim();
+      if (!normalizedCode) continue;
+      
+      const existing = map.get(normalizedCode);
+      if (!existing) {
+        map.set(normalizedCode, { code: normalizedCode, name: item.name?.trim() || normalizedCode });
+      }
     }
-    return Array.from(map.entries())
-      .map(([code, name]) => ({ code, name }))
+    return Array.from(map.values())
       .sort((a, b) => {
         // Sort numerically if both are numbers, else alphabetically
         const an = parseFloat(a.code); const bn = parseFloat(b.code);
@@ -368,8 +374,8 @@ export default function FinancialsPage() {
       }
     }
     if (serviceFilters.size > 0) {
-      // serviceFilters holds codes; match against invoice's serviceCodes
-      if (!row.serviceCodes.some((code) => serviceFilters.has(code))) return false;
+      // serviceFilters holds normalized codes; match against invoice's serviceCodes (also normalized)
+      if (!row.serviceCodes.some((code) => serviceFilters.has(code.trim()))) return false;
     }
     if (itemTypeFilter !== "all") {
       if (!row.itemTypes.includes(itemTypeFilter)) return false;
@@ -419,6 +425,31 @@ export default function FinancialsPage() {
     return filteredInvoices.slice(start, start + ROWS_PER_PAGE);
   }, [filteredInvoices, invoicePage, ROWS_PER_PAGE]);
 
+  // Build a map of invoice_id -> line items for service-specific calculations
+  const lineItemsByInvoice = useMemo(() => {
+    const map = new Map<string, LineItemLite[]>();
+    for (const item of lineItems) {
+      const existing = map.get(item.invoice_id) || [];
+      existing.push(item);
+      map.set(item.invoice_id, existing);
+    }
+    return map;
+  }, [lineItems]);
+
+  // Helper to get service-specific amount for an invoice when filtering by service
+  const getServiceSpecificAmount = useCallback((invoiceId: string): number => {
+    if (serviceFilters.size === 0) return 0;
+    const items = lineItemsByInvoice.get(invoiceId) || [];
+    let total = 0;
+    for (const item of items) {
+      const itemCode = (item.code || item.name || "").trim();
+      if (serviceFilters.has(itemCode)) {
+        total += item.total_price;
+      }
+    }
+    return total;
+  }, [lineItemsByInvoice, serviceFilters]);
+
   const summary: Summary = useMemo(() => {
     let totalAmount = 0;
     let totalPaid = 0;
@@ -427,7 +458,10 @@ export default function FinancialsPage() {
     let invoiceCount = 0;
 
     for (const row of filteredInvoices) {
-      const amount = row.amount;
+      // When filtering by service, use only the line items for those services
+      const amount = serviceFilters.size > 0
+        ? getServiceSpecificAmount(row.id)
+        : row.amount;
       if (!Number.isFinite(amount) || amount <= 0) continue;
 
       invoiceCount += 1;
@@ -440,17 +474,22 @@ export default function FinancialsPage() {
       totalAmount += amount;
 
       // Calculate paid amount based on status
+      // For service-filtered amounts, we proportionally calculate paid/unpaid
       if (row.isPaid) {
         // PAID or OVERPAID - full amount is paid
         totalPaid += amount;
       } else if (row.status === "PARTIAL_PAID") {
-        // Partial paid - add the paid portion to total paid, remainder to unpaid
-        const paidPortion = row.paid_amount || 0;
+        // Partial paid - calculate proportion based on invoice total
+        const invoiceTotal = row.amount || 1;
+        const paidRatio = (row.paid_amount || 0) / invoiceTotal;
+        const paidPortion = amount * paidRatio;
         totalPaid += paidPortion;
         totalUnpaid += (amount - paidPortion);
       } else if (row.status === "PARTIAL_LOSS") {
-        // Partial loss - add the paid portion to total paid, subtract the loss portion
-        const paidPortion = row.paid_amount || 0;
+        // Partial loss - calculate proportion based on invoice total
+        const invoiceTotal = row.amount || 1;
+        const paidRatio = (row.paid_amount || 0) / invoiceTotal;
+        const paidPortion = amount * paidRatio;
         totalPaid += paidPortion;
         // The loss portion is not counted as unpaid (it's written off)
       } else if (row.status === "CANCELLED") {
@@ -462,7 +501,7 @@ export default function FinancialsPage() {
     }
 
     return { totalAmount, totalPaid, totalUnpaid, totalComplimentary, invoiceCount };
-  }, [filteredInvoices]);
+  }, [filteredInvoices, serviceFilters, getServiceSpecificAmount]);
 
   const patientSummaryRows: PatientSummaryRow[] = useMemo(() => {
     const byPatient = new Map<string, PatientSummaryRow>();
@@ -480,7 +519,10 @@ export default function FinancialsPage() {
         totalComplimentary: 0,
       };
 
-      const amount = row.amount;
+      // When filtering by service, use only the line items for those services
+      const amount = serviceFilters.size > 0
+        ? getServiceSpecificAmount(row.id)
+        : row.amount;
       if (Number.isFinite(amount) && amount > 0) {
         existing.invoiceCount += 1;
 
@@ -489,15 +531,22 @@ export default function FinancialsPage() {
         } else {
           existing.totalAmount += amount;
           // Calculate paid/unpaid based on status
+          // For service-filtered amounts, we proportionally calculate paid/unpaid
           if (row.isPaid) {
             // PAID or OVERPAID
             existing.totalPaid += amount;
           } else if (row.status === "PARTIAL_PAID") {
-            const paidPortion = row.paid_amount || 0;
+            // Partial paid - calculate proportion based on invoice total
+            const invoiceTotal = row.amount || 1;
+            const paidRatio = (row.paid_amount || 0) / invoiceTotal;
+            const paidPortion = amount * paidRatio;
             existing.totalPaid += paidPortion;
             existing.totalUnpaid += (amount - paidPortion);
           } else if (row.status === "PARTIAL_LOSS") {
-            const paidPortion = row.paid_amount || 0;
+            // Partial loss - calculate proportion based on invoice total
+            const invoiceTotal = row.amount || 1;
+            const paidRatio = (row.paid_amount || 0) / invoiceTotal;
+            const paidPortion = amount * paidRatio;
             existing.totalPaid += paidPortion;
             // Loss portion not counted as unpaid
           } else if (row.status === "CANCELLED") {
@@ -515,7 +564,7 @@ export default function FinancialsPage() {
     return Array.from(byPatient.values()).sort(
       (a, b) => b.totalAmount - a.totalAmount,
     );
-  }, [filteredInvoices]);
+  }, [filteredInvoices, serviceFilters, getServiceSpecificAmount]);
 
   const totalPatientPages = Math.max(1, Math.ceil(patientSummaryRows.length / ROWS_PER_PAGE));
   const paginatedPatientRows = useMemo(() => {
@@ -594,7 +643,10 @@ export default function FinancialsPage() {
         };
       }
 
-      const amount = row.amount;
+      // When filtering by service, use only the line items for those services
+      const amount = serviceFilters.size > 0
+        ? getServiceSpecificAmount(row.id)
+        : row.amount;
       if (Number.isFinite(amount) && amount > 0) {
         existing.invoiceCount += 1;
 
@@ -602,15 +654,19 @@ export default function FinancialsPage() {
           existing.totalComplimentary += amount;
         } else {
           existing.totalAmount += amount;
-          // Calculate paid/unpaid based on status
+          // Calculate paid/unpaid based on status (proportionally for service-filtered amounts)
           if (row.isPaid) {
             existing.totalPaid += amount;
           } else if (row.status === "PARTIAL_PAID") {
-            const paidPortion = row.paid_amount || 0;
+            const invoiceTotal = row.amount || 1;
+            const paidRatio = (row.paid_amount || 0) / invoiceTotal;
+            const paidPortion = amount * paidRatio;
             existing.totalPaid += paidPortion;
             existing.totalUnpaid += (amount - paidPortion);
           } else if (row.status === "PARTIAL_LOSS") {
-            const paidPortion = row.paid_amount || 0;
+            const invoiceTotal = row.amount || 1;
+            const paidRatio = (row.paid_amount || 0) / invoiceTotal;
+            const paidPortion = amount * paidRatio;
             existing.totalPaid += paidPortion;
           } else if (row.status === "CANCELLED") {
             // Cancelled - don't count
@@ -626,7 +682,7 @@ export default function FinancialsPage() {
     return Array.from(byOwner.values()).sort(
       (a, b) => b.totalAmount - a.totalAmount,
     );
-  }, [filteredInvoices]);
+  }, [filteredInvoices, serviceFilters, getServiceSpecificAmount]);
 
   const doctorSummaryRows: DoctorSummaryRow[] = useMemo(() => {
     const byDoctor = new Map<string, DoctorSummaryRow>();
@@ -650,7 +706,10 @@ export default function FinancialsPage() {
         };
       }
 
-      const amount = row.amount;
+      // When filtering by service, use only the line items for those services
+      const amount = serviceFilters.size > 0
+        ? getServiceSpecificAmount(row.id)
+        : row.amount;
       if (Number.isFinite(amount) && amount > 0) {
         existing.invoiceCount += 1;
 
@@ -658,6 +717,12 @@ export default function FinancialsPage() {
           existing.totalAmount += amount;
           if (row.isPaid) {
             existing.totalPaid += amount;
+          } else if (row.status === "PARTIAL_PAID") {
+            const invoiceTotal = row.amount || 1;
+            const paidRatio = (row.paid_amount || 0) / invoiceTotal;
+            const paidPortion = amount * paidRatio;
+            existing.totalPaid += paidPortion;
+            existing.totalUnpaid += (amount - paidPortion);
           } else {
             existing.totalUnpaid += amount;
           }
@@ -687,7 +752,7 @@ export default function FinancialsPage() {
     return Array.from(byDoctor.values()).sort(
       (a, b) => b.totalAmount - a.totalAmount,
     );
-  }, [filteredInvoices]);
+  }, [filteredInvoices, serviceFilters, getServiceSpecificAmount]);
 
   // Apply invoice count filter to doctor rows
   const filteredDoctorRows = useMemo(() => {
