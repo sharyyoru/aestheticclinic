@@ -416,6 +416,55 @@ export async function searchByServiceGroup(
   return { count, services };
 }
 
+/**
+ * Search the additional services that may be provided for a given base code.
+ *
+ * Per tardocValidator100.chm → ISearch::SearchAdditionalService:
+ *   "This method searches for additional services which may be provided for a
+ *    base service. When retrieving the service record from the result list,
+ *    call the property AdditionalServiceReferenceCode to get the proper
+ *    reference code."
+ *
+ * The returned `additionalServiceReferenceCode` on each result row is the
+ * value that must be supplied as `bstrReferenceCode` when later calling
+ * IValidate::AddService for that additional service in the context of the
+ * given base.
+ */
+export async function searchAdditionalServices(
+  baseCode: string,
+  language: SumexLanguage = 2,
+): Promise<{ count: number; services: TardocServiceRecord[] }> {
+  const session = await getOrCreateSession(language);
+  const searchHandle = await createSubInterface(session.validatorHandle, "Search");
+
+  await callMethod("ISearch", "SearchAdditionalService", {
+    pISearch: searchHandle,
+    bstrCode: baseCode,
+  });
+
+  const countRes = await callMethod<{ pbStatus: boolean; plSize: number }>(
+    "ISearch",
+    "GetRecordCount",
+    { pISearch: searchHandle },
+  );
+
+  const count = countRes.plSize ?? 0;
+  if (count === 0) return { count: 0, services: [] };
+
+  const pageSize = Math.min(count, 500);
+  const rawServices = await callMethod<Array<Record<string, unknown>>>(
+    "ISearch",
+    "GetServices",
+    { pISearch: searchHandle, lStartRecordID: 0, lNumberOfRecords: pageSize },
+  );
+
+  const services = Array.isArray(rawServices)
+    ? rawServices.filter((r) => r.pbStatus).map(mapServiceRecord)
+    : [];
+
+  return { count, services };
+}
+
 // --------------------------------------------------------------------------
 // Price Calculation
 // --------------------------------------------------------------------------

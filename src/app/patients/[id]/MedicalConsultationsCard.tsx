@@ -5517,23 +5517,99 @@ export default function MedicalConsultationsCard({
                               </div>
 
                               {/* DB info */}
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-2">
                                 <p className="text-[9px] text-slate-400">
                                   Sumex1 TARDOC live catalog{tardocDbInfo ? ` (v${tardocDbInfo.dbVersion})` : ""}
                                 </p>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    try {
-                                      const res = await fetch("/api/tardoc/sumex?action=info");
-                                      const json = await res.json();
-                                      if (json.success) setTardocDbInfo(json.data);
-                                    } catch { /* ignore */ }
-                                  }}
-                                  className="text-[9px] text-sky-500 hover:text-sky-700 hover:underline"
-                                >
-                                  Check version
-                                </button>
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      // Build ordered list of TARDOC codes from current invoice lines.
+                                      const tardocLineEntries = invoiceServiceLines
+                                        .map((l, i) => ({ l, i }))
+                                        .filter(({ l }) => l.serviceId.startsWith("tardoc-"));
+                                      if (tardocLineEntries.length === 0) {
+                                        alert("No TARDOC lines on this invoice.");
+                                        return;
+                                      }
+                                      const codes = tardocLineEntries.map(({ l }) =>
+                                        l.serviceId.replace("tardoc-", ""),
+                                      );
+                                      try {
+                                        const res = await fetch("/api/tardoc/suggest-refs", {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ codes, lang: 2 }),
+                                        });
+                                        const json = await res.json();
+                                        if (!json.success) {
+                                          alert(`Lookup failed: ${json.error || "unknown"}`);
+                                          return;
+                                        }
+                                        const suggestions = json.data as Array<{
+                                          code: string;
+                                          suggestedRef: string;
+                                          source: "masterCode" | "additionalService" | "standalone" | "unknown";
+                                          baseCode?: string;
+                                        }>;
+                                        let filled = 0;
+                                        let kept = 0;
+                                        let standalone = 0;
+                                        let unknown = 0;
+                                        setInvoiceServiceLines((prev) => {
+                                          const next = [...prev];
+                                          tardocLineEntries.forEach(({ i }, k) => {
+                                            const sug = suggestions[k];
+                                            if (!sug) return;
+                                            // Only fill empty refs — never overwrite a user-set value.
+                                            if (next[i].tardocRefCode && next[i].tardocRefCode!.trim() !== "") {
+                                              kept++;
+                                              return;
+                                            }
+                                            if (sug.source === "masterCode" || sug.source === "additionalService") {
+                                              next[i] = { ...next[i], tardocRefCode: sug.suggestedRef };
+                                              filled++;
+                                            } else if (sug.source === "standalone") {
+                                              standalone++;
+                                            } else {
+                                              unknown++;
+                                            }
+                                          });
+                                          return next;
+                                        });
+                                        alert(
+                                          `Suggest refs complete:\n` +
+                                          `  ${filled} filled (master or add-on per catalog)\n` +
+                                          `  ${kept} kept (Ref already set)\n` +
+                                          `  ${standalone} left empty (standalone main service)\n` +
+                                          `  ${unknown} could not be looked up`,
+                                        );
+                                      } catch (err) {
+                                        alert(
+                                          `Suggest refs failed: ${err instanceof Error ? err.message : String(err)}`,
+                                        );
+                                      }
+                                    }}
+                                    className="text-[9px] font-medium text-emerald-600 hover:text-emerald-800 hover:underline"
+                                    title="Look up each TARDOC line's required reference per the live catalog (MasterCode + SearchAdditionalService). Fills empty Ref fields only; review before saving."
+                                  >
+                                    Suggest refs
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        const res = await fetch("/api/tardoc/sumex?action=info");
+                                        const json = await res.json();
+                                        if (json.success) setTardocDbInfo(json.data);
+                                      } catch { /* ignore */ }
+                                    }}
+                                    className="text-[9px] text-sky-500 hover:text-sky-700 hover:underline"
+                                  >
+                                    Check version
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           ) : invoiceMode === "flatrate" ? (
@@ -6269,6 +6345,23 @@ export default function MedicalConsultationsCard({
                                             });
                                           }}
                                           className="w-14 rounded border border-slate-200 px-1 py-0.5 text-center text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1" title="Master TARDOC code this line references (Zuschlag → base). Leave empty if this code is standalone.">
+                                        <span className="text-[9px] text-slate-400">Ref:</span>
+                                        <input
+                                          type="text"
+                                          value={line.tardocRefCode ?? ""}
+                                          placeholder="e.g. AA.00.0010"
+                                          onChange={(e) => {
+                                            const raw = e.target.value.trim().toUpperCase();
+                                            setInvoiceServiceLines((prev) => {
+                                              const next = [...prev];
+                                              next[index] = { ...next[index], tardocRefCode: raw === "" ? null : raw };
+                                              return next;
+                                            });
+                                          }}
+                                          className="w-24 rounded border border-slate-200 px-1 py-0.5 font-mono text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"
                                         />
                                       </div>
                                       <div className="flex items-center gap-1">
