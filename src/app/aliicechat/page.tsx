@@ -4,9 +4,9 @@ import { useEffect } from "react";
 import Image from "next/image";
 import Script from "next/script";
 
-// Retell AI Configuration - Uses environment variables with fallback
-const RETELL_PUBLIC_KEY = process.env.NEXT_PUBLIC_RETELL_PUBLIC_KEY || "key_19ba0b68c96753283f143e6dc1d8";
-const RETELL_AGENT_ID = process.env.NEXT_PUBLIC_RETELL_AGENT_ID || "agent_d90f511c99e2e48020c3f08b73";
+// Retell AI Configuration
+const RETELL_PUBLIC_KEY = "key_19ba0b68c96753283f143e6dc1d8";
+const RETELL_AGENT_ID = "agent_49322ed02ae4ea55665d81536c";
 
 export default function AliiceChatPage() {
   useEffect(() => {
