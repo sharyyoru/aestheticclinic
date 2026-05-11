@@ -2442,6 +2442,11 @@ export default function MedicalConsultationsCard({
           const isTardocLine = !!li.tardoc_code;
           const isAcfLine = li.catalog_name === "ACF" || li.catalog_name === "TMA";
           const isMaterielLine = li.catalog_name === "MATERIEL" || li.tariff_code === 406;
+          
+          // Debug: Log ref_code values for TARDOC lines
+          if (isTardocLine) {
+            console.log(`[DEBUG] TARDOC line ${li.tardoc_code}: ref_code =`, li.ref_code, `(type: ${typeof li.ref_code})`);
+          }
           let serviceId: string;
           if (isTardocLine) {
             serviceId = `tardoc-${li.tardoc_code}`;
@@ -6351,7 +6356,14 @@ export default function MedicalConsultationsCard({
                                         <span className="text-[9px] text-slate-400">Ref:</span>
                                         <input
                                           type="text"
-                                          value={line.tardocRefCode ?? ""}
+                                          value={(() => {
+                                            const val = line.tardocRefCode ?? "";
+                                            // Debug: Log what's being displayed
+                                            if (line.serviceId?.startsWith("tardoc-")) {
+                                              console.log(`[RENDER] TARDOC ${line.serviceId}: tardocRefCode =`, line.tardocRefCode, `(displaying: "${val}")`);
+                                            }
+                                            return val;
+                                          })()}
                                           placeholder="e.g. AA.00.0010"
                                           onChange={(e) => {
                                             const raw = e.target.value.trim().toUpperCase();

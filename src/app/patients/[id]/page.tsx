@@ -112,7 +112,10 @@ async function getInvoiceSummary(
       .select(
         "total_amount, paid_amount, status, is_complimentary, is_archived, payment_method",
       )
-      .eq("patient_id", patientId);
+      .eq("patient_id", patientId)
+      // Exclude installment sub-invoices: they share their parent's amount and
+      // would otherwise be double-counted (parent total + child total).
+      .is("parent_invoice_id", null);
 
     if (error || !data) {
       return emptyResult;
