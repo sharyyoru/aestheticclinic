@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAllForms, getFormById, FormDefinition } from "@/lib/formDefinitions";
-import { FileText, Send, Eye, Clock, CheckCircle, AlertCircle, Copy, ExternalLink, ChevronDown, X } from "lucide-react";
+import { FileText, Send, Eye, Clock, CheckCircle, AlertCircle, Copy, ExternalLink, X } from "lucide-react";
 
 type FormSubmission = {
   id: string;
@@ -28,84 +28,102 @@ type SendFormModalProps = {
 };
 
 function SendFormModal({ patientId, patientEmail, patientName, onClose, onSuccess }: SendFormModalProps) {
+  const [selectedLanguage, setSelectedLanguage] = useState<"en" | "fr" | null>(null);
   const [forms] = useState<FormDefinition[]>(getAllForms());
-  const [selectedFormId, setSelectedFormId] = useState<string>("");
+  const [selectedFormIds, setSelectedFormIds] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [generatedUrls, setGeneratedUrls] = useState<{formId: string; url: string; formName: string}[]>([]);
   const [copied, setCopied] = useState(false);
+  
+  const filteredForms = selectedLanguage 
+    ? forms.filter(form => form.language === selectedLanguage)
+    : [];
 
-  const selectedForm = selectedFormId ? getFormById(selectedFormId) : null;
-
-  const handleGenerateLink = async () => {
-    if (!selectedFormId) return;
+  const handleGenerateLinks = async () => {
+    if (selectedFormIds.length === 0) return;
 
     try {
       setSending(true);
       setError(null);
 
-      const response = await fetch("/api/forms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId,
-          formId: selectedFormId,
-        }),
-      });
+      const results = await Promise.all(
+        selectedFormIds.map(async (formId) => {
+          const response = await fetch("/api/forms", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              patientId,
+              formId,
+            }),
+          });
 
-      const data = await response.json();
+          const data = await response.json();
 
-      if (!response.ok) {
-        setError(data.error || "Failed to generate form link");
-        setSending(false);
-        return;
-      }
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to generate form link");
+          }
 
-      setGeneratedUrl(data.formUrl);
+          const form = getFormById(formId);
+          const formName = form && form.language === "fr" && form.nameFr ? form.nameFr : form?.name || formId;
+
+          return {
+            formId,
+            url: data.formUrl,
+            formName,
+          };
+        })
+      );
+
+      setGeneratedUrls(results);
       setSending(false);
     } catch (err) {
-      console.error("Error generating form link:", err);
-      setError("Failed to generate form link");
+      console.error("Error generating form links:", err);
+      setError(err instanceof Error ? err.message : "Failed to generate form links");
       setSending(false);
     }
   };
 
   const handleSendEmail = async () => {
-    if (!generatedUrl || !patientEmail || !selectedForm) return;
+    if (generatedUrls.length === 0 || !patientEmail) return;
 
     try {
       setSending(true);
       setError(null);
 
-      const formName = selectedForm.language === "fr" && selectedForm.nameFr ? selectedForm.nameFr : selectedForm.name;
-      const subject = selectedForm.language === "fr" 
-        ? `Formulaire à remplir: ${formName}`
-        : `Form to complete: ${formName}`;
+      const isFrench = selectedLanguage === "fr";
+      const subject = isFrench 
+        ? `Formulaires à remplir: ${generatedUrls.length} formulaire${generatedUrls.length > 1 ? 's' : ''}`
+        : `Forms to complete: ${generatedUrls.length} form${generatedUrls.length > 1 ? 's' : ''}`;
 
-      const html = selectedForm.language === "fr"
+      const formLinks = generatedUrls.map(({ url, formName }) => 
+        `<p style="margin: 12px 0;">
+          <a href="${url}" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600;">
+            ${formName}
+          </a>
+        </p>`
+      ).join('');
+
+      const html = isFrench
         ? `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #1e293b;">Bonjour ${patientName},</h2>
-            <p style="color: #475569;">Veuillez remplir le formulaire suivant en cliquant sur le lien ci-dessous:</p>
-            <p style="margin: 24px 0;">
-              <a href="${generatedUrl}" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600;">
-                ${formName}
-              </a>
-            </p>
-            <p style="color: #64748b; font-size: 14px;">Ce lien expire dans 30 jours.</p>
+            <p style="color: #475569;">Veuillez remplir les formulaires suivants en cliquant sur les liens ci-dessous:</p>
+            <div style="margin: 24px 0;">
+              ${formLinks}
+            </div>
+            <p style="color: #64748b; font-size: 14px;">Ces liens expirent dans 30 jours.</p>
             <p style="color: #475569;">Cordialement,<br/>L'équipe Aesthetics</p>
           </div>
         `
         : `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #1e293b;">Hello ${patientName},</h2>
-            <p style="color: #475569;">Please complete the following form by clicking the link below:</p>
-            <p style="margin: 24px 0;">
-              <a href="${generatedUrl}" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600;">
-                ${formName}
-              </a>
-            </p>
-            <p style="color: #64748b; font-size: 14px;">This link expires in 30 days.</p>
+            <p style="color: #475569;">Please complete the following forms by clicking the links below:</p>
+            <div style="margin: 24px 0;">
+              ${formLinks}
+            </div>
+            <p style="color: #64748b; font-size: 14px;">These links expire in 30 days.</p>
             <p style="color: #475569;">Best regards,<br/>The Aesthetics Team</p>
           </div>
         `;
@@ -138,15 +156,30 @@ function SendFormModal({ patientId, patientEmail, patientName, onClose, onSucces
     }
   };
 
-  const handleCopyLink = () => {
-    if (!generatedUrl) return;
-    navigator.clipboard.writeText(generatedUrl);
+  const handleCopyLink = (url: string) => {
+    navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleToggleForm = (formId: string) => {
+    setSelectedFormIds(prev => 
+      prev.includes(formId) 
+        ? prev.filter(id => id !== formId)
+        : [...prev, formId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedFormIds.length === filteredForms.length) {
+      setSelectedFormIds([]);
+    } else {
+      setSelectedFormIds(filteredForms.map(f => f.id));
+    }
+  };
+
   // Group forms by category
-  const groupedForms = forms.reduce((acc, form) => {
+  const groupedForms = filteredForms.reduce((acc, form) => {
     const category = form.category;
     if (!acc[category]) acc[category] = [];
     acc[category].push(form);
@@ -179,101 +212,174 @@ function SendFormModal({ patientId, patientEmail, patientName, onClose, onSucces
           </div>
         )}
 
-        {!generatedUrl ? (
+        {generatedUrls.length === 0 ? (
           <>
-            <div className="mb-4">
-              <label className="mb-2 block text-sm font-medium text-slate-700">Select Form</label>
-              <div className="relative">
-                <select
-                  value={selectedFormId}
-                  onChange={(e) => setSelectedFormId(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 py-2.5 pr-10 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
-                >
-                  <option value="">Select a form...</option>
-                  {Object.entries(groupedForms).map(([category, categoryForms]) => (
-                    <optgroup key={category} label={categoryLabels[category] || category}>
-                      {categoryForms.map((form) => (
-                        <option key={form.id} value={form.id}>
-                          {form.language === "fr" && form.nameFr ? form.nameFr : form.name} ({form.language.toUpperCase()})
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              </div>
-            </div>
-
-            {selectedForm && (
-              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-sm font-medium text-slate-900">
-                  {selectedForm.language === "fr" && selectedForm.nameFr ? selectedForm.nameFr : selectedForm.name}
-                </p>
-                <p className="mt-1 text-xs text-slate-600">
-                  {selectedForm.language === "fr" && selectedForm.descriptionFr ? selectedForm.descriptionFr : selectedForm.description}
-                </p>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                    selectedForm.language === "fr" 
-                      ? "bg-blue-100 text-blue-700" 
-                      : "bg-emerald-100 text-emerald-700"
-                  }`}>
-                    {selectedForm.language === "fr" ? "Français" : "English"}
-                  </span>
-                  <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-700">
-                    {categoryLabels[selectedForm.category]}
-                  </span>
+            {!selectedLanguage ? (
+              <>
+                <div className="mb-4">
+                  <label className="mb-3 block text-sm font-medium text-slate-700">Select Language</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLanguage("en")}
+                      className="flex flex-col items-center gap-2 rounded-lg border-2 border-slate-200 bg-white p-4 transition-all hover:border-emerald-500 hover:bg-emerald-50"
+                    >
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                        <span className="text-xl font-semibold text-emerald-700">EN</span>
+                      </div>
+                      <span className="text-sm font-medium text-slate-900">English</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLanguage("fr")}
+                      className="flex flex-col items-center gap-2 rounded-lg border-2 border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+                        <span className="text-xl font-semibold text-blue-700">FR</span>
+                      </div>
+                      <span className="text-sm font-medium text-slate-900">Français</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedLanguage(null);
+                        setSelectedFormIds([]);
+                      }}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      ← Change Language
+                    </button>
+                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                      selectedLanguage === "fr" 
+                        ? "bg-blue-100 text-blue-700" 
+                        : "bg-emerald-100 text-emerald-700"
+                    }`}>
+                      {selectedLanguage === "fr" ? "Français" : "English"}
+                    </span>
+                  </div>
+                  {filteredForms.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSelectAll}
+                      className="text-xs font-medium text-sky-600 hover:text-sky-700"
+                    >
+                      {selectedFormIds.length === filteredForms.length ? "Deselect All" : "Select All"}
+                    </button>
+                  )}
+                </div>
 
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleGenerateLink}
-                disabled={!selectedFormId || sending}
-                className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {sending ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="h-4 w-4" />
-                    Generate Link
-                  </>
-                )}
-              </button>
-            </div>
+                <div className="mb-4">
+                  <label className="mb-3 block text-sm font-medium text-slate-700">
+                    Select Forms ({selectedFormIds.length} selected)
+                  </label>
+                  <div className="max-h-[400px] space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    {Object.entries(groupedForms).map(([category, categoryForms]) => (
+                      <div key={category}>
+                        <h4 className="mb-2 text-xs font-semibold text-slate-700">
+                          {categoryLabels[category] || category}
+                        </h4>
+                        <div className="space-y-2">
+                          {categoryForms.map((form) => (
+                            <label
+                              key={form.id}
+                              className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 transition-all hover:border-sky-300 hover:bg-sky-50"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedFormIds.includes(form.id)}
+                                onChange={() => handleToggleForm(form.id)}
+                                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
+                              />
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-slate-900">
+                                  {form.language === "fr" && form.nameFr ? form.nameFr : form.name}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-600">
+                                  {form.language === "fr" && form.descriptionFr ? form.descriptionFr : form.description}
+                                </p>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGenerateLinks}
+                    disabled={selectedFormIds.length === 0 || sending}
+                    className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {sending ? (
+                      <>
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-4 w-4" />
+                        Generate Link{selectedFormIds.length > 1 ? 's' : ''}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
           </>
         ) : (
           <>
             <div className="mb-4">
-              <label className="mb-2 block text-sm font-medium text-slate-700">Form Link Generated</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={generatedUrl}
-                  readOnly
-                  className="flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600"
-                />
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  {copied ? "Copied!" : "Copy"}
-                </button>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Form Link{generatedUrls.length > 1 ? 's' : ''} Generated ({generatedUrls.length})
+              </label>
+              <div className="max-h-[300px] space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
+                {generatedUrls.map(({ formId, url, formName }) => (
+                  <div key={formId} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-sm font-medium text-slate-900">{formName}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyLink(url)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                      >
+                        <Copy className="h-3 w-3" />
+                        {copied ? "Copied!" : "Copy"}
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={url}
+                      readOnly
+                      className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 
