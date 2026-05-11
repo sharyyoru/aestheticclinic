@@ -485,12 +485,9 @@ export default function FinancialsPage() {
         // PAID or OVERPAID - full amount is paid
         totalPaid += amount;
       } else if (row.status === "PARTIAL_LOSS") {
-        // Partial loss - use actual paid_amount, proportionally for service filtering
-        const invoiceTotal = row.amount || 1;
-        const paidRatio = (row.paid_amount || 0) / invoiceTotal;
-        const paidPortion = amount * paidRatio;
-        totalPaid += paidPortion;
-        // The loss portion is not counted as unpaid (it's written off)
+        // Partial loss - count full amount as paid (insurance accepted, loss is written off)
+        // The "loss" is a negotiated reduction, not unpaid revenue
+        totalPaid += amount;
       } else {
         // For all other statuses (OPEN, PARTIAL_PAID, etc.), use actual paid_amount
         // This ensures payments are counted even if status hasn't been updated to PAID
@@ -543,18 +540,13 @@ export default function FinancialsPage() {
           existing.totalComplimentary += amount;
         } else {
           existing.totalAmount += amount;
-          // Calculate paid/unpaid based on actual paid_amount field
+          // Calculate paid/unpaid based on status and paid_amount
           if (row.status === "CANCELLED") {
             // Cancelled - don't count
-          } else if (row.isPaid) {
-            // PAID or OVERPAID
+          } else if (row.isPaid || row.status === "PARTIAL_LOSS") {
+            // PAID, OVERPAID, or PARTIAL_LOSS - count full amount as paid
+            // PARTIAL_LOSS means insurance accepted (loss is written off, not unpaid)
             existing.totalPaid += amount;
-          } else if (row.status === "PARTIAL_LOSS") {
-            // Partial loss - use actual paid_amount
-            const invoiceTotal = row.amount || 1;
-            const paidRatio = (row.paid_amount || 0) / invoiceTotal;
-            existing.totalPaid += amount * paidRatio;
-            // Loss portion not counted as unpaid
           } else {
             // For all other statuses, use actual paid_amount
             const invoiceTotal = row.amount || 1;
@@ -668,15 +660,12 @@ export default function FinancialsPage() {
           existing.totalComplimentary += amount;
         } else {
           existing.totalAmount += amount;
-          // Calculate paid/unpaid based on actual paid_amount field
+          // Calculate paid/unpaid based on status and paid_amount
           if (row.status === "CANCELLED") {
             // Cancelled - don't count
-          } else if (row.isPaid) {
+          } else if (row.isPaid || row.status === "PARTIAL_LOSS") {
+            // PAID, OVERPAID, or PARTIAL_LOSS - count full amount as paid
             existing.totalPaid += amount;
-          } else if (row.status === "PARTIAL_LOSS") {
-            const invoiceTotal = row.amount || 1;
-            const paidRatio = (row.paid_amount || 0) / invoiceTotal;
-            existing.totalPaid += amount * paidRatio;
           } else {
             // For all other statuses, use actual paid_amount
             const invoiceTotal = row.amount || 1;
@@ -733,15 +722,12 @@ export default function FinancialsPage() {
 
         if (!row.is_complimentary) {
           existing.totalAmount += amount;
-          // Calculate paid/unpaid based on actual paid_amount field
+          // Calculate paid/unpaid based on status and paid_amount
           if (row.status === "CANCELLED") {
             // Cancelled - don't count
-          } else if (row.isPaid) {
+          } else if (row.isPaid || row.status === "PARTIAL_LOSS") {
+            // PAID, OVERPAID, or PARTIAL_LOSS - count full amount as paid
             existing.totalPaid += amount;
-          } else if (row.status === "PARTIAL_LOSS") {
-            const invoiceTotal = row.amount || 1;
-            const paidRatio = (row.paid_amount || 0) / invoiceTotal;
-            existing.totalPaid += amount * paidRatio;
           } else {
             // For all other statuses, use actual paid_amount
             const invoiceTotal = row.amount || 1;
@@ -1432,7 +1418,7 @@ export default function FinancialsPage() {
                 { label: "Total billed", val: summary.totalAmount, compVal: comparisonInvoices.reduce((s,i) => s + (i.is_complimentary ? 0 : i.amount), 0) },
                 { label: "Total paid", val: summary.totalPaid, compVal: comparisonInvoices.reduce((s,i) => {
                   if (i.is_complimentary || i.status === "CANCELLED") return s;
-                  if (i.isPaid) return s + i.amount;
+                  if (i.isPaid || i.status === "PARTIAL_LOSS") return s + i.amount;
                   // Use actual paid_amount for all other statuses
                   const actualPaid = i.paid_amount || 0;
                   if (actualPaid >= i.amount) return s + i.amount;
@@ -1440,8 +1426,7 @@ export default function FinancialsPage() {
                 }, 0) },
                 { label: "Outstanding (unpaid)", val: summary.totalUnpaid, compVal: comparisonInvoices.reduce((s,i) => {
                   if (i.is_complimentary || i.status === "CANCELLED") return s;
-                  if (i.isPaid) return s;
-                  if (i.status === "PARTIAL_LOSS") return s; // Loss portion not counted as unpaid
+                  if (i.isPaid || i.status === "PARTIAL_LOSS") return s; // Fully settled
                   // Calculate unpaid based on actual paid_amount
                   const actualPaid = i.paid_amount || 0;
                   if (actualPaid >= i.amount) return s; // Fully paid
