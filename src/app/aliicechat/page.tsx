@@ -10,7 +10,7 @@ const RETELL_AGENT_ID = "agent_49322ed02ae4ea55665d81536c";
 
 export default function AliiceChatPage() {
   useEffect(() => {
-    // Add custom styles to make the chat widget full-screen
+    // Add custom styles to make the chat widget full-screen and add typing animation
     const style = document.createElement("style");
     style.innerHTML = `
       /* Make the Retell chat widget full-screen on this page */
@@ -38,6 +38,83 @@ export default function AliiceChatPage() {
         max-height: 100vh !important;
         border-radius: 0 !important;
         margin: 0 !important;
+      }
+      
+      /* Typing indicator animation - bouncing dots */
+      @keyframes typingBounce {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-8px); }
+      }
+      
+      @keyframes typingPulse {
+        0%, 100% { opacity: 0.4; }
+        50% { opacity: 1; }
+      }
+      
+      /* Style the typing/loading indicator in Retell widget */
+      [class*="typing"], 
+      [class*="loading"],
+      [class*="thinking"],
+      [class*="Typing"],
+      [class*="Loading"],
+      [class*="Thinking"] {
+        display: flex !important;
+        align-items: center !important;
+        gap: 4px !important;
+        padding: 12px 16px !important;
+        background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+        border-radius: 18px !important;
+        margin: 8px 0 !important;
+      }
+      
+      /* Create custom typing dots via pseudo-elements if needed */
+      .retell-typing-indicator,
+      [class*="typing-indicator"] {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 5px !important;
+      }
+      
+      .retell-typing-indicator::before,
+      .retell-typing-indicator span,
+      [class*="typing-indicator"] span {
+        content: '';
+        width: 8px !important;
+        height: 8px !important;
+        background: #0ea5e9 !important;
+        border-radius: 50% !important;
+        animation: typingBounce 1.4s ease-in-out infinite !important;
+      }
+      
+      .retell-typing-indicator span:nth-child(1),
+      [class*="typing-indicator"] span:nth-child(1) {
+        animation-delay: 0s !important;
+      }
+      
+      .retell-typing-indicator span:nth-child(2),
+      [class*="typing-indicator"] span:nth-child(2) {
+        animation-delay: 0.2s !important;
+      }
+      
+      .retell-typing-indicator span:nth-child(3),
+      [class*="typing-indicator"] span:nth-child(3) {
+        animation-delay: 0.4s !important;
+      }
+      
+      /* Smooth message appearance */
+      [class*="message"] {
+        animation: messageAppear 0.3s ease-out !important;
+      }
+      
+      @keyframes messageAppear {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
     `;
     document.head.appendChild(style);
