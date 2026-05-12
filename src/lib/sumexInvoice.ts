@@ -2611,6 +2611,8 @@ export async function printInvoiceRequest(
         bstrPrintTemplate: "",
         lGenerationAttributes: 0,
         ePrintPreview: 0, // enNo
+        eAddressRight: 1, // enYes
+        plTimestamp: 0,
       },
     );
 
