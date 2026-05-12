@@ -110,6 +110,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Record individual payment
+      await supabaseAdmin.from("invoice_payments").insert({
+        invoice_id: invoiceId,
+        amount: Number(updatePayload.paid_amount),
+        payment_date: new Date().toISOString().substring(0, 10),
+        payment_method: "payrexx",
+        payrexx_transaction_id: invoice.payrexx_gateway_id ? String(invoice.payrexx_gateway_id) : null,
+      });
+
       return NextResponse.json({
         success: true,
         message: isPartialLoss ? "Invoice marked as partial loss (fees deducted)" : "Invoice marked as paid",

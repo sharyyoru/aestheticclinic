@@ -53,6 +53,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // Record individual payment
+      await supabaseAdmin.from("invoice_payments").insert({
+        invoice_id: invoice.id,
+        amount: Number(invoice.total_amount),
+        payment_date: new Date().toISOString().substring(0, 10),
+        payment_method: "manual",
+      });
+
       return NextResponse.json({
         success: true,
         message: "Invoice marked as paid",

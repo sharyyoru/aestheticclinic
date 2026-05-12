@@ -193,6 +193,17 @@ export async function POST(request: NextRequest) {
         .update(instUpdate)
         .eq("id", installment.id);
 
+      // Record individual payment
+      if (isPaid && installment.status !== "PAID") {
+        await supabaseAdmin.from("invoice_payments").insert({
+          invoice_id: invoice.id,
+          amount: Number(installment.amount) || 0,
+          payment_date: new Date().toISOString().substring(0, 10),
+          payment_method: "payrexx",
+          payrexx_transaction_id: String(transaction.id),
+        });
+      }
+
       // Recalculate invoice-level status based on all installments
       if (isPaid) {
         const { data: allInstallments } = await supabaseAdmin
@@ -291,6 +302,17 @@ export async function POST(request: NextRequest) {
         { error: "Failed to update invoice" },
         { status: 500 }
       );
+    }
+
+    // Record individual payment
+    if (isPaid && updateData.paid_amount) {
+      await supabaseAdmin.from("invoice_payments").insert({
+        invoice_id: invoice.id,
+        amount: Number(updateData.paid_amount),
+        payment_date: new Date().toISOString().substring(0, 10),
+        payment_method: "payrexx",
+        payrexx_transaction_id: String(transaction.id),
+      });
     }
 
     console.log("Invoice updated successfully:", {

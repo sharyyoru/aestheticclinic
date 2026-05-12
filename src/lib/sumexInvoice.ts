@@ -2544,3 +2544,103 @@ export function mapTiersMode(billing: string): TiersMode {
 export function mapSex(sex: string): SexType {
   return sex?.toLowerCase() === "female" ? SexType.Female : SexType.Male;
 }
+
+/**
+ * Generate a PDF from stored invoice request XML using the Sumex request manager.
+ * Uses LoadXML to load the XML, then Print to produce the PDF.
+ */
+export async function printInvoiceRequest(
+  xmlContent: string,
+  fileName: string = "invoice.xml",
+): Promise<{ success: boolean; pdfContent?: Buffer; pdfFilePath?: string; error?: string }> {
+  const factory = await reqGet<{ pIGeneralInvoiceRequestManager: number }>(
+    "IGeneralInvoiceRequestManager/GetCreateGeneralInvoiceRequestManager",
+  );
+  const mgrHandle = factory.pIGeneralInvoiceRequestManager;
+
+  try {
+    // LoadXML — POST with octet-stream body containing the XML content
+    const loadParams = new URLSearchParams({
+      pIGeneralInvoiceRequestManager: String(mgrHandle),
+      bstrInputFile: fileName,
+    });
+    const loadUrl = `${SUMEX_REQUEST_BASE_URL}/IGeneralInvoiceRequestManager/LoadXML?${loadParams}`;
+    console.log(`${LOG_PREFIX} Request LoadXML POST to ${loadUrl}`);
+
+    const xmlBytes = new TextEncoder().encode(xmlContent);
+    const loadFetch = await fetch(loadUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(xmlBytes.length),
+      },
+      body: xmlBytes,
+      cache: "no-store",
+    });
+
+    if (!loadFetch.ok) {
+      const errBody = await loadFetch.text().catch(() => "");
+      return { success: false, error: `LoadXML POST failed: ${loadFetch.status} ${errBody}` };
+    }
+
+    const loadRes = (await loadFetch.json()) as {
+      pIGeneralInvoiceRequest: number;
+      pbStatus: boolean;
+    };
+
+    if (!loadRes.pbStatus) {
+      const abortRes = await reqPost<{ pbstrAbortInfo: string }>(
+        "IGeneralInvoiceRequestManager",
+        "GetAbortInfo",
+        { pIGeneralInvoiceRequestManager: mgrHandle },
+      ).catch(() => ({ pbstrAbortInfo: "Unknown error" }));
+      return { success: false, error: `LoadXML failed: ${abortRes.pbstrAbortInfo}` };
+    }
+
+    console.log(`${LOG_PREFIX} Request loaded, handle=${loadRes.pIGeneralInvoiceRequest}`);
+
+    // Print — generate PDF
+    const printRes = await reqPost<{
+      pbStatus: boolean;
+      pbstrPDFFile: string;
+    }>(
+      "IGeneralInvoiceRequestManager",
+      "Print",
+      {
+        pIGeneralInvoiceRequestManager: mgrHandle,
+        bstrPrintTemplate: "",
+        lGenerationAttributes: 0,
+        ePrintPreview: 0, // enNo
+      },
+    );
+
+    if (!printRes.pbStatus || !printRes.pbstrPDFFile) {
+      const abortRes = await reqPost<{ pbstrAbortInfo: string }>(
+        "IGeneralInvoiceRequestManager",
+        "GetAbortInfo",
+        { pIGeneralInvoiceRequestManager: mgrHandle },
+      ).catch(() => ({ pbstrAbortInfo: "Unknown error" }));
+      return { success: false, error: `Print failed: ${abortRes.pbstrAbortInfo}` };
+    }
+
+    // Download the PDF content from the server
+    const baseOrigin = new URL(SUMEX_REQUEST_BASE_URL).origin;
+    const pdfUrl = `${baseOrigin}${printRes.pbstrPDFFile}`;
+    console.log(`${LOG_PREFIX} Request PDF: ${pdfUrl}`);
+    const pdfRes = await fetch(pdfUrl, { cache: "no-store" });
+    if (!pdfRes.ok) {
+      return { success: false, error: `PDF download failed: ${pdfRes.status}` };
+    }
+    const arrayBuf = await pdfRes.arrayBuffer();
+    return {
+      success: true,
+      pdfContent: Buffer.from(arrayBuf),
+      pdfFilePath: printRes.pbstrPDFFile,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}

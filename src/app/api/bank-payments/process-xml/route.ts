@@ -369,6 +369,15 @@ async function applyPaymentToInvoice(
   if (updateError) {
     result.matchStatus = "error";
     result.matchNotes = `Failed to update invoice: ${updateError.message}`;
+  } else {
+    // Record individual payment
+    await supabaseAdmin.from("invoice_payments").insert({
+      invoice_id: invoice.id,
+      amount: paymentAmount,
+      payment_date: tx.bookingDate || new Date().toISOString().substring(0, 10),
+      payment_method: "bank_transfer",
+      notes: `Bank XML import - ${tx.referenceNumber || ""}`.trim(),
+    });
   }
 
   return result;
@@ -433,6 +442,15 @@ async function applyPaymentToInstallment(
     result.matchNotes = `Failed to update installment: ${updateError.message}`;
     return result;
   }
+
+  // Record individual payment (linked to parent invoice)
+  await supabaseAdmin.from("invoice_payments").insert({
+    invoice_id: installment.invoice_id,
+    amount: paymentAmount,
+    payment_date: tx.bookingDate || new Date().toISOString().substring(0, 10),
+    payment_method: "bank_transfer",
+    notes: `Bank XML import - installment #${installment.installment_number}`,
+  });
 
   // Also update parent invoice paid_amount (sum of all installment paid amounts)
   if (installment.invoice_id) {

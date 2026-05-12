@@ -1746,6 +1746,17 @@ export default function MedicalConsultationsCard({
         .from("invoice_installments")
         .update({ status: newStatus, paid_amount: paidAmount, paid_at: paidAt })
         .eq("id", inst.id);
+
+      // Record or remove payment
+      if (newStatus === "PAID") {
+        await supabaseClient.from("invoice_payments").insert({
+          invoice_id: installmentsTarget.invoice_id,
+          amount: Number(inst.amount) || 0,
+          payment_date: new Date().toISOString().substring(0, 10),
+          payment_method: "manual",
+          notes: `Installment #${index + 1}`,
+        });
+      }
     }
 
     // Recalculate master invoice paid_amount and status
@@ -2069,6 +2080,18 @@ export default function MedicalConsultationsCard({
         return;
       }
 
+      // Record or remove payment
+      if (nextPaid) {
+        await supabaseClient.from("invoice_payments").insert({
+          invoice_id: invoiceId,
+          amount: target?.invoice_total_amount || 0,
+          payment_date: new Date().toISOString().substring(0, 10),
+          payment_method: "manual",
+        });
+      } else {
+        await supabaseClient.from("invoice_payments").delete().eq("invoice_id", invoiceId);
+      }
+
       setConsultations((prev) =>
         prev.map((row) =>
           row.id === invoiceId ? { ...row, invoice_is_paid: nextPaid, invoice_status: newStatus as InvoiceStatus } : row,
@@ -2140,6 +2163,15 @@ export default function MedicalConsultationsCard({
         setCashReceiptUploading(false);
         return;
       }
+
+      // Record payment
+      await supabaseClient.from("invoice_payments").insert({
+        invoice_id: cashReceiptTarget.id,
+        amount: cashReceiptTarget.invoice_total_amount || 0,
+        payment_date: new Date().toISOString().substring(0, 10),
+        payment_method: "cash",
+        created_by_user_id: userId,
+      });
 
       setConsultations((prev) =>
         prev.map((row) =>
@@ -2566,6 +2598,17 @@ export default function MedicalConsultationsCard({
         .eq("id", invoiceId);
 
       if (error) throw error;
+
+      // Record payment (only for paid statuses with an amount)
+      if (resolvedPaidAmount && resolvedPaidAmount > 0 && status !== "OPEN" && status !== "CANCELLED") {
+        await supabaseClient.from("invoice_payments").insert({
+          invoice_id: invoiceId,
+          amount: resolvedPaidAmount,
+          payment_date: new Date().toISOString().substring(0, 10),
+          payment_method: "manual",
+          created_by_user_id: userId,
+        });
+      }
 
       setConsultations(prev =>
         prev.map(c =>

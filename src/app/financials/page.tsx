@@ -40,6 +40,7 @@ type NormalizedInvoice = {
   id: string;
   invoice_number: string;
   invoice_date: string | null;
+  last_payment_date: string | null;
   patient_id: string | null;
   patientName: string;
   doctor_user_id: string | null;
@@ -144,6 +145,7 @@ export default function FinancialsPage() {
   const [normalizedInvoices, setNormalizedInvoices] = useState<NormalizedInvoice[]>([]);
   const [allServiceSummary, setAllServiceSummary] = useState<ApiServiceSummary[]>([]);
   const [lineItems, setLineItems] = useState<LineItemLite[]>([]);
+  const [payments, setPayments] = useState<{ invoice_id: string; payment_date: string | null; amount: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -158,6 +160,7 @@ export default function FinancialsPage() {
   const [itemTypeFilter, setItemTypeFilter] = useState<ItemType>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+  const [dateFilterField, setDateFilterField] = useState<"invoice_date" | "payment_date">("invoice_date");
   const [customDatePreset, setCustomDatePreset] = useState<string>("custom");
   const [comparePeriod, setComparePeriod] = useState<ComparePeriod>("none");
   const [invoiceCountMin, setInvoiceCountMin] = useState<string>("");
@@ -184,6 +187,7 @@ export default function FinancialsPage() {
         setNormalizedInvoices(json.invoices ?? []);
         setAllServiceSummary(json.serviceSummary ?? []);
         setLineItems(json.lineItems ?? []);
+        setPayments(json.payments ?? []);
         setLoading(false);
       } catch {
         if (!isMounted) return;
@@ -386,31 +390,62 @@ export default function FinancialsPage() {
 
   function matchesDateRange(row: NormalizedInvoice, from: string, to: string): boolean {
     if (!from && !to) return true;
-    if (!row.invoice_date) return false;
-    const d = row.invoice_date.substring(0, 10);
+    const d = dateFilterField === "payment_date"
+      ? row.last_payment_date
+      : row.invoice_date?.substring(0, 10);
+    if (!d) return false;
     if (from && d < from) return false;
     if (to && d > to) return false;
     return true;
   }
 
+  // When filtering by payment_date, build set of invoice IDs with payments in range
+  const invoiceIdsWithPaymentsInRange = useMemo(() => {
+    if (dateFilterField !== "payment_date" || (!dateFrom && !dateTo)) return null;
+    const ids = new Set<string>();
+    for (const p of payments) {
+      if (!p.payment_date) continue;
+      if (dateFrom && p.payment_date < dateFrom) continue;
+      if (dateTo && p.payment_date > dateTo) continue;
+      ids.add(p.invoice_id);
+    }
+    return ids;
+  }, [dateFilterField, dateFrom, dateTo, payments]);
+
   const filteredInvoices = useMemo(() => {
     return normalizedInvoices.filter((row) => {
       if (!matchesNonDateFilters(row)) return false;
-      if (!matchesDateRange(row, dateFrom, dateTo)) return false;
+      if (dateFilterField === "payment_date" && invoiceIdsWithPaymentsInRange) {
+        if (!invoiceIdsWithPaymentsInRange.has(row.id)) return false;
+      } else {
+        if (!matchesDateRange(row, dateFrom, dateTo)) return false;
+      }
       if (showOnlyUnpaid) {
         if (row.is_complimentary || row.isPaid) return false;
       }
       return true;
     });
-  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
+  }, [normalizedInvoices, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, dateFrom, dateTo, dateFilterField, showOnlyUnpaid, invoiceIdsWithPaymentsInRange]);
 
   // Comparison period invoices — same non-date filters, different date range, no showOnlyUnpaid
   const comparisonInvoices = useMemo(() => {
     if (!comparisonDateRange) return [];
+    if (dateFilterField === "payment_date") {
+      const compIds = new Set<string>();
+      for (const p of payments) {
+        if (!p.payment_date) continue;
+        if (p.payment_date < comparisonDateRange.from) continue;
+        if (p.payment_date > comparisonDateRange.to) continue;
+        compIds.add(p.invoice_id);
+      }
+      return normalizedInvoices.filter((row) =>
+        matchesNonDateFilters(row) && compIds.has(row.id)
+      );
+    }
     return normalizedInvoices.filter((row) =>
       matchesNonDateFilters(row) && matchesDateRange(row, comparisonDateRange.from, comparisonDateRange.to)
     );
-  }, [normalizedInvoices, comparisonDateRange, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter]);
+  }, [normalizedInvoices, comparisonDateRange, patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, dateFilterField, payments]);
 
   // Reset pages when filters change
   useEffect(() => {
@@ -418,7 +453,7 @@ export default function FinancialsPage() {
     setPatientPage(0);
     setDoctorPage(0);
     setServicePage(0);
-  }, [patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, dateFrom, dateTo, showOnlyUnpaid]);
+  }, [patientFilter, ownerFilter, doctorFilter, serviceFilters, itemTypeFilter, dateFrom, dateTo, dateFilterField, showOnlyUnpaid]);
 
   const totalInvoicePages = Math.max(1, Math.ceil(filteredInvoices.length / ROWS_PER_PAGE));
   const paginatedInvoices = useMemo(() => {
@@ -457,6 +492,30 @@ export default function FinancialsPage() {
     let totalUnpaid = 0;
     let totalComplimentary = 0;
     let invoiceCount = 0;
+
+    // When filtering by payment_date with a date range, sum actual payments in range
+    if (dateFilterField === "payment_date" && (dateFrom || dateTo)) {
+      // Sum payments within the date range for filtered invoices
+      const filteredIds = new Set(filteredInvoices.map((r) => r.id));
+      for (const p of payments) {
+        if (!filteredIds.has(p.invoice_id)) continue;
+        if (!p.payment_date) continue;
+        if (dateFrom && p.payment_date < dateFrom) continue;
+        if (dateTo && p.payment_date > dateTo) continue;
+        totalPaid += p.amount;
+      }
+      // totalAmount = sum of invoice amounts for filtered invoices
+      for (const row of filteredInvoices) {
+        const amount = serviceFilters.size > 0 ? getServiceSpecificAmount(row.id) : row.amount;
+        if (!Number.isFinite(amount) || amount <= 0) continue;
+        invoiceCount += 1;
+        if (row.is_complimentary) { totalComplimentary += amount; continue; }
+        if (row.status === "CANCELLED") continue;
+        totalAmount += amount;
+      }
+      totalUnpaid = totalAmount - totalPaid;
+      return { totalAmount, totalPaid, totalUnpaid, totalComplimentary, invoiceCount };
+    }
 
     for (const row of filteredInvoices) {
       // When filtering by service, use only the line items for those services
@@ -511,7 +570,7 @@ export default function FinancialsPage() {
     }
 
     return { totalAmount, totalPaid, totalUnpaid, totalComplimentary, invoiceCount };
-  }, [filteredInvoices, serviceFilters, getServiceSpecificAmount]);
+  }, [filteredInvoices, serviceFilters, getServiceSpecificAmount, dateFilterField, dateFrom, dateTo, payments]);
 
   const patientSummaryRows: PatientSummaryRow[] = useMemo(() => {
     const byPatient = new Map<string, PatientSummaryRow>();
@@ -1289,6 +1348,20 @@ export default function FinancialsPage() {
               <option value={`${last365}|${todayStr}`}>Last 365 Days</option>
             </>);
           })()}
+        </select>
+
+        {/* Date Field Toggle */}
+        <select
+          value={dateFilterField}
+          onChange={(e) => setDateFilterField(e.target.value as "invoice_date" | "payment_date")}
+          className={`rounded-lg border px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 ${
+            dateFilterField === "payment_date"
+              ? "border-emerald-400 bg-emerald-50 text-emerald-900 focus:border-emerald-500 focus:ring-emerald-400"
+              : "border-slate-200 bg-white text-slate-700 focus:border-sky-500 focus:ring-sky-500"
+          }`}
+        >
+          <option value="invoice_date">By Invoice Date</option>
+          <option value="payment_date">By Payment Date</option>
         </select>
 
         {/* Date Range */}

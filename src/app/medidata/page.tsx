@@ -21,6 +21,7 @@ type Submission = {
   is_storno?: boolean | null;
   parent_submission_id?: string | null;
   storno_reason?: string | null;
+  xml_content?: string | null;
   patient?: {
     id: string;
     first_name: string | null;
@@ -1587,18 +1588,34 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
                           </button>
                         )}
 
-                        {sub.invoice?.pdf_path && (
+                        {sub.xml_content && (
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              openStorageFile(sub.invoice?.pdf_path);
+                              try {
+                                const res = await fetch("/api/medidata/request-pdf", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ submissionId: sub.id }),
+                                });
+                                if (!res.ok) {
+                                  const err = await res.json().catch(() => ({}));
+                                  alert(err.error || "PDF generation failed");
+                                  return;
+                                }
+                                const blob = await res.blob();
+                                const url = URL.createObjectURL(blob);
+                                window.open(url, "_blank", "noopener,noreferrer");
+                              } catch (err) {
+                                alert("Failed to generate PDF");
+                              }
                             }}
                             className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
                           >
                             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            Open Invoice PDF
+                            View Invoice PDF
                           </button>
                         )}
                       </div>

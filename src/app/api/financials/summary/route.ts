@@ -64,7 +64,7 @@ function classifyItemType(item: any): "service" | "tardoc" | "insurance" | "mate
 // ---------------------------------------------------------------------------
 // Normalise raw invoice rows into the shape the client expects
 // ---------------------------------------------------------------------------
-function normalizeInvoices(invoiceRows: any[], itemsByInvoice: Map<string, any[]>) {
+function normalizeInvoices(invoiceRows: any[], itemsByInvoice: Map<string, any[]>, lastPaymentByInvoice: Map<string, string>) {
   return invoiceRows.map((row: any) => {
     const pat = row.patients as { first_name?: string; last_name?: string } | null;
     const patientName =
@@ -115,6 +115,7 @@ function normalizeInvoices(invoiceRows: any[], itemsByInvoice: Map<string, any[]
       id: row.id as string,
       invoice_number: (row.invoice_number ?? "") as string,
       invoice_date: (row.invoice_date as string | null)?.substring(0, 10) ?? null,
+      last_payment_date: lastPaymentByInvoice.get(row.id as string) ?? null,
       patient_id: row.patient_id as string | null,
       patientName,
       doctor_user_id: row.doctor_user_id as string | null,
@@ -166,14 +167,27 @@ async function buildPayload(): Promise<string> {
   const lineFields = `invoice_id, name, service_id, quantity, total_price,
     tardoc_code, code, tariff_code`;
 
-  const [invoiceRows, lineItemRows] = await Promise.all([
+  const paymentCount = await countRows("invoice_payments");
+
+  const [invoiceRows, lineItemRows, paymentRows] = await Promise.all([
     fetchAllParallel<any>(
       "invoices", invoiceFields, INVOICE_PAGE, invoiceCount,
       (q) => q.eq("is_archived", false).is("parent_invoice_id", null)
                .order("invoice_date", { ascending: false }),
     ),
     fetchAllParallel<any>("invoice_line_items", lineFields, LINE_PAGE, lineCount),
+    fetchAllParallel<any>("invoice_payments", "invoice_id,payment_date,amount", 2000, paymentCount),
   ]);
+
+  // ---- 2b. Build last_payment_date map ----
+  const lastPaymentByInvoice = new Map<string, string>();
+  for (const p of paymentRows) {
+    const id = p.invoice_id as string;
+    const d = (p.payment_date as string)?.substring(0, 10);
+    if (!d) continue;
+    const cur = lastPaymentByInvoice.get(id);
+    if (!cur || d > cur) lastPaymentByInvoice.set(id, d);
+  }
 
   // ---- 3. Index line items ----
   const itemsByInvoice = new Map<string, any[]>();
@@ -189,7 +203,7 @@ async function buildPayload(): Promise<string> {
   }
 
   // ---- 4. Normalize ----
-  const normalized = normalizeInvoices(invoiceRows, itemsByInvoice);
+  const normalized = normalizeInvoices(invoiceRows, itemsByInvoice, lastPaymentByInvoice);
 
   // ---- 5. Pre-aggregate service summary ----
   type ServiceEntry = {
@@ -242,10 +256,18 @@ async function buildPayload(): Promise<string> {
     };
   });
 
+  // ---- 6b. Payments lite for client-side date filtering ----
+  const paymentsLite = paymentRows.map((p: any) => ({
+    invoice_id: p.invoice_id as string,
+    payment_date: (p.payment_date as string)?.substring(0, 10) ?? null,
+    amount: Number(p.amount) || 0,
+  }));
+
   const payload = JSON.stringify({
     invoices: normalized,
     serviceSummary,
     lineItems: lineItemsLite,
+    payments: paymentsLite,
     counts: { invoices: normalized.length, lineItems: lineItemRows.length },
   });
 
