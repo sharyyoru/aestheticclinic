@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { RetellWebClient } from "retell-client-js-sdk";
 
 const BOOK_URL = "https://aestheticclinic.vercel.app/book-appointment/location";
 const CLINIC_PHONE = "+41 22 732 22 23";
@@ -30,10 +29,15 @@ const T = {
     placeholder: "Ask a detailed question\u2026",
     starting: "Starting conversation\u2026",
     error: "Sorry, something went wrong. Please try again.",
-    connecting: "Connecting to Aliice...",
-    inCall: "In call with Aliice",
+    connecting: "Calling you now...",
+    inCall: "Aliice is calling you!",
     endCall: "End Call",
-    callEnded: "Call ended",
+    callEnded: "Call initiated!",
+    phoneLabel: "Your phone number",
+    phonePlaceholder: "+41 79 123 45 67",
+    requestCall: "Call me now",
+    callMeBack: "We'll call you right away",
+    back: "Back",
   },
   fr: {
     greeting: "Bonjour, je suis Aliice",
@@ -54,10 +58,15 @@ const T = {
     placeholder: "Posez une question d\u00e9taill\u00e9e\u2026",
     starting: "D\u00e9marrage de la conversation\u2026",
     error: "D\u00e9sol\u00e9, une erreur est survenue. Veuillez r\u00e9essayer.",
-    connecting: "Connexion \u00e0 Aliice...",
-    inCall: "En appel avec Aliice",
+    connecting: "Appel en cours...",
+    inCall: "Aliice vous appelle\u00a0!",
     endCall: "Raccrocher",
-    callEnded: "Appel termin\u00e9",
+    callEnded: "Appel lanc\u00e9\u00a0!",
+    phoneLabel: "Votre num\u00e9ro de t\u00e9l\u00e9phone",
+    phonePlaceholder: "+41 79 123 45 67",
+    requestCall: "Appelez-moi maintenant",
+    callMeBack: "Nous vous rappelons imm\u00e9diatement",
+    back: "Retour",
   },
 } as const;
 
@@ -99,10 +108,11 @@ export default function AliiceChatPage() {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [callStatus, setCallStatus] = useState<"idle" | "connecting" | "active" | "ended">("idle");
+  const [callStatus, setCallStatus] = useState<"idle" | "form" | "calling" | "success">("idle");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const retellClientRef = useRef<RetellWebClient | null>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
   const t = T[lang];
 
   // Auto-scroll to latest message
@@ -148,65 +158,40 @@ export default function AliiceChatPage() {
     return () => { cancelled = true; };
   }, [screen, lang]);
 
-  // Initialize Retell Web Client for voice calls
+  // Focus phone input when call screen opens
   useEffect(() => {
-    if (screen !== "call") return;
-    let cancelled = false;
-
-    async function startWebCall() {
-      setCallStatus("connecting");
-      setError(null);
-      try {
-        const res = await fetch("/api/retell/create-web-call", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lang }),
-        });
-        const data = await res.json();
-        if (cancelled) return;
-        if (!res.ok || !data.access_token) throw new Error(data.error ?? "Failed to start call");
-
-        const client = new RetellWebClient();
-        retellClientRef.current = client;
-
-        client.on("call_started", () => setCallStatus("active"));
-        client.on("call_ended", () => {
-          setCallStatus("ended");
-          setTimeout(() => setScreen("welcome"), 2000);
-        });
-        client.on("error", (e) => {
-          console.error("Retell error:", e);
-          setError("Call error occurred");
-          setCallStatus("ended");
-        });
-
-        await client.startCall({ accessToken: data.access_token });
-      } catch (e: unknown) {
-        if (!cancelled) {
-          setError((e as Error).message);
-          setCallStatus("ended");
-        }
-      }
+    if (screen === "call" && callStatus === "form") {
+      setTimeout(() => phoneInputRef.current?.focus(), 300);
     }
+  }, [screen, callStatus]);
 
-    startWebCall();
-    return () => {
-      cancelled = true;
-      if (retellClientRef.current) {
-        retellClientRef.current.stopCall();
-        retellClientRef.current = null;
-      }
-    };
-  }, [screen, lang]);
-
-  const endCall = useCallback(() => {
-    if (retellClientRef.current) {
-      retellClientRef.current.stopCall();
-      retellClientRef.current = null;
+  const requestPhoneCall = useCallback(async () => {
+    const phone = phoneNumber.trim().replace(/\s/g, "");
+    if (!phone || phone.length < 8) {
+      setError(lang === "fr" ? "Veuillez entrer un numéro valide" : "Please enter a valid phone number");
+      return;
     }
-    setCallStatus("ended");
-    setTimeout(() => setScreen("welcome"), 1500);
-  }, []);
+    setCallStatus("calling");
+    setError(null);
+    try {
+      const res = await fetch("/api/retell/create-web-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lang, phone_number: phone }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to initiate call");
+      setCallStatus("success");
+      setTimeout(() => {
+        setScreen("welcome");
+        setCallStatus("idle");
+        setPhoneNumber("");
+      }, 4000);
+    } catch (e: unknown) {
+      setError((e as Error).message);
+      setCallStatus("form");
+    }
+  }, [phoneNumber, lang]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -254,7 +239,16 @@ export default function AliiceChatPage() {
 
   const handleStartCall = () => {
     setDismissing(true);
+    setCallStatus("form");
+    setError(null);
     setTimeout(() => setScreen("call"), 280);
+  };
+
+  const handleBackFromCall = () => {
+    setScreen("welcome");
+    setCallStatus("idle");
+    setPhoneNumber("");
+    setError(null);
   };
 
   // Language toggle button (reused in all screens)
@@ -278,7 +272,7 @@ export default function AliiceChatPage() {
     </button>
   );
 
-  // ── Call screen ──────────────────────────────────────────────────────────────
+  // ── Call screen (phone number form) ─────────────────────────────────────────
   if (screen === "call") {
     return (
       <main className="fixed inset-0 flex flex-col items-center justify-center px-5"
@@ -289,66 +283,115 @@ export default function AliiceChatPage() {
             50% { transform: scale(1.15); opacity: 0.3; }
           }
           @keyframes aliiceGlow {
-            0%, 100% { box-shadow: 0 0 30px rgba(14,165,233,0.4); }
-            50% { box-shadow: 0 0 60px rgba(14,165,233,0.7); }
+            0%, 100% { box-shadow: 0 0 30px rgba(139,92,246,0.4); }
+            50% { box-shadow: 0 0 60px rgba(139,92,246,0.7); }
+          }
+          @keyframes aliiceCheck {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
           }
           .aliice-ring { animation: aliicePulse 2s ease-in-out infinite; }
           .aliice-glow { animation: aliiceGlow 2s ease-in-out infinite; }
+          .aliice-check { animation: aliiceCheck 0.5s ease-out both; }
         `}</style>
 
-        {/* Pulsing rings */}
-        {callStatus === "active" && (
+        {/* Back button */}
+        {callStatus === "form" && (
+          <button onClick={handleBackFromCall}
+            className="absolute top-5 left-5 flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            {t.back}
+          </button>
+        )}
+
+        {/* Language toggle */}
+        <div className="absolute top-5 right-5">
+          <LangToggle />
+        </div>
+
+        {/* Pulsing rings for success */}
+        {callStatus === "success" && (
           <>
-            <div className="absolute w-48 h-48 rounded-full border-2 border-sky-400/30 aliice-ring" />
-            <div className="absolute w-64 h-64 rounded-full border border-sky-400/20 aliice-ring" style={{ animationDelay: "0.5s" }} />
+            <div className="absolute w-48 h-48 rounded-full border-2 border-emerald-400/30 aliice-ring" />
+            <div className="absolute w-64 h-64 rounded-full border border-emerald-400/20 aliice-ring" style={{ animationDelay: "0.5s" }} />
           </>
         )}
 
         {/* Avatar */}
-        <div className={`relative mb-8 ${callStatus === "active" ? "aliice-glow" : ""}`}
+        <div className={`relative mb-6 ${callStatus === "success" ? "aliice-glow" : ""}`}
           style={{ borderRadius: "50%" }}>
-          <div className="w-32 h-32 rounded-full overflow-hidden" style={{ border: "4px solid rgba(14,165,233,0.5)" }}>
-            <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={128} height={128}
+          <div className="w-28 h-28 rounded-full overflow-hidden" style={{ border: "4px solid rgba(139,92,246,0.5)" }}>
+            <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={112} height={112}
               className="w-full h-full object-cover object-top" priority />
           </div>
-          {callStatus === "active" && (
-            <span className="absolute bottom-2 right-2 w-5 h-5 rounded-full bg-emerald-400 border-2 border-slate-900 shadow" />
+          {callStatus === "success" && (
+            <span className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-emerald-400 border-2 border-slate-900 shadow flex items-center justify-center aliice-check">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </span>
           )}
         </div>
 
+        {/* Title */}
         <h2 className="text-2xl font-bold text-white mb-2">
-          {callStatus === "connecting" ? t.connecting :
-           callStatus === "active" ? t.inCall :
+          {callStatus === "form" ? t.getCall :
+           callStatus === "calling" ? t.connecting :
            t.callEnded}
         </h2>
-        <p className="text-sky-300/70 text-sm mb-10">{t.clinic}</p>
+        <p className="text-violet-300/70 text-sm mb-8">{t.callMeBack}</p>
 
+        {/* Error message */}
         {error && (
-          <div className="text-rose-400 text-sm mb-6 bg-rose-500/10 px-4 py-2 rounded-full">{error}</div>
+          <div className="text-rose-400 text-sm mb-4 bg-rose-500/10 px-4 py-2 rounded-full">{error}</div>
         )}
 
-        {callStatus === "active" && (
-          <button onClick={endCall}
-            className="flex items-center gap-3 px-8 py-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white font-semibold transition-all active:scale-95 shadow-lg shadow-rose-500/30">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
-            </svg>
-            {t.endCall}
-          </button>
-        )}
-
-        {callStatus === "connecting" && (
-          <div className="flex items-center gap-2 text-sky-300">
-            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            <span className="text-sm">{t.connecting}</span>
+        {/* Phone input form */}
+        {callStatus === "form" && (
+          <div className="w-full max-w-[320px] space-y-4">
+            <div>
+              <label className="block text-slate-400 text-sm mb-2">{t.phoneLabel}</label>
+              <input
+                ref={phoneInputRef}
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && requestPhoneCall()}
+                placeholder={t.phonePlaceholder}
+                className="w-full bg-slate-800/50 border-2 border-slate-600 focus:border-violet-500 rounded-xl px-4 py-3.5 text-white text-lg placeholder:text-slate-500 outline-none transition-colors"
+              />
+            </div>
+            <button onClick={requestPhoneCall}
+              className="w-full flex items-center justify-center gap-3 py-4 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white font-semibold text-base transition-all active:scale-[0.98] shadow-lg"
+              style={{ boxShadow: "0 10px 30px -8px rgba(139,92,246,.5)" }}>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              {t.requestCall}
+            </button>
           </div>
         )}
 
-        {callStatus === "ended" && (
-          <p className="text-slate-400 text-sm">Redirecting...</p>
+        {/* Calling spinner */}
+        {callStatus === "calling" && (
+          <div className="flex items-center gap-3 text-violet-300">
+            <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-base">{t.connecting}</span>
+          </div>
+        )}
+
+        {/* Success message */}
+        {callStatus === "success" && (
+          <div className="text-center">
+            <p className="text-emerald-400 text-lg font-semibold mb-2">{t.inCall}</p>
+            <p className="text-slate-400 text-sm">{lang === "fr" ? "Veuillez r\u00e9pondre \u00e0 votre t\u00e9l\u00e9phone" : "Please answer your phone"}</p>
+          </div>
         )}
       </main>
     );
