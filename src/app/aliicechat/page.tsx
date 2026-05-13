@@ -76,10 +76,40 @@ export default function AliiceChatPage() {
         left: 0 !important;
       }
 
-      /* Typing dots animation */
-      @keyframes dotBounce {
-        0%,60%,100% { transform:translateY(0); }
-        30%          { transform:translateY(-7px); }
+      /* ── Make injected links clickable & styled ── */
+      .aliice-auto-link {
+        color: #0ea5e9 !important;
+        text-decoration: underline !important;
+        cursor: pointer !important;
+        pointer-events: auto !important;
+        word-break: break-all !important;
+      }
+      .aliice-auto-link:hover {
+        color: #0284c7 !important;
+      }
+
+      /* ── Typing indicator dots ── */
+      @keyframes aliiceDot {
+        0%,60%,100% { transform:translateY(0); opacity:.5; }
+        30%          { transform:translateY(-6px); opacity:1; }
+      }
+      .aliice-typing-dot {
+        display: inline-block;
+        width: 7px; height: 7px;
+        border-radius: 50%;
+        background: #94a3b8;
+        animation: aliiceDot 1.3s ease-in-out infinite;
+        margin: 0 2px;
+      }
+      .aliice-typing-dot:nth-child(2) { animation-delay: 0.18s; }
+      .aliice-typing-dot:nth-child(3) { animation-delay: 0.36s; }
+      .aliice-typing-bubble {
+        display: inline-flex;
+        align-items: center;
+        padding: 10px 14px;
+        background: #f1f5f9;
+        border-radius: 18px 18px 18px 4px;
+        margin: 4px 0;
       }
 
       /* Welcome card animations */
@@ -94,6 +124,91 @@ export default function AliiceChatPage() {
       .aliice-card.out { animation: fadeOut 0.26s ease-in forwards; }
     `;
     document.head.appendChild(s);
+  }, []);
+
+  // MutationObserver: scan all bot message text nodes and linkify URLs + phone numbers
+  useEffect(() => {
+    // Regex patterns
+    const urlRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<>"]+)/g;
+    const phoneRe = /(\+\d[\d\s\-().]{6,20}\d)/g;
+
+    function linkifyNode(el: Element) {
+      // Only process text nodes inside this element
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const nodes: Text[] = [];
+      let n: Node | null;
+      while ((n = walker.nextNode())) nodes.push(n as Text);
+
+      for (const node of nodes) {
+        const parent = node.parentElement;
+        if (!parent || parent.tagName === "A") continue;
+        const raw = node.textContent || "";
+        if (!urlRe.test(raw) && !phoneRe.test(raw)) continue;
+
+        // Reset lastIndex
+        urlRe.lastIndex = 0;
+        phoneRe.lastIndex = 0;
+
+        const frag = document.createDocumentFragment();
+        let last = 0;
+        const combined = new RegExp(
+          `\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)|(https?:\\/\\/[^\\s<>"]+)|(\\+\\d[\\d\\s\\-.()]{6,20}\\d)`,
+          "g"
+        );
+        let m: RegExpExecArray | null;
+        while ((m = combined.exec(raw)) !== null) {
+          if (m.index > last) frag.appendChild(document.createTextNode(raw.slice(last, m.index)));
+
+          const a = document.createElement("a");
+          a.className = "aliice-auto-link";
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+
+          if (m[1] && m[2]) {
+            // Markdown [text](url)
+            a.href = m[2];
+            a.textContent = m[1];
+          } else if (m[3]) {
+            // Raw URL
+            a.href = m[3];
+            a.textContent = m[3];
+          } else if (m[4]) {
+            // Phone number
+            a.href = `tel:${m[4].replace(/[\s\-().]/g, "")}`;
+            a.textContent = m[4];
+          }
+          frag.appendChild(a);
+          last = m.index + m[0].length;
+        }
+        if (last < raw.length) frag.appendChild(document.createTextNode(raw.slice(last)));
+
+        parent.replaceChild(frag, node);
+      }
+    }
+
+    // Observe the whole document for new chat message nodes
+    const observer = new MutationObserver((mutations) => {
+      for (const mut of mutations) {
+        for (const node of Array.from(mut.addedNodes)) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            linkifyNode(node as Element);
+            (node as Element).querySelectorAll("*").forEach(linkifyNode);
+          }
+        }
+        // Also re-check changed text nodes
+        if (mut.type === "characterData" && mut.target.parentElement) {
+          linkifyNode(mut.target.parentElement);
+        }
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   // After the widget script loads, click its button to open the chat
@@ -166,7 +281,10 @@ export default function AliiceChatPage() {
         data-dynamic={JSON.stringify({
           currency: "CHF",
           clinic_phone: CLINIC_PHONE,
+          clinic_phone_tel: CLINIC_PHONE_TEL,
           book_url: BOOK_URL,
+          booking_link: BOOK_URL,
+          instructions: `Always use CHF for prices. The clinic phone number is ${CLINIC_PHONE}. The booking link is ${BOOK_URL}. When sharing the phone number always write it exactly as ${CLINIC_PHONE}. When sharing the booking link always use this exact URL: ${BOOK_URL}`,
         })}
         onLoad={handleWidgetLoad}
       />
