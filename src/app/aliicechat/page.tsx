@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { RetellWebClient } from "retell-client-js-sdk";
 
 const BOOK_URL = "https://aestheticclinic.vercel.app/book-appointment/location";
 const CLINIC_PHONE = "+41 22 732 22 23";
@@ -16,10 +17,10 @@ const T = {
     clinic: "Aesthetics Clinic Geneva",
     question: "How can I help you today?",
     book: "Book Appointment",
-    callUs: "Call Clinic",
+    speakNow: "Speak with Aliice",
     chat: "Chat with Aliice",
-    getCall: "Get a Call",
-    getCallDesc: "Talk to Aliice",
+    getCall: "Get a Call from Aliice",
+    getCallDesc: "We'll call your phone",
     currency: "All prices are in",
     currencyName: "CHF (Swiss Francs)",
     online: "Online \u00b7 Aesthetics Clinic Geneva",
@@ -33,6 +34,9 @@ const T = {
     inCall: "Aliice is calling you!",
     endCall: "End Call",
     callEnded: "Call initiated!",
+    webCallConnecting: "Connecting...",
+    webCallActive: "Speaking with Aliice",
+    webCallEnded: "Call ended",
     phoneLabel: "Your phone number",
     phonePlaceholder: "+41 79 123 45 67",
     requestCall: "Call me now",
@@ -45,10 +49,10 @@ const T = {
     clinic: "Clinique Esth\u00e9tique Gen\u00e8ve",
     question: "Comment puis-je vous aider aujourd\u2019hui\u00a0?",
     book: "Prendre RDV",
-    callUs: "Appeler la clinique",
+    speakNow: "Parler avec Aliice",
     chat: "Discuter avec Aliice",
-    getCall: "\u00catre rappel\u00e9(e)",
-    getCallDesc: "Parlez \u00e0 Aliice",
+    getCall: "\u00catre rappel\u00e9(e) par Aliice",
+    getCallDesc: "Nous vous appelons",
     currency: "Tous les prix sont en",
     currencyName: "CHF (francs suisses)",
     online: "En ligne \u00b7 Clinique Esth\u00e9tique Gen\u00e8ve",
@@ -62,6 +66,9 @@ const T = {
     inCall: "Aliice vous appelle\u00a0!",
     endCall: "Raccrocher",
     callEnded: "Appel lanc\u00e9\u00a0!",
+    webCallConnecting: "Connexion...",
+    webCallActive: "En ligne avec Aliice",
+    webCallEnded: "Appel termin\u00e9",
     phoneLabel: "Votre num\u00e9ro de t\u00e9l\u00e9phone",
     phonePlaceholder: "+41 79 123 45 67",
     requestCall: "Appelez-moi maintenant",
@@ -101,7 +108,7 @@ function linkify(text: string): React.ReactNode[] {
 
 export default function AliiceChatPage() {
   const [lang, setLang] = useState<Lang>("en");
-  const [screen, setScreen] = useState<"welcome" | "chat" | "call">("welcome");
+  const [screen, setScreen] = useState<"welcome" | "chat" | "call" | "webcall">("welcome");
   const [dismissing, setDismissing] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -109,10 +116,12 @@ export default function AliiceChatPage() {
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [callStatus, setCallStatus] = useState<"idle" | "form" | "calling" | "success">("idle");
+  const [webCallStatus, setWebCallStatus] = useState<"idle" | "connecting" | "active" | "ended">("idle");
   const [phoneNumber, setPhoneNumber] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const phoneInputRef = useRef<HTMLInputElement>(null);
+  const retellClientRef = useRef<RetellWebClient | null>(null);
   const t = T[lang];
 
   // Auto-scroll to latest message
@@ -250,6 +259,80 @@ export default function AliiceChatPage() {
     setPhoneNumber("");
     setError(null);
   };
+
+  // Handle web call (browser audio)
+  const handleStartWebCall = () => {
+    setDismissing(true);
+    setWebCallStatus("idle");
+    setError(null);
+    setTimeout(() => setScreen("webcall"), 280);
+  };
+
+  // Web call useEffect
+  useEffect(() => {
+    if (screen !== "webcall") return;
+    let cancelled = false;
+
+    async function startWebCall() {
+      setWebCallStatus("connecting");
+      setError(null);
+      try {
+        const res = await fetch("/api/retell/web-call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lang }),
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !data.access_token) throw new Error(data.error ?? "Failed to start call");
+
+        const client = new RetellWebClient();
+        retellClientRef.current = client;
+
+        client.on("call_started", () => setWebCallStatus("active"));
+        client.on("call_ended", () => {
+          setWebCallStatus("ended");
+          setTimeout(() => {
+            setScreen("welcome");
+            setWebCallStatus("idle");
+          }, 2000);
+        });
+        client.on("error", (e) => {
+          console.error("Retell error:", e);
+          setError(lang === "fr" ? "Erreur de connexion" : "Connection error");
+          setWebCallStatus("ended");
+        });
+
+        await client.startCall({ accessToken: data.access_token });
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setError((e as Error).message);
+          setWebCallStatus("ended");
+        }
+      }
+    }
+
+    startWebCall();
+    return () => {
+      cancelled = true;
+      if (retellClientRef.current) {
+        retellClientRef.current.stopCall();
+        retellClientRef.current = null;
+      }
+    };
+  }, [screen, lang]);
+
+  const endWebCall = useCallback(() => {
+    if (retellClientRef.current) {
+      retellClientRef.current.stopCall();
+      retellClientRef.current = null;
+    }
+    setWebCallStatus("ended");
+    setTimeout(() => {
+      setScreen("welcome");
+      setWebCallStatus("idle");
+    }, 1500);
+  }, []);
 
   // Language toggle button (reused in all screens)
   const LangToggle = ({ size = "sm" }: { size?: "sm" | "lg" }) => (
@@ -397,6 +480,105 @@ export default function AliiceChatPage() {
     );
   }
 
+  // ── Web Call screen (browser audio) ───────────────────────────────────────
+  if (screen === "webcall") {
+    return (
+      <main className="fixed inset-0 flex flex-col items-center justify-center px-5"
+        style={{ background: "linear-gradient(160deg, #064e3b 0%, #065f46 50%, #064e3b 100%)" }}>
+        <style>{`
+          @keyframes aliicePulse {
+            0%, 100% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.15); opacity: 0.3; }
+          }
+          @keyframes aliiceGlow {
+            0%, 100% { box-shadow: 0 0 30px rgba(16,185,129,0.4); }
+            50% { box-shadow: 0 0 60px rgba(16,185,129,0.7); }
+          }
+          @keyframes aliiceSoundWave {
+            0%, 100% { transform: scaleY(0.5); }
+            50% { transform: scaleY(1); }
+          }
+          .aliice-ring { animation: aliicePulse 2s ease-in-out infinite; }
+          .aliice-glow { animation: aliiceGlow 2s ease-in-out infinite; }
+          .aliice-wave { animation: aliiceSoundWave 0.5s ease-in-out infinite; }
+          .aliice-wave:nth-child(2) { animation-delay: 0.1s; }
+          .aliice-wave:nth-child(3) { animation-delay: 0.2s; }
+          .aliice-wave:nth-child(4) { animation-delay: 0.3s; }
+          .aliice-wave:nth-child(5) { animation-delay: 0.15s; }
+        `}</style>
+
+        {/* Pulsing rings when active */}
+        {webCallStatus === "active" && (
+          <>
+            <div className="absolute w-48 h-48 rounded-full border-2 border-emerald-400/30 aliice-ring" />
+            <div className="absolute w-64 h-64 rounded-full border border-emerald-400/20 aliice-ring" style={{ animationDelay: "0.5s" }} />
+          </>
+        )}
+
+        {/* Avatar */}
+        <div className={`relative mb-6 ${webCallStatus === "active" ? "aliice-glow" : ""}`}
+          style={{ borderRadius: "50%" }}>
+          <div className="w-28 h-28 rounded-full overflow-hidden" style={{ border: "4px solid rgba(16,185,129,0.5)" }}>
+            <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={112} height={112}
+              className="w-full h-full object-cover object-top" priority />
+          </div>
+          {webCallStatus === "active" && (
+            <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-emerald-400 border-2 border-emerald-900 shadow" />
+          )}
+        </div>
+
+        {/* Sound wave visualization when active */}
+        {webCallStatus === "active" && (
+          <div className="flex items-end gap-1 h-8 mb-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="w-1.5 bg-emerald-400 rounded-full aliice-wave" style={{ height: "100%" }} />
+            ))}
+          </div>
+        )}
+
+        {/* Title */}
+        <h2 className="text-2xl font-bold text-white mb-2">
+          {webCallStatus === "connecting" ? t.webCallConnecting :
+           webCallStatus === "active" ? t.webCallActive :
+           t.webCallEnded}
+        </h2>
+        <p className="text-emerald-300/70 text-sm mb-8">{t.clinic}</p>
+
+        {/* Error message */}
+        {error && (
+          <div className="text-rose-400 text-sm mb-4 bg-rose-500/10 px-4 py-2 rounded-full">{error}</div>
+        )}
+
+        {/* Connecting spinner */}
+        {webCallStatus === "connecting" && (
+          <div className="flex items-center gap-3 text-emerald-300">
+            <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-base">{t.webCallConnecting}</span>
+          </div>
+        )}
+
+        {/* End call button */}
+        {webCallStatus === "active" && (
+          <button onClick={endWebCall}
+            className="flex items-center gap-3 px-8 py-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white font-semibold transition-all active:scale-95 shadow-lg shadow-rose-500/30">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
+            </svg>
+            {t.endCall}
+          </button>
+        )}
+
+        {/* Ended message */}
+        {webCallStatus === "ended" && !error && (
+          <p className="text-emerald-300/70 text-sm">{lang === "fr" ? "Redirection..." : "Redirecting..."}</p>
+        )}
+      </main>
+    );
+  }
+
   // ── Welcome screen ─────────────────────────────────────────────────────────
   if (screen === "welcome") {
     return (
@@ -489,14 +671,14 @@ export default function AliiceChatPage() {
               </button>
             </div>
 
-            {/* Call Clinic */}
-            <a href={`tel:${CLINIC_PHONE_TEL}`}
-              className="aliice-btn flex items-center justify-center gap-3 w-full py-3.5 px-6 rounded-2xl bg-white text-slate-600 font-medium text-[14px] border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50">
-              <svg className="w-4 h-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            {/* Speak with Aliice - Web Call */}
+            <button onClick={handleStartWebCall}
+              className="aliice-btn flex items-center justify-center gap-3 w-full py-3.5 px-6 rounded-2xl bg-emerald-50 text-emerald-700 font-semibold text-[14px] border-2 border-emerald-200 hover:border-emerald-300 hover:bg-emerald-100 transition-all">
+              <svg className="w-5 h-5 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
-              {t.callUs}: <span className="text-slate-800 font-semibold">{CLINIC_PHONE}</span>
-            </a>
+              {t.speakNow}
+            </button>
           </div>
 
           <p className="text-xs text-slate-400 text-center">
