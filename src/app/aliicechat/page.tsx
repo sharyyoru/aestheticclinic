@@ -7,6 +7,45 @@ const BOOK_URL = "https://aestheticclinic.vercel.app/book-appointment/location";
 const CLINIC_PHONE = "+41 22 732 22 23";
 const CLINIC_PHONE_TEL = "+41227322223";
 
+type Lang = "en" | "fr";
+
+const T = {
+  en: {
+    greeting: "Hi, I\u2019m Aliice",
+    subtitle: "Your AI assistant at",
+    clinic: "Aesthetics Clinic Geneva",
+    question: "How can I help you today?",
+    book: "Book an Appointment",
+    callUs: "Call Us",
+    chat: "Chat with Aliice",
+    currency: "All prices are in",
+    currencyName: "CHF (Swiss Francs)",
+    online: "Online \u00b7 Aesthetics Clinic Geneva",
+    bookShort: "Book",
+    callShort: "Call",
+    placeholder: "Ask a detailed question\u2026",
+    starting: "Starting conversation\u2026",
+    error: "Sorry, something went wrong. Please try again.",
+  },
+  fr: {
+    greeting: "Bonjour, je suis Aliice",
+    subtitle: "Votre assistante IA \u00e0 la",
+    clinic: "Clinique Esth\u00e9tique Gen\u00e8ve",
+    question: "Comment puis-je vous aider aujourd\u2019hui\u00a0?",
+    book: "Prendre un rendez-vous",
+    callUs: "Nous appeler",
+    chat: "Discuter avec Aliice",
+    currency: "Tous les prix sont en",
+    currencyName: "CHF (francs suisses)",
+    online: "En ligne \u00b7 Clinique Esth\u00e9tique Gen\u00e8ve",
+    bookShort: "R\u00e9server",
+    callShort: "Appeler",
+    placeholder: "Posez une question d\u00e9taill\u00e9e\u2026",
+    starting: "D\u00e9marrage de la conversation\u2026",
+    error: "D\u00e9sol\u00e9, une erreur est survenue. Veuillez r\u00e9essayer.",
+  },
+} as const;
+
 interface Message {
   id: string;
   role: "agent" | "user";
@@ -37,6 +76,7 @@ function linkify(text: string): React.ReactNode[] {
 }
 
 export default function AliiceChatPage() {
+  const [lang, setLang] = useState<Lang>("en");
   const [screen, setScreen] = useState<"welcome" | "chat">("welcome");
   const [dismissing, setDismissing] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -46,6 +86,7 @@ export default function AliiceChatPage() {
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const t = T[lang];
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -66,7 +107,11 @@ export default function AliiceChatPage() {
       setThinking(true);
       setError(null);
       try {
-        const res = await fetch("/api/retell/create-chat", { method: "POST" });
+        const res = await fetch("/api/retell/create-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lang }),
+        });
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok || !data.chat_id) throw new Error(data.error ?? "Failed to start chat");
@@ -115,7 +160,7 @@ export default function AliiceChatPage() {
       setMessages(prev => [...prev, {
         id: "err-" + Date.now(),
         role: "agent",
-        content: "Sorry, something went wrong. Please try again.",
+        content: t.error,
         created_timestamp: Date.now(),
       }]);
     } finally {
@@ -127,6 +172,24 @@ export default function AliiceChatPage() {
     setDismissing(true);
     setTimeout(() => setScreen("chat"), 280);
   };
+
+  // Language toggle button (reused in both screens)
+  const LangToggle = () => (
+    <button
+      onClick={() => setLang(l => l === "en" ? "fr" : "en")}
+      className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide border rounded-full px-3 py-1.5 transition-all select-none"
+      style={{
+        borderColor: "#0ea5e9",
+        color: lang === "en" ? "#fff" : "#0ea5e9",
+        background: lang === "en" ? "#0ea5e9" : "#fff",
+      }}
+      title={lang === "en" ? "Passer en français" : "Switch to English"}
+    >
+      <span className={lang === "en" ? "opacity-100" : "opacity-50"}>EN</span>
+      <span className="opacity-30">/</span>
+      <span className={lang === "fr" ? "opacity-100" : "opacity-50"}>FR</span>
+    </button>
+  );
 
   // ── Welcome screen ─────────────────────────────────────────────────────────
   if (screen === "welcome") {
@@ -147,6 +210,11 @@ export default function AliiceChatPage() {
           .aliice-welcome.out { animation: aliiceFadeOut 0.26s ease-in forwards; }
         `}</style>
 
+        {/* Language toggle — top right */}
+        <div className="fixed top-4 right-4 z-10">
+          <LangToggle />
+        </div>
+
         <div className={`aliice-welcome w-full max-w-[340px] flex flex-col items-center${dismissing ? " out" : ""}`}>
           {/* Avatar */}
           <div className="relative mb-5">
@@ -157,10 +225,10 @@ export default function AliiceChatPage() {
             <span className="absolute bottom-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-400 border-2 border-white shadow" />
           </div>
 
-          <h1 className="text-[1.65rem] font-semibold text-slate-800 mb-1 text-center tracking-tight">Hi, I&apos;m Aliice</h1>
+          <h1 className="text-[1.65rem] font-semibold text-slate-800 mb-1 text-center tracking-tight">{t.greeting}</h1>
           <p className="text-slate-500 text-sm text-center mb-7 leading-relaxed max-w-[260px]">
-            Your AI assistant at <span className="font-semibold text-slate-700">Aesthetics Clinic Geneva</span>.<br />
-            How can I help you today?
+            {t.subtitle} <span className="font-semibold text-slate-700">{t.clinic}</span>.<br />
+            {t.question}
           </p>
 
           <div className="w-full space-y-3 mb-6">
@@ -170,7 +238,7 @@ export default function AliiceChatPage() {
               <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              Book an Appointment
+              {t.book}
             </a>
 
             <a href={`tel:${CLINIC_PHONE_TEL}`}
@@ -178,7 +246,7 @@ export default function AliiceChatPage() {
               <svg className="w-5 h-5 shrink-0 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
               </svg>
-              Call Us <span className="text-sky-600 font-semibold">{CLINIC_PHONE}</span>
+              {t.callUs} <span className="text-sky-600 font-semibold">{CLINIC_PHONE}</span>
             </a>
 
             <button onClick={handleStartChat}
@@ -186,12 +254,12 @@ export default function AliiceChatPage() {
               <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
-              Chat with Aliice
+              {t.chat}
             </button>
           </div>
 
           <p className="text-xs text-slate-400 text-center">
-            All prices are in <strong className="text-slate-500">CHF</strong> (Swiss Francs)
+            {t.currency} <strong className="text-slate-500">CHF</strong> ({lang === "en" ? "Swiss Francs" : "francs suisses"})
           </p>
         </div>
       </main>
@@ -217,7 +285,7 @@ export default function AliiceChatPage() {
       `}</style>
 
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 shadow-sm bg-white flex-shrink-0">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 shadow-sm bg-white flex-shrink-0">
         <div className="relative">
           <div className="w-10 h-10 rounded-full overflow-hidden">
             <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={40} height={40}
@@ -227,22 +295,23 @@ export default function AliiceChatPage() {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-slate-800 leading-none">Aliice</p>
-          <p className="text-[11px] text-emerald-500 font-medium mt-0.5">Online · Aesthetics Clinic Geneva</p>
+          <p className="text-[11px] text-emerald-500 font-medium mt-0.5">{t.online}</p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-1.5 shrink-0 items-center">
+          <LangToggle />
           <a href={BOOK_URL} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-600 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-full transition-colors">
+            className="flex items-center gap-1 text-[11px] font-semibold text-sky-600 bg-sky-50 hover:bg-sky-100 px-2.5 py-1.5 rounded-full transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            Book
+            {t.bookShort}
           </a>
           <a href={`tel:${CLINIC_PHONE_TEL}`}
-            className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-full transition-colors">
+            className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-full transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
             </svg>
-            Call
+            {t.callShort}
           </a>
         </div>
       </div>
@@ -254,7 +323,7 @@ export default function AliiceChatPage() {
         )}
         {messages.length === 0 && !thinking && !error && (
           <div className="flex justify-center pt-12">
-            <p className="text-xs text-slate-400">Starting conversation…</p>
+            <p className="text-xs text-slate-400">{t.starting}</p>
           </div>
         )}
 
@@ -302,7 +371,7 @@ export default function AliiceChatPage() {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
-          placeholder="Ask a detailed question…"
+          placeholder={t.placeholder}
           disabled={!chatId || thinking}
           className="flex-1 bg-slate-100 rounded-full px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-200 disabled:opacity-50"
         />
