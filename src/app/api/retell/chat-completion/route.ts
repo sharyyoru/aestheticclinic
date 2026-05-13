@@ -4,6 +4,18 @@ export const runtime = "nodejs";
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY ?? "";
 
+// CORS preflight handler for public embed access
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   if (!RETELL_API_KEY) {
     return NextResponse.json({ error: "RETELL_API_KEY not configured" }, { status: 500 });

@@ -25,6 +25,62 @@ const nextConfig: NextConfig = {
 
   // Optimize production builds
   productionBrowserSourceMaps: false,
+
+  // Headers configuration for public embeddable pages
+  async headers() {
+    return [
+      {
+        // Allow embed pages to be loaded in iframes from any origin
+        source: "/aliicechat/embed",
+        headers: [
+          {
+            key: "X-Frame-Options",
+            value: "ALLOWALL",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors *",
+          },
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "*",
+          },
+        ],
+      },
+      {
+        // Also allow the main chat page to be embedded
+        source: "/aliicechat",
+        headers: [
+          {
+            key: "X-Frame-Options",
+            value: "ALLOWALL",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors *",
+          },
+        ],
+      },
+      {
+        // API routes for chat - allow CORS
+        source: "/api/retell/:path*",
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "*",
+          },
+          {
+            key: "Access-Control-Allow-Methods",
+            value: "GET, POST, OPTIONS",
+          },
+          {
+            key: "Access-Control-Allow-Headers",
+            value: "Content-Type, Authorization",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

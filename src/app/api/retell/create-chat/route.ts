@@ -4,6 +4,18 @@ export const runtime = "nodejs";
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY ?? "";
 
+// CORS preflight handler for public embed access
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+}
+
 // Chat agents by language (separate agents with language-specific prompts)
 const CHAT_AGENTS = {
   en: "agent_49322ed02ae4ea55665d81536c",
