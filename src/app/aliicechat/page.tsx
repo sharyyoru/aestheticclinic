@@ -118,10 +118,12 @@ export default function AliiceChatPage() {
   const [callStatus, setCallStatus] = useState<"idle" | "form" | "calling" | "success">("idle");
   const [webCallStatus, setWebCallStatus] = useState<"idle" | "connecting" | "active" | "ended">("idle");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [nudgeSent, setNudgeSent] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const phoneInputRef = useRef<HTMLInputElement>(null);
   const retellClientRef = useRef<RetellWebClient | null>(null);
+  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const t = T[lang];
 
   // Auto-scroll to latest message
@@ -167,6 +169,57 @@ export default function AliiceChatPage() {
     return () => { cancelled = true; };
   }, [screen, lang]);
 
+  // Auto-nudge: If user is idle for 5 seconds after agent message, send a nudge
+  useEffect(() => {
+    // Only run in chat screen with active chat
+    if (screen !== "chat" || !chatId || thinking || nudgeSent) return;
+    
+    // Check if last message is from agent (user hasn't responded)
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== "agent") return;
+
+    // Clear any existing timer
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+
+    // Start 5-second idle timer
+    idleTimerRef.current = setTimeout(async () => {
+      if (nudgeSent) return;
+      setNudgeSent(true);
+      setThinking(true);
+
+      // Send a nudge message to prompt the agent to re-engage
+      const nudgeMsg = lang === "fr" 
+        ? "..." // Simple nudge - agent will re-engage with value props
+        : "...";
+      
+      try {
+        const res = await fetch("/api/retell/chat-completion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, content: nudgeMsg }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          const newMsgs: Message[] = Array.isArray(data.message_with_tool_calls)
+            ? data.message_with_tool_calls
+            : Array.isArray(data.messages) ? data.messages : [];
+          const agentReplies = newMsgs.filter((m: Message) => m.role === "agent");
+          if (agentReplies.length > 0) {
+            setMessages(prev => [...prev, agentReplies[agentReplies.length - 1]]);
+          }
+        }
+      } catch {
+        // Silent fail - don't show error for nudge
+      } finally {
+        setThinking(false);
+      }
+    }, 5000); // 5 seconds
+
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, [screen, chatId, messages, thinking, nudgeSent, lang]);
+
   // Focus phone input when call screen opens
   useEffect(() => {
     if (screen === "call" && callStatus === "form") {
@@ -205,6 +258,13 @@ export default function AliiceChatPage() {
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || !chatId || thinking) return;
+    
+    // Cancel idle timer when user sends a message
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+    
     setInput("");
     setThinking(true);
 
@@ -799,7 +859,14 @@ export default function AliiceChatPage() {
         <input
           ref={inputRef}
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={e => {
+            setInput(e.target.value);
+            // Cancel idle timer when user starts typing
+            if (idleTimerRef.current) {
+              clearTimeout(idleTimerRef.current);
+              idleTimerRef.current = null;
+            }
+          }}
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
           placeholder={t.placeholder}
           disabled={!chatId || thinking}
