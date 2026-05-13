@@ -3,22 +3,25 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY ?? "";
-const CHAT_AGENT_ID = process.env.RETELL_AGENT_ID ?? "agent_49322ed02ae4ea55665d81536c";
+
+// Chat agents by language (separate agents with language-specific prompts)
+const CHAT_AGENTS = {
+  en: "agent_49322ed02ae4ea55665d81536c",
+  fr: "agent_a51872ec8ad4ab730a41c8ad38",
+};
 
 export async function POST(req: NextRequest) {
   if (!RETELL_API_KEY) {
     return NextResponse.json({ error: "RETELL_API_KEY not configured" }, { status: 500 });
   }
 
-  let lang = "en";
+  let lang: "en" | "fr" = "en";
   try {
     const body = await req.json();
     if (body?.lang === "fr") lang = "fr";
   } catch { /* no body is fine */ }
 
-  const langInstruction = lang === "fr"
-    ? "IMPORTANT: Réponds UNIQUEMENT en français pour toute cette conversation. Ne passe jamais à l'anglais."
-    : "IMPORTANT: Respond ONLY in English for this entire conversation.";
+  const agentId = CHAT_AGENTS[lang];
 
   const res = await fetch("https://api.retellai.com/create-chat", {
     method: "POST",
@@ -27,13 +30,11 @@ export async function POST(req: NextRequest) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      agent_id: CHAT_AGENT_ID,
+      agent_id: agentId,
       retell_llm_dynamic_variables: {
         currency: "CHF",
         clinic_phone: "+41 22 732 22 23",
         book_url: "https://aestheticclinic.vercel.app/book-appointment/location",
-        language: lang,
-        language_instruction: langInstruction,
       },
     }),
   });
