@@ -149,12 +149,14 @@ export default function AliiceChatPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to get response");
-      // data.messages is array of new messages from agent
-      if (Array.isArray(data.messages)) {
-        setMessages(prev => [
-          ...prev,
-          ...data.messages.filter((m: Message) => m.role === "agent"),
-        ]);
+      // Retell returns message_with_tool_calls with the full updated message list
+      const newMsgs: Message[] = Array.isArray(data.message_with_tool_calls)
+        ? data.message_with_tool_calls
+        : Array.isArray(data.messages) ? data.messages : [];
+      const agentReplies = newMsgs.filter((m: Message) => m.role === "agent");
+      // Only append the last agent message (the new reply)
+      if (agentReplies.length > 0) {
+        setMessages(prev => [...prev, agentReplies[agentReplies.length - 1]]);
       }
     } catch (e: unknown) {
       setMessages(prev => [...prev, {
