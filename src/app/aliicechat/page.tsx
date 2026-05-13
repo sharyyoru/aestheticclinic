@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { RetellWebClient } from "retell-client-js-sdk";
 
 const BOOK_URL = "https://aestheticclinic.vercel.app/book-appointment/location";
 const CLINIC_PHONE = "+41 22 732 22 23";
@@ -15,34 +16,48 @@ const T = {
     subtitle: "Your AI assistant at",
     clinic: "Aesthetics Clinic Geneva",
     question: "How can I help you today?",
-    book: "Book an Appointment",
-    callUs: "Call Us",
+    book: "Book Appointment",
+    callUs: "Call Clinic",
     chat: "Chat with Aliice",
+    getCall: "Get a Call",
+    getCallDesc: "Talk to Aliice",
     currency: "All prices are in",
     currencyName: "CHF (Swiss Francs)",
     online: "Online \u00b7 Aesthetics Clinic Geneva",
     bookShort: "Book",
     callShort: "Call",
+    voiceShort: "Voice",
     placeholder: "Ask a detailed question\u2026",
     starting: "Starting conversation\u2026",
     error: "Sorry, something went wrong. Please try again.",
+    connecting: "Connecting to Aliice...",
+    inCall: "In call with Aliice",
+    endCall: "End Call",
+    callEnded: "Call ended",
   },
   fr: {
     greeting: "Bonjour, je suis Aliice",
     subtitle: "Votre assistante IA \u00e0 la",
     clinic: "Clinique Esth\u00e9tique Gen\u00e8ve",
     question: "Comment puis-je vous aider aujourd\u2019hui\u00a0?",
-    book: "Prendre un rendez-vous",
-    callUs: "Nous appeler",
+    book: "Prendre RDV",
+    callUs: "Appeler la clinique",
     chat: "Discuter avec Aliice",
+    getCall: "\u00catre rappel\u00e9(e)",
+    getCallDesc: "Parlez \u00e0 Aliice",
     currency: "Tous les prix sont en",
     currencyName: "CHF (francs suisses)",
     online: "En ligne \u00b7 Clinique Esth\u00e9tique Gen\u00e8ve",
-    bookShort: "R\u00e9server",
+    bookShort: "RDV",
     callShort: "Appeler",
+    voiceShort: "Voix",
     placeholder: "Posez une question d\u00e9taill\u00e9e\u2026",
     starting: "D\u00e9marrage de la conversation\u2026",
     error: "D\u00e9sol\u00e9, une erreur est survenue. Veuillez r\u00e9essayer.",
+    connecting: "Connexion \u00e0 Aliice...",
+    inCall: "En appel avec Aliice",
+    endCall: "Raccrocher",
+    callEnded: "Appel termin\u00e9",
   },
 } as const;
 
@@ -77,15 +92,17 @@ function linkify(text: string): React.ReactNode[] {
 
 export default function AliiceChatPage() {
   const [lang, setLang] = useState<Lang>("en");
-  const [screen, setScreen] = useState<"welcome" | "chat">("welcome");
+  const [screen, setScreen] = useState<"welcome" | "chat" | "call">("welcome");
   const [dismissing, setDismissing] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [callStatus, setCallStatus] = useState<"idle" | "connecting" | "active" | "ended">("idle");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const retellClientRef = useRef<RetellWebClient | null>(null);
   const t = T[lang];
 
   // Auto-scroll to latest message
@@ -129,7 +146,67 @@ export default function AliiceChatPage() {
 
     startChat();
     return () => { cancelled = true; };
-  }, [screen]);
+  }, [screen, lang]);
+
+  // Initialize Retell Web Client for voice calls
+  useEffect(() => {
+    if (screen !== "call") return;
+    let cancelled = false;
+
+    async function startWebCall() {
+      setCallStatus("connecting");
+      setError(null);
+      try {
+        const res = await fetch("/api/retell/create-web-call", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lang }),
+        });
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !data.access_token) throw new Error(data.error ?? "Failed to start call");
+
+        const client = new RetellWebClient();
+        retellClientRef.current = client;
+
+        client.on("call_started", () => setCallStatus("active"));
+        client.on("call_ended", () => {
+          setCallStatus("ended");
+          setTimeout(() => setScreen("welcome"), 2000);
+        });
+        client.on("error", (e) => {
+          console.error("Retell error:", e);
+          setError("Call error occurred");
+          setCallStatus("ended");
+        });
+
+        await client.startCall({ accessToken: data.access_token });
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setError((e as Error).message);
+          setCallStatus("ended");
+        }
+      }
+    }
+
+    startWebCall();
+    return () => {
+      cancelled = true;
+      if (retellClientRef.current) {
+        retellClientRef.current.stopCall();
+        retellClientRef.current = null;
+      }
+    };
+  }, [screen, lang]);
+
+  const endCall = useCallback(() => {
+    if (retellClientRef.current) {
+      retellClientRef.current.stopCall();
+      retellClientRef.current = null;
+    }
+    setCallStatus("ended");
+    setTimeout(() => setScreen("welcome"), 1500);
+  }, []);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -168,30 +245,114 @@ export default function AliiceChatPage() {
     } finally {
       setThinking(false);
     }
-  }, [input, chatId, thinking]);
+  }, [input, chatId, thinking, t]);
 
   const handleStartChat = () => {
     setDismissing(true);
     setTimeout(() => setScreen("chat"), 280);
   };
 
-  // Language toggle button (reused in both screens)
-  const LangToggle = () => (
+  const handleStartCall = () => {
+    setDismissing(true);
+    setTimeout(() => setScreen("call"), 280);
+  };
+
+  // Language toggle button (reused in all screens)
+  const LangToggle = ({ size = "sm" }: { size?: "sm" | "lg" }) => (
     <button
       onClick={() => setLang(l => l === "en" ? "fr" : "en")}
-      className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide border rounded-full px-3 py-1.5 transition-all select-none"
+      className={`flex items-center gap-1.5 font-bold tracking-wide border-2 rounded-full transition-all select-none hover:scale-105 active:scale-95 ${
+        size === "lg" ? "text-sm px-4 py-2" : "text-[11px] px-3 py-1.5"
+      }`}
       style={{
         borderColor: "#0ea5e9",
         color: lang === "en" ? "#fff" : "#0ea5e9",
-        background: lang === "en" ? "#0ea5e9" : "#fff",
+        background: lang === "en" ? "linear-gradient(135deg,#0ea5e9,#0284c7)" : "#fff",
+        boxShadow: lang === "en" ? "0 4px 12px rgba(14,165,233,.25)" : "0 2px 8px rgba(0,0,0,.08)",
       }}
-      title={lang === "en" ? "Passer en français" : "Switch to English"}
+      title={lang === "en" ? "Passer en fran\u00e7ais" : "Switch to English"}
     >
-      <span className={lang === "en" ? "opacity-100" : "opacity-50"}>EN</span>
-      <span className="opacity-30">/</span>
-      <span className={lang === "fr" ? "opacity-100" : "opacity-50"}>FR</span>
+      <span className={lang === "en" ? "opacity-100" : "opacity-40"}>EN</span>
+      <span className="opacity-20">|</span>
+      <span className={lang === "fr" ? "opacity-100" : "opacity-40"}>FR</span>
     </button>
   );
+
+  // ── Call screen ──────────────────────────────────────────────────────────────
+  if (screen === "call") {
+    return (
+      <main className="fixed inset-0 flex flex-col items-center justify-center px-5"
+        style={{ background: "linear-gradient(160deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)" }}>
+        <style>{`
+          @keyframes aliicePulse {
+            0%, 100% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.15); opacity: 0.3; }
+          }
+          @keyframes aliiceGlow {
+            0%, 100% { box-shadow: 0 0 30px rgba(14,165,233,0.4); }
+            50% { box-shadow: 0 0 60px rgba(14,165,233,0.7); }
+          }
+          .aliice-ring { animation: aliicePulse 2s ease-in-out infinite; }
+          .aliice-glow { animation: aliiceGlow 2s ease-in-out infinite; }
+        `}</style>
+
+        {/* Pulsing rings */}
+        {callStatus === "active" && (
+          <>
+            <div className="absolute w-48 h-48 rounded-full border-2 border-sky-400/30 aliice-ring" />
+            <div className="absolute w-64 h-64 rounded-full border border-sky-400/20 aliice-ring" style={{ animationDelay: "0.5s" }} />
+          </>
+        )}
+
+        {/* Avatar */}
+        <div className={`relative mb-8 ${callStatus === "active" ? "aliice-glow" : ""}`}
+          style={{ borderRadius: "50%" }}>
+          <div className="w-32 h-32 rounded-full overflow-hidden" style={{ border: "4px solid rgba(14,165,233,0.5)" }}>
+            <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={128} height={128}
+              className="w-full h-full object-cover object-top" priority />
+          </div>
+          {callStatus === "active" && (
+            <span className="absolute bottom-2 right-2 w-5 h-5 rounded-full bg-emerald-400 border-2 border-slate-900 shadow" />
+          )}
+        </div>
+
+        <h2 className="text-2xl font-bold text-white mb-2">
+          {callStatus === "connecting" ? t.connecting :
+           callStatus === "active" ? t.inCall :
+           t.callEnded}
+        </h2>
+        <p className="text-sky-300/70 text-sm mb-10">{t.clinic}</p>
+
+        {error && (
+          <div className="text-rose-400 text-sm mb-6 bg-rose-500/10 px-4 py-2 rounded-full">{error}</div>
+        )}
+
+        {callStatus === "active" && (
+          <button onClick={endCall}
+            className="flex items-center gap-3 px-8 py-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white font-semibold transition-all active:scale-95 shadow-lg shadow-rose-500/30">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
+            </svg>
+            {t.endCall}
+          </button>
+        )}
+
+        {callStatus === "connecting" && (
+          <div className="flex items-center gap-2 text-sky-300">
+            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm">{t.connecting}</span>
+          </div>
+        )}
+
+        {callStatus === "ended" && (
+          <p className="text-slate-400 text-sm">Redirecting...</p>
+        )}
+      </main>
+    );
+  }
 
   // ── Welcome screen ─────────────────────────────────────────────────────────
   if (screen === "welcome") {
@@ -202,62 +363,97 @@ export default function AliiceChatPage() {
       >
         <style>{`
           @keyframes aliiceSlideUp {
-            from { opacity:0; transform:translateY(32px); }
-            to   { opacity:1; transform:translateY(0); }
+            from { opacity:0; transform:translateY(32px) scale(0.95); }
+            to   { opacity:1; transform:translateY(0) scale(1); }
           }
           @keyframes aliiceFadeOut {
-            to { opacity:0; transform:translateY(16px); }
+            to { opacity:0; transform:translateY(16px) scale(0.98); }
           }
-          .aliice-welcome { animation: aliiceSlideUp 0.38s cubic-bezier(0.34,1.56,0.64,1) both; }
+          @keyframes aliiceFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+          }
+          @keyframes aliiceShine {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+          }
+          .aliice-welcome { animation: aliiceSlideUp 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
           .aliice-welcome.out { animation: aliiceFadeOut 0.26s ease-in forwards; }
+          .aliice-float { animation: aliiceFloat 3s ease-in-out infinite; }
+          .aliice-btn { transition: all 0.2s ease; }
+          .aliice-btn:hover { transform: translateY(-2px); }
+          .aliice-btn:active { transform: translateY(0) scale(0.98); }
+          .aliice-shine {
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            background-size: 200% 100%;
+            animation: aliiceShine 3s linear infinite;
+          }
         `}</style>
 
         {/* Language toggle — top right */}
-        <div className="fixed top-4 right-4 z-10">
-          <LangToggle />
+        <div className="fixed top-5 right-5 z-10">
+          <LangToggle size="lg" />
         </div>
 
-        <div className={`aliice-welcome w-full max-w-[340px] flex flex-col items-center${dismissing ? " out" : ""}`}>
-          {/* Avatar */}
-          <div className="relative mb-5">
-            <div className="w-[112px] h-[112px] rounded-full overflow-hidden shadow-2xl" style={{ border: "4px solid #e0f2fe" }}>
+        <div className={`aliice-welcome w-full max-w-[380px] flex flex-col items-center${dismissing ? " out" : ""}`}>
+          {/* Avatar with float animation */}
+          <div className="relative mb-6 aliice-float">
+            <div className="w-28 h-28 rounded-full overflow-hidden shadow-2xl ring-4 ring-white"
+              style={{ boxShadow: "0 20px 50px -15px rgba(14,165,233,0.35)" }}>
               <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={112} height={112}
                 className="w-full h-full object-cover object-top" priority />
             </div>
-            <span className="absolute bottom-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-400 border-2 border-white shadow" />
+            <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-emerald-400 border-[3px] border-white shadow-lg" />
           </div>
 
-          <h1 className="text-[1.65rem] font-semibold text-slate-800 mb-1 text-center tracking-tight">{t.greeting}</h1>
-          <p className="text-slate-500 text-sm text-center mb-7 leading-relaxed max-w-[260px]">
+          <h1 className="text-3xl font-bold text-slate-800 mb-2 text-center tracking-tight">{t.greeting}</h1>
+          <p className="text-slate-500 text-[15px] text-center mb-8 leading-relaxed max-w-[280px]">
             {t.subtitle} <span className="font-semibold text-slate-700">{t.clinic}</span>.<br />
             {t.question}
           </p>
 
-          <div className="w-full space-y-3 mb-6">
+          <div className="w-full space-y-3 mb-8">
+            {/* Book Appointment - Primary CTA */}
             <a href={BOOK_URL} target="_blank" rel="noopener noreferrer"
-              className="flex items-center justify-center gap-3 w-full py-[15px] px-6 rounded-2xl text-white font-medium text-[15px] transition-all active:scale-[0.97]"
-              style={{ background: "linear-gradient(135deg,#38bdf8,#0ea5e9)", boxShadow: "0 8px 24px rgba(14,165,233,.32)" }}>
+              className="aliice-btn relative overflow-hidden flex items-center justify-center gap-3 w-full py-4 px-6 rounded-2xl text-white font-semibold text-[15px]"
+              style={{ background: "linear-gradient(135deg,#0ea5e9,#0284c7)", boxShadow: "0 10px 30px -8px rgba(14,165,233,.45)" }}>
+              <div className="absolute inset-0 aliice-shine" />
               <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               {t.book}
             </a>
 
+            {/* Two buttons side by side */}
+            <div className="flex gap-3">
+              {/* Chat with Aliice */}
+              <button onClick={handleStartChat}
+                className="aliice-btn flex-1 flex items-center justify-center gap-2.5 py-4 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-[14px] shadow-lg">
+                <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                {t.chat}
+              </button>
+
+              {/* Get A Call - Voice call */}
+              <button onClick={handleStartCall}
+                className="aliice-btn flex-1 flex items-center justify-center gap-2.5 py-4 px-5 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white font-semibold text-[14px] shadow-lg"
+                style={{ boxShadow: "0 10px 25px -8px rgba(139,92,246,.4)" }}>
+                <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+                {t.getCall}
+              </button>
+            </div>
+
+            {/* Call Clinic */}
             <a href={`tel:${CLINIC_PHONE_TEL}`}
-              className="flex items-center justify-center gap-3 w-full py-[15px] px-6 rounded-2xl bg-white text-slate-700 font-medium text-[15px] border border-slate-200 shadow-sm transition-all active:scale-[0.97] hover:bg-slate-50">
-              <svg className="w-5 h-5 shrink-0 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              className="aliice-btn flex items-center justify-center gap-3 w-full py-3.5 px-6 rounded-2xl bg-white text-slate-600 font-medium text-[14px] border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50">
+              <svg className="w-4 h-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
               </svg>
-              {t.callUs} <span className="text-sky-600 font-semibold">{CLINIC_PHONE}</span>
+              {t.callUs}: <span className="text-slate-800 font-semibold">{CLINIC_PHONE}</span>
             </a>
-
-            <button onClick={handleStartChat}
-              className="flex items-center justify-center gap-2.5 w-full py-[15px] px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-medium text-[15px] transition-all active:scale-[0.97] shadow-lg">
-              <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              {t.chat}
-            </button>
           </div>
 
           <p className="text-xs text-slate-400 text-center">
@@ -289,18 +485,25 @@ export default function AliiceChatPage() {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 shadow-sm bg-white flex-shrink-0">
         <div className="relative">
-          <div className="w-10 h-10 rounded-full overflow-hidden">
+          <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-sky-100">
             <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={40} height={40}
               className="w-full h-full object-cover object-top" />
           </div>
           <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 leading-none">Aliice</p>
+          <p className="text-sm font-bold text-slate-800 leading-none">Aliice</p>
           <p className="text-[11px] text-emerald-500 font-medium mt-0.5">{t.online}</p>
         </div>
         <div className="flex gap-1.5 shrink-0 items-center">
           <LangToggle />
+          <button onClick={handleStartCall}
+            className="flex items-center gap-1 text-[11px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2.5 py-1.5 rounded-full transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            </svg>
+            {t.voiceShort}
+          </button>
           <a href={BOOK_URL} target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1 text-[11px] font-semibold text-sky-600 bg-sky-50 hover:bg-sky-100 px-2.5 py-1.5 rounded-full transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

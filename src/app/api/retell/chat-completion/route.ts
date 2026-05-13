@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "chat_id and content are required" }, { status: 400 });
   }
 
-  const res = await fetch("https://api.retellai.com/v2/create-chat-completion", {
+  const res = await fetch("https://api.retellai.com/create-chat-completion", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${RETELL_API_KEY}`,
