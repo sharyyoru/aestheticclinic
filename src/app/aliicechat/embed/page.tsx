@@ -140,10 +140,10 @@ export default function AliiceChatEmbed() {
     }
   }, [input, chatId, thinking, t]);
 
-  // Minimized bubble
+  // Minimized bubble with "Speak to Aliice" message
   if (minimized) {
     return (
-      <div className="fixed bottom-5 right-5 z-[9999]">
+      <div className="fixed bottom-5 right-5 z-[9999] flex items-end gap-3">
         <style>{`
           @keyframes embedBounce {
             0% { transform: scale(0) rotate(-10deg); opacity: 0; }
@@ -154,13 +154,34 @@ export default function AliiceChatEmbed() {
             0%, 100% { box-shadow: 0 0 0 0 rgba(14,165,233,0.4); }
             50% { box-shadow: 0 0 0 12px rgba(14,165,233,0); }
           }
+          @keyframes embedMsgBounce {
+            0% { transform: scale(0) translateX(20px); opacity: 0; }
+            60% { transform: scale(1.05) translateX(-3px); }
+            100% { transform: scale(1) translateX(0); opacity: 1; }
+          }
           .embed-bubble { animation: embedBounce 0.5s cubic-bezier(0.34,1.56,0.64,1); }
           .embed-bubble:hover { transform: scale(1.08); }
           .embed-pulse { animation: embedPulse 2s ease-in-out infinite; }
+          .embed-msg-bubble { animation: embedMsgBounce 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.3s both; }
         `}</style>
+        
+        {/* Message bubble */}
+        <div 
+          onClick={() => setMinimized(false)}
+          className="embed-msg-bubble cursor-pointer bg-white rounded-2xl rounded-br-sm px-4 py-3 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow"
+        >
+          <p className="text-sm font-medium text-slate-800">
+            {lang === "fr" ? "Parler avec Aliice 💬" : "Speak to Aliice 💬"}
+          </p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {lang === "fr" ? "Je suis là pour vous aider!" : "I'm here to help!"}
+          </p>
+        </div>
+
+        {/* Avatar bubble */}
         <button
           onClick={() => setMinimized(false)}
-          className="embed-bubble embed-pulse relative w-16 h-16 rounded-full bg-gradient-to-br from-sky-400 via-sky-500 to-blue-600 shadow-2xl flex items-center justify-center transition-transform cursor-pointer"
+          className="embed-bubble embed-pulse relative w-16 h-16 rounded-full bg-gradient-to-br from-sky-400 via-sky-500 to-blue-600 shadow-2xl flex items-center justify-center transition-transform cursor-pointer flex-shrink-0"
           style={{ boxShadow: "0 8px 32px rgba(14,165,233,0.5)" }}
         >
           <Image src="/logos/AliiceAgent.jpg" alt="Chat with Aliice" width={52} height={52} className="rounded-full border-2 border-white/90 object-cover" />

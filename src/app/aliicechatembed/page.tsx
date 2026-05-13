@@ -42,7 +42,7 @@ export default function AliiceChatEmbedDocs() {
 ></iframe>`;
 
   return (
-    <div className="fixed inset-0 overflow-auto" style={{ background: "linear-gradient(135deg, #f8fafc 0%, #e0f2fe 50%, #f0f9ff 100%)" }}>
+    <div className="fixed inset-0 overflow-auto z-[9998]" style={{ background: "linear-gradient(135deg, #f8fafc 0%, #e0f2fe 50%, #f0f9ff 100%)" }}>
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
