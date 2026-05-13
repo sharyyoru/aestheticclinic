@@ -10,20 +10,35 @@ interface Message {
   created_timestamp: number;
 }
 
+const BOOK_URL = "https://aestheticclinic.vercel.app/book-appointment/location";
+
 const T = {
   en: {
     placeholder: "Type your message…",
-    thinking: "Aliice is typing…",
     error: "Something went wrong. Please try again.",
-    powered: "Powered by Aliice AI",
+    online: "Online",
+    starting: "Starting chat…",
+    book: "Book",
   },
   fr: {
     placeholder: "Tapez votre message…",
-    thinking: "Aliice écrit…",
     error: "Une erreur s'est produite. Veuillez réessayer.",
-    powered: "Propulsé par Aliice AI",
+    online: "En ligne",
+    starting: "Démarrage du chat…",
+    book: "Réserver",
   },
 };
+
+// Convert URLs in text to clickable links
+function linkify(text: string) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) =>
+    urlRegex.test(part) ? (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-sky-500 underline hover:text-sky-600">{part}</a>
+    ) : part
+  );
+}
 
 export default function AliiceChatEmbed() {
   // Get language from URL param or default to en
@@ -128,96 +143,150 @@ export default function AliiceChatEmbed() {
   // Minimized bubble
   if (minimized) {
     return (
-      <div className="fixed bottom-5 right-5 z-50">
+      <div className="fixed bottom-5 right-5 z-[9999]">
         <style>{`
-          @keyframes bounceIn {
-            0% { transform: scale(0); opacity: 0; }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); opacity: 1; }
+          @keyframes embedBounce {
+            0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+            60% { transform: scale(1.1) rotate(3deg); }
+            100% { transform: scale(1) rotate(0); opacity: 1; }
           }
-          .chat-bubble { animation: bounceIn 0.4s ease-out; }
-          .chat-bubble:hover { transform: scale(1.05); }
+          @keyframes embedPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(14,165,233,0.4); }
+            50% { box-shadow: 0 0 0 12px rgba(14,165,233,0); }
+          }
+          .embed-bubble { animation: embedBounce 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+          .embed-bubble:hover { transform: scale(1.08); }
+          .embed-pulse { animation: embedPulse 2s ease-in-out infinite; }
         `}</style>
         <button
           onClick={() => setMinimized(false)}
-          className="chat-bubble w-16 h-16 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 shadow-2xl flex items-center justify-center transition-transform cursor-pointer"
-          style={{ boxShadow: "0 8px 32px rgba(14,165,233,0.4)" }}
+          className="embed-bubble embed-pulse relative w-16 h-16 rounded-full bg-gradient-to-br from-sky-400 via-sky-500 to-blue-600 shadow-2xl flex items-center justify-center transition-transform cursor-pointer"
+          style={{ boxShadow: "0 8px 32px rgba(14,165,233,0.5)" }}
         >
-          <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={56} height={56} className="rounded-full border-2 border-white" />
+          <Image src="/logos/AliiceAgent.jpg" alt="Chat with Aliice" width={52} height={52} className="rounded-full border-2 border-white/90 object-cover" />
+          <span className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-white" />
         </button>
       </div>
     );
   }
 
-  // Open chat widget
+  // Open chat widget - matches exact design of /aliicechat
   return (
-    <div className="fixed bottom-5 right-5 z-50 w-[380px] max-w-[calc(100vw-40px)] h-[600px] max-h-[calc(100vh-100px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden"
-      style={{ boxShadow: "0 25px 50px -12px rgba(0,0,0,0.25)" }}>
+    <div className="fixed bottom-5 right-5 z-[9999] w-[380px] max-w-[calc(100vw-40px)] h-[600px] max-h-[calc(100vh-40px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden"
+      style={{ boxShadow: "0 25px 60px -12px rgba(0,0,0,0.3)" }}>
       <style>{`
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes embedSlideUp {
+          from { opacity: 0; transform: translateY(20px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .chat-window { animation: slideUp 0.3s ease-out; }
+        @keyframes embedDot {
+          0%,60%,100% { transform:translateY(0); opacity:.45; }
+          30%          { transform:translateY(-6px); opacity:1; }
+        }
+        @keyframes embedMsgIn {
+          from { opacity:0; transform:translateY(8px); }
+          to   { opacity:1; transform:translateY(0); }
+        }
+        .embed-window { animation: embedSlideUp 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+        .embed-msg { animation: embedMsgIn 0.22s ease-out both; }
+        .embed-dot { animation: embedDot 1.3s ease-in-out infinite; }
+        .embed-dot:nth-child(2) { animation-delay:.18s; }
+        .embed-dot:nth-child(3) { animation-delay:.36s; }
       `}</style>
 
-      {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 bg-gradient-to-r from-sky-500 to-blue-600 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/30">
-          <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={40} height={40} className="object-cover" />
+      {/* Header - matches /aliicechat */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 shadow-sm bg-white flex-shrink-0">
+        <div className="relative">
+          <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-sky-100">
+            <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={40} height={40}
+              className="w-full h-full object-cover object-top" />
+          </div>
+          <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white" />
         </div>
-        <div className="flex-1">
-          <h3 className="text-white font-semibold text-sm">Aliice</h3>
-          <p className="text-sky-100 text-xs">Aesthetics Clinic Assistant</p>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-slate-800 leading-none">Aliice</p>
+          <p className="text-[11px] text-emerald-500 font-medium mt-0.5">{t.online}</p>
         </div>
-        {/* Language toggle */}
-        <button
-          onClick={() => setLang(l => l === "en" ? "fr" : "en")}
-          className="text-[10px] font-bold text-white/80 hover:text-white px-2 py-1 rounded border border-white/30 hover:border-white/50 transition-all"
-        >
-          {lang === "en" ? "FR" : "EN"}
-        </button>
-        {/* Minimize */}
-        <button onClick={() => setMinimized(true)} className="text-white/70 hover:text-white transition-colors p-1">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
+        <div className="flex gap-1.5 shrink-0 items-center">
+          {/* Language toggle */}
+          <button
+            onClick={() => setLang(l => l === "en" ? "fr" : "en")}
+            className="text-[11px] font-bold px-2.5 py-1.5 rounded-full transition-all border-2"
+            style={{
+              borderColor: lang === "en" ? "#dbeafe" : "#e0e7ff",
+              background: lang === "en" ? "#eff6ff" : "#eef2ff",
+              color: lang === "en" ? "#3b82f6" : "#6366f1",
+            }}
+          >
+            {lang === "en" ? "🇬🇧 EN" : "🇫🇷 FR"}
+          </button>
+          {/* Book button */}
+          <a href={BOOK_URL} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] font-semibold text-sky-600 bg-sky-50 hover:bg-sky-100 px-2.5 py-1.5 rounded-full transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            {t.book}
+          </a>
+          {/* Minimize */}
+          <button onClick={() => setMinimized(true)} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-slate-50">
+      {/* Messages area - matches /aliicechat */}
+      <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ background: "#f8fafc" }}>
         {error && (
-          <div className="text-center text-rose-500 text-sm py-2 bg-rose-50 rounded-lg">{error}</div>
+          <div className="text-center text-xs text-rose-500 bg-rose-50 rounded-xl py-2 px-4">{error}</div>
         )}
-        {messages.map(m => (
-          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-              m.role === "user"
-                ? "bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-br-md"
-                : "bg-white text-slate-700 shadow-sm border border-slate-100 rounded-bl-md"
+        {messages.length === 0 && !thinking && !error && (
+          <div className="flex justify-center pt-12">
+            <p className="text-xs text-slate-400">{t.starting}</p>
+          </div>
+        )}
+
+        {messages.map((msg) => (
+          <div key={msg.id ?? msg.created_timestamp}
+            className={`embed-msg flex gap-2.5 ${ msg.role === "user" ? "justify-end" : "justify-start" }`}>
+            {msg.role === "agent" && (
+              <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 self-end mb-0.5 shadow-sm">
+                <Image src="/logos/AliiceAgent.jpg" alt="" width={32} height={32}
+                  className="w-full h-full object-cover object-top" />
+              </div>
+            )}
+            <div className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+              msg.role === "user"
+                ? "bg-sky-500 text-white rounded-br-sm"
+                : "bg-white text-slate-800 rounded-bl-sm border border-slate-100"
             }`}>
-              {m.content}
+              {msg.role === "agent" ? linkify(msg.content) : msg.content}
             </div>
           </div>
         ))}
+
+        {/* Typing indicator */}
         {thinking && (
-          <div className="flex justify-start">
-            <div className="bg-white text-slate-500 text-sm px-4 py-2.5 rounded-2xl rounded-bl-md shadow-sm border border-slate-100 flex items-center gap-2">
-              <span className="flex gap-1">
-                <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </span>
-              <span className="text-xs text-slate-400">{t.thinking}</span>
+          <div className="embed-msg flex gap-2.5 justify-start">
+            <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 self-end mb-0.5 shadow-sm">
+              <Image src="/logos/AliiceAgent.jpg" alt="" width={32} height={32}
+                className="w-full h-full object-cover object-top" />
+            </div>
+            <div className="bg-white border border-slate-100 shadow-sm rounded-2xl rounded-bl-sm px-4 py-3.5 flex items-center gap-1.5">
+              <span className="embed-dot w-2 h-2 rounded-full bg-slate-400 block" />
+              <span className="embed-dot w-2 h-2 rounded-full bg-slate-400 block" />
+              <span className="embed-dot w-2 h-2 rounded-full bg-slate-400 block" />
             </div>
           </div>
         )}
+
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
-      <div className="flex-shrink-0 px-3 py-3 bg-white border-t border-slate-100 flex items-center gap-2">
+      {/* Input bar - matches /aliicechat */}
+      <div className="flex-shrink-0 px-4 py-3 bg-white border-t border-slate-100 flex items-center gap-2">
         <input
           ref={inputRef}
           value={input}
@@ -225,22 +294,17 @@ export default function AliiceChatEmbed() {
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
           placeholder={t.placeholder}
           disabled={!chatId || thinking}
-          className="flex-1 bg-slate-100 rounded-full px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-200 disabled:opacity-50"
+          className="flex-1 bg-slate-100 rounded-full px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-sky-200 disabled:opacity-50"
         />
         <button
           onClick={sendMessage}
           disabled={!input.trim() || !chatId || thinking}
-          className="w-10 h-10 rounded-full bg-sky-500 hover:bg-sky-600 disabled:opacity-40 text-white flex items-center justify-center flex-shrink-0 transition-colors"
+          className="w-10 h-10 rounded-full bg-sky-500 hover:bg-sky-600 disabled:opacity-40 text-white flex items-center justify-center flex-shrink-0 transition-colors shadow"
         >
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <svg className="w-4 h-4 translate-x-0.5" fill="currentColor" viewBox="0 0 20 20">
             <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
           </svg>
         </button>
-      </div>
-
-      {/* Footer */}
-      <div className="flex-shrink-0 px-3 py-1.5 bg-slate-50 border-t border-slate-100">
-        <p className="text-[10px] text-slate-400 text-center">{t.powered}</p>
       </div>
     </div>
   );

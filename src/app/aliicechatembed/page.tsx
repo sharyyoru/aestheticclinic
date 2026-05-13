@@ -15,49 +15,34 @@ export default function AliiceChatEmbedDocs() {
 
   const iframeCodeEN = `<iframe
   src="${baseUrl}/aliicechat/embed?lang=en"
-  style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999; pointer-events: none;"
+  style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999;"
   allow="microphone"
-></iframe>
-<style>
-  iframe { pointer-events: auto; }
-</style>`;
+></iframe>`;
 
   const iframeCodeFR = `<iframe
   src="${baseUrl}/aliicechat/embed?lang=fr"
-  style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999; pointer-events: none;"
+  style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999;"
   allow="microphone"
-></iframe>
-<style>
-  iframe { pointer-events: auto; }
-</style>`;
+></iframe>`;
 
   const scriptCode = `<script>
 (function() {
   var iframe = document.createElement('iframe');
   iframe.src = '${baseUrl}/aliicechat/embed?lang=en';
-  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:100%;height:100%;border:none;z-index:9999;pointer-events:auto;';
+  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:100%;height:100%;border:none;z-index:9999;';
   iframe.allow = 'microphone';
   document.body.appendChild(iframe);
 })();
 </script>`;
 
-  const wordpressShortcode = `<!-- Add this to your theme's footer.php or use a plugin like "Insert Headers and Footers" -->
-<iframe
-  src="${baseUrl}/aliicechat/embed?lang=en"
-  style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999;"
-  allow="microphone"
-></iframe>`;
-
-  const wordpressElementor = `<!-- In Elementor: Add HTML Widget to your page/template -->
-<!-- Paste this code: -->
-<iframe
+  const wordpressCode = `<iframe
   src="${baseUrl}/aliicechat/embed?lang=en"
   style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999;"
   allow="microphone"
 ></iframe>`;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-sky-50">
+    <div className="fixed inset-0 overflow-auto" style={{ background: "linear-gradient(135deg, #f8fafc 0%, #e0f2fe 50%, #f0f9ff 100%)" }}>
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
@@ -205,14 +190,14 @@ export default function AliiceChatEmbedDocs() {
               </ol>
               <div className="mt-4">
                 <button
-                  onClick={() => copyToClipboard(wordpressShortcode, "wp-plugin")}
+                  onClick={() => copyToClipboard(wordpressCode, "wp-plugin")}
                   className="text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-1.5 rounded-full transition-colors"
                 >
                   {copied === "wp-plugin" ? "✓ Copied!" : "Copy WordPress Code"}
                 </button>
               </div>
               <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto mt-3">
-                <code>{wordpressShortcode}</code>
+                <code>{wordpressCode}</code>
               </pre>
             </div>
 
@@ -230,7 +215,7 @@ export default function AliiceChatEmbedDocs() {
               </ol>
               <div className="mt-4">
                 <button
-                  onClick={() => copyToClipboard(wordpressElementor, "elementor")}
+                  onClick={() => copyToClipboard(wordpressCode, "elementor")}
                   className="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1.5 rounded-full transition-colors"
                 >
                   {copied === "elementor" ? "✓ Copied!" : "Copy Elementor Code"}
@@ -343,6 +328,6 @@ export default function AliiceChatEmbedDocs() {
         style={{ position: "fixed", bottom: 0, right: 0, width: "100%", height: "100%", border: "none", zIndex: 9999, pointerEvents: "auto" }}
         allow="microphone"
       />
-    </main>
+    </div>
   );
 }
