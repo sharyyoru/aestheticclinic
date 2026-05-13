@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { getFormById, FormDefinition, FormField, FormSection } from "@/lib/formDefinitions";
+import { getFormById, FormDefinition, FormField, FormSection, FormContentBlock } from "@/lib/formDefinitions";
 import Image from "next/image";
 
 type FormData = Record<string, string | boolean | string[]>;
@@ -309,6 +309,34 @@ function FormFieldComponent({
   }
 }
 
+function FormContentBlockComponent({
+  block,
+  language,
+}: {
+  block: FormContentBlock;
+  language: "en" | "fr";
+}) {
+  if (block.type === "paragraph") {
+    const text = language === "fr" && block.textFr ? block.textFr : block.text;
+
+    return <p className="text-sm leading-6 text-slate-700">{text}</p>;
+  }
+
+  const items = language === "fr" && block.itemsFr ? block.itemsFr : block.items;
+  const ListTag = block.type === "ordered-list" ? "ol" : "ul";
+  const listClassName = block.type === "ordered-list"
+    ? "list-decimal space-y-1 pl-5 text-sm leading-6 text-slate-700"
+    : "list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700";
+
+  return (
+    <ListTag className={listClassName}>
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ListTag>
+  );
+}
+
 function FormSectionComponent({
   section,
   formData,
@@ -327,6 +355,17 @@ function FormSectionComponent({
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h3 className="mb-2 text-lg font-semibold text-slate-900">{title}</h3>
       {description && <p className="mb-4 text-sm text-slate-600">{description}</p>}
+      {section.content && section.content.length > 0 && (
+        <div className="mb-5 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          {section.content.map((block, index) => (
+            <FormContentBlockComponent
+              key={`${section.id}-content-${index}`}
+              block={block}
+              language={language}
+            />
+          ))}
+        </div>
+      )}
       <div className="space-y-4">
         {section.fields.map((field) => (
           <FormFieldComponent
