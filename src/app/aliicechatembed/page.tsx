@@ -322,12 +322,15 @@ export default function AliiceChatEmbedDocs() {
         </div>
       </footer>
 
-      {/* Embed the actual widget for live preview */}
+      {/* Embed the actual widget for live preview - only covers bottom-right corner */}
       <iframe
         src="/aliicechat/embed?lang=en"
-        style={{ position: "fixed", bottom: 0, right: 0, width: "100%", height: "100%", border: "none", zIndex: 9999, pointerEvents: "auto" }}
+        style={{ position: "fixed", bottom: 0, right: 0, width: "420px", height: "680px", border: "none", zIndex: 9999, pointerEvents: "none" }}
         allow="microphone"
       />
+      <style>{`
+        iframe { pointer-events: auto; }
+      `}</style>
     </div>
   );
 }
