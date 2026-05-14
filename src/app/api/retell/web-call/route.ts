@@ -7,7 +7,7 @@ const RETELL_API_KEY = process.env.RETELL_API_KEY ?? "";
 // Voice agents by language for online/web calls (different from phone call agents)
 const VOICE_AGENTS = {
   en: "agent_f5cc331b4b4c944efb6cd29d0a",
-  fr: "agent_cede618e4c574cb4e481461be7",
+  fr: "agent_16738cdb79c26e811fc1cffcc6",
 };
 
 export async function POST(req: NextRequest) {
