@@ -111,13 +111,40 @@ export async function GET(request: Request) {
           first_name,
           last_name,
           email,
-          dob
+          phone,
+          gender,
+          dob,
+          marital_status,
+          nationality,
+          street_address,
+          postal_code,
+          town,
+          country,
+          profession,
+          current_employer,
+          country_code,
+          language_preference
         )
       `)
       .eq("token", token)
       .single();
 
-    if (fetchError || !submission) {
+    if (fetchError) {
+      if (fetchError.code !== "PGRST116") {
+        console.error("Error fetching form submission:", fetchError);
+        return NextResponse.json(
+          { error: "Failed to fetch form submission" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: "Invalid or expired form link" },
+        { status: 404 }
+      );
+    }
+
+    if (!submission) {
       return NextResponse.json(
         { error: "Invalid or expired form link" },
         { status: 404 }

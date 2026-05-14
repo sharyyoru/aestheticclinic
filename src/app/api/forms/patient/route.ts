@@ -110,3 +110,56 @@ export async function PATCH(request: Request) {
     );
   }
 }
+
+// DELETE /api/forms/patient?submissionId=xxx&patientId=xxx - Delete form submissions
+// Also accepts submissionIds=id1,id2,id3 for bulk deletion.
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const submissionId = searchParams.get("submissionId");
+    const submissionIdsParam = searchParams.get("submissionIds");
+    const patientId = searchParams.get("patientId");
+    const submissionIds = [
+      ...(submissionId ? [submissionId] : []),
+      ...(submissionIdsParam ? submissionIdsParam.split(",") : []),
+    ].map((id) => id.trim()).filter(Boolean);
+    const uniqueSubmissionIds = Array.from(new Set(submissionIds));
+
+    if (uniqueSubmissionIds.length === 0 || !patientId) {
+      return NextResponse.json(
+        { error: "Missing required fields: submissionId or submissionIds, patientId" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("patient_form_submissions")
+      .delete()
+      .in("id", uniqueSubmissionIds)
+      .eq("patient_id", patientId)
+      .select("id");
+
+    if (error) {
+      console.error("Error deleting form submission:", error);
+      return NextResponse.json(
+        { error: "Failed to delete form submission" },
+        { status: 500 }
+      );
+    }
+
+    if (!data || data.length === 0) {
+      return NextResponse.json(
+        { error: "Form submissions not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ success: true, deletedIds: data.map((row) => row.id) });
+  } catch (error) {
+    console.error("Error deleting form submission:", error);
+    return NextResponse.json(
+      { error: "Failed to delete form submission" },
+      { status: 500 }
+    );
+  }
+}

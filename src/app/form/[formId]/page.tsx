@@ -2,10 +2,88 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { getFormById, FormDefinition, FormField, FormSection, FormContentBlock } from "@/lib/formDefinitions";
+import { getAlternateLanguageFormId, getFormById, FormDefinition, FormField, FormSection, FormContentBlock } from "@/lib/formDefinitions";
 import Image from "next/image";
 
 type FormData = Record<string, string | boolean | string[]>;
+
+type PatientInfo = {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  gender?: string | null;
+  dob?: string | null;
+  marital_status?: string | null;
+  nationality?: string | null;
+  street_address?: string | null;
+  street_number?: string | null;
+  postal_code?: string | null;
+  town?: string | null;
+  country?: string | null;
+  country_code?: string | null;
+  profession?: string | null;
+  current_employer?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relation?: string | null;
+  language_preference?: string | null;
+};
+
+function getFormFieldIds(form: FormDefinition): Set<string> {
+  return new Set(form.sections.flatMap((section) => section.fields.map((field) => field.id)));
+}
+
+function addPrefillValue(
+  prefill: FormData,
+  fieldIds: Set<string>,
+  possibleFieldIds: string[],
+  value: string | null | undefined
+) {
+  if (!value) return;
+
+  possibleFieldIds.forEach((fieldId) => {
+    if (fieldIds.has(fieldId)) {
+      prefill[fieldId] = value;
+    }
+  });
+}
+
+function buildPatientPrefill(patient: PatientInfo, form: FormDefinition): FormData {
+  const fieldIds = getFormFieldIds(form);
+  const prefill: FormData = {};
+  const fullName = [patient.first_name, patient.last_name].filter(Boolean).join(" ").trim();
+  const address = [patient.street_number, patient.street_address].filter(Boolean).join(" ").trim();
+  const phone = [patient.country_code, patient.phone].filter(Boolean).join(" ").trim();
+
+  addPrefillValue(prefill, fieldIds, ["full_name", "patient_name", "name"], fullName);
+  addPrefillValue(prefill, fieldIds, ["first_name", "given_name", "prenom"], patient.first_name);
+  addPrefillValue(prefill, fieldIds, ["last_name", "surname", "family_name", "nom"], patient.last_name);
+  addPrefillValue(prefill, fieldIds, ["date_of_birth", "dob", "birth_date"], patient.dob);
+  addPrefillValue(prefill, fieldIds, ["email", "patient_email"], patient.email);
+  addPrefillValue(prefill, fieldIds, ["phone", "telephone", "telephone_number", "private_phone", "patient_phone"], phone || patient.phone);
+  addPrefillValue(prefill, fieldIds, ["gender", "sex"], patient.gender);
+  addPrefillValue(prefill, fieldIds, ["marital_status"], patient.marital_status);
+  addPrefillValue(prefill, fieldIds, ["nationality"], patient.nationality);
+  addPrefillValue(prefill, fieldIds, ["street_address", "address"], patient.street_address);
+  addPrefillValue(prefill, fieldIds, ["street_number"], patient.street_number);
+  addPrefillValue(prefill, fieldIds, ["full_address"], address);
+  addPrefillValue(prefill, fieldIds, ["postal_code", "zip_code"], patient.postal_code);
+  addPrefillValue(prefill, fieldIds, ["town", "city"], patient.town);
+  addPrefillValue(prefill, fieldIds, ["country"], patient.country);
+  addPrefillValue(prefill, fieldIds, ["profession", "occupation"], patient.profession);
+  addPrefillValue(prefill, fieldIds, ["current_employer", "employer"], patient.current_employer);
+  addPrefillValue(prefill, fieldIds, ["emergency_contact_name"], patient.emergency_contact_name);
+  addPrefillValue(prefill, fieldIds, ["emergency_contact_phone"], patient.emergency_contact_phone);
+  addPrefillValue(
+    prefill,
+    fieldIds,
+    ["emergency_contact_relation", "emergency_contact_relationship"],
+    patient.emergency_contact_relation
+  );
+
+  return prefill;
+}
 
 function SignatureCanvas({ 
   value, 
@@ -319,7 +397,7 @@ function FormContentBlockComponent({
   if (block.type === "paragraph") {
     const text = language === "fr" && block.textFr ? block.textFr : block.text;
 
-    return <p className="text-sm leading-6 text-slate-700">{text}</p>;
+    return <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{text}</p>;
   }
 
   const items = language === "fr" && block.itemsFr ? block.itemsFr : block.items;
@@ -393,7 +471,7 @@ export default function PublicFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [patientInfo, setPatientInfo] = useState<{ first_name: string; last_name: string } | null>(null);
+  const [patientInfo, setPatientInfo] = useState<PatientInfo | null>(null);
 
   useEffect(() => {
     async function loadForm() {
@@ -431,27 +509,20 @@ export default function PublicFormPage() {
             setSubmitted(true);
           }
 
-          if (data.submission.submissionData) {
-            setFormData(data.submission.submissionData);
-          }
-
           if (data.submission.patient) {
             setPatientInfo(data.submission.patient);
-            // Pre-fill patient name if form has full_name field
-            if (data.submission.patient.first_name && data.submission.patient.last_name) {
-              setFormData((prev) => ({
-                ...prev,
-                full_name: `${data.submission.patient.first_name} ${data.submission.patient.last_name}`,
-              }));
-            }
-            // Pre-fill date of birth if available
-            if (data.submission.patient.dob) {
-              setFormData((prev) => ({
-                ...prev,
-                date_of_birth: data.submission.patient.dob,
-              }));
-            }
           }
+
+          const patientPrefill = data.submission.patient
+            ? buildPatientPrefill(data.submission.patient, formDef)
+            : {};
+          const submissionData = data.submission.submissionData || {};
+
+          setFormData((prev) => ({
+            ...prev,
+            ...patientPrefill,
+            ...submissionData,
+          }));
         }
 
         // Set signature_date to today's date by default
@@ -578,6 +649,11 @@ export default function PublicFormPage() {
 
   const formTitle = form.language === "fr" && form.nameFr ? form.nameFr : form.name;
   const formDescription = form.language === "fr" && form.descriptionFr ? form.descriptionFr : form.description;
+  const alternateLanguageFormId = getAlternateLanguageFormId(form.id);
+  const alternateLanguageForm = alternateLanguageFormId ? getFormById(alternateLanguageFormId) : undefined;
+  const alternateLanguageUrl = alternateLanguageForm
+    ? `/form/${alternateLanguageForm.id}${token ? `?token=${encodeURIComponent(token)}` : ""}`
+    : null;
 
   return (
     <div className="min-h-screen bg-slate-50 py-8">
@@ -595,6 +671,14 @@ export default function PublicFormPage() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900">{formTitle}</h1>
           <p className="mt-2 text-sm text-slate-600">{formDescription}</p>
+          {alternateLanguageUrl && alternateLanguageForm && (
+            <a
+              href={alternateLanguageUrl}
+              className="mt-4 inline-flex items-center rounded-full border border-sky-200 bg-white px-4 py-2 text-xs font-semibold text-sky-700 shadow-sm hover:bg-sky-50"
+            >
+              {form.language === "fr" ? "Switch to English" : "Passer en français"}
+            </a>
+          )}
           {patientInfo && (
             <p className="mt-2 text-sm font-medium text-sky-600">
               {form.language === "fr" ? "Patient:" : "Patient:"} {patientInfo.first_name} {patientInfo.last_name}

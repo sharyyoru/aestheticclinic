@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAllForms, getFormById, FormDefinition } from "@/lib/formDefinitions";
-import { FileText, Send, Eye, Clock, CheckCircle, AlertCircle, Copy, ExternalLink, X } from "lucide-react";
+import { getFormById } from "@/lib/formDefinitions";
+import { FileText, Eye, Clock, CheckCircle, AlertCircle, Copy, ExternalLink, Send, Trash2, X } from "lucide-react";
 
 type FormSubmission = {
   id: string;
@@ -19,7 +19,30 @@ type FormSubmission = {
   formUrl: string | null;
 };
 
-type SendFormModalProps = {
+type ViewSubmissionModalProps = {
+  submission: FormSubmission;
+  onClose: () => void;
+};
+
+const breastSurgeryFormIdsByLanguage = {
+  en: [
+    "questionnaire-anesthesie-en",
+    "consentement-anesthesie-en",
+    "consentement-augmentation-mammaire-en",
+    "consentement-eclaire-en",
+    "preoperative-instructions-en",
+  ],
+  fr: [
+    "questionnaire-anesthesie-fr",
+    "consentement-anesthesie-fr",
+    "consentement-augmentation-mammaire-fr",
+    "consentement-lift-reduction-fr",
+    "consentement-eclaire-fr",
+    "consignes-pre-post-op-fr",
+  ],
+};
+
+type BreastFormsSendModalProps = {
   patientId: string;
   patientEmail: string | null;
   patientName: string;
@@ -27,37 +50,52 @@ type SendFormModalProps = {
   onSuccess: () => void;
 };
 
-function SendFormModal({ patientId, patientEmail, patientName, onClose, onSuccess }: SendFormModalProps) {
-  const [selectedLanguage, setSelectedLanguage] = useState<"en" | "fr" | null>(null);
-  const [forms] = useState<FormDefinition[]>(getAllForms());
-  const [selectedFormIds, setSelectedFormIds] = useState<string[]>([]);
+function BreastFormsSendModal({
+  patientId,
+  patientEmail,
+  patientName,
+  onClose,
+  onSuccess,
+}: BreastFormsSendModalProps) {
+  const language: "fr" = "fr";
+  const [selectedFormIds, setSelectedFormIds] = useState<string[]>(breastSurgeryFormIdsByLanguage.fr);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [generatedUrls, setGeneratedUrls] = useState<{formId: string; url: string; formName: string}[]>([]);
-  const [copied, setCopied] = useState(false);
-  
-  const filteredForms = selectedLanguage 
-    ? forms.filter(form => form.language === selectedLanguage)
-    : [];
 
-  const handleGenerateLinks = async () => {
-    if (selectedFormIds.length === 0) return;
+  const forms = breastSurgeryFormIdsByLanguage[language]
+    .map((formId) => getFormById(formId))
+    .filter((form): form is NonNullable<ReturnType<typeof getFormById>> => Boolean(form));
+
+  const handleToggleForm = (formId: string) => {
+    setSelectedFormIds((current) =>
+      current.includes(formId)
+        ? current.filter((id) => id !== formId)
+        : [...current, formId]
+    );
+  };
+
+  const handleSend = async () => {
+    if (!patientEmail) {
+      setError("This patient does not have an email address.");
+      return;
+    }
+
+    if (selectedFormIds.length === 0) {
+      setError("Select at least one form to send.");
+      return;
+    }
 
     try {
       setSending(true);
       setError(null);
 
-      const results = await Promise.all(
+      const generatedForms = await Promise.all(
         selectedFormIds.map(async (formId) => {
           const response = await fetch("/api/forms", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              patientId,
-              formId,
-            }),
+            body: JSON.stringify({ patientId, formId }),
           });
-
           const data = await response.json();
 
           if (!response.ok) {
@@ -65,138 +103,66 @@ function SendFormModal({ patientId, patientEmail, patientName, onClose, onSucces
           }
 
           const form = getFormById(formId);
-          const formName = form && form.language === "fr" && form.nameFr ? form.nameFr : form?.name || formId;
-
           return {
-            formId,
+            name: form?.language === "fr" && form.nameFr ? form.nameFr : form?.name || formId,
             url: data.formUrl,
-            formName,
           };
         })
       );
 
-      setGeneratedUrls(results);
-      setSending(false);
-    } catch (err) {
-      console.error("Error generating form links:", err);
-      setError(err instanceof Error ? err.message : "Failed to generate form links");
-      setSending(false);
-    }
-  };
+      const formLinks = generatedForms
+        .map(({ name, url }) => `
+          <p style="margin: 12px 0;">
+            <a href="${url}" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 12px 20px; text-decoration: none; border-radius: 8px; font-weight: 600;">
+              ${name}
+            </a>
+          </p>
+        `)
+        .join("");
 
-  const handleSendEmail = async () => {
-    if (generatedUrls.length === 0 || !patientEmail) return;
-
-    try {
-      setSending(true);
-      setError(null);
-
-      const isFrench = selectedLanguage === "fr";
-      const subject = isFrench 
-        ? `Formulaires à remplir: ${generatedUrls.length} formulaire${generatedUrls.length > 1 ? 's' : ''}`
-        : `Forms to complete: ${generatedUrls.length} form${generatedUrls.length > 1 ? 's' : ''}`;
-
-      const formLinks = generatedUrls.map(({ url, formName }) => 
-        `<p style="margin: 12px 0;">
-          <a href="${url}" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 600;">
-            ${formName}
-          </a>
-        </p>`
-      ).join('');
-
-      const html = isFrench
-        ? `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #1e293b;">Bonjour ${patientName},</h2>
-            <p style="color: #475569;">Veuillez remplir les formulaires suivants en cliquant sur les liens ci-dessous:</p>
-            <div style="margin: 24px 0;">
-              ${formLinks}
-            </div>
-            <p style="color: #64748b; font-size: 14px;">Ces liens expirent dans 30 jours.</p>
-            <p style="color: #475569;">Cordialement,<br/>L'équipe Aesthetics</p>
-          </div>
-        `
-        : `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #1e293b;">Hello ${patientName},</h2>
-            <p style="color: #475569;">Please complete the following forms by clicking the links below:</p>
-            <div style="margin: 24px 0;">
-              ${formLinks}
-            </div>
-            <p style="color: #64748b; font-size: 14px;">These links expire in 30 days.</p>
-            <p style="color: #475569;">Best regards,<br/>The Aesthetics Team</p>
-          </div>
-        `;
+      const greeting = `Bonjour ${patientName},`;
+      const intro = "Veuillez compléter les formulaires numériques ci-dessous. Chaque formulaire permet de basculer entre le français et l'anglais si nécessaire.";
+      const footer = "Ces liens expirent dans 30 jours.";
 
       const emailResponse = await fetch("/api/emails/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: patientEmail,
-          subject,
-          html,
+          subject: "Formulaires de chirurgie mammaire à compléter",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto;">
+              <h2 style="color: #1e293b;">${greeting}</h2>
+              <p style="color: #475569;">${intro}</p>
+              <div style="margin: 24px 0;">${formLinks}</div>
+              <p style="color: #64748b; font-size: 14px;">${footer}</p>
+              <p style="color: #475569;">Aesthetics Clinic</p>
+            </div>
+          `,
           patientId,
         }),
       });
 
+      const emailData = await emailResponse.json();
       if (!emailResponse.ok) {
-        const emailData = await emailResponse.json();
-        setError(emailData.error || "Failed to send email");
-        setSending(false);
-        return;
+        throw new Error(emailData.error || "Failed to send email");
       }
 
-      setSending(false);
       onSuccess();
       onClose();
     } catch (err) {
-      console.error("Error sending email:", err);
-      setError("Failed to send email");
+      console.error("Error sending breast surgery forms:", err);
+      setError(err instanceof Error ? err.message : "Failed to send forms");
+    } finally {
       setSending(false);
     }
   };
 
-  const handleCopyLink = (url: string) => {
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleToggleForm = (formId: string) => {
-    setSelectedFormIds(prev => 
-      prev.includes(formId) 
-        ? prev.filter(id => id !== formId)
-        : [...prev, formId]
-    );
-  };
-
-  const handleSelectAll = () => {
-    if (selectedFormIds.length === filteredForms.length) {
-      setSelectedFormIds([]);
-    } else {
-      setSelectedFormIds(filteredForms.map(f => f.id));
-    }
-  };
-
-  // Group forms by category
-  const groupedForms = filteredForms.reduce((acc, form) => {
-    const category = form.category;
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(form);
-    return acc;
-  }, {} as Record<string, FormDefinition[]>);
-
-  const categoryLabels: Record<string, string> = {
-    consent: "Consent Forms",
-    questionnaire: "Questionnaires",
-    instructions: "Instructions",
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-xl rounded-xl bg-white p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">Send Form to Patient</h2>
+          <h2 className="text-base font-semibold text-slate-900">Send form</h2>
           <button
             type="button"
             onClick={onClose}
@@ -207,231 +173,69 @@ function SendFormModal({ patientId, patientEmail, patientName, onClose, onSucces
         </div>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
             {error}
           </div>
         )}
 
-        {generatedUrls.length === 0 ? (
-          <>
-            {!selectedLanguage ? (
-              <>
-                <div className="mb-4">
-                  <label className="mb-3 block text-sm font-medium text-slate-700">Select Language</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedLanguage("en")}
-                      className="flex flex-col items-center gap-2 rounded-lg border-2 border-slate-200 bg-white p-4 transition-all hover:border-emerald-500 hover:bg-emerald-50"
-                    >
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-                        <span className="text-xl font-semibold text-emerald-700">EN</span>
-                      </div>
-                      <span className="text-sm font-medium text-slate-900">English</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedLanguage("fr")}
-                      className="flex flex-col items-center gap-2 rounded-lg border-2 border-slate-200 bg-white p-4 transition-all hover:border-blue-500 hover:bg-blue-50"
-                    >
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-                        <span className="text-xl font-semibold text-blue-700">FR</span>
-                      </div>
-                      <span className="text-sm font-medium text-slate-900">Français</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedLanguage(null);
-                        setSelectedFormIds([]);
-                      }}
-                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                    >
-                      ← Change Language
-                    </button>
-                    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                      selectedLanguage === "fr" 
-                        ? "bg-blue-100 text-blue-700" 
-                        : "bg-emerald-100 text-emerald-700"
-                    }`}>
-                      {selectedLanguage === "fr" ? "Français" : "English"}
-                    </span>
-                  </div>
-                  {filteredForms.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleSelectAll}
-                      className="text-xs font-medium text-sky-600 hover:text-sky-700"
-                    >
-                      {selectedFormIds.length === filteredForms.length ? "Deselect All" : "Select All"}
-                    </button>
-                  )}
-                </div>
-
-                <div className="mb-4">
-                  <label className="mb-3 block text-sm font-medium text-slate-700">
-                    Select Forms ({selectedFormIds.length} selected)
-                  </label>
-                  <div className="max-h-[400px] space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    {Object.entries(groupedForms).map(([category, categoryForms]) => (
-                      <div key={category}>
-                        <h4 className="mb-2 text-xs font-semibold text-slate-700">
-                          {categoryLabels[category] || category}
-                        </h4>
-                        <div className="space-y-2">
-                          {categoryForms.map((form) => (
-                            <label
-                              key={form.id}
-                              className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 transition-all hover:border-sky-300 hover:bg-sky-50"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedFormIds.includes(form.id)}
-                                onChange={() => handleToggleForm(form.id)}
-                                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
-                              />
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-slate-900">
-                                  {form.language === "fr" && form.nameFr ? form.nameFr : form.name}
-                                </p>
-                                <p className="mt-0.5 text-xs text-slate-600">
-                                  {form.language === "fr" && form.descriptionFr ? form.descriptionFr : form.description}
-                                </p>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleGenerateLinks}
-                    disabled={selectedFormIds.length === 0 || sending}
-                    className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {sending ? (
-                      <>
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="h-4 w-4" />
-                        Generate Link{selectedFormIds.length > 1 ? 's' : ''}
-                      </>
-                    )}
-                  </button>
-                </div>
-              </>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="mb-4">
-              <label className="mb-2 block text-sm font-medium text-slate-700">
-                Form Link{generatedUrls.length > 1 ? 's' : ''} Generated ({generatedUrls.length})
+        <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+              Chirurgie mammaire
+            </h3>
+            <span className="text-[11px] font-medium text-slate-500">
+              {forms.length} forms
+            </span>
+          </div>
+          <div className="space-y-2">
+            {forms.map((form) => (
+              <label key={form.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-sky-50">
+                <input
+                  type="checkbox"
+                  checked={selectedFormIds.includes(form.id)}
+                  onChange={() => handleToggleForm(form.id)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-slate-900">
+                    {form.language === "fr" && form.nameFr ? form.nameFr : form.name}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {form.language === "fr" && form.descriptionFr ? form.descriptionFr : form.description}
+                  </span>
+                </span>
               </label>
-              <div className="max-h-[300px] space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
-                {generatedUrls.map(({ formId, url, formName }) => (
-                  <div key={formId} className="rounded-lg border border-slate-200 bg-white p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-sm font-medium text-slate-900">{formName}</p>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyLink(url)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                      >
-                        <Copy className="h-3 w-3" />
-                        {copied ? "Copied!" : "Copy"}
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={url}
-                      readOnly
-                      className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 p-3">
-              <p className="text-sm text-sky-800">
-                <strong>Send via email to:</strong> {patientEmail || "No email on file"}
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  onSuccess();
-                  onClose();
-                }}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Done
-              </button>
-              {patientEmail && (
-                <button
-                  type="button"
-                  onClick={handleSendEmail}
-                  disabled={sending}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {sending ? (
-                    <>
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="h-4 w-4" />
-                      Send Email
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          </>
-        )}
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            To: {patientEmail || "No email on file"}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={sending}
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-xs font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Send className="h-3.5 w-3.5" />
+              {sending ? "Sending..." : "Send email"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-type ViewSubmissionModalProps = {
-  submission: FormSubmission;
-  onClose: () => void;
-};
 
 function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) {
   const form = getFormById(submission.form_id);
@@ -530,8 +334,10 @@ export default function PatientFormsTab({
   const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showSendModal, setShowSendModal] = useState(false);
   const [viewingSubmission, setViewingSubmission] = useState<FormSubmission | null>(null);
+  const [showSendBreastFormsModal, setShowSendBreastFormsModal] = useState(false);
+  const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
+  const [deletingSubmissionIds, setDeletingSubmissionIds] = useState<string[]>([]);
 
   const loadSubmissions = async () => {
     try {
@@ -549,6 +355,10 @@ export default function PatientFormsTab({
       }
 
       setSubmissions(data.submissions || []);
+      setSelectedSubmissionIds((current) => {
+        const loadedIds = new Set((data.submissions || []).map((submission: FormSubmission) => submission.id));
+        return current.filter((id) => loadedIds.has(id));
+      });
       setLoading(false);
     } catch (err) {
       console.error("Error loading form submissions:", err);
@@ -605,18 +415,117 @@ export default function PatientFormsTab({
     navigator.clipboard.writeText(url);
   };
 
+  const toggleSubmissionSelection = (submissionId: string) => {
+    setSelectedSubmissionIds((current) =>
+      current.includes(submissionId)
+        ? current.filter((id) => id !== submissionId)
+        : [...current, submissionId]
+    );
+  };
+
+  const toggleAllSubmissions = () => {
+    setSelectedSubmissionIds((current) =>
+      current.length === submissions.length ? [] : submissions.map((submission) => submission.id)
+    );
+  };
+
+  const deleteSubmissionIds = async (submissionIds: string[], confirmationMessage: string) => {
+    if (submissionIds.length === 0) return;
+
+    const confirmed = window.confirm(confirmationMessage);
+    if (!confirmed) return;
+
+    try {
+      setDeletingSubmissionIds(submissionIds);
+      setError(null);
+
+      const params = new URLSearchParams({
+        submissionIds: submissionIds.join(","),
+        patientId,
+      });
+      const response = await fetch(`/api/forms/patient?${params.toString()}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Failed to delete form");
+        return;
+      }
+
+      const deletedIdSet = new Set<string>(data.deletedIds || submissionIds);
+      setSubmissions((current) => current.filter((item) => !deletedIdSet.has(item.id)));
+      setSelectedSubmissionIds((current) => current.filter((id) => !deletedIdSet.has(id)));
+      setViewingSubmission((current) => (current && deletedIdSet.has(current.id) ? null : current));
+    } catch (err) {
+      console.error("Error deleting form submission:", err);
+      setError("Failed to delete form");
+    } finally {
+      setDeletingSubmissionIds([]);
+    }
+  };
+
+  const handleDeleteSubmission = (submission: FormSubmission) => {
+    deleteSubmissionIds(
+      [submission.id],
+      `Delete "${submission.form_name}" from this patient's forms?`
+    );
+  };
+
+  const handleDeleteSelectedSubmissions = () => {
+    deleteSubmissionIds(
+      selectedSubmissionIds,
+      `Delete ${selectedSubmissionIds.length} selected form${selectedSubmissionIds.length === 1 ? "" : "s"} from this patient's forms?`
+    );
+  };
+
+  const selectedCount = selectedSubmissionIds.length;
+  const selectedSubmissionIdSet = new Set(selectedSubmissionIds);
+  const deletingSubmissionIdSet = new Set(deletingSubmissionIds);
+  const allSubmissionsSelected = submissions.length > 0 && selectedCount === submissions.length;
+  const partiallySelected = selectedCount > 0 && !allSubmissionsSelected;
+  const isDeleting = deletingSubmissionIds.length > 0;
+
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-slate-900">Patient Forms</h3>
-        <button
-          type="button"
-          onClick={() => setShowSendModal(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600"
-        >
-          <Send className="h-3.5 w-3.5" />
-          Send Form
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowSendBreastFormsModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-600"
+          >
+            <Send className="h-3.5 w-3.5" />
+            Send form
+          </button>
+          {submissions.length > 0 && (
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+              <input
+                type="checkbox"
+                checked={allSubmissionsSelected}
+                ref={(input) => {
+                  if (input) input.indeterminate = partiallySelected;
+                }}
+                onChange={toggleAllSubmissions}
+                disabled={isDeleting}
+                className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
+              />
+              Select all
+            </label>
+            <button
+              type="button"
+              onClick={handleDeleteSelectedSubmissions}
+              disabled={selectedCount === 0 || isDeleting}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {isDeleting && selectedCount > 0 ? "Deleting..." : `Delete selected${selectedCount > 0 ? ` (${selectedCount})` : ""}`}
+            </button>
+          </div>
+          )}
+        </div>
       </div>
 
       {loading && (
@@ -636,9 +545,6 @@ export default function PatientFormsTab({
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <FileText className="mb-3 h-12 w-12 text-slate-300" />
           <p className="text-sm font-medium text-slate-600">No forms yet</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Send a form to this patient to get started.
-          </p>
         </div>
       )}
 
@@ -650,6 +556,16 @@ export default function PatientFormsTab({
               className="rounded-lg border border-slate-200 bg-white p-4 transition-shadow hover:shadow-md"
             >
               <div className="flex items-start justify-between gap-4">
+                <label className="flex h-6 items-center pt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={selectedSubmissionIdSet.has(submission.id)}
+                    onChange={() => toggleSubmissionSelection(submission.id)}
+                    disabled={isDeleting}
+                    aria-label={`Select ${submission.form_name}`}
+                    className="h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
+                  />
+                </label>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-slate-400" />
@@ -705,6 +621,16 @@ export default function PatientFormsTab({
                       View Response
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSubmission(submission)}
+                    disabled={deletingSubmissionIdSet.has(submission.id)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-[10px] font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Delete form"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    {deletingSubmissionIdSet.has(submission.id) ? "Deleting..." : "Delete"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -712,20 +638,20 @@ export default function PatientFormsTab({
         </div>
       )}
 
-      {showSendModal && (
-        <SendFormModal
-          patientId={patientId}
-          patientEmail={patientEmail}
-          patientName={patientName}
-          onClose={() => setShowSendModal(false)}
-          onSuccess={loadSubmissions}
-        />
-      )}
-
       {viewingSubmission && (
         <ViewSubmissionModal
           submission={viewingSubmission}
           onClose={() => setViewingSubmission(null)}
+        />
+      )}
+
+      {showSendBreastFormsModal && (
+        <BreastFormsSendModal
+          patientId={patientId}
+          patientEmail={patientEmail}
+          patientName={patientName}
+          onClose={() => setShowSendBreastFormsModal(false)}
+          onSuccess={loadSubmissions}
         />
       )}
     </div>

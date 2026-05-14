@@ -1369,6 +1369,721 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
   },
 ];
 
+const exactDocumentContent = (text: string): FormContentBlock[] => [paragraph(text.trim())];
+
+const signatureFields = (language: "en" | "fr"): FormField[] => {
+  if (language === "fr") {
+    return [
+      { id: "full_name", type: "text", label: "Full Name", labelFr: "Nom", required: true },
+      { id: "date_of_birth", type: "date", label: "Date of Birth", labelFr: "Date de naissance", required: true },
+      { id: "signature", type: "signature", label: "Patient Signature", labelFr: "Signature patient", required: true },
+      { id: "signature_date", type: "date", label: "Date", labelFr: "Date", required: true },
+    ];
+  }
+
+  return [
+    { id: "full_name", type: "text", label: "Name", required: true },
+    { id: "date_of_birth", type: "date", label: "Date of Birth", required: true },
+    { id: "signature", type: "signature", label: "Patient signature", required: true },
+    { id: "signature_date", type: "date", label: "Date", required: true },
+  ];
+};
+
+const acknowledgmentField = (language: "en" | "fr"): FormField => (
+  language === "fr"
+    ? { id: "document_acknowledged", type: "checkbox", label: "I have read and understood this document", labelFr: "J'ai lu et compris ce document", required: true }
+    : { id: "document_acknowledged", type: "checkbox", label: "I have read and understood this document", required: true }
+);
+
+const exactDocumentSections = (
+  language: "en" | "fr",
+  title: string,
+  titleFr: string | undefined,
+  text: string,
+  fields: FormField[] = signatureFields(language)
+): FormSection[] => [
+  {
+    id: "source-document",
+    title,
+    titleFr,
+    content: exactDocumentContent(text),
+    fields: [],
+  },
+  {
+    id: "acknowledgment",
+    title: "Acknowledgment",
+    titleFr: language === "fr" ? "Reconnaissance" : undefined,
+    fields: [acknowledgmentField(language), ...fields],
+  },
+];
+
+const BREAST_AUGMENTATION_FR_SOURCE = `
+NOM : ______________________________________
+
+DATE DE NAISSANCE : _________________________
+
+DATE : ______________________________________
+
+AESTHETICS CLINIC
+Chemin Rieu 18
+1208 Genève
+Suisse
+
+Tel: +41(0)227322223
+info@aesthetics-ge.ch
+www.aesthetics-ge.ch
+
+ANNEXE CONSENTEMENT ÉCLAIRÉ
+POUR AUGMENTATION MAMMAIRE
+
+Chères patientes,
+
+Vous allez bénéficier d’une opération par la mise en place d’implants mammaires. Ce type d’intervention a un pourcentage de satisfaction très élevé. Néanmoins, il existe quelques risques post-opératoires qui varient autour de 6% dans le langage scientifique.
+
+Parmi ces risques, il y a :
+
+Hématome post-opératoire immédiat, dans les premières 24 heures.
+Infection de la capsule prothétique.
+Infection de la cicatrice.
+Asymétrie.
+Changement de la sensibilité dans l’ensemble des seins.
+Contraction prématurée de la capsule péri-prothétique.
+Sérome.
+
+Bien que ces complications soient rares, et malgré une technique chirurgicale adéquate et très performante, nous ne sommes pas à l’abri de les éviter.
+
+Pour toutes ces raisons, nous conseillons à nos patientes de suivre toutes les indications concernant une augmentation mammaire par la mise en place de prothèses.
+
+Parmi ces recommandations, les plus importantes sont les suivantes :
+
+Porter un soutien de gorge de sport sans armatures que vous devez vous procurer, pendant 4 semaines jour et nuit.
+Ne pas porter des objets lourds de plus de 15kg.
+Éviter les activités physiques (sport de choc) pendant 4 semaines.
+Éviter les massages de la poitrine.
+Assister à tous les contrôles post-opératoires prévus par le chirurgien.
+Notifier tous changements importants qui attirent votre attention durant la période post-opératoire.
+
+Nous vous rappelons que les frais de prise en charge d’une éventuelle complication ne sont pas inclus dans le prix forfaitaire fixé dans le devis initial pour cet acte esthétique, et que les assurances maladies sont susceptible d’accepter ou de refuser cette prise en charge.
+
+Signature patient :
+`;
+
+const BREAST_AUGMENTATION_EN_SOURCE = `
+NAME : ______________________________________
+
+DATE OF BIRTH : _________________________
+
+DATE : ______________________________________
+
+AESTHETICS CLINIC
+Chemin Rieu 18
+1208 Genève
+Suisse
+
+Tel : +41(0)227322223
+info@aesthetics-ge.ch
+www.aesthetics-ge.ch
+
+INFORMED CONSENT FOR
+BREAST AUGMENTATION
+
+Dear patients,
+
+You will soon have an breast augmentation surgery. This type of operation have a high rate of satisfaction. But there’s post operation risks which vary around 6%.
+
+Among these risks :
+
+Post operation bruise in the few hours following the operation.
+Infection of the prosthetics capsules.
+Infection of the scar.
+Asymmetry.
+Sensibility changes in the breast.
+Contraction of the prosthetics capsule.
+Seroma.
+
+These complication are very rare but we cannot guarantee 0 risks.
+
+For all these reasons, we advise you to follow all the indications for a breast augmentation:
+
+Wear a soft bra for 4 weeks night and day (nonstop).
+Avoid physicals activities for at least 4 weeks.
+Do not carry heavy things.
+Avoid breast massages.
+Be present at all your appointment after the operation.
+Inform your surgeon about every changes important about your breast.
+
+We remind you that every complications are not include in the initial price of the operation.
+
+In this case health insurance are free to accept or not.
+
+Patient signature :
+`;
+
+const BREAST_LIFT_REDUCTION_FR_SOURCE = `
+NOM : ______________________________________
+
+DATE DE NAISSANCE : _________________________
+
+DATE : ______________________________________
+
+AESTHETICS CLINIC
+Chemin Rieu 18
+1208 Genève
+Suisse
+
+Tel: +41(0)227322223
+info@aesthetics-ge.ch
+www.aesthetics-ge.ch
+
+ANNEXE CONSENTEMENT ÉCLAIRÉ
+POUR LIFTING ET REDUCTION MAMMAIRE
+
+Chères patientes,
+
+Vous allez bénéficier d’une opération au niveau de votre poitrine. Ce type d’intervention a un pourcentage de satisfaction très élevé. Néanmoins, il existe quelques risques post-opératoires qui varient autour de 6% dans le langage scientifique.
+
+Parmi ces risques, il y a :
+
+Hématome post-opératoire immédiat, dans les premières 24 heures.
+Infection de la cicatrice.
+Asymétrie.
+Changement de la sensibilité dans l’ensemble des seins.
+
+Bien que ces complications soient rares, et malgré une technique chirurgicale adéquate et très performante, nous ne sommes pas à l’abri de les éviter.
+
+Pour toutes ces raisons, nous conseillons à nos patientes de suivre toutes les indications concernant une augmentation mammaire par la mise en place de prothèses.
+
+Parmi ces recommandations, les plus importantes sont les suivantes :
+
+Porter un soutien de gorge de sport sans armatures que vous devez vous procurer, pendant 4 semaines jour et nuit.
+Ne pas porter des objets lourds de plus de 15kg.
+Éviter les activités physiques (sport de choc) pendant 4 semaines.
+Éviter les massages de la poitrine.
+Assister à tous les contrôles post-opératoires prévus par le chirurgien.
+Notifier tous changements importants qui attirent votre attention durant la période post-opératoire.
+
+Nous vous rappelons que les frais de prise en charge d’une éventuelle complication ne sont pas inclus dans le prix forfaitaire fixé dans le devis initial pour cet acte esthétique, et que les assurances maladies sont susceptible d’accepter ou de refuser cette prise en charge.
+
+Signature patient :
+`;
+
+const GENERAL_INFORMED_CONSENT_FR_SOURCE = `
+CONSENTEMENT ÉCLAIRÉ
+
+NOM : ____________________________       PRENOM : ____________________________
+
+DATE NAISSANCE : __________________
+
+Le/la soussignée confirme avoir été dûment informé/e par son médecin traitant du traitement :
+
+…………………………………………………………………………………………………………………………………………………….
+
+Ainsi que des effets indésirables et complications éventuelles. De plus, il a été répondu de manière complète et compréhensible à ses questions.
+
+Il/elle a connaissance que si la caisse maladie ne prends pas en charge les frais de ce traitement et que la clinique (en cas d’anesthésie générale) peut facturer directement le temps de dépassement chirurgicale si l’opération prends plus de temps que prévue.
+
+Par la signature du présent formulaire, le/la soussigné/e déclare accepter le traitement.
+
+En cas d’annulation, le/la soussigné/e déclare prendre connaissance que des frais d’annulation d’un montant de 800 CHF lui seront facturés.
+
+Nous ne pouvons pas garantir les résultats, mais nous pouvons vous garantir que vous serez conseillé/e, évalué/e et traité/e en toute bonne foi et au mieux de nos connaissances.
+
+Le/la soussigné/e confirme, avoir connaissance que le matériel photographique et vidéo pris pendant la consultation, appartient exclusivement à son dossier médical, néanmoins :
+
+__ Le/la patient/e autorise l’utilisation du matériel photographique et vidéo dans le but de la recherche médicale, des présentations scientifiques et comme matériel d’illustration, à condition que son identité ne soit pas dévoilée.
+
+__ Le/la patient/e n’autorise en aucun cas l’utilisation de son matériel photographique et vidéo.
+
+Lieu/Date : __________________________   Lieu/Date : _________________________________
+
+Signature patient/e                                               Dr. Xavier Tenorio
+
+__________________________________       ___________________________________________
+
+Dr. Xavier Tenorio – FMH en Chirurgie Plastique Reconstructive et Esthétique – Chemin Rieu 18, Genève, +41(0)22 7322223, info@aesthetics-ge.ch
+`;
+
+const GENERAL_INFORMED_CONSENT_EN_SOURCE = `
+INFORMED CONSENT
+
+FIRST NAME : ____________________________       NAME : ____________________________
+
+DATE OF BIRTH : __________________
+
+The undersigned confirms to have been duly informed by his/her attending physician of the treatment for :
+
+…………………………………………………………………………………………………………………………………………………….
+
+As well as the possible undesirable side effects and potential
+
+complications. The undersigned also confirms that the/she has had all of his/her questions answered in a clear and comprehensible manner.
+
+He/she has been made aware that the health insurances do not cover
+
+The costs of the treatment and that the clinic (in the case of a general anesthesic) can bill any additional unexpected surgery time.
+
+With this signed document the undersigned declares to accept the aforementioned treatment.
+
+In the case of a cancelation within 7 days prior to the procedure the undersigned declares to have been made aware of 800 CHF cancelation fee.
+
+We cannot guarantee the results but we can guarantee that you will be advised. Evaluated and treated in complete confidence and tot the very best of our abilities.
+
+The undersigned confirms to have taken notice that the photographic and video material taken during the consultation belongs exlusively to his/her private medical file but :
+
+__ The undersigned authorizes the use of the photography and video material for medical research. Scientific presentations and illustrative as long as his /her identity is not revealed.
+
+__ The patient does not authorize in any case the use of photographic or video material.
+
+Date : __________________________
+
+Patient signature :                                                 Dr. Xavier Tenorio :
+
+__________________________________       ___________________________________________
+
+Dr. Xavier Tenorio – FMH en Chirurgie Plastique Reconstructive et Esthétique – Chemin Rieu 18, Genève, +41(0)22 7322223, info@aesthetics-ge.ch
+`;
+
+const PRE_POST_INSTRUCTIONS_FR_SOURCE = `
+CONSIGNES PRÉ-OPÉRATOIRES
+
+--Une consultation est prévue avec le chirurgien afin d’établir les points suivants :
+
+Lieu d’opération (ex : Aesthetics Clinic ou clinique privé)
+Quel type d’opération, en fonction du souhait de patient, des possibilités…
+Information concernant le prix
+Du type d’anesthésie
+Des prises en charges éventuelles (assurance, MedCapital)
+De la durée de l’intervention
+Des dispositifs médicaux post opératoires (soutien-gorge, panty, ceinture)
+
+--En vue de l’organisation de l’intervention, seront effectués :
+
+Un bilan sanguin
+D’éventuels autres examens en fonction de l’âge du patient et du type d’intervention
+Un US mammaire si l’opération est en rapport avec la poitrine (augmentation mammaire, cure de gynécomastie)
+Un questionnaire anesthésiste sera également à remplir
+Vous aurez, également, un rendez-vous téléphonique avec un Anesthésiste.
+
+--Parallèlement à cela un échange avec l’infirmière est également prévu afin :
+
+De discuter des consignes post opératoires :
+La veille et le matin de l’opération, prendre une douche de la tête aux pieds et dormir dans les draps propres.
+Ne pas se maquiller, enlever les bijoux et piercings.
+Être à jeun (ni manger, ni fumer) au moins 6 heures avant l’intervention.
+Venir avec le soutien-gorge de sport en cas d’augmentation mammaire, si vous en avez un.
+
+--Signer le consentement éclairé.
+
+--En cas de sédation, prévoir un accompagnement pour le retour à domicile.
+
+CONSIGNES POST-OPÉRATOIRES
+
+Après l’intervention, une ordonnance d’antalgique vous sera envoyée par mail afin de prévenir le risque de douleur mais également des anti-inflammatoires et des antibiotiques dépendant du type d’intervention.
+
+Il faut être accompagné en cas de sédation pour le retour à domicile.
+Ne pas être seul lors de la première nuit qui suit l’intervention.
+Prévoir un rendez-vous postopératoire avec les infirmières afin de réaliser un contrôle et un retrait des points à J+7.
+Prévoir un rendez-vous de contrôle avec le chirurgien 1 Mois après l’intervention.
+Se doucher tous les jours dès J+1 postopératoire.
+
+Si problèmes :
+
+Une odeur
+Rougeurs
+Chaleurs
+Œdème
+Écoulement
+
+Téléphoner immédiatement à la clinque au 022 732 22 23 ou directement au Dr Tenorio au 076 378 11 73,
+si la clinique est fermée.
+
+Garder les dispositifs médicaux (panty, soutien-gorge de sport).
+
+Après l’intervention l’arrêt du sport est nécessaire, pendant 1 mois (cela dépend du type de sport pratiquer et de l’intervention)
+Protéger les cicatrices contre l’exposition au soleil durant une année et les protéger avec une crème solaire avec un indice de 50.
+Ne pas porter de charges lourdes
+Après une liposuccion et/ou une augmentation mammaire, le patient ne doit pas prendre de bain, de sauna, hammam durant une période de 1 mois.
+
+Nom du Patient : _________________________________
+Signature du Patient : _____________________________
+Date : _______________________
+`;
+
+const PRE_POST_INSTRUCTIONS_EN_SOURCE = `
+Dr Xavier Tenorio
+
+FMH en Chirurgie Plastique
+Reconstructive et Esthétique
+Chemin Rieu 18
+1208 Genève
+Suisse
+Tél : +41(0)227322223
+info@aesthetics-ge.ch
+www.aesthetics-ge.ch
+
+PREOPERATIVE INSTRUCTIONS
+
+--A consultation with the surgeon is necessary to establish the following linkages:
+
+Place of the operation (Aesthetics Clinic / Private Clinic)
+Type of the operation according to the patient’s wishes.
+The price
+Type of anesthesia
+Insurance support
+Duration of the operation
+Medical Devices (belt, panty, bras)
+
+--For the organization of the operation you have to fix a preoperative appointment
+with the anaesthetist. During this appointement the doctor will:
+
+Establish a blood test
+If necessary, others exams (depends on your age, type of the operation)
+US Breast if the operation is in relation with the breast
+Anesthetic survey must be filled
+
+--You will also have an appointment with the nurses. The purpose of this
+appointment is to:
+
+Try medical devices (panty in case of liposuction).
+Inform patients of the necessary materials (bras after a breast operation).
+Inform patients of the preoperative instruction:
+The day before the operation take a shower.
+Do not wear wake-up, remove piercings/jewelry, no nail polish.
+Must be fasting at least 6 hours before the operation (no water, no food, no smoke).
+Come with a sport bra in case of a mammary augmentation.
+
+--Sign up the informed consent.
+
+--In case of anesthetic planning someone to go home.
+
+POSTOPERATIVE INSTRUCTIONS
+
+After the operation, a prescription of pain medication will be given in order to prevent the and also anti-inflammatory and antibiotocs.
+
+You need someone with you for your first night at home after the surgery.
+You must fix an appointment with the nurses to control and remove stitches (max 7 days after).
+Fix an appointment with the surgeon one month after the operation
+Take showers after the day of the operation.
+
+In case of an emergency:
+
+Bad smells
+Redness
+Heat
+Edema
+Flowing
+
+Phone the clinic directly 022 732 22 23 or the Dr Tenorio 076 378 11 73, if the clinic is closed.
+
+Always keep your medical devices.
+
+After the operation, you have to stop sports for at least one month (depends of the type of sports and the intervention)
+Protect yours scars from the sun for at least a year, then protect them with a sunscreen (high protection)
+Do not carry heavy things
+After a liposuccion and/or breast augmentation, the patient should not take bath, sauna or hammam for at least a month
+
+Patient Name : _________________________________
+Patient signature : _____________________________
+Date : _______________________
+`;
+
+const ANESTHESIA_CONSENT_FR_SOURCE = `
+Informations concernant l’anesthésie
+Cette brochure est un document destiné à vous informer et à vous préparer à l’anesthésie nécessaire à votre prochaine intervention. Elle vous renseigne sur son déroulement, ses procédés et les complications liées aux différentes techniques. Ceci dans le but de vous permettre de donner un consentement libre et éclairé à votre prise en charge.
+
+Qu’est-ce que l’anesthésie et qui la pratique ?
+L’anesthésie est un acte médical pratiqué dans le but d’effectuer une intervention chirurgicale ou un examen invasif dans les meilleures conditions de sécurité et de confort. L’anesthésiste est un médecin spécialiste (FMH) qui s’occupe non seulement de rendre le patient insensible à la douleur (anesthésie) mais aussi de contrôler les fonctions vitales telles que la respiration, la circulation, le métabolisme, la fonction rénale, et de les maintenir dans les limites appropriées avant, pendant et après l’opération. Le médecin anesthésiste sera avec vous de façon continue pendant toute la durée de l’opération et sera assisté d’un ou d’une infirmière anesthésiste pour garantir une prise en charge optimale. Durant votre séjour en salle de réveil, il prescrira les médicaments analgésiques (contre la douleur) et veillera à votre confort.
+
+L’Anesthésie Générale et la Sédation
+Lors d’une anesthésie générale, la perception de la douleur est neutralisée à l’aide de différents médicaments et le patient est inconscient. Cet état de « sommeil artificiel » se prolonge jusqu’à la fin de l’intervention. Dans la plupart des cas, la respiration doit être assistée au moyen de dispositifs médicaux implantés temporairement dans votre cavité buccale et vos voies respiratoires. Certains actes chirurgicaux peuvent se faire sous sédation qui est une forme d’anesthésie générale peu profonde.
+
+Consultation préopératoire avec votre anesthésiste
+Avant votre intervention, un entretien avec votre futur anesthésiste est organisé en présentiel si celui-ci trouve que cela est nécessaire ou par consultation téléphonique. Il permet au médecin d’évaluer vos risques opératoires, de choisir avec vous la technique d’anesthésie la mieux adaptée à votre état de santé et à l’intervention chirurgicale prévue. Le médecin vous explique en outre le déroulement de votre anesthésie et vous expose les risques et complications éventuelles liés à celle-ci. Cet entretien est également l’occasion de poser vos questions et de faire part de vos doutes et inquiétudes. Si nécessaire, l’anesthésiste peut également vous prescrire des examens complémentaires ou adapter votre traitement médicamenteux.
+
+Votre admission se fera le jour de l’intervention, vous serez convoqué environ une heure avant de début de votre intervention. Votre prise en charge se fera de manière ambulatoire (sortie le jour même de l’intervention) ou vous resterez en surveillance une nuit à la clinique. Dans la plupart des cas, nous vous offrons la possibilité d’effectuer une consultation téléphonique.
+
+Votre médecin anesthésiste vous appellera s’il le juge nécessaire dans les 48 heures précédant votre admission. Il vous verra obligatoirement avant votre intervention. Nous vous demandons dès lors d’être atteignable dans ce délai, au numéro de téléphone que vous aurez communiqué à la secrétaire lors de la programmation de votre intervention.
+
+Nous vous remettrons un questionnaire d’anesthésie à remplir et à retourner au plus vite et au minimum 2 jours ouvrables avant votre intervention.
+
+Documents à apporter avec vous
+Si un rapport préopératoire a été requis par votre chirurgien, nous vous prions de l’apporter lors de votre admission. Ce document doit vous être fourni par votre médecin traitant ou un autre spécialiste. Par ailleurs, il est important de prendre avec vous tous les documents récents concernant votre santé, notamment : médicaments habituels et posologie, résultats d’analyses laboratoires, radiographies, électrocardiogramme.
+
+Anesthésie, sécurité et effets secondaires
+Les méthodes utilisées actuellement en anesthésie sont fiables et le risque de complications qui pourraient mettre la vie du patient en danger, même dans les cas les plus lourds, demeure extrêmement faible. Lors de l’intervention, toutes les fonctions vitales de l’organisme sont sous surveillance (coeur, tension artérielle, respiration). Les nausées et les vomissements au réveil sont devenus moins fréquents actuellement, grâce aux nouvelles techniques et nouveaux médicaments. Les accidents liés au passage de liquide gastrique dans les poumons sont rares, pour autant que les consignes de jeûne soient respectées. L’introduction d’un tube dans la trachée (intubation) ou dans la gorge (masque laryngé) pour assurer la ventilation pendant l’anesthésie générale peut provoquer des maux de gorge, des enrouements passagers et des traumatismes dentaires. Il est important que vous signaliez tout appareil ou toute fragilité dentaire particulière. L’injection intraveineuse de médicaments peut provoquer une sensation de brûlure dans le membre et une rougeur au niveau de la veine. Elle disparaît en quelques jours.
+
+La position prolongée sur la table d’opération peut entraîner la compression de certains nerfs, ce qui peut provoquer un engourdissement ou, exceptionnellement,une atteinte neurologique. Dans la majorité des cas, ces atteintes guérissent complètement en quelques jours ou quelques semaines.
+
+Des complications imprévisibles comportant un risque vital comme une allergie sévère, un arrêt cardiaque ou l’asphyxie, sont extrêmement rares
+
+Pour votre sécurité
+Le patient doit rester à jeun à minuit la veille de l’anesthésie ou 6 heures minimum avant l’intervention (sans manger, ni fumer) vous pouvez boire de l’eau, du thé ou du café noir sans lait uniquement jusqu'à 2 heures avant votre intervention.
+
+Le respect de ce jeûne est très IMPORTANT, son non-respect peut entraîner de graves complications respiratoires. Il est nécessaire de s’en tenir aux prescriptions données par le médecin anesthésiste. Le jour de l’opération, le patient ne prend ses médicaments que sur ordre médical. Les lentilles oculaires, les prothèses dentaires, les bagues et bijoux sont à laisser dans les vestiaires.
+
+Accord pour la procédure anesthésique
+Au cours de la consultation d’anesthésie, j’ai été informé des avantages et risques de l’anesthésie dans mon cas.
+- J’accepte que l’anesthésie puisse être prise en charge par un autre médecin-anesthésiste du service.
+- J’ai pu poser toutes les questions que j’ai jugées utiles et j’ai compris les réponses fournies.
+- J’accepte les modifications des méthodes qui pourraient s’avérer nécessaires pendant mon intervention.
+
+Nom : ………………………………………..
+Prénom : …………………………………………..
+Date de naissance : …………………………………….
+À (lieu) ………………………………………………………………. Le ……………………………………………..
+Signature du patient ou du représentant légal : …………………………………….
+Signature du médecin : …………………………………….
+`;
+
+const ANESTHESIA_CONSENT_EN_SOURCE = `
+Anesthesia’s informations
+
+What is general anesthesia?
+This is a technique used to eliminate pain during a surgical, obstetrical or medical procedure (endoscopy, radiology, etc.). It is induced by injecting medication or inhaling anesthetic vapors. These substances put you into a state comparable to very deep sleep.
+
+What will the procedure involve?
+You will be given custom-tailored anesthesia by specialized doctors and nurses. Your care will start by fitting devices to monitor your vital functions:
+• Heart: patches connected to a screen will be attached to your chest.
+• Blood pressure: a cuff will be wrapped around one of your arms.
+• Breathing: a sensor will be placed on the tip of one of your fingers.
+Medication to induce general anesthesia is administered intravenously. To ensure a good oxygen supply to your lungs, the anesthesiologist will ask you to breathe through a mask. During the operation, most people are given artificial breathing assistance. There are two types of assistance: an oxygen mask placed over the mouth and nose and a device inserted into your mouth and respiratory tract (laryngeal mask or endotracheal tube). These devices will be placed during anesthesia. While you are under the anesthetic, an anesthesia professional will monitor your vital functions, including your heart and lungs. The anesthesia will be adapted to your needs.
+Once the surgical procedure has ended, medication will no longer be administered, which will lead to your awakening. You will be monitored continuously in the recovery room.
+
+What are the risks of general anesthesia?
+All medical procedures involve risks, even when they are performed by experts. The rate and severity of these risks depend on your state of health, age or general lifestyle. The anesthesia techniques used are safe.
+The risks of unexpected and potentially life- threatening complications such as an allergy or severe heart or lung problem are extremely small. All necessary measures will be taken to prevent and treat any complications in the best possible way.
+However, the following complications could occur:
+• Nausea and vomiting: this occurs after your awakening. Despite the use of new anesthetic drugs, these effects are still common, but are now easier to treat.
+• Sore throat, hoarseness, swallowing difficulties: these effects sometimes appear when a device has been inserted into the throat or trachea to help you breathe during anesthesia. They usually disappear within a few days. On very rare occasions, they require further attention due to damage to the vocal cords.
+• Dental damage: this can be caused by the procedures required to fit the breathing assistance device.
+• Nerve, muscle and skin damage: this is caused by extended periods spent lying on the operating table, which leads to compression. These effects cause temporary numbness or paralysis that is reversible in nearly all cases.
+• Memory problems, decreased concentration: this sometimes occurs in the days following the operation and disappears spontaneously.
+• Awakening during the operation: this is very rare, but can remain in your memory and should be reported to the anesthesia team.
+
+What are the necessary safety precautions?
+Your cooperation is crucial for the success of the procedure. Please follow the recommendations below:
+• Medication: only take medication authorized by the anesthesiologist during the consultation appointment and report any medication taken, including aspirin, anti-inflammatory drugs or blood thinners.
+• Dentures, jewelry, contact lenses, piercings or other devices (except hearing aids and glasses if worn) should be removed before your arrival in the operating room.
+
+To reduce the risks of accident or infection caused by gastric fluid entering your lungs, follow the recommendations below:
+• Food: do not eat, suck on candy or chewing gum less than six hours before the procedure.
+• Beverages: stop drinking fluids six hours prior to the procedure; only clear liquids (water, coffee or tea without milk) are permitted up to two hours before the procedure; after that time, all beverages are prohibited.
+• Smoking: it is advisable to stop smoking at least 12 hours before the procedure.
+
+Note: to limit the risks of theft or loss, only bring in items that are absolutely necessary.
+
+Agreement for the anesthetic procedure.
+During the anesthesia consultation, I was informed of the benefits and risks of anesthesia in my case.
+- I agree that the anesthesia may be taken care of another anesthetist to the anesthesia team.
+- I was able to ask all the questions I found useful and I understood the answers provided.
+- I accept any changes in methods that may be necessary during my intervention.
+
+Name: …………………………………………..
+Surname: ………………………………………..
+Date of birth: …………………………………….
+Geneva, the ……………………………………………..
+Patient signature or legal representative : …………………………………….
+Anesthetist signature : …………………………………………………….
+`;
+
+const QUESTIONNAIRE_EN_SOURCE = `
+Anesthesia questionnaire
+Surname: ………………………..  Name: ………………………………  Date of birth: ………………………………………..
+Height: ………………..  Weight: ………………..  Attending physician: ………………………………
+Planned operation: …………………………………………………………………  Date of operation: …………………………………
+N°CADA insurance: …80756………………………………………………….  Telephone number: ………………………………
+
+1- Have you had any medical treatment in recent months ?
+☐ Yes, Which one ?  ☐ No
+………………………………………………………………………………………………………………………………………………………………………
+………………………………………………………………………………………………………………………………………………………………………
+
+2- Do you take medication every day ?
+☐ Yes, Which one ?  ☐ No
+………………………………………………………………………………………………………………………………………………………………………
+………………………………………………………………………………………………………………………………………………………………………
+………………………………………………………………………………………………………………………………………………………………………
+
+3- Have you had a fever in the past few days ?
+☐ Yes  ☐ No
+
+4- Do you have allergies (drugs, dressings, food, disinfectants) ?
+☐ Yes (Specify the type of reaction: rashes, angioedema, anaphylactic shock)  ☐ No
+Which one ??….……………………………………………………………………………………………………………………………………………
+
+5- Previous surgical operations and type of anesthesia : a=general, b=spinal block or epidural anesthesia, c=local anesthesia
+Surgical operation  Year  Anesthesia
+If more surgical operations, please specify the operation, the year and type of anesthesia (a,b, ou c).
+
+6- Have you had any particular problems with the anesthesia (nausea, vomiting, difficulties waking up, etc.) ?
+☐ Yes, Which one ?  ☐ No
+…………….………………………………………………………………………………………………………………………………………………………..
+………………………………………………………………………………………………………………………………………………………………………
+
+7- Did you have or do you have:
+®Heart:
+☐ Palpitations  ☐ Arrhythmia  ☐ Angina pectoris
+☐ Infarct  ☐ Heart failure  ☐ Heart murmur
+® Circulation:
+☐ High blood pressure  ☐ Arteritis  ☐ Phlebitis
+☐ Pulmonary embolism  ☐ Coagulation problems  ☐ Varicose veins
+® Lungs:
+☐ Asthma  ☐ SLEEP APNEA  ☐ Chronic bronchitis
+☐ Snoring  ☐ Emphysema
+® Nervous system:
+☐ Stroke  ☐ Epilepsy  ☐ Depression
+☐ Anxiety attack
+® Urinary system:
+☐ Renal failure  ☐ Infections, kidney stones
+® Metabolic:
+☐ Diabete ® with insulin ?  ☐ Yes  ☐ No
+☐ Cholesterol - Triglycerides  ☐ Thyroid disease
+® Infectious diseases:
+☐ Hepatitis :  ☐ B  ☐ C  ☐ HIV – SIDA
+® Digestive system, liver:
+☐ Stomach or duodenum ulcer  ☐ Cirrhosis  ☐ Gastro oesophageal hernia
+☐ Acid reflux  ☐ Jaundice
+® Ophtalmology:
+☐ Glaucoma  ☐ Single eye
+
+8- Do you have a disease that is not mentioned in the previous list?
+☐ Yes, Which one ?  ☐ No
+…………….………………………………………………………………………………………………………………………………………………………..
+
+9- Are you prone to prolonged bleeding?  ☐ Yes  ☐ No
+
+10- Do you have?
+☐ Bridge  ☐ Loose teeth  ☐ Pivot tooth, veneers  ☐ Dental prothesis
+☐ Hearing aid  ☐ Pace maker  ☐ Contact lenses
+
+11- Do you smoke or have you smoked?
+☐ Yes, how many cigarettes per day? …………………………………………  ☐ No
+For how long time? …………………………………………………………………………….
+
+12- Do you use drugs?
+☐ Yes, Which one ?  ☐ No
+…………….………………………………………………………………………………………………………………………………………………………..
+
+13- Do you drink alcohol?  ☐ Never  ☐ Occasionally  ☐ Regularly ……………………………………
+
+14- Are you rather?  ☐ Athletic  ☐ Active  ☐ Sedentary
+
+15- Another feature not mentioned previously?
+
+16- In case of emergency, please provide the contact details of one of your relatives and your relationship to this person:
+…………….………………………………………………………………………………………………………………………………………………………..
+…………….………………………………………………………………………………………………………………………………………………………..
+
+For women : Are you taking contraceptive pill ?  ☐ Yes  ☐ No
+Are you pregnant or likely to be ?  ☐ Yes  ☐ No
+Are you breastfeeding ?  ☐ Yes  ☐ No
+`;
+
+const QUESTIONNAIRE_FR_SOURCE = `
+Questionnaire d’Anesthésie
+Nom : ………………………..  Prénom : ………………………………  Né(e) le : …………………………………….
+Taille : ………………..  Poids : ………………..  Médecin traitant :………………………………
+Date de votre opération : ……………………………………………  Chirurgien : ………………………………………..
+N°CADA assurance : …80756………………………………………………….  Tél privé : …………………………………………
+
+1- Avez-vous eu un traitement médical ces derniers mois ?
+☐ Oui, Lequel ?  ☐ Non
+………………………………………………………………………………………………………………………………………………………………………
+………………………………………………………………………………………………………………………………………………………………………
+
+2- Prenez-vous des médicaments tous les jours (y compris somnifères, laxatifs, aspirine et médicaments homéopathiques) ?
+☐ Oui, Lequel ?  ☐ Non
+………………………………………………………………………………………………………………………………………………………………………
+………………………………………………………………………………………………………………………………………………………………………
+………………………………………………………………………………………………………………………………………………………………………
+
+3- Avez-vous eu de la fièvre ces derniers jours ?
+☐ Oui  ☐ Non
+
+4- Avez-vous des allergies (médicaments, pansements, aliments, désinfectants) ?
+☐ Oui (Spécifier si : éruption cutanée, œdème de Quincke, difficultés respiratoires, choc anaphylactique)  ☐ Non
+Lesquelles ?….……………………………………………………………………………………………………………………………………………….
+
+5- Opérations précédentes et type d’anesthésie : a=complète, b=péridurale ou rachidienne, c=locale
+Opération  Année  Anesthésie
+Si plus d’opérations veuillez préciser l’opération, l’année et le type d’anesthésie (a,b ou c).
+
+6- Avez-vous eu des problèmes particuliers en rapport avec l’anesthésie (nausées, vomissements, difficultés de réveil, etc.) ?
+☐ Oui, Lesquels ?  ☐ Non
+…………….………………………………………………………………………………………………………………………………………………………..
+………………………………………………………………………………………………………………………………………………………………………
+
+7- Un de vos proches parents a-t-il eu des problèmes lors d’une anesthésie ?
+☐ Oui, Lesquels ?  ☐ Non
+…………….………………………………………………………………………………………………………………………………………………………..
+
+8- Avez-vous eu ou avez-vous des problèmes :
+® Cardiaques :
+☐ Palpitations  ☐ Troubles du rythme  ☐ Angine de poitrine
+☐ Infarctus  ☐ Insuffisance cardiaque  ☐ Souffle au cœur
+® Vasculaires :
+☐ Hypertension artérielle  ☐ Artérite  ☐ Phlébite
+☐ Embolie pulmonaire  ☐ Problèmes de coagulation  ☐ Varices
+® Respiratoires :
+☐ Asthme  ☐ APNEE DU SOMMEIL  ☐ Bronchite chronique
+☐ Ronflement  ☐ Emphysème
+® Nerveux :
+☐ Accident vasculaire cérébral  ☐ Épilepsie  ☐ Dépression
+☐ Crise d’angoisse
+® Urinaires :
+☐ Insuffisance rénale  ☐ Infections, calculs
+® Métaboliques :
+☐ Diabète ® avec insuline ?  ☐ Oui  ☐ Non
+☐ Cholestérol - Triglycérides  ☐ Maladies de la thyroïde
+® Infectieux :
+☐ Hépatite :  ☐ B  ☐ C  ☐ HIV – SIDA
+® Digestifs :
+☐ Ulcère  ☐ Cirrhose  ☐ Hernie hiatale
+☐ Reflux gastriques  ☐ Jaunisse
+® Oculaires :
+☐ Glaucome  ☐ Œil unique
+
+9- Avez-vous une maladie qui n’est pas mentionnée dans la liste précédente?
+☐ Oui, laquelle?  ☐ Non
+…………….………………………………………………………………………………………………………………………………………………………..
+
+10- Êtes-vous sujet aux saignements prolongés ?  ☐ Oui  ☐ Non
+
+11- Avez-vous?
+☐ Bridge  ☐ Dents branlantes  ☐ Dent à pivot, facettes  ☐ Prothèse dentaire
+☐ Prothèse auditive  ☐ Pace maker  ☐ lentilles de contact
+
+12- Fumez-vous ou avez-vous fumé?
+☐ Oui, Combien de cigarettes par jour? …………………………………………  ☐ Non
+Depuis combien de temps/pendant combien de temps? …………………………………………………………………………….
+
+13- Consommez-vous des drogues?
+☐ Oui, laquelle?  ☐ Non
+…………….………………………………………………………………………………………………………………………………………………………..
+
+14- Buvez-vous de l’alcool? ☐ Jamais  ☐ A l’occasion  ☐ Régulièrement ……………………………………
+
+15- Êtes-vous plutôt ? ☐ Sportif  ☐ Actif  ☐ Sédentaire
+
+16- Autre particularité non mentionnée précédemment?
+
+17- En cas d’urgence, veuillez indiquer les coordonnées d’un de vos proches et votre lien avec cette personne :
+…………….………………………………………………………………………………………………………………………………………………………..
+…………….………………………………………………………………………………………………………………………………………………………..
+
+Pour les femmes : Prenez-vous la pilule ?  ☐ Oui  ☐ Non
+Êtes-vous enceinte ou susceptible de l’être ?  ☐ Oui  ☐ Non
+Allaitez-vous ?  ☐ Oui  ☐ Non
+`;
+
+function overrideForm(formId: string, originalFile: string, sections: FormSection[]) {
+  const form = FORM_DEFINITIONS.find((definition) => definition.id === formId);
+  if (!form) return;
+
+  form.originalFile = `breast surgery/${originalFile}`;
+  form.sections = sections;
+}
+
 const anesthesiaQuestionnaireFr = FORM_DEFINITIONS.find((form) => form.id === "questionnaire-anesthesie-fr");
 if (anesthesiaQuestionnaireFr) {
   anesthesiaQuestionnaireFr.sections = ANESTHESIA_QUESTIONNAIRE_FR_SECTIONS;
@@ -1377,6 +2092,86 @@ if (anesthesiaQuestionnaireFr) {
 const anesthesiaQuestionnaireEn = FORM_DEFINITIONS.find((form) => form.id === "questionnaire-anesthesie-en");
 if (anesthesiaQuestionnaireEn) {
   anesthesiaQuestionnaireEn.sections = ANESTHESIA_QUESTIONNAIRE_EN_SECTIONS;
+}
+
+overrideForm(
+  "questionnaire-anesthesie-fr",
+  "FR - Questionnaire d'anesthésie (1).pdf",
+  [
+    {
+      id: "source-document",
+      title: "Anesthesia Questionnaire",
+      titleFr: "Questionnaire d’Anesthésie",
+      content: exactDocumentContent(QUESTIONNAIRE_FR_SOURCE),
+      fields: [],
+    },
+    ...ANESTHESIA_QUESTIONNAIRE_FR_SECTIONS,
+  ]
+);
+
+overrideForm(
+  "questionnaire-anesthesie-en",
+  "EN - Questionnaire d'anesthésie .pdf",
+  [
+    {
+      id: "source-document",
+      title: "Anesthesia questionnaire",
+      content: exactDocumentContent(QUESTIONNAIRE_EN_SOURCE),
+      fields: [],
+    },
+    ...ANESTHESIA_QUESTIONNAIRE_EN_SECTIONS,
+  ]
+);
+
+overrideForm("consentement-anesthesie-fr", "Consentement anesthésie - Aesthetics.pdf", exactDocumentSections("fr", "Anesthesia Consent", "Consentement anesthésie", ANESTHESIA_CONSENT_FR_SOURCE));
+overrideForm("consentement-anesthesie-en", "EN - Consentement anesthésie.pdf", exactDocumentSections("en", "Anesthesia Consent", undefined, ANESTHESIA_CONSENT_EN_SOURCE));
+overrideForm("consentement-augmentation-mammaire-fr", "Annexe AM FR (1).docx", exactDocumentSections("fr", "Informed Consent - Breast Augmentation", "Annexe consentement éclairé pour augmentation mammaire", BREAST_AUGMENTATION_FR_SOURCE));
+overrideForm("consentement-augmentation-mammaire-en", "Informed breast augmentation ENG (1).docx", exactDocumentSections("en", "Informed Consent - Breast Augmentation", undefined, BREAST_AUGMENTATION_EN_SOURCE));
+overrideForm("consentement-lift-reduction-fr", "Annexe Lift et Reduction FR copie (1).docx", exactDocumentSections("fr", "Informed Consent - Breast Lift & Reduction", "Annexe consentement éclairé pour lifting et reduction mammaire", BREAST_LIFT_REDUCTION_FR_SOURCE));
+overrideForm("consentement-eclaire-fr", "CONSENTEMENT ÉCLAIRÉ (1).docx", exactDocumentSections("fr", "General Informed Consent", "Consentement éclairé", GENERAL_INFORMED_CONSENT_FR_SOURCE, [
+  { id: "first_name", type: "text", label: "First Name", labelFr: "Prénom", required: true },
+  { id: "last_name", type: "text", label: "Name", labelFr: "Nom", required: true },
+  { id: "date_of_birth", type: "date", label: "Date of Birth", labelFr: "Date de naissance", required: true },
+  { id: "treatment", type: "textarea", label: "Treatment", labelFr: "Traitement", required: true },
+  { id: "photo_video_authorization", type: "radio", label: "Photo/video authorization", labelFr: "Autorisation photo/vidéo", required: true, options: [
+    { value: "authorized", label: "Authorized", labelFr: "Autorise" },
+    { value: "not_authorized", label: "Not authorized", labelFr: "N'autorise pas" },
+  ] },
+  { id: "signature", type: "signature", label: "Patient Signature", labelFr: "Signature patient/e", required: true },
+  { id: "signature_date", type: "date", label: "Date", labelFr: "Date", required: true },
+]));
+overrideForm("consentement-eclaire-en", "INFORMED CONSENT.docx", exactDocumentSections("en", "General Informed Consent", undefined, GENERAL_INFORMED_CONSENT_EN_SOURCE, [
+  { id: "first_name", type: "text", label: "First Name", required: true },
+  { id: "last_name", type: "text", label: "Name", required: true },
+  { id: "date_of_birth", type: "date", label: "Date of Birth", required: true },
+  { id: "treatment", type: "textarea", label: "Treatment", required: true },
+  { id: "photo_video_authorization", type: "radio", label: "Photo/video authorization", required: true, options: [
+    { value: "authorized", label: "Authorized" },
+    { value: "not_authorized", label: "Not authorized" },
+  ] },
+  { id: "signature", type: "signature", label: "Patient signature", required: true },
+  { id: "signature_date", type: "date", label: "Date", required: true },
+]));
+overrideForm("preoperative-instructions-en", "Preoperative instruction OP ENG (1).docx", exactDocumentSections("en", "Pre and Post-operative Instructions", undefined, PRE_POST_INSTRUCTIONS_EN_SOURCE));
+overrideForm("consignes-pre-post-op-fr", "consignes pre et post op FR (1).docx", exactDocumentSections("fr", "Pre and Post-operative Instructions", "Consignes pré et post-opératoires", PRE_POST_INSTRUCTIONS_FR_SOURCE));
+
+const ALTERNATE_LANGUAGE_FORM_IDS: Record<string, string> = {
+  "questionnaire-anesthesie-fr": "questionnaire-anesthesie-en",
+  "questionnaire-anesthesie-en": "questionnaire-anesthesie-fr",
+  "consentement-anesthesie-fr": "consentement-anesthesie-en",
+  "consentement-anesthesie-en": "consentement-anesthesie-fr",
+  "consentement-augmentation-mammaire-fr": "consentement-augmentation-mammaire-en",
+  "consentement-augmentation-mammaire-en": "consentement-augmentation-mammaire-fr",
+  "consentement-lift-reduction-fr": "consentement-lift-reduction-en",
+  "consentement-lift-reduction-en": "consentement-lift-reduction-fr",
+  "consentement-eclaire-fr": "consentement-eclaire-en",
+  "consentement-eclaire-en": "consentement-eclaire-fr",
+  "preoperative-instructions-en": "consignes-pre-post-op-fr",
+  "consignes-pre-post-op-fr": "preoperative-instructions-en",
+};
+
+export function getAlternateLanguageFormId(formId: string): string | undefined {
+  return ALTERNATE_LANGUAGE_FORM_IDS[formId];
 }
 
 export function getFormById(formId: string): FormDefinition | undefined {
