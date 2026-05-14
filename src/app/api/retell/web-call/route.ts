@@ -23,6 +23,11 @@ export async function POST(req: NextRequest) {
 
   const agentId = VOICE_AGENTS[lang];
 
+  // First message ensures agent always starts with proper introduction
+  const firstMessage = lang === "fr"
+    ? "Merci de vous connecter avec moi. Je suis Alice, votre assistante digitale à la Clinique Esthétique. Comment puis-je vous aider aujourd'hui?"
+    : "Thank you for connecting with me. I'm Alice, your digital assistant at Aesthetics Clinic. How may I assist you today?";
+
   const res = await fetch("https://api.retellai.com/v2/create-web-call", {
     method: "POST",
     headers: {
@@ -31,11 +36,18 @@ export async function POST(req: NextRequest) {
     },
     body: JSON.stringify({
       agent_id: agentId,
+      // Dynamic variables available to agent during conversation
       retell_llm_dynamic_variables: {
         currency: "CHF",
         clinic_phone: "+41 22 732 22 23",
         book_url: "https://aestheticclinic.vercel.app/book-appointment/location",
         language: lang === "fr" ? "French" : "English",
+        first_message: firstMessage,
+        call_type: "online_conversation",
+      },
+      metadata: {
+        conversation_type: "online_call",
+        language: lang,
       },
     }),
   });
