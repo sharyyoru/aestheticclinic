@@ -18,6 +18,7 @@ import {
 } from "@/lib/tardoc";
 import InsuranceBillingModal from "@/components/InsuranceBillingModal";
 import InvoiceStatusBadge from "@/components/InvoiceStatusBadge";
+import MedicalRecordsTab from "./MedicalRecordsTab";
 import TardocAccordionTree from "@/components/TardocAccordionTree";
 import AcfAccordionTree from "@/components/AcfAccordionTree";
 import { type MediDataInvoiceStatus } from "@/lib/medidata";
@@ -323,6 +324,8 @@ function createEmptyMedProduct(): MedProduct {
   };
 }
 
+type ConsultationSubTab = "consultations" | "medical_records";
+
 export default function MedicalConsultationsCard({
   patientId,
   recordTypeFilter,
@@ -337,6 +340,9 @@ export default function MedicalConsultationsCard({
   patientEmail?: string | null;
 }) {
   const router = useRouter();
+
+  // Sub-tab state for Consultations vs Medical Records view
+  const [activeSubTab, setActiveSubTab] = useState<ConsultationSubTab>("consultations");
 
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskName, setTaskName] = useState("");
