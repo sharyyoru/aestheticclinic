@@ -313,9 +313,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (dbLineItems && dbLineItems.length > 0) {
-      // Filter out TMA gesture codes — they are grouper inputs only, not billing lines.
-      // The grouped ACF flat rate codes (catalog_name='ACF') are the actual billing lines.
-      const billableLineItems = dbLineItems.filter((item: any) => item.catalog_name !== "TMA");
+      // Include all line items (TMA gesture codes are kept as reference lines with amount=0)
+      const billableLineItems = dbLineItems;
 
       // Map actual line items to InvoiceServiceLine for XML generation
       services = billableLineItems.map((item: any, idx: number) => {

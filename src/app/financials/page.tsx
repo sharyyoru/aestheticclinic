@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { jsPDF } from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx-js-style";
 
 // ---------------------------------------------------------------------------
 // Module-level prefetch: starts the moment this JS module is parsed/imported,
@@ -934,7 +935,7 @@ export default function FinancialsPage() {
       ["Invoice Count", summary.invoiceCount.toString()],
     ];
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: y + 5,
       head: [["Metric", "Value"]],
       body: summaryData,
@@ -955,31 +956,27 @@ export default function FinancialsPage() {
 
     doc.setFontSize(12);
     doc.setTextColor(15, 23, 42);
-    doc.text("Doctor Performance", margin, y);
+    doc.text("Invoice Owners", margin, y);
 
-    const doctorData = filteredDoctorRows.map((row) => [
-      row.doctorName,
+    const ownerData = ownerSummaryRows.map((row) => [
+      row.ownerLabel,
       row.invoiceCount.toString(),
       formatCurrency(row.totalAmount),
-      formatCurrency(row.totalPaid),
-      formatCurrency(row.totalUnpaid),
-      row.services.slice(0, 3).join(", ") + (row.services.length > 3 ? "..." : ""),
+      row.totalAmount > 0 ? `${Math.round((row.totalPaid / row.totalAmount) * 100)}%` : "0%",
     ]);
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: y + 5,
-      head: [["Doctor", "Invoices", "Billed", "Paid", "Unpaid", "Services"]],
-      body: doctorData,
+      head: [["Owner", "Invoices", "Billed", "Paid %"]],
+      body: ownerData,
       theme: "striped",
       headStyles: { fillColor: [59, 130, 246], textColor: 255 },
       styles: { fontSize: 8, cellPadding: 2 },
       columnStyles: {
-        0: { cellWidth: 35 },
+        0: { cellWidth: "auto" },
         1: { cellWidth: 20, halign: "center" },
-        2: { cellWidth: 30, halign: "right" },
-        3: { cellWidth: 30, halign: "right" },
-        4: { cellWidth: 30, halign: "right" },
-        5: { cellWidth: "auto" },
+        2: { cellWidth: 35, halign: "right" },
+        3: { cellWidth: 25, halign: "center" },
       },
       margin: { left: margin, right: margin },
     });
@@ -997,7 +994,7 @@ export default function FinancialsPage() {
     doc.setTextColor(15, 23, 42);
     doc.text("Top Patients", margin, y);
 
-    const patientData = patientSummaryRows.slice(0, 20).map((row) => [
+    const patientData = patientSummaryRows.map((row) => [
       row.patientName,
       row.invoiceCount.toString(),
       formatCurrency(row.totalAmount),
@@ -1005,7 +1002,7 @@ export default function FinancialsPage() {
       formatCurrency(row.totalUnpaid),
     ]);
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       startY: y + 5,
       head: [["Patient", "Invoices", "Billed", "Paid", "Unpaid"]],
       body: patientData,
@@ -1022,10 +1019,168 @@ export default function FinancialsPage() {
       margin: { left: margin, right: margin },
     });
 
+    // Invoices section
+    y = (doc as any).lastAutoTable.finalY + 15;
+    if (y > 250) { doc.addPage(); y = 20; }
+
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Invoices", margin, y);
+
+    const invoiceData = filteredInvoices.map((row) => [
+      row.invoice_number,
+      row.invoice_date || "",
+      row.patientName,
+      row.statusLabel,
+      formatCurrency(row.amount),
+      formatCurrency(row.paid_amount),
+    ]);
+
+    autoTable(doc, {
+      startY: y + 5,
+      head: [["#", "Date", "Patient", "Status", "Amount", "Paid"]],
+      body: invoiceData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      styles: { fontSize: 7, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: "auto" },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 25, halign: "right" },
+        5: { cellWidth: 25, halign: "right" },
+      },
+      margin: { left: margin, right: margin },
+    });
+
+    // Services & Items section
+    y = (doc as any).lastAutoTable.finalY + 15;
+    if (y > 250) { doc.addPage(); y = 20; }
+
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Services & Items", margin, y);
+
+    const serviceData = serviceSummaryRows.map((row) => [
+      row.serviceCode || "",
+      row.serviceName,
+      row.invoiceCount.toString(),
+      row.quantity.toString(),
+      formatCurrency(row.totalRevenue),
+      formatCurrency(row.paidRevenue),
+    ]);
+
+    autoTable(doc, {
+      startY: y + 5,
+      head: [["Code", "Service", "Invoices", "Qty", "Revenue", "Paid"]],
+      body: serviceData,
+      theme: "striped",
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      styles: { fontSize: 7, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: "auto" },
+        2: { cellWidth: 18, halign: "center" },
+        3: { cellWidth: 15, halign: "center" },
+        4: { cellWidth: 28, halign: "right" },
+        5: { cellWidth: 28, halign: "right" },
+      },
+      margin: { left: margin, right: margin },
+    });
+
     // Save the PDF
     const filename = `financial_report_${new Date().toISOString().split("T")[0]}.pdf`;
     doc.save(filename);
   }
+
+  function handleExportExcel() {
+    if (!filteredInvoices.length) return;
+    const wb = XLSX.utils.book_new();
+    const trunc = (s: string) => s && s.length > 32000 ? s.substring(0, 32000) : s;
+
+    const styleHeaders = (ws: XLSX.WorkSheet, colCount: number) => {
+      if (!ws["!cols"]) ws["!cols"] = [];
+      for (let i = 0; i < colCount; i++) {
+        const cell = ws[XLSX.utils.encode_cell({ r: 0, c: i })];
+        if (cell) {
+          cell.s = {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "3B82F6" } },
+            alignment: { horizontal: "center" },
+          };
+        }
+      }
+    };
+
+    // Summary sheet
+    const summaryWs = XLSX.utils.aoa_to_sheet([
+      ["Metric", "Value"],
+      ["Total Billed", summary.totalAmount],
+      ["Total Paid", summary.totalPaid],
+      ["Outstanding", summary.totalUnpaid],
+      ["Complimentary", summary.totalComplimentary],
+      ["Invoice Count", summary.invoiceCount],
+    ]);
+    summaryWs["!cols"] = [{ wch: 20 }, { wch: 18 }];
+    styleHeaders(summaryWs, 2);
+    XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
+
+    // Invoice Owners sheet
+    const ownerWs = XLSX.utils.json_to_sheet(ownerSummaryRows.map((row) => ({
+      Owner: row.ownerLabel,
+      Invoices: row.invoiceCount,
+      Billed: row.totalAmount,
+      Paid: row.totalPaid,
+      Unpaid: row.totalUnpaid,
+      "Paid %": row.totalAmount > 0 ? Math.round((row.totalPaid / row.totalAmount) * 100) : 0,
+    })));
+    ownerWs["!cols"] = [{ wch: 30 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 }];
+    styleHeaders(ownerWs, 6);
+    XLSX.utils.book_append_sheet(wb, ownerWs, "Invoice Owners");
+
+    // Patients sheet
+    const patientWs = XLSX.utils.json_to_sheet(patientSummaryRows.map((row) => ({
+      Patient: row.patientName,
+      Invoices: row.invoiceCount,
+      Billed: row.totalAmount,
+      Paid: row.totalPaid,
+      Unpaid: row.totalUnpaid,
+    })));
+    patientWs["!cols"] = [{ wch: 30 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+    styleHeaders(patientWs, 5);
+    XLSX.utils.book_append_sheet(wb, patientWs, "Patients");
+
+    // Invoices sheet
+    const invoiceWs = XLSX.utils.json_to_sheet(filteredInvoices.map((row) => ({
+      "Invoice #": row.invoice_number,
+      Date: row.invoice_date || "",
+      Patient: row.patientName,
+      Doctor: row.doctorLabel,
+      Status: row.statusLabel,
+      Amount: row.amount,
+      Paid: row.paid_amount,
+    })));
+    invoiceWs["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 14 }];
+    styleHeaders(invoiceWs, 7);
+    XLSX.utils.book_append_sheet(wb, invoiceWs, "Invoices");
+
+    // Services sheet
+    const serviceWs = XLSX.utils.json_to_sheet(serviceSummaryRows.map((row) => ({
+      Code: row.serviceCode || "",
+      Service: trunc(row.serviceName),
+      Invoices: row.invoiceCount,
+      Quantity: row.quantity,
+      Revenue: row.totalRevenue,
+      Paid: row.paidRevenue,
+    })));
+    serviceWs["!cols"] = [{ wch: 15 }, { wch: 45 }, { wch: 10 }, { wch: 10 }, { wch: 15 }, { wch: 15 }];
+    styleHeaders(serviceWs, 6);
+    XLSX.utils.book_append_sheet(wb, serviceWs, "Services");
+
+    XLSX.writeFile(wb, `financial_report_${new Date().toISOString().split("T")[0]}.xlsx`);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 financials-hide-on-print">
@@ -1037,13 +1192,24 @@ export default function FinancialsPage() {
           </p>
         </div>
         {activeTab === "overview" && (
+          <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleExportPdf}
-            className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 shadow-sm hover:bg-red-100"
           >
-            Export current view (PDF)
+            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M4 18h12a2 2 0 002-2V6l-4-4H4a2 2 0 00-2 2v12a2 2 0 002 2zm1-5h4v3H5v-3zm0-2V9h2v2H5zm6 0V9h2v2h-2zm0 2h4v3h-4v-3z"/></svg>
+            PDF
           </button>
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 shadow-sm hover:bg-green-100"
+          >
+            <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M4 18h12a2 2 0 002-2V6l-4-4H4a2 2 0 00-2 2v12a2 2 0 002 2zm2-5l2-3-2-3h1.5l1.25 2 1.25-2H12l-2 3 2 3h-1.5l-1.25-2-1.25 2H6z"/></svg>
+            Excel
+          </button>
+          </div>
         )}
       </div>
 
