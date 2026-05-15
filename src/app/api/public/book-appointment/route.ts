@@ -391,19 +391,23 @@ export async function POST(request: Request) {
     const maxCapacity = MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 3 : 1;
 
     // Check if time slot has capacity for this doctor
-    // Use 30-minute slot window to match the check-availability logic
-    const slotStart = new Date(appointmentDateObj);
-    const slotEnd = new Date(appointmentDateObj.getTime() + 30 * 60 * 1000); // 30 minutes
+    // NEW: Check for any OVERLAPPING appointments, not just appointments starting in this slot
+    // This prevents double-booking when existing appointments overlap with the requested time
+    const requestedStart = new Date(appointmentDateObj);
+    const requestedEnd = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000); // 1 hour appointment
 
-    console.log(`[Booking] Checking availability for ${doctorName} (${doctorSlug}) at ${slotStart.toISOString()}`);
+    console.log(`[Booking] Checking availability for ${doctorName} (${doctorSlug}) at ${requestedStart.toISOString()}`);
+    console.log(`[Booking] Requested slot: ${requestedStart.toISOString()} - ${requestedEnd.toISOString()}`);
     console.log(`[Booking] Max capacity for this doctor: ${maxCapacity}`);
     console.log(`[Booking] Provider ID found: ${providerId}`);
 
+    // Find all appointments that OVERLAP with the requested time slot
+    // Overlap condition: existing.start < requested.end AND existing.end > requested.start
     const { data: existingAppointments, error: fetchError } = await supabase
       .from("appointments")
-      .select("id, no_patient, provider_id, reason, start_time")
-      .gte("start_time", slotStart.toISOString())
-      .lt("start_time", slotEnd.toISOString())
+      .select("id, no_patient, provider_id, reason, start_time, end_time")
+      .lt("start_time", requestedEnd.toISOString())  // existing starts before requested ends
+      .gt("end_time", requestedStart.toISOString())  // existing ends after requested starts
       .neq("status", "cancelled");
 
     if (fetchError) {
