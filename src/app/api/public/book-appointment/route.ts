@@ -37,10 +37,18 @@ function parseBookingAppointmentDate(value: string): Date {
   return parseSwissDateTimeLocal(trimmed);
 }
 
-async function sendEmail(to: string, subject: string, html: string) {
+// Mailgun only allows scheduling emails up to 24 hours in advance
+const MAILGUN_MAX_SCHEDULE_HOURS = 24;
+
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  scheduledFor?: Date | null
+): Promise<{ sent: boolean; scheduled: boolean; reason?: string }> {
   if (!mailgunApiKey || !mailgunDomain) {
     console.log("Mailgun not configured, skipping email send");
-    return;
+    return { sent: false, scheduled: false, reason: "Mailgun not configured" };
   }
 
   const domain = mailgunDomain as string;
@@ -51,6 +59,21 @@ async function sendEmail(to: string, subject: string, html: string) {
   formData.append("to", to);
   formData.append("subject", subject);
   formData.append("html", html);
+
+  // Check if we can use Mailgun's scheduled delivery (must be within 24 hours)
+  const now = Date.now();
+  const maxScheduleTime = now + MAILGUN_MAX_SCHEDULE_HOURS * 60 * 60 * 1000;
+  
+  if (scheduledFor && scheduledFor.getTime() > now) {
+    if (scheduledFor.getTime() <= maxScheduleTime) {
+      // Within 24 hours - use Mailgun's scheduled delivery
+      formData.append("o:deliverytime", scheduledFor.toUTCString());
+    } else {
+      // Beyond 24 hours - don't send now, will be handled by cron job from scheduled_emails table
+      console.log(`Email scheduled for ${scheduledFor.toISOString()} is beyond Mailgun's 24-hour limit. Will be sent by cron job.`);
+      return { sent: false, scheduled: true, reason: "Beyond 24-hour limit, stored for cron job" };
+    }
+  }
 
   const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
 
@@ -67,6 +90,8 @@ async function sendEmail(to: string, subject: string, html: string) {
     console.error("Error sending email via Mailgun", response.status, text);
     throw new Error(`Failed to send email: ${response.status}`);
   }
+  
+  return { sent: true, scheduled: !!scheduledFor };
 }
 
 function formatDate(date: Date): string {
@@ -136,6 +161,73 @@ function generatePatientConfirmationEmail(
     </div>
     
     <p style="margin-bottom: 0; color: #475569;">Best regards,<br><strong style="color: #1e293b;">Aesthetics Clinic Team</strong></p>
+  </div>
+  <div style="text-align: center; padding: 20px; color: #94a3b8; font-size: 12px;">
+    <p style="margin: 0;">© ${new Date().getFullYear()} Aesthetics Clinic. All rights reserved.</p>
+  </div>
+</body>
+</html>`;
+}
+
+function generatePatientReminderEmail(
+  patientName: string,
+  doctorName: string,
+  appointmentDate: Date,
+  service: string,
+  location: string | null
+): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: #1e293b; padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+    <img src="https://cdn.jsdelivr.net/gh/sharyyoru/aestheticclinic@main/public/logos/aesthetics-logo.svg" alt="Aesthetics Clinic" style="height: 40px; margin-bottom: 20px; filter: brightness(0) invert(1);">
+    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">⏰ Appointment Reminder</h1>
+    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Your appointment is tomorrow</p>
+  </div>
+  <div style="background: #ffffff; padding: 40px 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 16px 16px;">
+    <p style="font-size: 18px; margin-bottom: 24px; color: #1e293b;">Dear <strong>${patientName}</strong>,</p>
+    <p style="margin-bottom: 24px; color: #475569;">This is a friendly reminder that you have an appointment scheduled for <strong>tomorrow</strong>.</p>
+    
+    <div style="background: #fffbeb; padding: 24px; border-radius: 12px; margin-bottom: 24px; border-left: 4px solid #f59e0b;">
+      <h3 style="margin: 0 0 16px 0; color: #1e293b; font-size: 16px; text-transform: uppercase; letter-spacing: 0.5px;">Appointment Details</h3>
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Doctor</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${doctorName}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Date</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatDate(appointmentDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Time</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatTime(appointmentDate)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Service</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${service}</td>
+        </tr>
+        ${location ? `
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Location</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${location}</td>
+        </tr>
+        ` : ""}
+      </table>
+    </div>
+    
+    <div style="background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+      <p style="margin: 0; color: #475569; font-size: 14px;">
+        If you need to reschedule or cancel, please contact us as soon as possible at <strong>+41 22 732 22 23</strong>.
+      </p>
+    </div>
+    
+    <p style="margin-bottom: 0; color: #475569;">We look forward to seeing you!<br><strong style="color: #1e293b;">Aesthetics Clinic Team</strong></p>
   </div>
   <div style="text-align: center; padding: 20px; color: #94a3b8; font-size: 12px;">
     <p style="margin: 0;">© ${new Date().getFullYear()} Aesthetics Clinic. All rights reserved.</p>
@@ -536,6 +628,63 @@ export async function POST(request: Request) {
       console.log("✓ Doctor notification email sent successfully to:", doctorEmail);
     } catch (err) {
       console.error("✗ Error sending doctor email:", err);
+    }
+
+    // Schedule reminder email for 1 day before appointment
+    const reminderDate = new Date(appointmentDateObj);
+    reminderDate.setDate(reminderDate.getDate() - 1);
+
+    // Only schedule if reminder date is in the future
+    if (reminderDate.getTime() > Date.now()) {
+      // Run reminder scheduling in background (don't block the response)
+      const scheduleReminder = async () => {
+        try {
+          const reminderHtml = generatePatientReminderEmail(
+            patientName,
+            doctorName,
+            appointmentDateObj,
+            service,
+            location || null
+          );
+
+          // Store in scheduled_emails table for cron job backup
+          await supabase.from("scheduled_emails").insert({
+            patient_id: patientId,
+            appointment_id: appointment.id,
+            recipient_type: "patient",
+            recipient_email: email,
+            subject: `Reminder: Your Appointment Tomorrow - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
+            body: reminderHtml,
+            scheduled_for: reminderDate.toISOString(),
+            status: "pending",
+          });
+
+          // Try to send via Mailgun (will skip if beyond 24-hour limit)
+          const result = await sendEmail(
+            email,
+            `Reminder: Your Appointment Tomorrow - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
+            reminderHtml,
+            reminderDate
+          );
+          
+          // If Mailgun sent/scheduled it, mark as sent in DB
+          if (result.sent) {
+            await supabase.from("scheduled_emails")
+              .update({ status: "sent" })
+              .eq("appointment_id", appointment.id)
+              .eq("recipient_type", "patient");
+          }
+          
+          console.log("✓ Patient reminder scheduled for:", reminderDate.toISOString(), result);
+        } catch (err) {
+          console.error("✗ Error scheduling patient reminder:", err);
+        }
+      };
+
+      // Fire and forget - don't block the response
+      scheduleReminder().catch(err => {
+        console.error("Error in reminder scheduling:", err);
+      });
     }
 
     return NextResponse.json({
