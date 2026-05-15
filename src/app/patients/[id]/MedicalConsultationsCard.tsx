@@ -2888,6 +2888,44 @@ export default function MedicalConsultationsCard({
   return (
     <>
       <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+        {/* Sub-tab navigation for Consultations vs Medical Records */}
+        <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("consultations")}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeSubTab === "consultations"
+                ? "bg-slate-900 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            Consultations
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab("medical_records")}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeSubTab === "medical_records"
+                ? "bg-slate-900 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            Medical Records
+          </button>
+        </div>
+
+        {/* Medical Records Tab Content */}
+        {activeSubTab === "medical_records" && (
+          <MedicalRecordsTab
+            patientId={patientId}
+            patientFirstName={patientFirstName || ""}
+            patientLastName={patientLastName || ""}
+          />
+        )}
+
+        {/* Consultations Tab Content */}
+        {activeSubTab === "consultations" && (
+        <>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-900">
             {showArchived ? "Archived consultations" : "Consultations"}
@@ -7807,6 +7845,8 @@ export default function MedicalConsultationsCard({
             </>
           )}
         </div>
+        </>
+        )}
       </div>
 
       {taskModalOpen ? (
