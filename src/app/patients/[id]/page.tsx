@@ -24,6 +24,7 @@ import PatientPageClientWrapper from "./PatientPageClientWrapper";
 import PatientFormsTab from "./PatientFormsTab";
 import PatientTabRegistrar from "./PatientTabRegistrar";
 import MedicalRecordsTab from "./MedicalRecordsTab";
+import PatientDetailsCard from "./PatientDetailsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -691,9 +692,12 @@ export default async function PatientPage({
         ) : null}
 
         {medicalTab === "patient_information" ? (
-          <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-            <PatientIntakeDataCard patientId={patient.id} />
-          </div>
+          <>
+            <PatientDetailsCard patientId={patient.id} />
+            <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+              <PatientIntakeDataCard patientId={patient.id} />
+            </div>
+          </>
         ) : null}
 
         {medicalTab === "documents" ? (
