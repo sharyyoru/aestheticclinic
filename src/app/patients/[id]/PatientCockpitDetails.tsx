@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { Pencil, X } from "lucide-react";
+import { Pencil, X, ChevronDown } from "lucide-react";
 import AddressAutocompleteInput from "@/components/AddressAutocompleteInput";
+
+const COLLAPSE_KEY = "patientCockpitDetails_collapsed";
 
 type PatientData = {
   id: string;
@@ -21,7 +23,7 @@ type PatientData = {
   emergency_contact_relation: string | null;
 };
 
-type ModalType = "details" | "address" | null;
+type ModalType = "details" | "address" | "emergency" | null;
 
 export default function PatientCockpitDetails({
   patient,
@@ -31,6 +33,22 @@ export default function PatientCockpitDetails({
   const router = useRouter();
   const [openModal, setOpenModal] = useState<ModalType>(null);
   const [saving, setSaving] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Load collapse preference from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(`${COLLAPSE_KEY}_${patient.id}`);
+    if (stored === "true") {
+      setCollapsed(true);
+    }
+  }, [patient.id]);
+
+  // Save collapse preference
+  const toggleCollapse = () => {
+    const newState = !collapsed;
+    setCollapsed(newState);
+    localStorage.setItem(`${COLLAPSE_KEY}_${patient.id}`, String(newState));
+  };
 
   // Patient Details form state
   const [email, setEmail] = useState(patient.email ?? "");
@@ -44,6 +62,11 @@ export default function PatientCockpitDetails({
   const [town, setTown] = useState(patient.town ?? "");
   const [country, setCountry] = useState(patient.country ?? "");
 
+  // Emergency Contact form state
+  const [emergencyName, setEmergencyName] = useState(patient.emergency_contact_name ?? "");
+  const [emergencyPhone, setEmergencyPhone] = useState(patient.emergency_contact_phone ?? "");
+  const [emergencyRelation, setEmergencyRelation] = useState(patient.emergency_contact_relation ?? "");
+
   function handleOpen(type: ModalType) {
     // Reset form state to current patient values
     if (type === "details") {
@@ -56,6 +79,10 @@ export default function PatientCockpitDetails({
       setPostalCode(patient.postal_code ?? "");
       setTown(patient.town ?? "");
       setCountry(patient.country ?? "");
+    } else if (type === "emergency") {
+      setEmergencyName(patient.emergency_contact_name ?? "");
+      setEmergencyPhone(patient.emergency_contact_phone ?? "");
+      setEmergencyRelation(patient.emergency_contact_relation ?? "");
     }
     setOpenModal(type);
   }
@@ -89,6 +116,12 @@ export default function PatientCockpitDetails({
         town: town.trim() || null,
         country: country.trim() || null,
       };
+    } else if (openModal === "emergency") {
+      updateData = {
+        emergency_contact_name: emergencyName.trim() || null,
+        emergency_contact_phone: emergencyPhone.trim() || null,
+        emergency_contact_relation: emergencyRelation.trim() || null,
+      };
     }
 
     const { error } = await supabaseClient
@@ -117,8 +150,31 @@ export default function PatientCockpitDetails({
 
   return (
     <>
-      <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="rounded-xl border border-slate-200/80 bg-white/90 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+        {/* Collapsible Header */}
+        <div
+          className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50/50 transition-colors"
+          onClick={toggleCollapse}
+        >
+          <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+            <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            Patient Information
+          </h3>
+          <button
+            type="button"
+            className="p-1 rounded hover:bg-slate-100 transition-colors"
+            onClick={(e) => { e.stopPropagation(); toggleCollapse(); }}
+          >
+            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`} />
+          </button>
+        </div>
+
+        {/* Collapsible Content */}
+        {!collapsed && (
+        <div className="px-4 pb-4 border-t border-slate-100">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 pt-4">
           <div className="space-y-1 text-[11px]">
             <h3 className="mb-2 flex items-center text-xs font-semibold uppercase tracking-wide text-slate-500">
               Patient Details
@@ -172,8 +228,9 @@ export default function PatientCockpitDetails({
           </div>
 
           <div className="space-y-1 text-[11px]">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <h3 className="mb-2 flex items-center text-xs font-semibold uppercase tracking-wide text-slate-500">
               Patient Emergency Contact
+              {editBtn("emergency")}
             </h3>
             <p className="text-slate-500">
               <span className="font-semibold text-slate-700">Name:</span>{" "}
@@ -208,6 +265,8 @@ export default function PatientCockpitDetails({
             </div>
           </div>
         </div>
+        </div>
+        )}
       </div>
 
       {/* Modal overlay */}
@@ -225,6 +284,7 @@ export default function PatientCockpitDetails({
             <h2 className="mb-4 text-sm font-semibold text-slate-900">
               {openModal === "details" && "Edit Patient Details"}
               {openModal === "address" && "Edit Patient Address"}
+              {openModal === "emergency" && "Edit Emergency Contact"}
             </h2>
 
             <div className="space-y-3">
@@ -326,6 +386,47 @@ export default function PatientCockpitDetails({
                       <option value="GB">🇬🇧 United Kingdom (GB)</option>
                       <option value="US">🇺🇸 United States (US)</option>
                       <option value="AE">🇦🇪 United Arab Emirates (AE)</option>
+                    </select>
+                  </label>
+                </>
+              )}
+
+              {openModal === "emergency" && (
+                <>
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-600">Name</span>
+                    <input
+                      type="text"
+                      value={emergencyName}
+                      onChange={(e) => setEmergencyName(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
+                      placeholder="Emergency contact name"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-600">Mobile Number</span>
+                    <input
+                      type="tel"
+                      value={emergencyPhone}
+                      onChange={(e) => setEmergencyPhone(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
+                      placeholder="+41 XX XXX XX XX"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-600">Relation to Patient</span>
+                    <select
+                      value={emergencyRelation}
+                      onChange={(e) => setEmergencyRelation(e.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400"
+                    >
+                      <option value="">Select relation</option>
+                      <option value="spouse">Spouse</option>
+                      <option value="parent">Parent</option>
+                      <option value="child">Child</option>
+                      <option value="sibling">Sibling</option>
+                      <option value="friend">Friend</option>
+                      <option value="other">Other</option>
                     </select>
                   </label>
                 </>
