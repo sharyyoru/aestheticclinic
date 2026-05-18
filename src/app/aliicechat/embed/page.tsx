@@ -22,7 +22,7 @@ const T = {
     placeholder: "Type your message…",
     error: "Something went wrong. Please try again.",
     online: "Online",
-    starting: "Starting chat…",
+    starting: "Type a message to start chatting",
     book: "Book",
     greeting: "Hi, I'm Aliice",
     subtitle: "Your AI assistant",
@@ -45,7 +45,7 @@ const T = {
     placeholder: "Tapez votre message…",
     error: "Une erreur s'est produite. Veuillez réessayer.",
     online: "En ligne",
-    starting: "Démarrage du chat…",
+    starting: "Écrivez un message pour commencer",
     book: "RDV",
     greeting: "Bonjour, je suis Aliice",
     subtitle: "Votre assistante IA",
@@ -86,6 +86,44 @@ function linkify(text: string): React.ReactNode[] {
   return parts;
 }
 
+const globalStyles = `
+  html, body, body > div { background: transparent !important; }
+  @keyframes embedBounce {
+    0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+    60% { transform: scale(1.1) rotate(3deg); }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+  @keyframes embedPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(14,165,233,0.4); }
+    50% { box-shadow: 0 0 0 12px rgba(14,165,233,0); }
+  }
+  @keyframes embedMsgBounce {
+    0% { transform: scale(0) translateX(20px); opacity: 0; }
+    60% { transform: scale(1.05) translateX(-3px); }
+    100% { transform: scale(1) translateX(0); opacity: 1; }
+  }
+  @keyframes embedDot {
+    0%,60%,100% { transform:translateY(0); opacity:.45; }
+    30%          { transform:translateY(-6px); opacity:1; }
+  }
+  @keyframes embedMsgIn {
+    from { opacity:0; transform:translateY(8px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+  .embed-bubble { animation: embedBounce 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+  .embed-bubble:hover { transform: scale(1.08); }
+  .embed-pulse { animation: embedPulse 2s ease-in-out infinite; }
+  .embed-msg-bubble { animation: embedMsgBounce 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.3s both; }
+  .embed-msg { animation: embedMsgIn 0.22s ease-out both; }
+  .embed-dot { animation: embedDot 1.3s ease-in-out infinite; }
+  .embed-dot:nth-child(2) { animation-delay:.18s; }
+  .embed-dot:nth-child(3) { animation-delay:.36s; }
+`;
+
 export default function AliiceChatEmbed() {
   const [lang, setLang] = useState<Lang>("en");
   const [minimized, setMinimized] = useState(true);
@@ -113,6 +151,13 @@ export default function AliiceChatEmbed() {
     const autoOpen = params.get("open");
     if (autoOpen === "true") setMinimized(false);
   }, []);
+
+  // Notify parent frame of open/close for iframe resizing
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.parent !== window) {
+      window.parent.postMessage({ type: "aliice-chat", open: !minimized }, "*");
+    }
+  }, [minimized]);
 
   // Auto-scroll
   useEffect(() => {
@@ -291,43 +336,6 @@ export default function AliiceChatEmbed() {
     }
   }, [input, chatId, thinking, t]);
 
-  // Global styles
-  const globalStyles = `
-    @keyframes embedBounce {
-      0% { transform: scale(0) rotate(-10deg); opacity: 0; }
-      60% { transform: scale(1.1) rotate(3deg); }
-      100% { transform: scale(1) rotate(0); opacity: 1; }
-    }
-    @keyframes embedPulse {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(14,165,233,0.4); }
-      50% { box-shadow: 0 0 0 12px rgba(14,165,233,0); }
-    }
-    @keyframes embedMsgBounce {
-      0% { transform: scale(0) translateX(20px); opacity: 0; }
-      60% { transform: scale(1.05) translateX(-3px); }
-      100% { transform: scale(1) translateX(0); opacity: 1; }
-    }
-    @keyframes embedDot {
-      0%,60%,100% { transform:translateY(0); opacity:.45; }
-      30%          { transform:translateY(-6px); opacity:1; }
-    }
-    @keyframes embedMsgIn {
-      from { opacity:0; transform:translateY(8px); }
-      to   { opacity:1; transform:translateY(0); }
-    }
-    @keyframes pulse-ring {
-      0% { transform: scale(1); opacity: 1; }
-      100% { transform: scale(1.5); opacity: 0; }
-    }
-    .embed-bubble { animation: embedBounce 0.5s cubic-bezier(0.34,1.56,0.64,1); }
-    .embed-bubble:hover { transform: scale(1.08); }
-    .embed-pulse { animation: embedPulse 2s ease-in-out infinite; }
-    .embed-msg-bubble { animation: embedMsgBounce 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.3s both; }
-    .embed-msg { animation: embedMsgIn 0.22s ease-out both; }
-    .embed-dot { animation: embedDot 1.3s ease-in-out infinite; }
-    .embed-dot:nth-child(2) { animation-delay:.18s; }
-    .embed-dot:nth-child(3) { animation-delay:.36s; }
-  `;
 
   // Minimized bubble
   if (minimized) {
@@ -354,13 +362,8 @@ export default function AliiceChatEmbed() {
   }
 
   // Widget container
-  const WidgetContainer = ({ children }: { children: React.ReactNode }) => (
-    <div className="fixed bottom-5 right-5 z-[9999] w-[380px] max-w-[calc(100vw-40px)] h-[580px] max-h-[calc(100vh-40px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden"
-      style={{ boxShadow: "0 25px 60px -12px rgba(0,0,0,0.3)" }}>
-      <style>{globalStyles}</style>
-      {children}
-    </div>
-  );
+  const widgetContainerClass = "fixed bottom-5 right-5 z-[9999] w-[380px] max-w-[calc(100vw-40px)] h-[580px] max-h-[calc(100vh-40px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden";
+  const widgetContainerStyle = { boxShadow: "0 25px 60px -12px rgba(0,0,0,0.3)" };
 
   // Header component
   const Header = ({ showBack = false, onBack }: { showBack?: boolean; onBack?: () => void }) => (
@@ -400,7 +403,8 @@ export default function AliiceChatEmbed() {
   // Welcome screen
   if (screen === "welcome") {
     return (
-      <WidgetContainer>
+      <div className={widgetContainerClass} style={widgetContainerStyle}>
+      <style>{globalStyles}</style>
         <Header />
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-8" style={{ background: "linear-gradient(180deg, #f8fafc 0%, #e0f2fe 100%)" }}>
           <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-sky-100 shadow-lg mb-4">
@@ -449,14 +453,15 @@ export default function AliiceChatEmbed() {
           
           <p className="text-xs text-slate-400 mt-6">📞 {CLINIC_PHONE}</p>
         </div>
-      </WidgetContainer>
+      </div>
     );
   }
 
   // Web call screen
   if (screen === "webcall") {
     return (
-      <WidgetContainer>
+      <div className={widgetContainerClass} style={widgetContainerStyle}>
+      <style>{globalStyles}</style>
         <Header showBack onBack={() => { endWebCall(); setScreen("welcome"); }} />
         <div className="flex-1 flex flex-col items-center justify-center px-6" style={{ background: "linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%)" }}>
           <div className="relative mb-6">
@@ -494,14 +499,15 @@ export default function AliiceChatEmbed() {
             </div>
           )}
         </div>
-      </WidgetContainer>
+      </div>
     );
   }
 
   // Phone call screen
   if (screen === "call") {
     return (
-      <WidgetContainer>
+      <div className={widgetContainerClass} style={widgetContainerStyle}>
+      <style>{globalStyles}</style>
         <Header showBack onBack={() => { setScreen("welcome"); setCallStatus("idle"); setPhoneNumber(""); setError(null); }} />
         <div className="flex-1 flex flex-col items-center justify-center px-6" style={{ background: "linear-gradient(180deg, #f5f3ff 0%, #ede9fe 100%)" }}>
           <div className="w-20 h-20 rounded-full overflow-hidden ring-4 ring-violet-200 shadow-lg mb-4">
@@ -552,13 +558,14 @@ export default function AliiceChatEmbed() {
             </>
           )}
         </div>
-      </WidgetContainer>
+      </div>
     );
   }
 
   // Chat screen
   return (
-    <WidgetContainer>
+    <div className={widgetContainerClass} style={widgetContainerStyle}>
+      <style>{globalStyles}</style>
       <Header showBack onBack={() => setScreen("welcome")} />
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4" style={{ background: "#f8fafc" }}>
         {error && <div className="text-center text-xs text-rose-500 bg-rose-50 rounded-xl py-2 px-4">{error}</div>}
@@ -605,6 +612,6 @@ export default function AliiceChatEmbed() {
           </svg>
         </button>
       </div>
-    </WidgetContainer>
+    </div>
   );
 }

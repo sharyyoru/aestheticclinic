@@ -91,7 +91,9 @@ function extractCustomerInfo(call: RetellCallPayload["call"]): {
   }
   
   // Phone from caller ID or variables
-  let phone = (vars.phone as string) || call.from_number || "";
+  const rawPhone = (vars.phone as string) || (vars.customer_phone as string) || call.from_number || "";
+  // Skip Retell placeholder numbers (web calls have no real caller ID)
+  let phone = rawPhone && !rawPhone.startsWith("+1000") ? rawPhone : "";
   
   // Email from variables or metadata
   let email = (vars.email as string) || (metadata.email as string) || "";
@@ -167,6 +169,17 @@ export async function POST(request: NextRequest) {
     const payload = (await request.json()) as RetellCallPayload;
     
     console.log("[Retell Agent] Received webhook:", payload.event, payload.call?.call_id);
+    console.log("[Retell Agent] Payload:", JSON.stringify({
+      event: payload.event,
+      call_id: payload.call?.call_id,
+      from_number: payload.call?.from_number,
+      to_number: payload.call?.to_number,
+      direction: payload.call?.direction,
+      call_status: payload.call?.call_status,
+      metadata: payload.call?.metadata,
+      dynamic_vars: payload.call?.retell_llm_dynamic_variables,
+      disconnection_reason: payload.call?.disconnection_reason,
+    }));
 
     // Only process call_ended events (has full transcript and caller info)
     if (payload.event !== "call_ended") {
