@@ -67,13 +67,23 @@ function extractCustomerInfo(call: RetellCallPayload["call"]): {
   phone: string;
   email: string;
   serviceInterest: string;
+  location: string;
 } {
   const vars = call.retell_llm_dynamic_variables || {};
   const metadata = call.metadata || {};
+  const analysis = (call.call_analysis?.custom_analysis_data || {}) as Record<string, unknown>;
   
+  // Try to parse lead_info JSON if present (single-field extraction)
+  let parsedLeadInfo: Record<string, string> = {};
+  if (analysis.lead_info) {
+    try {
+      parsedLeadInfo = typeof analysis.lead_info === "string" ? JSON.parse(analysis.lead_info) : analysis.lead_info as Record<string, string>;
+    } catch { /* ignore parse errors */ }
+  }
+
   // Try to get name from various sources
-  let firstName = (vars.first_name as string) || "";
-  let lastName = (vars.last_name as string) || "";
+  let firstName = (vars.first_name as string) || (analysis.first_name as string) || parsedLeadInfo.first_name || "";
+  let lastName = (vars.last_name as string) || (analysis.last_name as string) || parsedLeadInfo.last_name || "";
   
   // If we have customer_name but not first/last, split it
   if (!firstName && vars.customer_name) {
@@ -90,18 +100,21 @@ function extractCustomerInfo(call: RetellCallPayload["call"]): {
     lastName = metadata.last_name as string;
   }
   
-  // Phone from caller ID or variables
-  const rawPhone = (vars.phone as string) || (vars.customer_phone as string) || call.from_number || "";
+  // Phone from caller ID or variables or analysis
+  const rawPhone = (vars.phone as string) || (vars.customer_phone as string) || (analysis.phone as string) || parsedLeadInfo.phone || call.from_number || "";
   // Skip Retell placeholder numbers (web calls have no real caller ID)
   let phone = rawPhone && !rawPhone.startsWith("+1000") ? rawPhone : "";
   
-  // Email from variables or metadata
-  let email = (vars.email as string) || (metadata.email as string) || "";
+  // Email from variables, metadata, or analysis
+  let email = (vars.email as string) || (metadata.email as string) || (analysis.email as string) || parsedLeadInfo.email || "";
   
   // Service interest
-  let serviceInterest = (vars.service_interest as string) || (metadata.service_interest as string) || "";
+  let serviceInterest = (vars.service_interest as string) || (metadata.service_interest as string) || (analysis.service_interest as string) || parsedLeadInfo.service_interest || "";
   
-  return { firstName, lastName, phone, email, serviceInterest };
+  // Location
+  let location = (vars.location as string) || (analysis.location as string) || parsedLeadInfo.location || "";
+  
+  return { firstName, lastName, phone, email, serviceInterest, location };
 }
 
 /**
@@ -181,8 +194,8 @@ export async function POST(request: NextRequest) {
       disconnection_reason: payload.call?.disconnection_reason,
     }));
 
-    // Only process call_ended events (has full transcript and caller info)
-    if (payload.event !== "call_ended") {
+    // Process call_ended and call_analyzed events
+    if (payload.event !== "call_ended" && payload.event !== "call_analyzed") {
       console.log("[Retell Agent] Ignoring event:", payload.event);
       return NextResponse.json({ success: true, message: `Event ${payload.event} acknowledged` });
     }
@@ -196,7 +209,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract customer information
-    const { firstName, lastName, phone, email, serviceInterest } = extractCustomerInfo(call);
+    const { firstName, lastName, phone, email, serviceInterest, location } = extractCustomerInfo(call);
 
     // We need at least a phone number to create a lead
     if (!phone) {
@@ -207,7 +220,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log("[Retell Agent] Processing lead:", { firstName, lastName, phone, email, serviceInterest });
+    console.log("[Retell Agent] Processing lead:", { firstName, lastName, phone, email, serviceInterest, location });
 
     // Check if patient already exists by phone
     const normalizedPhone = phone.replace(/[^\d+]/g, "");
@@ -267,6 +280,7 @@ export async function POST(request: NextRequest) {
       duration_seconds: callDuration,
       disconnection_reason: call.disconnection_reason,
       service_interest: serviceInterest,
+      location: location || undefined,
       received_at: new Date().toISOString(),
     };
     
