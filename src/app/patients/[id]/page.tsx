@@ -23,6 +23,7 @@ import PatientCockpitDetails from "./PatientCockpitDetails";
 import PatientPageClientWrapper from "./PatientPageClientWrapper";
 import PatientFormsTab from "./PatientFormsTab";
 import PatientTabRegistrar from "./PatientTabRegistrar";
+import MedicalRecordsTab from "./MedicalRecordsTab";
 
 export const dynamic = "force-dynamic";
 

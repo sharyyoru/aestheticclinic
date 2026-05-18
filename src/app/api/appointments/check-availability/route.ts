@@ -47,12 +47,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch appointments within the date range
+    // Fetch appointments that could OVERLAP with any slot in the date range
+    // We need appointments that: start before range ends AND end after range starts
+    // This ensures we catch appointments that started earlier but still overlap
     let query = supabase
       .from("appointments")
       .select("id, start_time, end_time, status, reason, no_patient, provider_id")
-      .gte("start_time", start)
-      .lte("start_time", end)
+      .lt("start_time", end)      // starts before range ends
+      .gt("end_time", start)      // ends after range starts
       .neq("status", "cancelled");
 
     const { data: appointments, error } = await query;
@@ -92,9 +94,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Count appointments per 30-minute slot using the SAME logic as booking API
-    // Booking API counts appointments that START within each 30-minute window
-    // We need to match this exactly to prevent showing slots that will fail on booking
+    // Count appointments per 30-minute slot using OVERLAP detection
+    // A slot is blocked if any existing appointment overlaps with a 1-hour appointment starting at that slot
+    // This matches the booking API logic exactly (which also checks for overlaps)
     const slotCounts: Record<string, number> = {};
     
     // Generate all 30-minute slots for the requested time range
@@ -111,18 +113,21 @@ export async function GET(request: NextRequest) {
       currentSlot = new Date(currentSlot.getTime() + 30 * 60 * 1000);
     }
     
-    // For each 30-minute slot, count appointments that START within that window
-    // This matches the booking API logic exactly
+    // For each 30-minute slot, count appointments that OVERLAP with a 1-hour appointment starting at that slot
+    // Overlap condition: existing.start < proposed.end AND existing.end > proposed.start
     allSlots.forEach((slotStart) => {
-      const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
+      // A booking at this slot would be 1 hour long
+      const proposedEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
       
-      const appointmentsInSlot = filteredAppointments.filter((apt) => {
+      const overlappingAppointments = filteredAppointments.filter((apt) => {
         const aptStart = new Date(apt.start_time);
-        return aptStart >= slotStart && aptStart < slotEnd;
+        const aptEnd = new Date(apt.end_time);
+        // Overlap: existing starts before proposed ends AND existing ends after proposed starts
+        return aptStart < proposedEnd && aptEnd > slotStart;
       });
       
-      if (appointmentsInSlot.length > 0) {
-        slotCounts[slotStart.toISOString()] = appointmentsInSlot.length;
+      if (overlappingAppointments.length > 0) {
+        slotCounts[slotStart.toISOString()] = overlappingAppointments.length;
       }
     });
 

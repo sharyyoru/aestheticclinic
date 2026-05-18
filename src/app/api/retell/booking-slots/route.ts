@@ -84,12 +84,13 @@ export async function GET(request: NextRequest) {
     endDate.setDate(endDate.getDate() + days);
     endDate.setHours(23, 59, 59, 999);
 
-    // Fetch existing appointments in range
+    // Fetch appointments that could OVERLAP with any slot in the date range
+    // We need appointments that: start before range ends AND end after range starts
     let query = supabase
       .from("appointments")
       .select("id, start_time, end_time, status, reason, no_patient, provider_id")
-      .gte("start_time", startDate.toISOString())
-      .lte("start_time", endDate.toISOString())
+      .lt("start_time", endDate.toISOString())   // starts before range ends
+      .gt("end_time", startDate.toISOString())   // ends after range starts
       .neq("status", "cancelled");
 
     const { data: appointments, error: aptError } = await query;
@@ -152,16 +153,19 @@ export async function GET(request: NextRequest) {
 
       // Skip Sundays (0) and outside working hours (9-18)
       if (dayOfWeek !== 0 && hour >= 9 && hour < 18) {
-        const slotEnd = new Date(currentSlot.getTime() + 30 * 60 * 1000);
+        // A booking at this slot would be 1 hour long
+        const proposedEnd = new Date(currentSlot.getTime() + 60 * 60 * 1000);
         
-        // Count appointments in this slot
-        const appointmentsInSlot = filteredAppointments.filter((apt) => {
+        // Count appointments that OVERLAP with a 1-hour booking at this slot
+        // Overlap: existing starts before proposed ends AND existing ends after proposed starts
+        const overlappingAppointments = filteredAppointments.filter((apt) => {
           const aptStart = new Date(apt.start_time);
-          return aptStart >= currentSlot && aptStart < slotEnd;
+          const aptEnd = new Date(apt.end_time);
+          return aptStart < proposedEnd && aptEnd > currentSlot;
         });
 
         // If slot has capacity, add to available
-        if (appointmentsInSlot.length < maxCapacity) {
+        if (overlappingAppointments.length < maxCapacity) {
           availableSlots.push({
             date: currentSlot.toISOString().split("T")[0],
             time: formatSwissTimeAmPm(currentSlot),
