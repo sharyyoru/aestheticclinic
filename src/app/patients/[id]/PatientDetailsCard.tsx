@@ -51,13 +51,35 @@ export default function PatientDetailsCard({ patientId }: { patientId: string })
 
   const loadPatient = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabaseClient
+    // First try with emergency contact fields
+    let { data, error } = await supabaseClient
       .from("patients")
       .select(
         "id, first_name, last_name, email, phone, gender, marital_status, street_address, postal_code, town, country, emergency_contact_name, emergency_contact_phone, emergency_contact_relation"
       )
       .eq("id", patientId)
       .single();
+
+    // If error (likely because emergency contact columns don't exist), try without them
+    if (error) {
+      const fallback = await supabaseClient
+        .from("patients")
+        .select(
+          "id, first_name, last_name, email, phone, gender, marital_status, street_address, postal_code, town, country"
+        )
+        .eq("id", patientId)
+        .single();
+      
+      if (!fallback.error && fallback.data) {
+        data = {
+          ...fallback.data,
+          emergency_contact_name: null,
+          emergency_contact_phone: null,
+          emergency_contact_relation: null,
+        } as typeof data;
+        error = null;
+      }
+    }
 
     if (!error && data) {
       setPatient(data as PatientDetails);
@@ -107,12 +129,17 @@ export default function PatientDetailsCard({ patientId }: { patientId: string })
       .update(updatePayload)
       .eq("id", patient.id);
 
-    if (!error) {
+    if (error) {
+      // If error saving emergency contact (columns may not exist), show alert
+      if (editingSection === "emergency") {
+        alert("Emergency contact fields not available. Please run the database migration first.");
+      } else {
+        console.error("Failed to save:", error);
+      }
+    } else {
       await loadPatient();
       setEditingSection(null);
       setEditData({});
-    } else {
-      console.error("Failed to save:", error);
     }
     setSaving(false);
   };
