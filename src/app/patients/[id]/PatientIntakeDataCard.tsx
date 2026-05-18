@@ -101,7 +101,17 @@ type ConsultationData = {
   created_at: string;
 };
 
-type EditingSection = "preferences" | "measurements" | "treatment_prefs" | "health_background" | "insurance" | null;
+type EditingSection = "preferences" | "measurements" | "treatment_prefs" | "health_background" | "insurance" | "treatment_areas" | null;
+
+// Health background dropdown options (from intake form)
+const ALCOHOL_OPTIONS = ["Never", "Rarely", "Occasionally", "Frequently", "Daily"];
+const SPORTS_OPTIONS = ["Never", "Rarely", "Occasionally", "Frequently", "Daily"];
+const BIRTH_TYPES = ["Natural", "C-section"];
+
+// Treatment area options (from consultation forms)
+const LIPOSUCTION_AREAS = ["Tummy", "Flancs", "Back", "Arms", "Thighs", "Legs", "Breast", "Chin", "Other"];
+const FACE_PRIORITY_AREAS = ["Wrinkles", "Eyebags", "Nasolabial Fold", "Jaw Line", "Neck"];
+const BREAST_PROCEDURE_TYPES = ["Breast Augmentation", "Breast Reduction", "Breast Lift", "Breast Reconstruction", "Breast Exchange"];
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
@@ -183,6 +193,8 @@ export default function PatientIntakeDataCard({
   const [editMeasurements, setEditMeasurements] = useState<Measurements | null>(null);
   const [editTreatmentPrefs, setEditTreatmentPrefs] = useState<TreatmentPreferences | null>(null);
   const [editInsurance, setEditInsurance] = useState<PatientInsurance | null>(null);
+  const [editHealthBackground, setEditHealthBackground] = useState<HealthBackground | null>(null);
+  const [editTreatmentAreas, setEditTreatmentAreas] = useState<{liposuction: string[], face: string[], breast: string[]}>({ liposuction: [], face: [], breast: [] });
 
   const loadIntakeData = useCallback(async () => {
     setLoading(true);
@@ -450,6 +462,111 @@ export default function PatientIntakeDataCard({
     setSaving(false);
   };
 
+  const saveHealthBackground = async (data: Partial<HealthBackground>) => {
+    setSaving(true);
+    try {
+      const bmi = data.weight_kg && data.height_cm 
+        ? parseFloat((data.weight_kg / Math.pow(data.height_cm / 100, 2)).toFixed(1))
+        : null;
+
+      const saveData = {
+        weight_kg: data.weight_kg || null,
+        height_cm: data.height_cm || null,
+        bmi: bmi,
+        known_illnesses: data.known_illnesses || null,
+        previous_surgeries: data.previous_surgeries || null,
+        allergies: data.allergies || null,
+        cigarettes: data.cigarettes || null,
+        alcohol_consumption: data.alcohol_consumption || null,
+        sports_activity: data.sports_activity || null,
+        medications: data.medications || null,
+        general_practitioner: data.general_practitioner || null,
+        gynecologist: data.gynecologist || null,
+        children_count: data.children_count || null,
+        birth_type_1: data.birth_type_1 || null,
+        birth_type_2: data.birth_type_2 || null,
+      };
+
+      if (healthBackground?.id) {
+        const { error } = await supabaseClient.from("patient_health_background").update(saveData).eq("id", healthBackground.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabaseClient.from("patient_health_background").insert({
+          ...saveData,
+          patient_id: patientId,
+          submission_id: submission?.id,
+        });
+        if (error) throw error;
+      }
+      await loadIntakeData();
+      setEditingSection(null);
+    } catch (err) {
+      console.error("Failed to save health background:", err);
+      alert(`Failed to save health background: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setSaving(false);
+  };
+
+  const saveTreatmentAreas = async (data: {liposuction: string[], face: string[], breast: string[]}) => {
+    setSaving(true);
+    try {
+      // Save liposuction areas if any
+      if (data.liposuction.length > 0) {
+        const existingLipo = consultationData.find(c => c.consultation_type === "liposuction");
+        const lipoData = {
+          patient_id: patientId,
+          consultation_type: "liposuction",
+          selected_areas: data.liposuction,
+          upload_mode: "later",
+        };
+        if (existingLipo) {
+          await supabaseClient.from("patient_consultation_data").update(lipoData).eq("id", existingLipo.id);
+        } else {
+          await supabaseClient.from("patient_consultation_data").insert(lipoData);
+        }
+      }
+
+      // Save face areas if any
+      if (data.face.length > 0) {
+        const existingFace = consultationData.find(c => c.consultation_type === "face");
+        const faceData = {
+          patient_id: patientId,
+          consultation_type: "face",
+          face_data: { priority_areas: data.face, effects: [] },
+          upload_mode: "later",
+        };
+        if (existingFace) {
+          await supabaseClient.from("patient_consultation_data").update(faceData).eq("id", existingFace.id);
+        } else {
+          await supabaseClient.from("patient_consultation_data").insert(faceData);
+        }
+      }
+
+      // Save breast procedures if any
+      if (data.breast.length > 0) {
+        const existingBreast = consultationData.find(c => c.consultation_type === "breast");
+        const breastData = {
+          patient_id: patientId,
+          consultation_type: "breast",
+          breast_data: { procedure_types: data.breast },
+          upload_mode: "later",
+        };
+        if (existingBreast) {
+          await supabaseClient.from("patient_consultation_data").update(breastData).eq("id", existingBreast.id);
+        } else {
+          await supabaseClient.from("patient_consultation_data").insert(breastData);
+        }
+      }
+
+      await loadIntakeData();
+      setEditingSection(null);
+    } catch (err) {
+      console.error("Failed to save treatment areas:", err);
+      alert(`Failed to save treatment areas: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setSaving(false);
+  };
+
   const EditButton = ({ onClick }: { onClick: () => void }) => (
     <button
       onClick={onClick}
@@ -635,8 +752,106 @@ export default function PatientIntakeDataCard({
               </svg>
             </div>
             <h4 className="font-medium text-slate-900">Treatment Areas</h4>
+            <EditButton onClick={() => {
+              // Initialize with existing data
+              const lipoData = consultationData.find(c => c.consultation_type === "liposuction");
+              const faceData = consultationData.find(c => c.consultation_type === "face");
+              const breastData = consultationData.find(c => c.consultation_type === "breast");
+              setEditTreatmentAreas({
+                liposuction: lipoData?.selected_areas || [],
+                face: ((faceData?.face_data as Record<string, unknown>)?.priority_areas as string[]) || [],
+                breast: ((breastData?.breast_data as Record<string, unknown>)?.procedure_types as string[]) || [],
+              });
+              setEditingSection("treatment_areas");
+            }} />
           </div>
-          {consultationData.length > 0 ? (
+          
+          {editingSection === "treatment_areas" ? (
+            <div className="space-y-4">
+              {/* Liposuction Areas */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-2 block">Body Areas (Liposuction)</label>
+                <div className="flex flex-wrap gap-2">
+                  {LIPOSUCTION_AREAS.map((area) => (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() => setEditTreatmentAreas(prev => ({
+                        ...prev,
+                        liposuction: prev.liposuction.includes(area) 
+                          ? prev.liposuction.filter(a => a !== area)
+                          : [...prev.liposuction, area]
+                      }))}
+                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                        editTreatmentAreas.liposuction.includes(area)
+                          ? "bg-rose-500 text-white border-rose-500"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-rose-300"
+                      }`}
+                    >
+                      {area}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Face Areas */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-2 block">Face Priority Areas</label>
+                <div className="flex flex-wrap gap-2">
+                  {FACE_PRIORITY_AREAS.map((area) => (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() => setEditTreatmentAreas(prev => ({
+                        ...prev,
+                        face: prev.face.includes(area) 
+                          ? prev.face.filter(a => a !== area)
+                          : [...prev.face, area]
+                      }))}
+                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                        editTreatmentAreas.face.includes(area)
+                          ? "bg-sky-500 text-white border-sky-500"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-sky-300"
+                      }`}
+                    >
+                      {area}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Breast Procedures */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 mb-2 block">Breast Procedures</label>
+                <div className="flex flex-wrap gap-2">
+                  {BREAST_PROCEDURE_TYPES.map((proc) => (
+                    <button
+                      key={proc}
+                      type="button"
+                      onClick={() => setEditTreatmentAreas(prev => ({
+                        ...prev,
+                        breast: prev.breast.includes(proc) 
+                          ? prev.breast.filter(p => p !== proc)
+                          : [...prev.breast, proc]
+                      }))}
+                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                        editTreatmentAreas.breast.includes(proc)
+                          ? "bg-purple-500 text-white border-purple-500"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-purple-300"
+                      }`}
+                    >
+                      {proc}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => saveTreatmentAreas(editTreatmentAreas)} disabled={saving} className="px-4 py-2 bg-black text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
+                <button onClick={() => setEditingSection(null)} className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-lg">Cancel</button>
+              </div>
+            </div>
+          ) : consultationData.length > 0 ? (
             <div className="space-y-4">
               {consultationData.map((consultation) => (
                 <div key={consultation.id} className="border-l-2 border-rose-300 pl-3">
@@ -741,7 +956,7 @@ export default function PatientIntakeDataCard({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-slate-400 italic">No treatment areas selected.</p>
+            <p className="text-sm text-slate-400 italic">No treatment areas selected. Click Edit to add.</p>
           )}
         </div>
 
@@ -874,8 +1089,132 @@ export default function PatientIntakeDataCard({
               </svg>
             </div>
             <h4 className="font-medium text-slate-900">Health Background & Lifestyle</h4>
+            <EditButton onClick={() => {
+              setEditHealthBackground(healthBackground || {
+                weight_kg: null, height_cm: null, bmi: null,
+                known_illnesses: null, previous_surgeries: null, allergies: null,
+                cigarettes: null, alcohol_consumption: null, sports_activity: null,
+                medications: null, general_practitioner: null, gynecologist: null,
+                children_count: null, birth_type_1: null, birth_type_2: null
+              });
+              setEditingSection("health_background");
+            }} />
           </div>
-          {healthBackground ? (
+          
+          {editingSection === "health_background" && editHealthBackground ? (
+            <div className="space-y-4">
+              {/* Physical */}
+              <div>
+                <p className="text-xs font-medium text-slate-600 mb-2">Physical Measurements</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500">Weight (kg)</label>
+                    <input type="number" value={editHealthBackground.weight_kg || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, weight_kg: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="e.g., 70" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Height (cm)</label>
+                    <input type="number" value={editHealthBackground.height_cm || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, height_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="e.g., 170" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Medical History */}
+              <div>
+                <p className="text-xs font-medium text-slate-600 mb-2">Medical History</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500">Known Illnesses</label>
+                    <textarea value={editHealthBackground.known_illnesses || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, known_illnesses: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" rows={2} placeholder="List any illnesses" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Previous Surgeries</label>
+                    <textarea value={editHealthBackground.previous_surgeries || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, previous_surgeries: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" rows={2} placeholder="List any surgeries" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Allergies</label>
+                    <textarea value={editHealthBackground.allergies || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, allergies: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" rows={2} placeholder="List any allergies" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Current Medications</label>
+                    <textarea value={editHealthBackground.medications || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, medications: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" rows={2} placeholder="List any medications" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Lifestyle */}
+              <div>
+                <p className="text-xs font-medium text-slate-600 mb-2">Lifestyle</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500">Cigarettes</label>
+                    <select value={editHealthBackground.cigarettes || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, cigarettes: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
+                      <option value="">Select</option>
+                      {ALCOHOL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Alcohol</label>
+                    <select value={editHealthBackground.alcohol_consumption || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, alcohol_consumption: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
+                      <option value="">Select</option>
+                      {ALCOHOL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Sports</label>
+                    <select value={editHealthBackground.sports_activity || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, sports_activity: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
+                      <option value="">Select</option>
+                      {SPORTS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Healthcare Providers */}
+              <div>
+                <p className="text-xs font-medium text-slate-600 mb-2">Healthcare Providers</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500">General Practitioner</label>
+                    <input type="text" value={editHealthBackground.general_practitioner || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, general_practitioner: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="Doctor's name" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Gynecologist</label>
+                    <input type="text" value={editHealthBackground.gynecologist || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, gynecologist: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="Doctor's name" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Children */}
+              <div>
+                <p className="text-xs font-medium text-slate-600 mb-2">Children</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500">Number of Children</label>
+                    <input type="number" min="0" value={editHealthBackground.children_count || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, children_count: e.target.value ? parseInt(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Birth 1 Type</label>
+                    <select value={editHealthBackground.birth_type_1 || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, birth_type_1: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
+                      <option value="">Select</option>
+                      {BIRTH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Birth 2 Type</label>
+                    <select value={editHealthBackground.birth_type_2 || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, birth_type_2: e.target.value || null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black">
+                      <option value="">Select</option>
+                      {BIRTH_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => saveHealthBackground(editHealthBackground)} disabled={saving} className="px-4 py-2 bg-black text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
+                <button onClick={() => setEditingSection(null)} className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-lg">Cancel</button>
+              </div>
+            </div>
+          ) : healthBackground ? (
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
               <div>
                 <p className="text-slate-500 text-xs mb-1">Physical</p>
@@ -921,7 +1260,7 @@ export default function PatientIntakeDataCard({
               )}
             </div>
           ) : (
-            <p className="text-sm text-slate-400 italic">No health background information provided.</p>
+            <p className="text-sm text-slate-400 italic">No health background information provided. Click Edit to add.</p>
           )}
         </div>
       </div>
