@@ -2,6 +2,9 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { ChevronDown } from "lucide-react";
+
+const COLLAPSE_KEY = "patientIntakeData_collapsed";
 
 type IntakeSubmission = {
   id: string;
@@ -136,8 +139,32 @@ function calculateBMI(height: number | null, weight: number | null): number | nu
   return parseFloat((weight / Math.pow(height / 100, 2)).toFixed(1));
 }
 
-export default function PatientIntakeDataCard({ patientId }: { patientId: string }) {
+export default function PatientIntakeDataCard({ 
+  patientId, 
+  collapsible = false 
+}: { 
+  patientId: string;
+  collapsible?: boolean;
+}) {
   const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Load collapse preference from localStorage
+  useEffect(() => {
+    if (collapsible) {
+      const stored = localStorage.getItem(`${COLLAPSE_KEY}_${patientId}`);
+      if (stored === "true") {
+        setCollapsed(true);
+      }
+    }
+  }, [patientId, collapsible]);
+
+  // Save collapse preference
+  const toggleCollapse = () => {
+    const newState = !collapsed;
+    setCollapsed(newState);
+    localStorage.setItem(`${COLLAPSE_KEY}_${patientId}`, String(newState));
+  };
   const [saving, setSaving] = useState(false);
   const [submission, setSubmission] = useState<IntakeSubmission | null>(null);
   const [preferences, setPreferences] = useState<IntakePreferences | null>(null);
@@ -435,6 +462,59 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
     </button>
   );
 
+  // Collapsible wrapper for Cockpit mode
+  if (collapsible) {
+    return (
+      <div className="rounded-xl border border-slate-200/80 bg-white/90 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+        {/* Collapsible Header */}
+        <div
+          className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50/50 transition-colors"
+          onClick={toggleCollapse}
+        >
+          <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+            <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+            Patient Intake Data
+          </h3>
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                submission.status === "completed"
+                  ? "bg-emerald-100 text-emerald-700"
+                  : submission.status === "in_progress"
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-slate-100 text-slate-600"
+              }`}
+            >
+              {submission.status === "completed" ? "Completed" : submission.status === "in_progress" ? "In Progress" : submission.status}
+            </span>
+            <button
+              type="button"
+              className="p-1 rounded hover:bg-slate-100 transition-colors"
+              onClick={(e) => { e.stopPropagation(); toggleCollapse(); }}
+            >
+              <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Collapsible Content */}
+        {!collapsed && (
+          <div className="px-4 pb-4 border-t border-slate-100">
+            <div className="text-xs text-slate-500 flex gap-4 py-3">
+              <span>Started: {new Date(submission.started_at).toLocaleDateString()}</span>
+              {submission.completed_at && (
+                <span>Completed: {new Date(submission.completed_at).toLocaleDateString()}</span>
+              )}
+            </div>
+            {renderContent()}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header with Status */}
@@ -461,7 +541,14 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
         )}
       </div>
 
-      {/* Main Grid - Always show all sections */}
+      {renderContent()}
+    </div>
+  );
+
+  // Extracted content for reuse
+  function renderContent() {
+    return (
+      <>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         
         {/* Preferences Card - Always show */}
@@ -874,6 +961,7 @@ export default function PatientIntakeDataCard({ patientId }: { patientId: string
           <p className="text-sm text-slate-400 italic">No photos uploaded.</p>
         )}
       </div>
-    </div>
-  );
+      </>
+    );
+  }
 }

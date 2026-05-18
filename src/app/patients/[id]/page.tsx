@@ -557,6 +557,8 @@ export default async function PatientPage({
               }}
             />
 
+            <PatientIntakeDataCard patientId={patient.id} collapsible={true} />
+
             <MedicalConsultationsCard patientId={patient.id} patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
           </>
         ) : null}
