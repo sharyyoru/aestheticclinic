@@ -2920,6 +2920,9 @@ export default function MedicalConsultationsCard({
             patientId={patientId}
             patientFirstName={patientFirstName || ""}
             patientLastName={patientLastName || ""}
+            axenitaDocs={axenitaPdfDocs}
+            axenitaLoading={axenitaPdfLoading}
+            onViewAxenitaDoc={setAxenitaPreviewDoc}
           />
         )}
 
@@ -6913,81 +6916,6 @@ export default function MedicalConsultationsCard({
             </form>
           </div>
         ) : null}
-
-        {/* Axenita PDF Documents Section */}
-        {axenitaPdfDocs.length > 0 && (!recordTypeFilter || recordTypeFilter === "notes") && (
-          <div className="mt-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <h4 className="text-[11px] font-semibold text-slate-700">Axenita Medical Records</h4>
-              <span className="text-[10px] text-slate-400">({axenitaPdfDocs.length} document{axenitaPdfDocs.length !== 1 ? 's' : ''})</span>
-            </div>
-            {axenitaPdfDocs.map((doc, index) => (
-              <button
-                type="button"
-                key={`${doc.folderName}-${doc.fileName}-${index}`}
-                onClick={() => setAxenitaPreviewDoc(doc)}
-                className="w-full text-left rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs hover:bg-amber-100/50 hover:border-amber-300 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${doc.fileType === "ap"
-                      ? "bg-purple-100 text-purple-700"
-                      : doc.fileType === "af"
-                        ? "bg-indigo-100 text-indigo-700"
-                        : doc.fileType === "notes"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-blue-100 text-blue-700"
-                      }`}>
-                      {doc.fileType === "ap" ? "Medical Notes (AP)" :
-                        doc.fileType === "af" ? "Medical Notes (AF)" :
-                          doc.fileType === "notes" ? "Notes" : "Consultation"}
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      {doc.fileName}
-                    </span>
-                  </div>
-                  <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </div>
-                <p className="text-[11px] text-slate-700 leading-relaxed line-clamp-3">
-                  {doc.content || "No content extracted"}
-                </p>
-                <p className="text-[10px] text-amber-600 mt-1 font-medium">Click to view full content</p>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {axenitaPdfLoading && (!recordTypeFilter || recordTypeFilter === "notes") && (
-          <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-            Loading Axenita medical records...
-          </div>
-        )}
-
-        {/* Show message when no Axenita documents found (after loading) */}
-        {!axenitaPdfLoading && !axenitaPdfError && axenitaPdfDocs.length === 0 && (!recordTypeFilter || recordTypeFilter === "notes") && patientFirstName && patientLastName && (
-          <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2 text-[11px] text-slate-500">
-            <div className="flex items-center gap-2">
-              <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>No Axenita medical records found for this patient.</span>
-            </div>
-          </div>
-        )}
-
-        {axenitaPdfError && (!recordTypeFilter || recordTypeFilter === "notes") && (
-          <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
-            <div className="flex items-center gap-2">
-              <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <span>{axenitaPdfError}</span>
-            </div>
-          </div>
-        )}
 
         {/* Success banner for invoice created from consultation */}
         {invoiceFromConsultationSuccess && (

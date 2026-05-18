@@ -13,13 +13,25 @@ type MedicalRecord = {
   last_edited_by_name: string | null;
 };
 
+type AxenitaPdfDocument = {
+  folderName: string;
+  fileName: string;
+  fileType: "ap" | "af" | "notes" | "consultation";
+  content: string;
+  firstName: string | null;
+  lastName: string | null;
+};
+
 type Props = {
   patientId: string;
   patientFirstName: string;
   patientLastName: string;
+  axenitaDocs?: AxenitaPdfDocument[];
+  axenitaLoading?: boolean;
+  onViewAxenitaDoc?: (doc: AxenitaPdfDocument) => void;
 };
 
-export default function MedicalRecordsTab({ patientId, patientFirstName, patientLastName }: Props) {
+export default function MedicalRecordsTab({ patientId, patientFirstName, patientLastName, axenitaDocs = [], axenitaLoading = false, onViewAxenitaDoc }: Props) {
   const [record, setRecord] = useState<MedicalRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,6 +128,36 @@ export default function MedicalRecordsTab({ patientId, patientFirstName, patient
     },
     [debouncedSave]
   );
+
+  // Import content from Axenita PDF
+  const handleImportFromAxenita = (type: "ap" | "af" | "notes" | "consultation") => {
+    const docs = axenitaDocs.filter(d => d.fileType === type);
+    if (docs.length === 0) return;
+
+    // Combine all docs of this type
+    const combinedContent = docs.map(d => d.content || "").filter(c => c).join("\n\n---\n\n");
+    if (!combinedContent) return;
+
+    if (type === "ap") {
+      const newContent = apContent ? apContent + "\n\n---\n\n" + combinedContent : combinedContent;
+      setApContent(newContent);
+      handleContentChange("ap_content", newContent);
+    } else if (type === "af") {
+      const newContent = afContent ? afContent + "\n\n---\n\n" + combinedContent : combinedContent;
+      setAfContent(newContent);
+      handleContentChange("af_content", newContent);
+    } else {
+      // notes and consultation go to notes_content
+      const newContent = notesContent ? notesContent + "\n\n---\n\n" + combinedContent : combinedContent;
+      setNotesContent(newContent);
+      handleContentChange("notes_content", newContent);
+    }
+  };
+
+  // Get Axenita docs by type
+  const apDocs = axenitaDocs.filter(d => d.fileType === "ap");
+  const afDocs = axenitaDocs.filter(d => d.fileType === "af");
+  const notesDocs = axenitaDocs.filter(d => d.fileType === "notes" || d.fileType === "consultation");
 
   // Export to PDF
   const handleExportPdf = async () => {
@@ -244,11 +286,24 @@ export default function MedicalRecordsTab({ patientId, patientFirstName, patient
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* AP Column */}
         <div className="flex flex-col">
-          <div className="mb-2 flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100">
-              <span className="text-xs font-bold text-blue-700">AP</span>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100">
+                <span className="text-xs font-bold text-blue-700">AP</span>
+              </div>
+              <label className="text-xs font-semibold text-slate-700">Medical Notes (AP)</label>
             </div>
-            <label className="text-xs font-semibold text-slate-700">Medical Notes (AP)</label>
+            {apDocs.length > 0 && !apContent && (
+              <button
+                onClick={() => handleImportFromAxenita("ap")}
+                className="flex items-center gap-1 rounded bg-purple-100 px-2 py-1 text-[10px] font-medium text-purple-700 hover:bg-purple-200 transition-colors"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import from Axenita ({apDocs.length})
+              </button>
+            )}
           </div>
           <textarea
             value={apContent}
@@ -260,11 +315,24 @@ export default function MedicalRecordsTab({ patientId, patientFirstName, patient
 
         {/* AF Column */}
         <div className="flex flex-col">
-          <div className="mb-2 flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
-              <span className="text-xs font-bold text-emerald-700">AF</span>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
+                <span className="text-xs font-bold text-emerald-700">AF</span>
+              </div>
+              <label className="text-xs font-semibold text-slate-700">Medical Notes (AF)</label>
             </div>
-            <label className="text-xs font-semibold text-slate-700">Medical Notes (AF)</label>
+            {afDocs.length > 0 && !afContent && (
+              <button
+                onClick={() => handleImportFromAxenita("af")}
+                className="flex items-center gap-1 rounded bg-indigo-100 px-2 py-1 text-[10px] font-medium text-indigo-700 hover:bg-indigo-200 transition-colors"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import from Axenita ({afDocs.length})
+              </button>
+            )}
           </div>
           <textarea
             value={afContent}
@@ -276,13 +344,26 @@ export default function MedicalRecordsTab({ patientId, patientFirstName, patient
 
         {/* Notes Column */}
         <div className="flex flex-col">
-          <div className="mb-2 flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100">
-              <svg className="h-3.5 w-3.5 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100">
+                <svg className="h-3.5 w-3.5 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <label className="text-xs font-semibold text-slate-700">Notes</label>
             </div>
-            <label className="text-xs font-semibold text-slate-700">Notes</label>
+            {notesDocs.length > 0 && !notesContent && (
+              <button
+                onClick={() => handleImportFromAxenita("notes")}
+                className="flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-700 hover:bg-amber-200 transition-colors"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import from Axenita ({notesDocs.length})
+              </button>
+            )}
           </div>
           <textarea
             value={notesContent}
@@ -292,6 +373,43 @@ export default function MedicalRecordsTab({ patientId, patientFirstName, patient
           />
         </div>
       </div>
+
+      {/* Axenita Source Documents */}
+      {(axenitaDocs.length > 0 || axenitaLoading) && (
+        <div className="mt-6 border-t border-slate-100 pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <h4 className="text-xs font-semibold text-slate-600">Source Documents (Axenita)</h4>
+            <span className="text-[10px] text-slate-400">({axenitaDocs.length} document{axenitaDocs.length !== 1 ? 's' : ''})</span>
+          </div>
+          {axenitaLoading ? (
+            <div className="text-xs text-slate-500">Loading Axenita documents...</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {axenitaDocs.map((doc, index) => (
+                <button
+                  key={`${doc.folderName}-${doc.fileName}-${index}`}
+                  type="button"
+                  onClick={() => onViewAxenitaDoc?.(doc)}
+                  className="text-left rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 text-xs hover:bg-amber-100/50 hover:border-amber-300 transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      doc.fileType === "ap" ? "bg-purple-100 text-purple-700" :
+                      doc.fileType === "af" ? "bg-indigo-100 text-indigo-700" :
+                      doc.fileType === "notes" ? "bg-emerald-100 text-emerald-700" :
+                      "bg-blue-100 text-blue-700"
+                    }`}>
+                      {doc.fileType === "ap" ? "AP" : doc.fileType === "af" ? "AF" : doc.fileType === "notes" ? "Notes" : "Consultation"}
+                    </span>
+                    <span className="text-[10px] text-slate-500 truncate">{doc.fileName}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 line-clamp-2">{doc.content || "No content"}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Last updated info */}
       {record?.updated_at && (
@@ -303,3 +421,5 @@ export default function MedicalRecordsTab({ patientId, patientFirstName, patient
     </div>
   );
 }
+
+export type { AxenitaPdfDocument };
