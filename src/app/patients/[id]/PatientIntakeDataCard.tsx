@@ -1103,10 +1103,10 @@ export default function PatientIntakeDataCard({
           
           {editingSection === "health_background" && editHealthBackground ? (
             <div className="space-y-4">
-              {/* Physical */}
+              {/* Physical Measurements with BMI Calculator */}
               <div>
-                <p className="text-xs font-medium text-slate-600 mb-2">Physical Measurements</p>
-                <div className="grid grid-cols-2 gap-3">
+                <p className="text-xs font-medium text-slate-600 mb-2">Physical Measurements & BMI Calculator</p>
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-xs text-slate-500">Weight (kg)</label>
                     <input type="number" value={editHealthBackground.weight_kg || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, weight_kg: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="e.g., 70" />
@@ -1115,7 +1115,56 @@ export default function PatientIntakeDataCard({
                     <label className="text-xs text-slate-500">Height (cm)</label>
                     <input type="number" value={editHealthBackground.height_cm || ""} onChange={(e) => setEditHealthBackground({ ...editHealthBackground, height_cm: e.target.value ? parseFloat(e.target.value) : null })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="e.g., 170" />
                   </div>
+                  <div>
+                    <label className="text-xs text-slate-500">BMI (auto-calculated)</label>
+                    {(() => {
+                      const liveBmi = calculateBMI(editHealthBackground.height_cm, editHealthBackground.weight_kg);
+                      const category = liveBmi ? getBMICategory(liveBmi) : null;
+                      return (
+                        <div className={`mt-1 px-3 py-2 rounded-lg text-sm font-medium text-center ${category ? category.color : "bg-slate-100 text-slate-400"}`}>
+                          {liveBmi ? `${liveBmi} - ${category?.label}` : "Enter weight & height"}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
+
+                {/* Interactive BMI Scale */}
+                {editHealthBackground.weight_kg && editHealthBackground.height_cm && (
+                  <div className="mt-3 p-3 bg-slate-50 rounded-lg">
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+                      <span>Underweight</span>
+                      <span>Normal</span>
+                      <span>Overweight</span>
+                      <span>Obese</span>
+                    </div>
+                    <div className="relative h-3 rounded-full overflow-hidden bg-gradient-to-r from-blue-400 via-emerald-400 via-amber-400 to-red-400">
+                      {(() => {
+                        const bmi = calculateBMI(editHealthBackground.height_cm, editHealthBackground.weight_kg);
+                        if (!bmi) return null;
+                        // BMI scale: 15 to 40, position marker
+                        const position = Math.min(Math.max((bmi - 15) / 25 * 100, 0), 100);
+                        return (
+                          <div 
+                            className="absolute top-0 w-1 h-full bg-slate-900 shadow-lg transition-all duration-300"
+                            style={{ left: `${position}%`, transform: "translateX(-50%)" }}
+                          >
+                            <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
+                              {bmi}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                      <span>15</span>
+                      <span>18.5</span>
+                      <span>25</span>
+                      <span>30</span>
+                      <span>40</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Medical History */}
@@ -1215,13 +1264,53 @@ export default function PatientIntakeDataCard({
               </div>
             </div>
           ) : healthBackground ? (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <div className="space-y-4">
+              {/* BMI Highlight Card */}
+              {healthBackground.bmi && (
+                <div className="p-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-slate-600">Body Mass Index (BMI)</span>
+                    {(() => {
+                      const category = getBMICategory(healthBackground.bmi);
+                      return (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${category.color}`}>
+                          {category.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div className="flex items-end gap-2 mb-2">
+                    <span className="text-3xl font-bold text-slate-900">{healthBackground.bmi}</span>
+                    <span className="text-sm text-slate-500 mb-1">kg/m²</span>
+                  </div>
+                  {/* Mini BMI Scale */}
+                  <div className="relative h-2 rounded-full overflow-hidden bg-gradient-to-r from-blue-400 via-emerald-400 via-amber-400 to-red-400">
+                    {(() => {
+                      const position = Math.min(Math.max((healthBackground.bmi - 15) / 25 * 100, 0), 100);
+                      return (
+                        <div 
+                          className="absolute top-0 w-1 h-full bg-slate-900 rounded-full shadow-lg"
+                          style={{ left: `${position}%`, transform: "translateX(-50%)" }}
+                        />
+                      );
+                    })()}
+                  </div>
+                  <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+                    <span>15</span>
+                    <span>18.5</span>
+                    <span>25</span>
+                    <span>30</span>
+                    <span>40</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
               <div>
                 <p className="text-slate-500 text-xs mb-1">Physical</p>
                 <div className="space-y-1">
                   <div className="flex justify-between"><span className="text-slate-500">Weight</span><span className="text-slate-900 font-medium">{healthBackground.weight_kg ? `${healthBackground.weight_kg} kg` : "N/A"}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Height</span><span className="text-slate-900 font-medium">{healthBackground.height_cm ? `${healthBackground.height_cm} cm` : "N/A"}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">BMI</span><span className="text-slate-900 font-medium">{healthBackground.bmi || "N/A"}</span></div>
                 </div>
               </div>
               <div>
@@ -1258,6 +1347,7 @@ export default function PatientIntakeDataCard({
                   </div>
                 </div>
               )}
+              </div>
             </div>
           ) : (
             <p className="text-sm text-slate-400 italic">No health background information provided. Click Edit to add.</p>
