@@ -190,6 +190,9 @@ export default function AppxPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
   
+  // Store a ref to handleSubmit for use in speech recognition
+  const handleSubmitRef = useRef<((query?: string) => Promise<void>) | null>(null);
+  
   // Initialize speech recognition
   useEffect(() => {
     if (typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition)) {
@@ -200,6 +203,8 @@ export default function AppxPage() {
       recognition.interimResults = true;
       recognition.lang = "en-US";
       
+      let finalTranscript = "";
+      
       recognition.onresult = (event) => {
         const transcript = Array.from(event.results)
           .map(result => result[0].transcript)
@@ -207,7 +212,14 @@ export default function AppxPage() {
         setInput(transcript);
         
         if (event.results[0].isFinal) {
+          finalTranscript = transcript;
           setIsListening(false);
+          // Auto-submit after voice input is finalized
+          if (finalTranscript.trim() && handleSubmitRef.current) {
+            setTimeout(() => {
+              handleSubmitRef.current?.(finalTranscript.trim());
+            }, 300);
+          }
         }
       };
       
@@ -269,13 +281,14 @@ export default function AppxPage() {
     setTimeout(() => inputRef.current?.focus(), 100);
   }, [user?.id]);
   
-  const handleSubmit = useCallback(async () => {
-    if (!input.trim() || !selectedPatient || isProcessing) return;
+  const handleSubmit = useCallback(async (directQuery?: string) => {
+    const query = directQuery || input.trim();
+    if (!query || !selectedPatient || isProcessing) return;
     
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content: input.trim(),
+      content: query,
       timestamp: Date.now(),
     };
     
@@ -340,6 +353,11 @@ export default function AppxPage() {
       setIsProcessing(false);
     }
   }, [input, selectedPatient, sessionId, messages, changes, isProcessing]);
+  
+  // Update ref to handleSubmit for voice recognition callback
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  }, [handleSubmit]);
   
   const executeAction = useCallback(async (action: string, params?: Record<string, unknown>) => {
     if (!selectedPatient) return;
@@ -761,7 +779,7 @@ export default function AppxPage() {
               </div>
               
               <button
-                onClick={handleSubmit}
+                onClick={() => handleSubmit()}
                 disabled={!input.trim() || isProcessing}
                 className="flex-shrink-0 w-12 h-12 rounded-full bg-sky-500 hover:bg-sky-400 flex items-center justify-center transition-colors disabled:opacity-50 disabled:hover:bg-sky-500"
               >
@@ -776,11 +794,9 @@ export default function AppxPage() {
               {["Show appointments", "Pending invoices", "Add note", "Recent activity"].map((cmd) => (
                 <button
                   key={cmd}
-                  onClick={() => {
-                    setInput(cmd);
-                    setTimeout(handleSubmit, 100);
-                  }}
-                  className="px-3 py-1.5 bg-slate-700/60 hover:bg-slate-600 text-slate-300 text-xs rounded-full transition-colors"
+                  onClick={() => handleSubmit(cmd)}
+                  disabled={isProcessing}
+                  className="px-3 py-1.5 bg-slate-700/60 hover:bg-slate-600 text-slate-300 text-xs rounded-full transition-colors disabled:opacity-50"
                 >
                   {cmd}
                 </button>

@@ -1,24 +1,26 @@
 "use client";
 
 import { FormEvent, useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 export default function LoginForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState("/");
 
-  // Get redirect URL from query params
+  // Get redirect URL from query params on mount
   useEffect(() => {
-    const redirect = searchParams.get("redirect");
-    if (redirect && redirect.startsWith("/")) {
-      setRedirectUrl(redirect);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get("redirect");
+      if (redirect && redirect.startsWith("/")) {
+        setRedirectUrl(redirect);
+      }
     }
-  }, [searchParams]);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,7 +49,11 @@ export default function LoginForm() {
       return;
     }
 
-    router.replace(redirectUrl);
+    // Get redirect URL directly from URL in case state wasn't updated
+    const params = new URLSearchParams(window.location.search);
+    const finalRedirect = params.get("redirect") || redirectUrl || "/";
+    
+    router.replace(finalRedirect.startsWith("/") ? finalRedirect : "/");
     router.refresh();
   }
 
