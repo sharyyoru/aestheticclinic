@@ -89,6 +89,7 @@ export default function AppxPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  const [isSearchingByVoice, setIsSearchingByVoice] = useState(false);
   
   // Session
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -110,6 +111,42 @@ export default function AppxPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const shouldContinueListening = useRef(false);
+  const voicesLoadedRef = useRef(false);
+  
+  // Preload voices for TTS (important for mobile)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        voicesLoadedRef.current = true;
+        console.log("Voices loaded:", voices.length);
+      }
+    };
+    
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    
+    // Workaround for mobile: trigger speech synthesis on first user interaction
+    const unlockAudio = () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        const utterance = new SpeechSynthesisUtterance("");
+        utterance.volume = 0;
+        window.speechSynthesis.speak(utterance);
+      }
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click", unlockAudio);
+    };
+    
+    document.addEventListener("touchstart", unlockAudio, { once: true });
+    document.addEventListener("click", unlockAudio, { once: true });
+    
+    return () => {
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click", unlockAudio);
+    };
+  }, []);
   
   // Auth check - redirect to appx login if not authenticated
   useEffect(() => {
@@ -230,13 +267,24 @@ export default function AppxPage() {
         const transcript = Array.from(event.results)
           .map(result => result[0].transcript)
           .join("");
-        setInput(transcript);
+        
+        // If searching for patient by voice, update patient search
+        if (isSearchingByVoice) {
+          setPatientSearch(transcript);
+        } else {
+          setInput(transcript);
+        }
         
         if (event.results[0].isFinal) {
           finalTranscript = transcript;
           setIsListening(false);
-          // Auto-submit after voice input is finalized
-          if (finalTranscript.trim() && handleSubmitRef.current) {
+          
+          if (isSearchingByVoice) {
+            // Voice patient search - just set the search text, results will auto-show
+            setIsSearchingByVoice(false);
+            setShowPatientDropdown(true);
+          } else if (finalTranscript.trim() && handleSubmitRef.current) {
+            // Auto-submit after voice input is finalized
             setTimeout(() => {
               handleSubmitRef.current?.(finalTranscript.trim());
             }, 300);
@@ -246,12 +294,13 @@ export default function AppxPage() {
       
       recognition.onerror = () => {
         setIsListening(false);
+        setIsSearchingByVoice(false);
       };
       
       recognition.onend = () => {
         setIsListening(false);
-        // Continue listening in voice mode if enabled
-        if (shouldContinueListening.current && !isSpeaking) {
+        // Continue listening in voice mode if enabled (only when patient selected)
+        if (shouldContinueListening.current && !isSpeaking && selectedPatient) {
           setTimeout(() => {
             if (shouldContinueListening.current && recognitionRef.current) {
               try {
@@ -267,7 +316,7 @@ export default function AppxPage() {
       
       recognitionRef.current = recognition;
     }
-  }, [isSpeaking]);
+  }, [isSpeaking, isSearchingByVoice, selectedPatient]);
   
   // Start/stop continuous listening
   const startContinuousListening = useCallback(() => {
@@ -288,6 +337,20 @@ export default function AppxPage() {
       recognitionRef.current.stop();
     }
     setIsListening(false);
+  }, []);
+  
+  // Start voice search for patient
+  const startVoicePatientSearch = useCallback(() => {
+    if (!recognitionRef.current) return;
+    setPatientSearch("");
+    setIsSearchingByVoice(true);
+    setShowPatientDropdown(false);
+    try {
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (e) {
+      setIsSearchingByVoice(false);
+    }
   }, []);
   
   const toggleListening = useCallback(() => {
@@ -392,31 +455,43 @@ export default function AppxPage() {
     }
     
     setIsSpeaking(true);
+    console.log("Speaking:", cleanText.slice(0, 50) + "...");
     
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
+    utterance.lang = "en-US";
     
-    // Try to get voices (need to wait for them to load)
-    const setVoice = () => {
-      const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(v => 
-        v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Daniel") || v.name.includes("Karen")
-      ) || voices.find(v => v.lang.startsWith("en"));
-      
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
-      }
-    };
+    // Get best available voice
+    const voices = window.speechSynthesis.getVoices();
+    console.log("Available voices:", voices.length);
     
-    setVoice();
+    // Prefer these voices in order
+    const preferredVoiceNames = ["Samantha", "Karen", "Daniel", "Google", "Microsoft", "Alex"];
+    let selectedVoice = null;
+    
+    for (const name of preferredVoiceNames) {
+      selectedVoice = voices.find(v => v.name.includes(name) && v.lang.startsWith("en"));
+      if (selectedVoice) break;
+    }
+    
+    // Fallback to any English voice
+    if (!selectedVoice) {
+      selectedVoice = voices.find(v => v.lang.startsWith("en"));
+    }
+    
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+      console.log("Using voice:", selectedVoice.name);
+    }
     
     utterance.onend = () => {
+      console.log("Speech ended");
       setIsSpeaking(false);
       onComplete?.();
       // Resume listening if in voice mode
-      if (inputMode === "voice" && shouldContinueListening.current) {
+      if (inputMode === "voice" && shouldContinueListening.current && selectedPatient) {
         setTimeout(() => {
           if (recognitionRef.current && shouldContinueListening.current) {
             try {
@@ -430,13 +505,14 @@ export default function AppxPage() {
       }
     };
     
-    utterance.onerror = () => {
+    utterance.onerror = (e) => {
+      console.error("Speech error:", e);
       setIsSpeaking(false);
       onComplete?.();
     };
     
     window.speechSynthesis.speak(utterance);
-  }, [voiceEnabled, isListening, inputMode]);
+  }, [voiceEnabled, isListening, inputMode, selectedPatient]);
   
   const handleSubmit = useCallback(async (directQuery?: string) => {
     const query = directQuery || input.trim();
@@ -751,25 +827,76 @@ export default function AppxPage() {
         <div className="flex-shrink-0 p-4">
           {!selectedPatient ? (
             <div className="relative">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={patientSearch}
-                  onChange={(e) => {
-                    setPatientSearch(e.target.value);
-                    setShowPatientDropdown(true);
-                  }}
-                  onFocus={() => setShowPatientDropdown(true)}
-                  placeholder="🔍 Search patient by name, email, or phone..."
-                  className="w-full px-4 py-3 bg-slate-800/80 border border-slate-600 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                />
-                {searchLoading && (
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                    <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                )}
+              {/* Mode toggle for patient search */}
+              <div className="flex items-center justify-center mb-4">
+                <div className="flex items-center bg-slate-700/50 rounded-full p-1">
+                  <button
+                    onClick={() => setInputMode("voice")}
+                    className={`px-4 py-2 text-sm rounded-full transition-colors ${
+                      inputMode === "voice" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    🎤 Voice
+                  </button>
+                  <button
+                    onClick={() => setInputMode("type")}
+                    className={`px-4 py-2 text-sm rounded-full transition-colors ${
+                      inputMode === "type" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    ⌨️ Type
+                  </button>
+                </div>
               </div>
               
+              {/* Voice search UI */}
+              {inputMode === "voice" ? (
+                <div className="flex flex-col items-center py-6">
+                  <button
+                    onClick={startVoicePatientSearch}
+                    disabled={isListening}
+                    className={`w-24 h-24 rounded-full flex items-center justify-center transition-all shadow-lg ${
+                      isListening && isSearchingByVoice
+                        ? "bg-red-500 animate-pulse ring-4 ring-red-500/30"
+                        : "bg-gradient-to-br from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500"
+                    }`}
+                  >
+                    <svg className="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                  </button>
+                  
+                  <p className="mt-4 text-sm text-slate-400">
+                    {isListening && isSearchingByVoice ? "Listening... Say patient name" : "Tap to search by voice"}
+                  </p>
+                  
+                  {patientSearch && (
+                    <p className="mt-2 text-white text-lg">&ldquo;{patientSearch}&rdquo;</p>
+                  )}
+                </div>
+              ) : (
+                /* Type search UI */
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={patientSearch}
+                    onChange={(e) => {
+                      setPatientSearch(e.target.value);
+                      setShowPatientDropdown(true);
+                    }}
+                    onFocus={() => setShowPatientDropdown(true)}
+                    placeholder="🔍 Search patient by name, email, or phone..."
+                    className="w-full px-4 py-3 bg-slate-800/80 border border-slate-600 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                  />
+                  {searchLoading && (
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                      <div className="w-5 h-5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Search results dropdown */}
               {showPatientDropdown && patientResults.length > 0 && (
                 <div className="absolute z-50 w-full mt-2 bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden shadow-2xl max-h-[300px] overflow-y-auto">
                   {patientResults.map((patient) => (
@@ -795,7 +922,7 @@ export default function AppxPage() {
               )}
               
               <p className="text-center text-slate-500 text-sm mt-6">
-                Select a patient to start your session
+                {inputMode === "voice" ? "Say a patient name to search" : "Type to search for a patient"}
               </p>
             </div>
           ) : (
