@@ -286,16 +286,57 @@ export default function AppxPage() {
     }
     
     // Add welcome message
+    const welcomeText = `Ready to help with ${patient.first_name} ${patient.last_name}. What would you like to do?`;
     const welcomeMsg: Message = {
       id: crypto.randomUUID(),
       role: "assistant",
-      content: `Ready to help with ${patient.first_name} ${patient.last_name}. What would you like to do?\n\nYou can ask me to:\n• Show appointments, invoices, or notes\n• Check pending payments\n• Add notes or create tasks\n• Update patient information\n• And much more...`,
+      content: `${welcomeText}\n\nYou can ask me to:\n• Show appointments, invoices, or notes\n• Check pending payments\n• Add notes or create tasks\n• Update patient information\n• And much more...`,
       timestamp: Date.now(),
     };
     setMessages([welcomeMsg]);
     
-    setTimeout(() => inputRef.current?.focus(), 100);
+    // Speak welcome message
+    setTimeout(() => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        const utterance = new SpeechSynthesisUtterance(welcomeText);
+        utterance.rate = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+      inputRef.current?.focus();
+    }, 100);
   }, [user?.id]);
+  
+  // Text-to-speech function
+  const speak = useCallback((text: string) => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel();
+      
+      // Clean text for speech (remove markdown, emojis, etc.)
+      const cleanText = text
+        .replace(/[✓✗]/g, "")
+        .replace(/\*\*/g, "")
+        .replace(/\n+/g, ". ")
+        .slice(0, 500); // Limit length
+      
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      
+      // Try to use a good voice
+      const voices = window.speechSynthesis.getVoices();
+      const preferredVoice = voices.find(v => 
+        v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Karen")
+      ) || voices.find(v => v.lang.startsWith("en"));
+      
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+      
+      window.speechSynthesis.speak(utterance);
+    }
+  }, []);
   
   const handleSubmit = useCallback(async (directQuery?: string) => {
     const query = directQuery || input.trim();
@@ -337,7 +378,27 @@ export default function AppxPage() {
       
       setMessages(prev => [...prev, assistantMessage]);
       
-      // Track changes if any
+      // Speak the response (Jarvis-like)
+      speak(data.response || "I couldn't process that.");
+      
+      // Update patient data if changed
+      if (data.updatedPatient) {
+        setSelectedPatient(prev => prev ? { ...prev, ...data.updatedPatient } : null);
+      }
+      
+      // Track executed changes
+      if (data.executed?.success) {
+        const newChange: Change = {
+          id: crypto.randomUUID(),
+          type: "update",
+          entity: "patient",
+          description: data.executed.message,
+          timestamp: Date.now(),
+        };
+        setChanges(prev => [...prev, newChange]);
+      }
+      
+      // Track legacy changes if any
       if (data.change) {
         const newChange: Change = {
           id: crypto.randomUUID(),
@@ -345,17 +406,6 @@ export default function AppxPage() {
           timestamp: Date.now(),
         };
         setChanges(prev => [...prev, newChange]);
-        
-        // Update session
-        if (sessionId) {
-          await supabaseClient
-            .from("appx_sessions")
-            .update({
-              commands: messages.map(m => ({ role: m.role, content: m.content, timestamp: m.timestamp })),
-              changes: [...changes, newChange],
-            })
-            .eq("id", sessionId);
-        }
       }
     } catch (e) {
       const errorMessage: Message = {
@@ -365,10 +415,11 @@ export default function AppxPage() {
         timestamp: Date.now(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      speak("Sorry, something went wrong.");
     } finally {
       setIsProcessing(false);
     }
-  }, [input, selectedPatient, sessionId, messages, changes, isProcessing]);
+  }, [input, selectedPatient, sessionId, messages, isProcessing, speak]);
   
   // Update ref to handleSubmit for voice recognition callback
   useEffect(() => {

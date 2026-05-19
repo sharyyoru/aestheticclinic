@@ -122,32 +122,56 @@ export async function POST(req: NextRequest) {
       }
 
       case "update_patient": {
-        const { field, value } = params;
-        if (!field || value === undefined) {
+        const { field, value, updates } = params;
+        
+        // Support both single field update and multiple updates
+        const allowedFields = ["first_name", "last_name", "phone", "email", "street_address", "postal_code", "town", "country", "gender", "marital_status", "dob"];
+        
+        let updateData: Record<string, unknown> = {};
+        let updateDescription = "";
+        
+        if (updates && typeof updates === "object") {
+          // Multiple field updates
+          for (const [key, val] of Object.entries(updates)) {
+            if (allowedFields.includes(key)) {
+              updateData[key] = val;
+            }
+          }
+          updateDescription = Object.entries(updates).map(([k, v]) => `${k}: "${v}"`).join(", ");
+        } else if (field && value !== undefined) {
+          // Single field update
+          if (!allowedFields.includes(field)) {
+            return NextResponse.json({ error: `Cannot update field: ${field}` }, { status: 400 });
+          }
+          updateData = { [field]: value };
+          updateDescription = `${field} to "${value}"`;
+        } else {
           return NextResponse.json({ error: "Field and value are required" }, { status: 400 });
         }
 
-        const allowedFields = ["phone", "mobile", "email", "street_address", "postal_code", "town", "country"];
-        if (!allowedFields.includes(field)) {
-          return NextResponse.json({ error: `Cannot update field: ${field}` }, { status: 400 });
+        if (Object.keys(updateData).length === 0) {
+          return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
         }
 
-        const { error } = await supabaseAdmin
+        const { data: updatedPatient, error } = await supabaseAdmin
           .from("patients")
-          .update({ [field]: value })
-          .eq("id", patientId);
+          .update(updateData)
+          .eq("id", patientId)
+          .select("id, first_name, last_name, email, phone")
+          .single();
 
         if (error) {
           result = { success: false, message: `Failed to update: ${error.message}` };
         } else {
           result = {
             success: true,
-            message: `Patient ${field} updated to "${value}".`,
+            message: `Patient updated: ${updateDescription}`,
             change: {
               type: "update",
               entity: "patient",
-              description: `Updated ${field} to "${value}"`,
+              description: `Updated ${updateDescription}`,
             },
+            data: { patient: updatedPatient },
           };
         }
         break;

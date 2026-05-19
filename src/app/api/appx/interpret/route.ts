@@ -13,24 +13,112 @@ type Intent = {
   params?: Record<string, unknown>;
 };
 
-const SYSTEM_PROMPT = `You are Aliice, an AI assistant for Aesthetics Clinic staff. You help manage patient data through natural language.
+// Helper function to execute actions directly
+async function executeAction(action: string, params: Record<string, unknown>): Promise<{ success: boolean; message: string; data?: unknown }> {
+  const patientId = params.patientId as string;
+  
+  switch (action) {
+    case "update_patient": {
+      const { field, value, updates } = params as { field?: string; value?: unknown; updates?: Record<string, unknown> };
+      const allowedFields = ["first_name", "last_name", "phone", "email", "street_address", "postal_code", "town", "country", "gender", "marital_status", "dob"];
+      
+      let updateData: Record<string, unknown> = {};
+      let updateDescription = "";
+      
+      if (updates && typeof updates === "object") {
+        for (const [key, val] of Object.entries(updates)) {
+          if (allowedFields.includes(key)) {
+            updateData[key] = val;
+          }
+        }
+        updateDescription = Object.entries(updates).map(([k, v]) => `${k}: "${v}"`).join(", ");
+      } else if (field && value !== undefined) {
+        if (!allowedFields.includes(field)) {
+          return { success: false, message: `Cannot update field: ${field}` };
+        }
+        updateData = { [field]: value };
+        updateDescription = `${field} to "${value}"`;
+      } else {
+        return { success: false, message: "Field and value are required" };
+      }
 
-Analyze the user's query and respond with:
-1. The appropriate data or confirmation
-2. Any follow-up questions if needed
-3. Action buttons if applicable
+      const { data: updatedPatient, error } = await supabaseAdmin
+        .from("patients")
+        .update(updateData)
+        .eq("id", patientId)
+        .select("id, first_name, last_name, email, phone")
+        .single();
+
+      if (error) {
+        return { success: false, message: `Failed to update: ${error.message}` };
+      }
+      return { success: true, message: `Patient updated: ${updateDescription}`, data: { patient: updatedPatient } };
+    }
+    
+    case "create_note": {
+      const content = (params.content || params.note || params.body) as string;
+      if (!content) {
+        return { success: false, message: "Note content is required" };
+      }
+
+      const { error } = await supabaseAdmin
+        .from("patient_notes")
+        .insert({
+          patient_id: patientId,
+          author_name: "Aliice Assistant",
+          body: content,
+        });
+
+      if (error) {
+        return { success: false, message: `Failed to create note: ${error.message}` };
+      }
+      return { success: true, message: `Note added: "${content.slice(0, 50)}${content.length > 50 ? "..." : ""}"` };
+    }
+    
+    case "create_task": {
+      const taskName = (params.name || params.title || params.task) as string;
+      if (!taskName) {
+        return { success: false, message: "Task name is required" };
+      }
+
+      const { error } = await supabaseAdmin
+        .from("tasks")
+        .insert({
+          patient_id: patientId,
+          name: taskName,
+          status: "not_started",
+          priority: "medium",
+        });
+
+      if (error) {
+        return { success: false, message: `Failed to create task: ${error.message}` };
+      }
+      return { success: true, message: `Task created: "${taskName}"` };
+    }
+    
+    default:
+      return { success: false, message: `Unknown action: ${action}` };
+  }
+}
+
+const SYSTEM_PROMPT = `You are Aliice, an AI assistant for Aesthetics Clinic staff. You help manage patient data through natural language. Be conversational and helpful like Jarvis.
 
 You can:
 - Show appointments, invoices, notes, medical records
 - Check pending payments and balances
 - Add notes, create tasks, schedule appointments
-- Update patient information
+- Update patient information (name, phone, email, address, etc.)
 - Send reminders or emails
 
-Always be concise and professional. Format data clearly.
-If you need to perform an action, include it in your response.
+IMPORTANT: When the user wants to UPDATE patient data (like changing name, phone, email, etc.), you MUST include an action in your response using this EXACT JSON format at the end:
+{"execute": {"action": "update_patient", "params": {"field": "field_name", "value": "new_value"}}}
 
-Current patient context will be provided. Use it to give relevant responses.`;
+For example:
+- "Change last name to Smith" -> Include: {"execute": {"action": "update_patient", "params": {"field": "last_name", "value": "Smith"}}}
+- "Update phone to +41 79 123 4567" -> Include: {"execute": {"action": "update_patient", "params": {"field": "phone", "value": "+41 79 123 4567"}}}
+- "Add a note: Patient called today" -> Include: {"execute": {"action": "create_note", "params": {"content": "Patient called today"}}}
+
+Always confirm what you're doing in a friendly, conversational way. Keep responses concise.`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -141,21 +229,46 @@ ${patientContext}
 
 USER REQUEST: ${query}
 
-Respond helpfully. If showing data, format it clearly. If an action is needed, describe what will happen.
-For actions like "add note", "create task", "schedule appointment", include JSON actions array:
-{"actions": [{"label": "Confirm", "action": "create_note", "params": {"content": "..."}}]}
-
-Keep responses concise and mobile-friendly.`;
+Respond helpfully and conversationally. If an action is needed (update, create note, etc.), include the execute JSON at the end of your response.
+Keep responses concise and friendly.`;
 
     const result = await chat.sendMessage(prompt);
     const responseText = result.response.text();
 
-    // Parse any actions from the response
+    // Parse and execute any actions from the response
     let actions: { label: string; action: string; params?: Record<string, unknown> }[] = [];
     let cleanResponse = responseText;
+    let executedAction: { success: boolean; message: string; data?: unknown } | null = null;
     
+    // Check for execute command (auto-execute)
+    const executeMatch = responseText.match(/\{"execute":\s*\{[^}]+\}\}/s);
+    if (executeMatch) {
+      try {
+        const parsed = JSON.parse(executeMatch[0]);
+        if (parsed.execute?.action) {
+          // Execute the action directly
+          const actionToExecute = parsed.execute;
+          const executeResult = await executeAction(actionToExecute.action, {
+            ...actionToExecute.params,
+            patientId,
+          });
+          executedAction = executeResult;
+          cleanResponse = responseText.replace(executeMatch[0], "").trim();
+          
+          if (executeResult.success) {
+            cleanResponse += `\n\n✓ ${executeResult.message}`;
+          } else {
+            cleanResponse += `\n\n✗ ${executeResult.message}`;
+          }
+        }
+      } catch (e) {
+        console.error("Execute parse error:", e);
+      }
+    }
+    
+    // Also check for legacy actions format
     const actionMatch = responseText.match(/\{"actions":\s*\[.*?\]\}/s);
-    if (actionMatch) {
+    if (actionMatch && !executeMatch) {
       try {
         const parsed = JSON.parse(actionMatch[0]);
         actions = parsed.actions;
@@ -203,6 +316,9 @@ Keep responses concise and mobile-friendly.`;
       data,
       actions,
       intent: { type: "query" } as Intent,
+      executed: executedAction,
+      // Return updated patient data for UI rehydration
+      updatedPatient: (executedAction?.data as { patient?: unknown })?.patient || null,
     });
   } catch (error) {
     console.error("Interpret error:", error);
