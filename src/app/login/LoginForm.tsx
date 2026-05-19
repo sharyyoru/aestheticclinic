@@ -1,14 +1,24 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 export default function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [redirectUrl, setRedirectUrl] = useState("/");
+
+  // Get redirect URL from query params
+  useEffect(() => {
+    const redirect = searchParams.get("redirect");
+    if (redirect && redirect.startsWith("/")) {
+      setRedirectUrl(redirect);
+    }
+  }, [searchParams]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -37,7 +47,7 @@ export default function LoginForm() {
       return;
     }
 
-    router.replace("/");
+    router.replace(redirectUrl);
     router.refresh();
   }
 

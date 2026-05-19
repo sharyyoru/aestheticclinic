@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
@@ -78,7 +79,9 @@ type Change = {
 type SessionStatus = "idle" | "active" | "summary";
 
 export default function AppxPage() {
+  const router = useRouter();
   const [user, setUser] = useState<{ id: string; name: string } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   
   // Patient selection
@@ -105,19 +108,49 @@ export default function AppxPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   
-  // Auth check
+  // Auth check - redirect to login if not authenticated
   useEffect(() => {
+    let isMounted = true;
+    
     async function checkAuth() {
-      const { data } = await supabaseClient.auth.getUser();
-      if (data?.user) {
-        const meta = data.user.user_metadata as Record<string, unknown>;
-        const name = `${meta.first_name || ""} ${meta.last_name || ""}`.trim() || data.user.email || "User";
-        setUser({ id: data.user.id, name });
+      const { data } = await supabaseClient.auth.getSession();
+      
+      if (!isMounted) return;
+      
+      if (!data.session) {
+        // Not authenticated - redirect to login with return URL
+        router.replace("/login?redirect=/appx");
+        return;
       }
+      
+      // Get user details
+      const { data: userData } = await supabaseClient.auth.getUser();
+      if (!isMounted) return;
+      
+      if (userData?.user) {
+        const meta = userData.user.user_metadata as Record<string, unknown>;
+        const name = `${meta.first_name || ""} ${meta.last_name || ""}`.trim() || userData.user.email || "User";
+        setUser({ id: userData.user.id, name });
+      }
+      
+      setAuthChecked(true);
       setLoading(false);
     }
+    
     checkAuth();
-  }, []);
+    
+    // Listen for auth changes
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        router.replace("/login?redirect=/appx");
+      }
+    });
+    
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [router]);
   
   // Patient search
   useEffect(() => {
@@ -405,24 +438,25 @@ export default function AppxPage() {
     }
   }, [changes.length, endSession, sessionId]);
   
-  if (loading) {
+  // Show loading while checking authentication
+  if (loading || !authChecked) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full" />
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-slate-400 text-sm">Checking your session...</p>
+        </div>
       </div>
     );
   }
   
+  // This should not render as we redirect in useEffect, but just in case
   if (!user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
         <div className="text-center">
-          <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={80} height={80} className="rounded-full mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-white mb-2">Authentication Required</h1>
-          <p className="text-slate-400 mb-4">Please log in to use the assistant.</p>
-          <Link href="/login" className="px-6 py-2 bg-sky-500 text-white rounded-full font-medium hover:bg-sky-600">
-            Log In
-          </Link>
+          <div className="animate-spin w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-slate-400 text-sm">Redirecting to login...</p>
         </div>
       </div>
     );
