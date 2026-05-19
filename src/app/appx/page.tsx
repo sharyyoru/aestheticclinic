@@ -75,6 +75,7 @@ type Change = {
 };
 
 type SessionStatus = "idle" | "active" | "summary";
+type InputMode = "voice" | "type";
 
 export default function AppxPage() {
   const router = useRouter();
@@ -97,14 +98,18 @@ export default function AppxPage() {
   const [summary, setSummary] = useState("");
   
   // Input
+  const [inputMode, setInputMode] = useState<InputMode>("voice");
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const shouldContinueListening = useRef(false);
   
   // Auth check - redirect to appx login if not authenticated
   useEffect(() => {
@@ -209,7 +214,7 @@ export default function AppxPage() {
   // Store a ref to handleSubmit for use in speech recognition
   const handleSubmitRef = useRef<((query?: string) => Promise<void>) | null>(null);
   
-  // Initialize speech recognition
+  // Initialize speech recognition with continuous mode
   useEffect(() => {
     if (typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition)) {
       const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -245,24 +250,66 @@ export default function AppxPage() {
       
       recognition.onend = () => {
         setIsListening(false);
+        // Continue listening in voice mode if enabled
+        if (shouldContinueListening.current && !isSpeaking) {
+          setTimeout(() => {
+            if (shouldContinueListening.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+                setIsListening(true);
+              } catch (e) {
+                // Ignore - might already be running
+              }
+            }
+          }, 500);
+        }
       };
       
       recognitionRef.current = recognition;
     }
+  }, [isSpeaking]);
+  
+  // Start/stop continuous listening
+  const startContinuousListening = useCallback(() => {
+    if (!recognitionRef.current) return;
+    shouldContinueListening.current = true;
+    setInput("");
+    try {
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (e) {
+      // Ignore - might already be running
+    }
+  }, []);
+  
+  const stopContinuousListening = useCallback(() => {
+    shouldContinueListening.current = false;
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setIsListening(false);
   }, []);
   
   const toggleListening = useCallback(() => {
-    if (!recognitionRef.current) return;
-    
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+    if (inputMode === "voice") {
+      if (isListening) {
+        stopContinuousListening();
+      } else {
+        startContinuousListening();
+      }
     } else {
-      setInput("");
-      recognitionRef.current.start();
-      setIsListening(true);
+      // Single tap mode for type input
+      if (!recognitionRef.current) return;
+      if (isListening) {
+        recognitionRef.current.stop();
+        setIsListening(false);
+      } else {
+        setInput("");
+        recognitionRef.current.start();
+        setIsListening(true);
+      }
     }
-  }, [isListening]);
+  }, [isListening, inputMode, startContinuousListening, stopContinuousListening]);
   
   const selectPatient = useCallback(async (patient: Patient) => {
     setSelectedPatient(patient);
@@ -295,48 +342,101 @@ export default function AppxPage() {
     };
     setMessages([welcomeMsg]);
     
-    // Speak welcome message
+    // Speak welcome and start listening in voice mode
     setTimeout(() => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      if (voiceEnabled && typeof window !== "undefined" && "speechSynthesis" in window) {
+        setIsSpeaking(true);
         const utterance = new SpeechSynthesisUtterance(welcomeText);
         utterance.rate = 1.0;
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          if (inputMode === "voice") {
+            startContinuousListening();
+          }
+        };
+        utterance.onerror = () => setIsSpeaking(false);
         window.speechSynthesis.speak(utterance);
+      } else if (inputMode === "type") {
+        inputRef.current?.focus();
       }
-      inputRef.current?.focus();
     }, 100);
-  }, [user?.id]);
+  }, [user?.id, voiceEnabled, inputMode, startContinuousListening]);
   
-  // Text-to-speech function
-  const speak = useCallback((text: string) => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
-      
-      // Clean text for speech (remove markdown, emojis, etc.)
-      const cleanText = text
-        .replace(/[✓✗]/g, "")
-        .replace(/\*\*/g, "")
-        .replace(/\n+/g, ". ")
-        .slice(0, 500); // Limit length
-      
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-      
-      // Try to use a good voice
+  // Text-to-speech function with continuous conversation support
+  const speak = useCallback((text: string, onComplete?: () => void) => {
+    if (!voiceEnabled || typeof window === "undefined" || !("speechSynthesis" in window)) {
+      onComplete?.();
+      return;
+    }
+    
+    // Stop listening while speaking
+    if (recognitionRef.current && isListening) {
+      recognitionRef.current.stop();
+    }
+    
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+    
+    // Clean text for speech (remove markdown, emojis, special chars)
+    const cleanText = text
+      .replace(/[✓✗•]/g, "")
+      .replace(/\*\*/g, "")
+      .replace(/\n+/g, ". ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 500); // Limit length
+    
+    if (!cleanText) {
+      onComplete?.();
+      return;
+    }
+    
+    setIsSpeaking(true);
+    
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    // Try to get voices (need to wait for them to load)
+    const setVoice = () => {
       const voices = window.speechSynthesis.getVoices();
       const preferredVoice = voices.find(v => 
-        v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Karen")
+        v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Daniel") || v.name.includes("Karen")
       ) || voices.find(v => v.lang.startsWith("en"));
       
       if (preferredVoice) {
         utterance.voice = preferredVoice;
       }
-      
-      window.speechSynthesis.speak(utterance);
-    }
-  }, []);
+    };
+    
+    setVoice();
+    
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      onComplete?.();
+      // Resume listening if in voice mode
+      if (inputMode === "voice" && shouldContinueListening.current) {
+        setTimeout(() => {
+          if (recognitionRef.current && shouldContinueListening.current) {
+            try {
+              recognitionRef.current.start();
+              setIsListening(true);
+            } catch (e) {
+              // Ignore
+            }
+          }
+        }, 300);
+      }
+    };
+    
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      onComplete?.();
+    };
+    
+    window.speechSynthesis.speak(utterance);
+  }, [voiceEnabled, isListening, inputMode]);
   
   const handleSubmit = useCallback(async (directQuery?: string) => {
     const query = directQuery || input.trim();
@@ -521,7 +621,64 @@ export default function AppxPage() {
       }
       setSessionId(null);
     }
-  }, [changes.length, endSession, sessionId]);
+    // Stop any ongoing voice
+    stopContinuousListening();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, [changes.length, endSession, sessionId, stopContinuousListening]);
+  
+  // Start new conversation with same patient
+  const startNewConversation = useCallback(async () => {
+    if (!selectedPatient || !user) return;
+    
+    // Stop any ongoing voice
+    stopContinuousListening();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    
+    // End current session if exists
+    if (sessionId) {
+      await supabaseClient
+        .from("appx_sessions")
+        .update({ status: "completed", ended_at: new Date().toISOString() })
+        .eq("id", sessionId);
+    }
+    
+    // Create new session
+    const { data: session } = await supabaseClient
+      .from("appx_sessions")
+      .insert({
+        user_id: user.id,
+        patient_id: selectedPatient.id,
+        status: "active",
+      })
+      .select("id")
+      .single();
+    
+    if (session) {
+      setSessionId(session.id);
+    }
+    
+    // Reset messages
+    setChanges([]);
+    const welcomeText = `New conversation started for ${selectedPatient.first_name} ${selectedPatient.last_name}. How can I help?`;
+    const welcomeMsg: Message = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: welcomeText,
+      timestamp: Date.now(),
+    };
+    setMessages([welcomeMsg]);
+    
+    // Speak and start listening
+    speak(welcomeText, () => {
+      if (inputMode === "voice") {
+        startContinuousListening();
+      }
+    });
+  }, [selectedPatient, user, sessionId, stopContinuousListening, speak, inputMode, startContinuousListening]);
   
   // Show loading while checking authentication
   if (loading || !authChecked) {
@@ -834,52 +991,124 @@ export default function AppxPage() {
       {selectedPatient && sessionStatus === "active" && (
         <div className="flex-shrink-0 p-4 bg-slate-800/50 backdrop-blur-xl border-t border-slate-700/50">
           <div className="max-w-lg mx-auto">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={toggleListening}
-                disabled={isProcessing}
-                className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                  isListening
-                    ? "bg-red-500 animate-pulse"
-                    : "bg-slate-700 hover:bg-slate-600"
-                } disabled:opacity-50`}
-              >
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
-              </button>
-              
-              <div className="flex-1 relative">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                  placeholder={isListening ? "Listening..." : "Type or speak your request..."}
-                  disabled={isProcessing}
-                  className="w-full px-4 py-3 bg-slate-700/80 border border-slate-600 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 pr-12"
-                />
+            {/* Mode toggle & New conversation */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center bg-slate-700/50 rounded-full p-1">
+                <button
+                  onClick={() => { setInputMode("voice"); stopContinuousListening(); }}
+                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                    inputMode === "voice" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  🎤 Voice
+                </button>
+                <button
+                  onClick={() => { setInputMode("type"); stopContinuousListening(); }}
+                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                    inputMode === "type" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  ⌨️ Type
+                </button>
               </div>
-              
               <button
-                onClick={() => handleSubmit()}
-                disabled={!input.trim() || isProcessing}
-                className="flex-shrink-0 w-12 h-12 rounded-full bg-sky-500 hover:bg-sky-400 flex items-center justify-center transition-colors disabled:opacity-50 disabled:hover:bg-sky-500"
+                onClick={startNewConversation}
+                className="px-3 py-1 text-xs text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors"
               >
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
+                + New Chat
               </button>
             </div>
             
+            {/* Voice Mode UI */}
+            {inputMode === "voice" ? (
+              <div className="flex flex-col items-center py-4">
+                {/* Speaking indicator */}
+                {isSpeaking && (
+                  <div className="mb-4 flex items-center gap-2 text-sky-400">
+                    <div className="flex gap-1">
+                      <span className="w-1 h-4 bg-sky-400 rounded-full animate-pulse" />
+                      <span className="w-1 h-6 bg-sky-400 rounded-full animate-pulse" style={{ animationDelay: "100ms" }} />
+                      <span className="w-1 h-4 bg-sky-400 rounded-full animate-pulse" style={{ animationDelay: "200ms" }} />
+                    </div>
+                    <span className="text-sm">Aliice is speaking...</span>
+                  </div>
+                )}
+                
+                {/* Main voice button */}
+                <button
+                  onClick={toggleListening}
+                  disabled={isProcessing || isSpeaking}
+                  className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-lg ${
+                    isListening
+                      ? "bg-red-500 animate-pulse ring-4 ring-red-500/30"
+                      : isSpeaking
+                      ? "bg-sky-500 opacity-50"
+                      : "bg-gradient-to-br from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500"
+                  } disabled:opacity-50`}
+                >
+                  <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                </button>
+                
+                <p className="mt-3 text-sm text-slate-400">
+                  {isListening ? "Listening... Speak now" : isSpeaking ? "Wait for response..." : "Tap to speak"}
+                </p>
+                
+                {/* Show transcript */}
+                {input && (
+                  <p className="mt-2 text-white text-center max-w-xs">&ldquo;{input}&rdquo;</p>
+                )}
+              </div>
+            ) : (
+              /* Type Mode UI */
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleListening}
+                  disabled={isProcessing}
+                  className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                    isListening
+                      ? "bg-red-500 animate-pulse"
+                      : "bg-slate-700 hover:bg-slate-600"
+                  } disabled:opacity-50`}
+                >
+                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                </button>
+                
+                <div className="flex-1 relative">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                    placeholder={isListening ? "Listening..." : "Type your request..."}
+                    disabled={isProcessing}
+                    className="w-full px-4 py-3 bg-slate-700/80 border border-slate-600 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"
+                  />
+                </div>
+                
+                <button
+                  onClick={() => handleSubmit()}
+                  disabled={!input.trim() || isProcessing}
+                  className="flex-shrink-0 w-12 h-12 rounded-full bg-sky-500 hover:bg-sky-400 flex items-center justify-center transition-colors disabled:opacity-50 disabled:hover:bg-sky-500"
+                >
+                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+            )}
+            
             {/* Quick actions */}
-            <div className="flex flex-wrap gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-3 justify-center">
               {["Show appointments", "Pending invoices", "Add note", "Recent activity"].map((cmd) => (
                 <button
                   key={cmd}
                   onClick={() => handleSubmit(cmd)}
-                  disabled={isProcessing}
+                  disabled={isProcessing || isSpeaking}
                   className="px-3 py-1.5 bg-slate-700/60 hover:bg-slate-600 text-slate-300 text-xs rounded-full transition-colors disabled:opacity-50"
                 >
                   {cmd}

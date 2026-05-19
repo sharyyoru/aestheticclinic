@@ -240,11 +240,24 @@ Keep responses concise and friendly.`;
     let cleanResponse = responseText;
     let executedAction: { success: boolean; message: string; data?: unknown } | null = null;
     
-    // Check for execute command (auto-execute)
-    const executeMatch = responseText.match(/\{"execute":\s*\{[^}]+\}\}/s);
-    if (executeMatch) {
+    // Find and extract JSON from response - look for {"execute": ...}
+    const jsonStartIndex = responseText.indexOf('{"execute"');
+    if (jsonStartIndex !== -1) {
+      // Find the matching closing brace
+      let braceCount = 0;
+      let jsonEndIndex = jsonStartIndex;
+      for (let i = jsonStartIndex; i < responseText.length; i++) {
+        if (responseText[i] === '{') braceCount++;
+        if (responseText[i] === '}') braceCount--;
+        if (braceCount === 0) {
+          jsonEndIndex = i + 1;
+          break;
+        }
+      }
+      
+      const jsonStr = responseText.slice(jsonStartIndex, jsonEndIndex);
       try {
-        const parsed = JSON.parse(executeMatch[0]);
+        const parsed = JSON.parse(jsonStr);
         if (parsed.execute?.action) {
           // Execute the action directly
           const actionToExecute = parsed.execute;
@@ -253,26 +266,32 @@ Keep responses concise and friendly.`;
             patientId,
           });
           executedAction = executeResult;
-          cleanResponse = responseText.replace(executeMatch[0], "").trim();
           
+          // Remove JSON from response
+          cleanResponse = responseText.slice(0, jsonStartIndex).trim() + responseText.slice(jsonEndIndex).trim();
+          cleanResponse = cleanResponse.trim();
+          
+          // Add result message
           if (executeResult.success) {
-            cleanResponse += `\n\n✓ ${executeResult.message}`;
+            cleanResponse = cleanResponse ? `${cleanResponse}\n\n✓ ${executeResult.message}` : `✓ ${executeResult.message}`;
           } else {
-            cleanResponse += `\n\n✗ ${executeResult.message}`;
+            cleanResponse = cleanResponse ? `${cleanResponse}\n\n✗ ${executeResult.message}` : `✗ ${executeResult.message}`;
           }
         }
       } catch (e) {
-        console.error("Execute parse error:", e);
+        console.error("Execute parse error:", e, "JSON:", jsonStr);
+        // Remove the malformed JSON anyway
+        cleanResponse = responseText.slice(0, jsonStartIndex).trim();
       }
     }
     
     // Also check for legacy actions format
-    const actionMatch = responseText.match(/\{"actions":\s*\[.*?\]\}/s);
-    if (actionMatch && !executeMatch) {
+    const actionMatch = cleanResponse.match(/\{"actions":\s*\[.*?\]\}/s);
+    if (actionMatch) {
       try {
         const parsed = JSON.parse(actionMatch[0]);
         actions = parsed.actions;
-        cleanResponse = responseText.replace(actionMatch[0], "").trim();
+        cleanResponse = cleanResponse.replace(actionMatch[0], "").trim();
       } catch {
         // Ignore parse errors
       }
