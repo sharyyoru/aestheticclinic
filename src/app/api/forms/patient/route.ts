@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getAppBaseUrl } from "@/lib/appUrl";
 
 // GET /api/forms/patient?patientId=xxx - Get all form submissions for a patient
 export async function GET(request: Request) {
@@ -41,8 +42,8 @@ export async function GET(request: Request) {
       );
     }
 
-    // Generate form URLs for pending submissions
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    // Generate form URLs for pending submissions from the current deployment origin.
+    const appUrl = getAppBaseUrl(request);
     const submissionsWithUrls = (submissions || []).map((sub) => ({
       ...sub,
       formUrl: sub.status === "pending" ? `${appUrl}/form/${sub.form_id}?token=${sub.token}` : null,

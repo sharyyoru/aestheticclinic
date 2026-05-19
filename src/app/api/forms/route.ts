@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAllForms, getFormById } from "@/lib/formDefinitions";
+import { getAppBaseUrl } from "@/lib/appUrl";
 
 // GET /api/forms - Get all form definitions or a specific one
 export async function GET(request: Request) {
@@ -72,10 +73,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get the host from request headers to generate correct URL
-    const host = request.headers.get("host") || "localhost:3000";
-    const protocol = host.includes("localhost") ? "http" : "https";
-    const formUrl = `${protocol}://${host}/form/${formId}?token=${data.token}`;
+    const formUrl = `${getAppBaseUrl(request)}/form/${formId}?token=${data.token}`;
 
     return NextResponse.json({
       success: true,
