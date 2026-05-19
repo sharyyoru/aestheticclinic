@@ -84,7 +84,7 @@ export default function SidebarLeadImportDropdown() {
               pathname === "/lead-import/retell-calls" ? "text-sky-600 font-medium" : "text-slate-500"
             }`}
           >
-            Retell AI Calls
+            Aliice Calls
           </Link>
           <Link
             href="/lead-import/embed-forms"
