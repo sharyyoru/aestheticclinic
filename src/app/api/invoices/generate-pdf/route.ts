@@ -260,8 +260,8 @@ export async function POST(request: NextRequest) {
           unit = item.tp_al || item.unit_price || 0;
           unitFactor = 1;
           calculatedAmount = unit * (item.quantity || 1);
-        } else if (isTardoc) {
-          // TARDOC: use tp_al and tax point value
+        } else if (isTardoc || (item.catalog_name === "ACF" && item.tp_al > 0)) {
+          // TARDOC and ACF: use tp_al (tax points) and tp_al_value (point value / Taxpunktwert)
           unit = item.tp_al || 0;
           unitFactor = item.tp_al_value || 1;
           calculatedAmount = item.total_price || 0;
@@ -586,8 +586,8 @@ export async function POST(request: NextRequest) {
           unit = item.tp_al || item.unit_price || 0;
           unitFactor = 1;
           calculatedAmount = unit * (item.quantity || 1);
-        } else if (isTardoc) {
-          // TARDOC: use tp_al and tax point value
+        } else if (isTardoc || (item.catalog_name === "ACF" && item.tp_al > 0)) {
+          // TARDOC and ACF: use tp_al (tax points) and tp_al_value (point value / Taxpunktwert)
           unit = item.tp_al || 0;
           unitFactor = item.tp_al_value || 1;
           calculatedAmount = item.total_price || 0;

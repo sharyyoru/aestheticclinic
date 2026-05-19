@@ -226,13 +226,14 @@ export async function POST(request: NextRequest) {
       const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
       const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
       
-      // For TARDOC (007), use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors
-      // For other tariffs, use unit_price as unit
+      // For TARDOC (007) and ACF (005), use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors
+      // This correctly separates tax points from point value (Taxpunktwert)
       const isTardoc = tariffType === "007";
-      const unit = isTardoc && item.tp_al !== undefined && item.tp_al !== null ? item.tp_al : (item.unit_price || 0);
-      const unitFactor = isTardoc && item.tp_al_value !== undefined && item.tp_al_value !== null ? item.tp_al_value : 1;
-      const unitTT = isTardoc && item.tp_tl !== undefined && item.tp_tl !== null ? item.tp_tl : undefined;
-      const unitFactorTT = isTardoc && item.tp_tl_value !== undefined && item.tp_tl_value !== null ? item.tp_tl_value : undefined;
+      const usesTaxPoints = isTardoc || isAcf;
+      const unit = usesTaxPoints && item.tp_al !== undefined && item.tp_al !== null && item.tp_al > 0 ? item.tp_al : (item.unit_price || 0);
+      const unitFactor = usesTaxPoints && item.tp_al_value !== undefined && item.tp_al_value !== null && item.tp_al_value > 0 ? item.tp_al_value : 1;
+      const unitTT = usesTaxPoints && item.tp_tl !== undefined && item.tp_tl !== null && item.tp_tl > 0 ? item.tp_tl : undefined;
+      const unitFactorTT = usesTaxPoints && item.tp_tl_value !== undefined && item.tp_tl_value !== null && item.tp_tl_value > 0 ? item.tp_tl_value : undefined;
 
       // ACF (005) with ignoreValidate=Yes: use sessionNumber=1 (simple tariff default per docs)
       const rawSession = item.session_number ?? 1;

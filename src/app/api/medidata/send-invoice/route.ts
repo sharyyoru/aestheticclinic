@@ -385,15 +385,15 @@ export async function POST(request: NextRequest) {
 
     // Build Sumex1 input — Sumex1 server is the ONLY XML generation path
     const sumexServices: SumexServiceInput[] = services.map(s => {
-      // For TARDOC (007), use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors
-      // For other tariffs, use unitPrice as unit
+      // For TARDOC (007) and ACF (005), use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors
+      // This correctly separates tax points from point value (Taxpunktwert)
       const isTardoc = s.tariffType === "007";
-      const unit = isTardoc && s.tpAl !== undefined ? s.tpAl : (s.unitPrice || 0);
-      const unitFactor = isTardoc && s.tpAlValue !== undefined ? s.tpAlValue : 1;
-      const unitTT = isTardoc && s.tpTl !== undefined ? s.tpTl : undefined;
-      const unitFactorTT = isTardoc && s.tpTlValue !== undefined ? s.tpTlValue : undefined;
-      
       const isAcf = (s.tariffType || "590") === "005";
+      const usesTaxPoints = isTardoc || isAcf;
+      const unit = usesTaxPoints && s.tpAl !== undefined && s.tpAl !== null && s.tpAl > 0 ? s.tpAl : (s.unitPrice || 0);
+      const unitFactor = usesTaxPoints && s.tpAlValue !== undefined && s.tpAlValue !== null && s.tpAlValue > 0 ? s.tpAlValue : 1;
+      const unitTT = usesTaxPoints && s.tpTl !== undefined && s.tpTl !== null && s.tpTl > 0 ? s.tpTl : undefined;
+      const unitFactorTT = usesTaxPoints && s.tpTlValue !== undefined && s.tpTlValue !== null && s.tpTlValue > 0 ? s.tpTlValue : undefined;
       return {
         tariffType: s.tariffType || "590",
         code: s.code,
