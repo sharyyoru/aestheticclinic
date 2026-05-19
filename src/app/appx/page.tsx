@@ -53,8 +53,6 @@ type Patient = {
   last_name: string | null;
   email: string | null;
   phone: string | null;
-  mobile: string | null;
-  avatar_url: string | null;
   dob: string | null;
 };
 
@@ -175,11 +173,11 @@ export default function AppxPage() {
       try {
         const term = patientSearch.trim();
         
-        // Simple search query
+        // Search patients - note: no 'mobile' column exists
         const { data, error } = await supabaseClient
           .from("patients")
-          .select("id, first_name, last_name, email, phone, mobile, avatar_url, dob")
-          .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,mobile.ilike.%${term}%`)
+          .select("id, first_name, last_name, email, phone, dob")
+          .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%`)
           .limit(10);
         
         if (error) {
@@ -572,19 +570,15 @@ export default function AppxPage() {
                       onClick={() => selectPatient(patient)}
                       className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-700 transition-colors text-left"
                     >
-                      {patient.avatar_url ? (
-                        <img src={patient.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm">
-                          {patient.first_name?.[0]}{patient.last_name?.[0]}
-                        </div>
-                      )}
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm">
+                        {patient.first_name?.[0]}{patient.last_name?.[0]}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-white font-medium truncate">
                           {patient.first_name} {patient.last_name}
                         </p>
                         <p className="text-xs text-slate-400 truncate">
-                          {patient.email || patient.phone || patient.mobile}
+                          {patient.email || patient.phone}
                         </p>
                       </div>
                     </button>
@@ -599,19 +593,15 @@ export default function AppxPage() {
           ) : (
             <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700">
               <div className="flex items-center gap-3">
-                {selectedPatient.avatar_url ? (
-                  <img src={selectedPatient.avatar_url} alt="" className="w-12 h-12 rounded-full object-cover ring-2 ring-sky-500" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white font-bold ring-2 ring-sky-500">
-                    {selectedPatient.first_name?.[0]}{selectedPatient.last_name?.[0]}
-                  </div>
-                )}
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white font-bold ring-2 ring-sky-500">
+                  {selectedPatient.first_name?.[0]}{selectedPatient.last_name?.[0]}
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-semibold truncate">
                     {selectedPatient.first_name} {selectedPatient.last_name}
                   </p>
                   <p className="text-xs text-slate-400 truncate">
-                    {selectedPatient.phone || selectedPatient.mobile || selectedPatient.email}
+                    {selectedPatient.phone || selectedPatient.email}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
