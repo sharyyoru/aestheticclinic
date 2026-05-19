@@ -108,7 +108,7 @@ export default function AppxPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   
-  // Auth check - redirect to login if not authenticated
+  // Auth check - redirect to appx login if not authenticated
   useEffect(() => {
     let isMounted = true;
     
@@ -118,8 +118,8 @@ export default function AppxPage() {
       if (!isMounted) return;
       
       if (!data.session) {
-        // Not authenticated - redirect to login with return URL
-        router.replace("/login?redirect=/appx");
+        // Not authenticated - redirect to appx login
+        router.replace("/appx/login");
         return;
       }
       
@@ -142,7 +142,7 @@ export default function AppxPage() {
     // Listen for auth changes
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
-        router.replace("/login?redirect=/appx");
+        router.replace("/appx/login");
       }
     });
     
@@ -152,34 +152,56 @@ export default function AppxPage() {
     };
   }, [router]);
   
+  // Logout function
+  const handleLogout = useCallback(async () => {
+    await supabaseClient.auth.signOut();
+    router.replace("/appx/login");
+  }, [router]);
+  
   // Patient search
   useEffect(() => {
     if (!patientSearch.trim() || patientSearch.length < 2) {
       setPatientResults([]);
+      setShowPatientDropdown(false);
       return;
     }
     
     const timer = setTimeout(async () => {
       setSearchLoading(true);
-      const term = patientSearch.trim().toLowerCase();
-      const words = term.split(/\s+/).filter(w => w.length >= 2);
-      
-      let query = supabaseClient
-        .from("patients")
-        .select("id, first_name, last_name, email, phone, mobile, avatar_url, dob")
-        .limit(10);
-      
-      if (words.length >= 2) {
-        for (const word of words) {
-          query = query.or(`first_name.ilike.%${word}%,last_name.ilike.%${word}%`);
+      try {
+        const term = patientSearch.trim().toLowerCase();
+        const words = term.split(/\s+/).filter(w => w.length >= 2);
+        
+        let query = supabaseClient
+          .from("patients")
+          .select("id, first_name, last_name, email, phone, mobile, avatar_url, dob")
+          .limit(10);
+        
+        if (words.length >= 2) {
+          for (const word of words) {
+            query = query.or(`first_name.ilike.%${word}%,last_name.ilike.%${word}%`);
+          }
+        } else {
+          query = query.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,mobile.ilike.%${term}%`);
         }
-      } else {
-        query = query.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,mobile.ilike.%${term}%`);
+        
+        const { data, error } = await query;
+        
+        if (error) {
+          console.error("Patient search error:", error);
+          setPatientResults([]);
+        } else {
+          setPatientResults((data as Patient[]) || []);
+          if (data && data.length > 0) {
+            setShowPatientDropdown(true);
+          }
+        }
+      } catch (err) {
+        console.error("Patient search error:", err);
+        setPatientResults([]);
+      } finally {
+        setSearchLoading(false);
       }
-      
-      const { data } = await query;
-      setPatientResults((data as Patient[]) || []);
-      setSearchLoading(false);
     }, 300);
     
     return () => clearTimeout(timer);
@@ -486,13 +508,28 @@ export default function AppxPage() {
       <header className="flex-shrink-0 px-4 py-3 bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
-            <Image src="/logos/AliiceAgent.jpg" alt="Aliice" width={36} height={36} className="rounded-full" />
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center shadow-lg">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
             <div>
               <h1 className="text-sm font-bold text-white">Aliice Assistant</h1>
               <p className="text-[10px] text-slate-400">Aesthetics Clinic</p>
             </div>
           </div>
-          <Image src="/logos/aesthetics-logo.svg" alt="Aesthetics" width={80} height={28} className="opacity-80" />
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 hidden sm:block">{user.name}</span>
+            <button
+              onClick={handleLogout}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors"
+              title="Sign out"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
       
