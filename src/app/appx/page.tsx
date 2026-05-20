@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { JarvisPulse, TelemetryBadge } from "@/components/appx/JarvisPulse";
+import { ClinicalDataView, type Appointment, type Invoice, type Note } from "@/components/appx/ClinicalTable";
+import { getAudioService, type VoiceState } from "@/utils/appx/audio-service";
 
 // Web Speech API types
 interface SpeechRecognitionEvent extends Event {
@@ -105,6 +108,16 @@ export default function AppxPage() {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  
+  // Clinical data
+  const [clinicalData, setClinicalData] = useState<{
+    appointments: Appointment[];
+    invoices: Invoice[];
+    notes: Note[];
+  }>({ appointments: [], invoices: [], notes: [] });
+  const [showClinicalData, setShowClinicalData] = useState(false);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -759,10 +772,19 @@ export default function AppxPage() {
   // Show loading while checking authentication
   if (loading || !authChecked) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+      <div className="min-h-screen jarvis-shell flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-slate-400 text-sm">Checking your session...</p>
+          <div className="jarvis-pulse-container mb-6">
+            <div className="jarvis-pulse-core idle w-16 h-16">
+              <div className="jarvis-wave-container text-cyan-400">
+                <div className="jarvis-wave-bar" />
+                <div className="jarvis-wave-bar" />
+                <div className="jarvis-wave-bar" />
+              </div>
+            </div>
+          </div>
+          <p className="text-cyan-400 text-sm font-medium">Initializing Aliice...</p>
+          <p className="text-slate-500 text-xs mt-1">Medical AI Assistant</p>
         </div>
       </div>
     );
@@ -771,46 +793,54 @@ export default function AppxPage() {
   // This should not render as we redirect in useEffect, but just in case
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen jarvis-shell flex items-center justify-center p-4">
         <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full mx-auto mb-4" />
+          <div className="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4" />
           <p className="text-slate-400 text-sm">Redirecting to login...</p>
         </div>
       </div>
     );
   }
 
+  // Compute voice state for UI
+  const computedVoiceState: VoiceState = isProcessing ? "processing" : isSpeaking ? "speaking" : isListening ? "listening" : "idle";
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col">
-      {/* Header */}
-      <header className="flex-shrink-0 px-4 py-3 bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50">
+    <div className="min-h-screen jarvis-shell flex flex-col">
+      {/* Header - Glassmorphism */}
+      <header className="flex-shrink-0 px-4 py-3 jarvis-glass border-b border-slate-700/30">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
-            <Image 
-              src="/logos/AliiceAgent.jpg" 
-              alt="Aliice" 
-              width={36} 
-              height={36} 
-              className="rounded-full shadow-lg"
-            />
+            <div className="relative">
+              <Image 
+                src="/logos/AliiceAgent.jpg" 
+                alt="Aliice" 
+                width={40} 
+                height={40} 
+                className="rounded-full shadow-lg ring-2 ring-cyan-500/30"
+              />
+              {/* Status indicator dot */}
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-900 ${
+                computedVoiceState === "listening" ? "bg-cyan-400 animate-pulse" :
+                computedVoiceState === "speaking" ? "bg-emerald-400 animate-pulse" :
+                computedVoiceState === "processing" ? "bg-amber-400 animate-pulse" :
+                "bg-slate-500"
+              }`} />
+            </div>
             <div>
-              <h1 className="text-sm font-bold text-white">Aliice Assistant</h1>
-              <p className="text-[10px] text-slate-400">Aesthetics Clinic</p>
+              <h1 className="text-sm font-bold text-white tracking-tight">Aliice</h1>
+              <p className="text-[10px] text-cyan-400/80 font-medium">Medical AI Assistant</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Image 
-              src="/logos/aesthetics-logo.svg" 
-              alt="Aesthetics Clinic" 
-              width={70} 
-              height={24} 
-              className="opacity-90 hidden sm:block"
-            />
-            <span className="text-xs text-slate-400 hidden sm:block">|</span>
+          <div className="flex items-center gap-2">
+            {/* Telemetry Badge */}
+            <TelemetryBadge state={computedVoiceState === "idle" ? "connected" : computedVoiceState} />
+            
+            <span className="text-xs text-slate-500 hidden sm:block">|</span>
             <span className="text-xs text-slate-400 hidden sm:block">{user.name}</span>
             <button
               onClick={handleLogout}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors"
+              className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-slate-800/50 rounded-full transition-colors"
               title="Sign out"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1114,25 +1144,29 @@ export default function AppxPage() {
         )}
       </main>
       
-      {/* Input Bar */}
+      {/* Input Bar - Jarvis Glass */}
       {selectedPatient && sessionStatus === "active" && (
-        <div className="flex-shrink-0 p-4 bg-slate-800/50 backdrop-blur-xl border-t border-slate-700/50">
+        <div className="flex-shrink-0 p-4 jarvis-glass border-t border-slate-700/30">
           <div className="max-w-lg mx-auto">
             {/* Mode toggle & New conversation */}
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center bg-slate-700/50 rounded-full p-1">
+              <div className="flex items-center bg-slate-800/60 rounded-full p-1 border border-slate-700/50">
                 <button
                   onClick={() => { setInputMode("voice"); stopContinuousListening(); }}
-                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                    inputMode === "voice" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"
+                  className={`px-3 py-1.5 text-xs rounded-full transition-all font-medium ${
+                    inputMode === "voice" 
+                      ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white shadow-lg shadow-cyan-500/25" 
+                      : "text-slate-400 hover:text-white"
                   }`}
                 >
                   🎤 Voice
                 </button>
                 <button
                   onClick={() => { setInputMode("type"); stopContinuousListening(); }}
-                  className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                    inputMode === "type" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"
+                  className={`px-3 py-1.5 text-xs rounded-full transition-all font-medium ${
+                    inputMode === "type" 
+                      ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white shadow-lg shadow-cyan-500/25" 
+                      : "text-slate-400 hover:text-white"
                   }`}
                 >
                   ⌨️ Type
@@ -1140,51 +1174,29 @@ export default function AppxPage() {
               </div>
               <button
                 onClick={startNewConversation}
-                className="px-3 py-1 text-xs text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors"
+                className="px-3 py-1.5 text-xs text-cyan-400 hover:text-white hover:bg-cyan-500/20 rounded-full transition-colors border border-cyan-500/30"
               >
                 + New Chat
               </button>
             </div>
             
-            {/* Voice Mode UI */}
+            {/* Voice Mode UI - Jarvis Pulse */}
             {inputMode === "voice" ? (
-              <div className="flex flex-col items-center py-4">
-                {/* Speaking indicator */}
-                {isSpeaking && (
-                  <div className="mb-4 flex items-center gap-2 text-sky-400">
-                    <div className="flex gap-1">
-                      <span className="w-1 h-4 bg-sky-400 rounded-full animate-pulse" />
-                      <span className="w-1 h-6 bg-sky-400 rounded-full animate-pulse" style={{ animationDelay: "100ms" }} />
-                      <span className="w-1 h-4 bg-sky-400 rounded-full animate-pulse" style={{ animationDelay: "200ms" }} />
-                    </div>
-                    <span className="text-sm">Aliice is speaking...</span>
-                  </div>
-                )}
-                
-                {/* Main voice button */}
-                <button
+              <div className="flex flex-col items-center py-6">
+                {/* Jarvis Pulse Component */}
+                <JarvisPulse
+                  state={computedVoiceState}
+                  audioLevel={audioLevel}
                   onClick={toggleListening}
-                  disabled={isProcessing || isSpeaking}
-                  className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-lg ${
-                    isListening
-                      ? "bg-red-500 animate-pulse ring-4 ring-red-500/30"
-                      : isSpeaking
-                      ? "bg-sky-500 opacity-50"
-                      : "bg-gradient-to-br from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500"
-                  } disabled:opacity-50`}
-                >
-                  <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                  </svg>
-                </button>
-                
-                <p className="mt-3 text-sm text-slate-400">
-                  {isListening ? "Listening... Speak now" : isSpeaking ? "Wait for response..." : "Tap to speak"}
-                </p>
+                  disabled={isProcessing}
+                  size="lg"
+                />
                 
                 {/* Show transcript */}
                 {input && (
-                  <p className="mt-2 text-white text-center max-w-xs">&ldquo;{input}&rdquo;</p>
+                  <div className="mt-4 px-4 py-2 jarvis-glass rounded-xl max-w-xs">
+                    <p className="text-cyan-400 text-sm text-center">&ldquo;{input}&rdquo;</p>
+                  </div>
                 )}
               </div>
             ) : (
@@ -1229,16 +1241,21 @@ export default function AppxPage() {
               </div>
             )}
             
-            {/* Quick actions */}
-            <div className="flex flex-wrap gap-2 mt-3 justify-center">
-              {["Show appointments", "Pending invoices", "Add note", "Recent activity"].map((cmd) => (
+            {/* Quick actions - Jarvis style */}
+            <div className="flex flex-wrap gap-2 mt-4 justify-center">
+              {[
+                { label: "📅 Appointments", cmd: "Show appointments" },
+                { label: "💳 Invoices", cmd: "Pending invoices" },
+                { label: "📝 Add Note", cmd: "Add note" },
+                { label: "📊 Records", cmd: "Show medical records" },
+              ].map((item) => (
                 <button
-                  key={cmd}
-                  onClick={() => handleSubmit(cmd)}
+                  key={item.cmd}
+                  onClick={() => handleSubmit(item.cmd)}
                   disabled={isProcessing || isSpeaking}
-                  className="px-3 py-1.5 bg-slate-700/60 hover:bg-slate-600 text-slate-300 text-xs rounded-full transition-colors disabled:opacity-50"
+                  className="jarvis-action-card px-3 py-2 text-xs font-medium text-slate-300 hover:text-cyan-400 disabled:opacity-50"
                 >
-                  {cmd}
+                  {item.label}
                 </button>
               ))}
             </div>
