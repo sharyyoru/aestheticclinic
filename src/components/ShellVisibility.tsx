@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/appx"];
 
 // Routes that should have transparent/minimal background (for iframe embedding)
-const TRANSPARENT_ROUTES = ["/embed", "/aliicechatembed"];
+const TRANSPARENT_ROUTES = ["/embed", "/aliicechat/embed", "/aliicechatembed"];
 
 function isStandaloneRoute(pathname: string): boolean {
   return STANDALONE_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"));
