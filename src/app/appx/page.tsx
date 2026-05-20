@@ -387,11 +387,71 @@ export default function AppxPage() {
     }
   }, [isListening, inputMode, startContinuousListening, stopContinuousListening]);
   
+  // Fetch clinical data for patient
+  const fetchClinicalData = useCallback(async (patientId: string) => {
+    try {
+      const [appointmentsRes, invoicesRes, notesRes] = await Promise.all([
+        supabaseClient
+          .from("appointments")
+          .select("id, start_time, reason, status, location")
+          .eq("patient_id", patientId)
+          .order("start_time", { ascending: false })
+          .limit(10),
+        supabaseClient
+          .from("invoices")
+          .select("id, invoice_number, total_amount, paid_amount, status, created_at, due_date")
+          .eq("patient_id", patientId)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        supabaseClient
+          .from("patient_notes")
+          .select("id, body, author_name, created_at")
+          .eq("patient_id", patientId)
+          .order("created_at", { ascending: false })
+          .limit(10),
+      ]);
+      
+      const appointments: Appointment[] = (appointmentsRes.data || []).map(a => ({
+        id: a.id,
+        date: a.start_time.split("T")[0],
+        time: a.start_time.split("T")[1]?.slice(0, 5) || "",
+        reason: a.reason || "Consultation",
+        status: a.status as Appointment["status"],
+        location: a.location,
+      }));
+      
+      const invoices: Invoice[] = (invoicesRes.data || []).map(i => ({
+        id: i.id,
+        number: i.invoice_number,
+        date: i.created_at,
+        amount: i.total_amount || 0,
+        paid: i.paid_amount || 0,
+        status: i.status as Invoice["status"],
+        dueDate: i.due_date,
+      }));
+      
+      const notes: Note[] = (notesRes.data || []).map(n => ({
+        id: n.id,
+        date: n.created_at,
+        author: n.author_name || "Unknown",
+        content: n.body || "",
+      }));
+      
+      setClinicalData({ appointments, invoices, notes });
+    } catch (err) {
+      console.error("Failed to fetch clinical data:", err);
+    }
+  }, []);
+  
   const selectPatient = useCallback(async (patient: Patient) => {
     setSelectedPatient(patient);
     setPatientSearch("");
     setShowPatientDropdown(false);
     setSessionStatus("active");
+    setShowClinicalData(false);
+    
+    // Fetch clinical data
+    fetchClinicalData(patient.id);
     
     // Create session
     const { data: session } = await supabaseClient
@@ -956,24 +1016,38 @@ export default function AppxPage() {
               </p>
             </div>
           ) : (
-            <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700">
+            <div className="jarvis-glass-elevated rounded-2xl p-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white font-bold ring-2 ring-sky-500">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-400 to-cyan-600 flex items-center justify-center text-white font-bold ring-2 ring-cyan-500/50 shadow-lg shadow-cyan-500/20">
                   {selectedPatient.first_name?.[0]}{selectedPatient.last_name?.[0]}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-semibold truncate">
                     {selectedPatient.first_name} {selectedPatient.last_name}
                   </p>
-                  <p className="text-xs text-slate-400 truncate">
+                  <p className="text-xs text-cyan-400/80 truncate">
                     {selectedPatient.phone || selectedPatient.email}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  {/* Toggle Clinical Data */}
+                  <button
+                    onClick={() => setShowClinicalData(!showClinicalData)}
+                    className={`p-2 rounded-full transition-colors ${
+                      showClinicalData 
+                        ? "text-cyan-400 bg-cyan-500/20" 
+                        : "text-slate-400 hover:text-cyan-400 hover:bg-slate-700/50"
+                    }`}
+                    title="View clinical data"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </button>
                   <Link
                     href={`/patients/${selectedPatient.id}`}
                     target="_blank"
-                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-full transition-colors"
+                    className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-slate-700/50 rounded-full transition-colors"
                     title="Open patient profile"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -982,7 +1056,7 @@ export default function AppxPage() {
                   </Link>
                   <button
                     onClick={clearPatient}
-                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-700 rounded-full transition-colors"
+                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-700/50 rounded-full transition-colors"
                     title="End session"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -992,19 +1066,33 @@ export default function AppxPage() {
                 </div>
               </div>
               {changes.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-700">
-                  <p className="text-xs text-emerald-400">
-                    ✓ {changes.length} change{changes.length !== 1 ? "s" : ""} made this session
+                <div className="mt-3 pt-3 border-t border-slate-700/50">
+                  <p className="text-xs text-emerald-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    {changes.length} change{changes.length !== 1 ? "s" : ""} made this session
                   </p>
                 </div>
               )}
             </div>
           )}
+          
+          {/* Clinical Data Panel */}
+          {showClinicalData && selectedPatient && (
+            <div className="mt-3">
+              <ClinicalDataView
+                appointments={clinicalData.appointments}
+                invoices={clinicalData.invoices}
+                notes={clinicalData.notes}
+                records={[]}
+                maxHeight="250px"
+              />
+            </div>
+          )}
         </div>
         
-        {/* Messages Area */}
+        {/* Messages Area - Jarvis Chat */}
         {sessionStatus === "active" && (
-          <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4 jarvis-scroll">
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -1013,8 +1101,8 @@ export default function AppxPage() {
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-3 ${
                     msg.role === "user"
-                      ? "bg-sky-500 text-white rounded-br-md"
-                      : "bg-slate-700/80 text-slate-100 rounded-bl-md"
+                      ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-br-md shadow-lg shadow-cyan-500/20"
+                      : "jarvis-glass text-slate-100 rounded-bl-md"
                   }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -1126,19 +1214,37 @@ export default function AppxPage() {
           </div>
         )}
         
-        {/* Idle state */}
+        {/* Idle state - Jarvis Welcome */}
         {sessionStatus === "idle" && !selectedPatient && (
           <div className="flex-1 flex items-center justify-center p-4">
             <div className="text-center">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
+              {/* Jarvis Idle Pulse */}
+              <div className="jarvis-pulse-container mx-auto mb-6" style={{ width: 120, height: 120 }}>
+                <div className="jarvis-pulse-core idle" style={{ width: 80, height: 80 }}>
+                  <svg className="w-10 h-10 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                </div>
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">Welcome, {user.name.split(" ")[0]}</h2>
-              <p className="text-slate-400 text-sm max-w-xs mx-auto">
-                Search for a patient above to start managing their records with AI assistance.
+              
+              <h2 className="text-xl font-bold text-white mb-2">
+                Welcome, <span className="text-cyan-400">{user.name.split(" ")[0]}</span>
+              </h2>
+              <p className="text-slate-400 text-sm max-w-xs mx-auto mb-6">
+                Search for a patient to begin your AI-assisted clinical session.
               </p>
+              
+              {/* Feature highlights */}
+              <div className="flex flex-wrap justify-center gap-2 max-w-sm mx-auto">
+                {["Voice Commands", "Smart Booking", "EMR Access", "Auto-Notes"].map((feature) => (
+                  <span 
+                    key={feature} 
+                    className="px-3 py-1 text-xs text-cyan-400/80 bg-cyan-500/10 rounded-full border border-cyan-500/20"
+                  >
+                    {feature}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         )}

@@ -57,35 +57,40 @@ export default function AppxLoginPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+      <div className="min-h-screen jarvis-shell flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-slate-400 text-sm">Checking session...</p>
+          <div className="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-cyan-400 text-sm">Initializing...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+    <div className="min-h-screen jarvis-shell flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-4 mb-4">
-            <Image 
-              src="/logos/AliiceAgent.jpg" 
-              alt="Aliice" 
-              width={64} 
-              height={64} 
-              className="rounded-full shadow-lg"
-            />
+            <div className="relative">
+              <Image 
+                src="/logos/AliiceAgent.jpg" 
+                alt="Aliice" 
+                width={72} 
+                height={72} 
+                className="rounded-full shadow-lg ring-2 ring-cyan-500/30"
+              />
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full border-2 border-slate-900" />
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-white">Aliice Assistant</h1>
-          <p className="text-slate-400 text-sm mt-1">Aesthetics Clinic</p>
+          <h1 className="text-2xl font-bold text-white">
+            Aliice <span className="text-cyan-400">Assistant</span>
+          </h1>
+          <p className="text-slate-400 text-sm mt-1">Medical AI • Aesthetics Clinic</p>
         </div>
 
         {/* Login Form */}
-        <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl p-6 border border-slate-700/50 shadow-2xl">
+        <div className="jarvis-glass-elevated rounded-2xl p-6">
           <h2 className="text-lg font-semibold text-white mb-4 text-center">Sign In</h2>
           
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -99,7 +104,7 @@ export default function AppxLoginPage() {
                 type="email"
                 required
                 autoComplete="email"
-                className="block w-full rounded-xl border border-slate-600 bg-slate-700/50 px-4 py-3 text-sm text-white placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                className="block w-full rounded-xl border border-slate-600/50 bg-slate-800/50 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all"
                 placeholder="you@clinic.com"
               />
             </div>
@@ -115,7 +120,7 @@ export default function AppxLoginPage() {
                   type={showPassword ? "text" : "password"}
                   required
                   autoComplete="current-password"
-                  className="block w-full rounded-xl border border-slate-600 bg-slate-700/50 px-4 py-3 pr-10 text-sm text-white placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                  className="block w-full rounded-xl border border-slate-600/50 bg-slate-800/50 px-4 py-3 pr-10 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all"
                   placeholder="••••••••"
                 />
                 <button
@@ -146,12 +151,12 @@ export default function AppxLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-sky-500 hover:bg-sky-400 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:hover:bg-sky-500"
+              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-cyan-500/25 disabled:opacity-50 disabled:shadow-none"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Signing in...
+                  Initializing...
                 </span>
               ) : (
                 "Sign In"
