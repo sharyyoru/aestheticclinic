@@ -3,16 +3,28 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
+// Routes that should not show the global loader (embedded pages)
+const LOADER_HIDDEN_ROUTES = ["/embed", "/aliicechatembed"];
+
+function isLoaderHiddenRoute(pathname: string): boolean {
+  return LOADER_HIDDEN_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"));
+}
+
 export default function GlobalLoader() {
   const [loading, setLoading] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
+    // Don't show loader for embedded routes
+    if (isLoaderHiddenRoute(pathname)) return;
+    
     setLoading(true);
     const timer = setTimeout(() => setLoading(false), 500);
     return () => clearTimeout(timer);
   }, [pathname]);
 
+  // Never show on embed routes
+  if (isLoaderHiddenRoute(pathname)) return null;
   if (!loading) return null;
 
   return (

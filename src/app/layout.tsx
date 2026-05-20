@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import "./globals.css";
 import RequireAuth from "@/components/RequireAuth";
-import { ShellSidebar, ShellHeader, ShellFrame } from "@/components/ShellVisibility";
+import { ShellSidebar, ShellHeader, ShellFrame, ShellBackground } from "@/components/ShellVisibility";
 import HeaderUser from "@/components/HeaderUser";
 import HeaderCommentsButton from "@/components/HeaderCommentsButton";
 import HeaderNotificationsButton from "@/components/HeaderNotificationsButton";
@@ -48,7 +48,7 @@ export default function RootLayout({
       <body
         className={`${manrope.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff,_#e0f2fe_40%,_#fdf2ff_80%)] px-4 py-6 sm:px-6 lg:px-8">
+        <ShellBackground>
           <GlobalLoader />
           <AuthProvider>
           <CommentsUnreadProvider>
@@ -596,7 +596,7 @@ export default function RootLayout({
           </TasksNotificationsProvider>
           </CommentsUnreadProvider>
           </AuthProvider>
-        </div>
+        </ShellBackground>
       </body>
     </html>
   );

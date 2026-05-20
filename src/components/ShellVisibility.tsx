@@ -6,8 +6,35 @@ import { usePathname } from "next/navigation";
 // Routes that should be completely standalone (no sidebar, header, or shell)
 const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/appx"];
 
+// Routes that should have transparent/minimal background (for iframe embedding)
+const TRANSPARENT_ROUTES = ["/embed", "/aliicechatembed"];
+
 function isStandaloneRoute(pathname: string): boolean {
   return STANDALONE_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"));
+}
+
+function isTransparentRoute(pathname: string): boolean {
+  return TRANSPARENT_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"));
+}
+
+export function ShellBackground({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  
+  // Embed routes get transparent background with no padding
+  if (isTransparentRoute(pathname)) {
+    return (
+      <div className="min-h-screen bg-transparent">
+        {children}
+      </div>
+    );
+  }
+  
+  // Regular routes get the gradient background with padding
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff,_#e0f2fe_40%,_#fdf2ff_80%)] px-4 py-6 sm:px-6 lg:px-8">
+      {children}
+    </div>
+  );
 }
 
 export function ShellSidebar({ children }: { children: ReactNode }) {
