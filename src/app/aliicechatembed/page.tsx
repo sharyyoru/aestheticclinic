@@ -13,20 +13,46 @@ export default function AliiceChatEmbedDocs() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // New smart embed code - TINY iframe that only covers the bubble
+  // PROFESSIONAL APPROACH: Native DOM bubble + iframe only for chat window
+  // This is how Intercom, Drift, Crisp do it - NO iframe for the bubble!
   const smartEmbedEN = `<script>
 (function() {
-  var iframe = document.createElement('iframe');
-  iframe.id = 'aliice-chat-widget';
-  iframe.src = '${baseUrl}/aliicechat/embed?lang=en';
-  iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:60px;right:12px;width:88px;height:88px;border:none;z-index:9999;background:transparent;';
-  document.body.appendChild(iframe);
+  var LANG = 'en';
+  var BASE = '${baseUrl}';
+  var isOpen = false;
+  
+  // Create native DOM bubble (NOT in iframe - no background issues!)
+  var container = document.createElement('div');
+  container.id = 'aliice-widget-container';
+  container.innerHTML = \`
+    <div id="aliice-bubble" style="position:fixed;bottom:70px;right:20px;z-index:9998;display:flex;align-items:flex-end;gap:12px;cursor:pointer;">
+      <div id="aliice-tooltip" style="background:#fff;border-radius:16px 16px 4px 16px;padding:12px 16px;box-shadow:0 4px 24px rgba(0,0,0,0.12);border:1px solid #e2e8f0;max-width:200px;">
+        <p style="margin:0;font-size:14px;font-weight:500;color:#1e293b;">Speak to Aliice 💬</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#64748b;">I'm here to help!</p>
+      </div>
+      <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#38bdf8,#0284c7,#1d4ed8);box-shadow:0 8px 32px rgba(14,165,233,0.5);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <img src="\${BASE}/logos/AliiceAgent.jpg" style="width:52px;height:52px;border-radius:50%;border:2px solid rgba(255,255,255,0.9);object-fit:cover;" alt="Aliice"/>
+      </div>
+    </div>
+    <iframe id="aliice-chat-frame" src="\${BASE}/aliicechat/embed?lang=\${LANG}&open=true" allow="microphone" style="position:fixed;bottom:70px;right:20px;width:420px;height:640px;border:none;z-index:9999;display:none;border-radius:16px;box-shadow:0 25px 60px rgba(0,0,0,0.3);"></iframe>
+  \`;
+  document.body.appendChild(container);
+  
+  var bubble = document.getElementById('aliice-bubble');
+  var tooltip = document.getElementById('aliice-tooltip');
+  var frame = document.getElementById('aliice-chat-frame');
+  
+  bubble.onclick = function() {
+    isOpen = true;
+    bubble.style.display = 'none';
+    frame.style.display = 'block';
+  };
   
   window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'aliice-chat') {
-      iframe.style.width = e.data.width + 'px';
-      iframe.style.height = e.data.height + 'px';
+    if (e.data && e.data.type === 'aliice-chat' && !e.data.open) {
+      isOpen = false;
+      frame.style.display = 'none';
+      bubble.style.display = 'flex';
     }
   });
 })();
@@ -34,36 +60,83 @@ export default function AliiceChatEmbedDocs() {
 
   const smartEmbedFR = `<script>
 (function() {
-  var iframe = document.createElement('iframe');
-  iframe.id = 'aliice-chat-widget';
-  iframe.src = '${baseUrl}/aliicechat/embed?lang=fr';
-  iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:60px;right:12px;width:88px;height:88px;border:none;z-index:9999;background:transparent;';
-  document.body.appendChild(iframe);
+  var LANG = 'fr';
+  var BASE = '${baseUrl}';
+  var isOpen = false;
+  
+  var container = document.createElement('div');
+  container.id = 'aliice-widget-container';
+  container.innerHTML = \`
+    <div id="aliice-bubble" style="position:fixed;bottom:70px;right:20px;z-index:9998;display:flex;align-items:flex-end;gap:12px;cursor:pointer;">
+      <div id="aliice-tooltip" style="background:#fff;border-radius:16px 16px 4px 16px;padding:12px 16px;box-shadow:0 4px 24px rgba(0,0,0,0.12);border:1px solid #e2e8f0;max-width:220px;">
+        <p style="margin:0;font-size:14px;font-weight:500;color:#1e293b;">Parler avec Aliice 💬</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Je suis là pour vous aider!</p>
+      </div>
+      <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#38bdf8,#0284c7,#1d4ed8);box-shadow:0 8px 32px rgba(14,165,233,0.5);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <img src="\${BASE}/logos/AliiceAgent.jpg" style="width:52px;height:52px;border-radius:50%;border:2px solid rgba(255,255,255,0.9);object-fit:cover;" alt="Aliice"/>
+      </div>
+    </div>
+    <iframe id="aliice-chat-frame" src="\${BASE}/aliicechat/embed?lang=\${LANG}&open=true" allow="microphone" style="position:fixed;bottom:70px;right:20px;width:420px;height:640px;border:none;z-index:9999;display:none;border-radius:16px;box-shadow:0 25px 60px rgba(0,0,0,0.3);"></iframe>
+  \`;
+  document.body.appendChild(container);
+  
+  var bubble = document.getElementById('aliice-bubble');
+  var frame = document.getElementById('aliice-chat-frame');
+  
+  bubble.onclick = function() {
+    isOpen = true;
+    bubble.style.display = 'none';
+    frame.style.display = 'block';
+  };
   
   window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'aliice-chat') {
-      iframe.style.width = e.data.width + 'px';
-      iframe.style.height = e.data.height + 'px';
+    if (e.data && e.data.type === 'aliice-chat' && !e.data.open) {
+      isOpen = false;
+      frame.style.display = 'none';
+      bubble.style.display = 'flex';
     }
   });
 })();
 </script>`;
 
-  const wordpressCode = `<!-- Aliice Chat Widget - Add to footer -->
+  const wordpressCode = `<!-- Aliice Chat Widget - PROFESSIONAL VERSION -->
+<!-- Native DOM bubble + iframe only for chat window -->
 <script>
 (function() {
-  var iframe = document.createElement('iframe');
-  iframe.id = 'aliice-chat-widget';
-  iframe.src = '${baseUrl}/aliicechat/embed?lang=fr';
-  iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:60px;right:12px;width:88px;height:88px;border:none;z-index:9999;background:transparent;';
-  document.body.appendChild(iframe);
+  var LANG = 'fr';
+  var BASE = 'https://aestheticclinic.vercel.app';
+  var isOpen = false;
+  
+  var container = document.createElement('div');
+  container.id = 'aliice-widget-container';
+  container.innerHTML = \`
+    <div id="aliice-bubble" style="position:fixed;bottom:70px;right:20px;z-index:9998;display:flex;align-items:flex-end;gap:12px;cursor:pointer;">
+      <div id="aliice-tooltip" style="background:#fff;border-radius:16px 16px 4px 16px;padding:12px 16px;box-shadow:0 4px 24px rgba(0,0,0,0.12);border:1px solid #e2e8f0;max-width:220px;">
+        <p style="margin:0;font-size:14px;font-weight:500;color:#1e293b;">Parler avec Aliice 💬</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#64748b;">Je suis là pour vous aider!</p>
+      </div>
+      <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#38bdf8,#0284c7,#1d4ed8);box-shadow:0 8px 32px rgba(14,165,233,0.5);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <img src="\${BASE}/logos/AliiceAgent.jpg" style="width:52px;height:52px;border-radius:50%;border:2px solid rgba(255,255,255,0.9);object-fit:cover;" alt="Aliice"/>
+      </div>
+    </div>
+    <iframe id="aliice-chat-frame" src="\${BASE}/aliicechat/embed?lang=\${LANG}&open=true" allow="microphone" style="position:fixed;bottom:70px;right:20px;width:420px;height:640px;border:none;z-index:9999;display:none;border-radius:16px;box-shadow:0 25px 60px rgba(0,0,0,0.3);"></iframe>
+  \`;
+  document.body.appendChild(container);
+  
+  var bubble = document.getElementById('aliice-bubble');
+  var frame = document.getElementById('aliice-chat-frame');
+  
+  bubble.onclick = function() {
+    isOpen = true;
+    bubble.style.display = 'none';
+    frame.style.display = 'block';
+  };
   
   window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'aliice-chat') {
-      iframe.style.width = e.data.width + 'px';
-      iframe.style.height = e.data.height + 'px';
+    if (e.data && e.data.type === 'aliice-chat' && !e.data.open) {
+      isOpen = false;
+      frame.style.display = 'none';
+      bubble.style.display = 'flex';
     }
   });
 })();
@@ -184,19 +257,22 @@ export default function AliiceChatEmbedDocs() {
 
         {/* How It Works */}
         <section>
-          <h2 className="text-2xl font-bold text-slate-800 mb-4">How The Smart Embed Works</h2>
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">How The Professional Embed Works</h2>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+            <p className="text-emerald-800 text-sm font-medium">✨ Same approach as Intercom, Drift, and Crisp!</p>
+          </div>
           <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-3">
             <div className="flex items-start gap-3">
               <span className="w-6 h-6 bg-sky-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
-              <p className="text-slate-600 text-sm">Creates a small iframe (320×120px) positioned at bottom-right - only covering the chat bubble</p>
+              <p className="text-slate-600 text-sm"><strong>Native DOM bubble</strong> - The chat bubble is a real HTML element on your page, NOT inside an iframe. This eliminates ALL background/blocking issues.</p>
             </div>
             <div className="flex items-start gap-3">
               <span className="w-6 h-6 bg-sky-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
-              <p className="text-slate-600 text-sm">When user clicks the bubble, the widget expands and sends a message to resize the iframe (400×620px)</p>
+              <p className="text-slate-600 text-sm"><strong>Hidden iframe</strong> - The chat window iframe is hidden by default (display:none). It only appears when the bubble is clicked.</p>
             </div>
             <div className="flex items-start gap-3">
               <span className="w-6 h-6 bg-sky-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
-              <p className="text-slate-600 text-sm">When minimized, iframe shrinks back - <strong>your page buttons remain clickable!</strong></p>
+              <p className="text-slate-600 text-sm"><strong>Clean close</strong> - When chat is minimized, the iframe hides and the native bubble reappears. <strong>Zero blocking, zero background issues!</strong></p>
             </div>
           </div>
         </section>
