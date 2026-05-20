@@ -163,7 +163,15 @@ export default function AliiceChatEmbed() {
   // Notify parent frame of open/close for iframe resizing
   useEffect(() => {
     if (typeof window !== "undefined" && window.parent !== window) {
-      window.parent.postMessage({ type: "aliice-chat", open: !minimized }, "*");
+      // Send dimensions so parent can resize iframe to only cover widget area
+      const dimensions = minimized 
+        ? { width: 320, height: 120 }  // Bubble + message tooltip
+        : { width: 400, height: 620 }; // Full widget
+      window.parent.postMessage({ 
+        type: "aliice-chat", 
+        open: !minimized,
+        ...dimensions
+      }, "*");
     }
   }, [minimized]);
 

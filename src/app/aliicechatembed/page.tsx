@@ -13,33 +13,61 @@ export default function AliiceChatEmbedDocs() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const iframeCodeEN = `<iframe
-  src="${baseUrl}/aliicechat/embed?lang=en"
-  style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999;"
-  allow="microphone"
-></iframe>`;
-
-  const iframeCodeFR = `<iframe
-  src="${baseUrl}/aliicechat/embed?lang=fr"
-  style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999;"
-  allow="microphone"
-></iframe>`;
-
-  const scriptCode = `<script>
+  // New smart embed code that auto-resizes and doesn't block clicks
+  const smartEmbedEN = `<script>
 (function() {
   var iframe = document.createElement('iframe');
+  iframe.id = 'aliice-chat-widget';
   iframe.src = '${baseUrl}/aliicechat/embed?lang=en';
-  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:100%;height:100%;border:none;z-index:9999;';
   iframe.allow = 'microphone';
+  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:120px;border:none;z-index:9999;background:transparent;';
   document.body.appendChild(iframe);
+  
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'aliice-chat') {
+      iframe.style.width = e.data.width + 'px';
+      iframe.style.height = e.data.height + 'px';
+    }
+  });
 })();
 </script>`;
 
-  const wordpressCode = `<iframe
-  src="${baseUrl}/aliicechat/embed?lang=en"
-  style="position: fixed; bottom: 0; right: 0; width: 100%; height: 100%; border: none; z-index: 9999;"
-  allow="microphone"
-></iframe>`;
+  const smartEmbedFR = `<script>
+(function() {
+  var iframe = document.createElement('iframe');
+  iframe.id = 'aliice-chat-widget';
+  iframe.src = '${baseUrl}/aliicechat/embed?lang=fr';
+  iframe.allow = 'microphone';
+  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:120px;border:none;z-index:9999;background:transparent;';
+  document.body.appendChild(iframe);
+  
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'aliice-chat') {
+      iframe.style.width = e.data.width + 'px';
+      iframe.style.height = e.data.height + 'px';
+    }
+  });
+})();
+</script>`;
+
+  const wordpressCode = `<!-- Aliice Chat Widget - Add to footer -->
+<script>
+(function() {
+  var iframe = document.createElement('iframe');
+  iframe.id = 'aliice-chat-widget';
+  iframe.src = '${baseUrl}/aliicechat/embed?lang=fr';
+  iframe.allow = 'microphone';
+  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:120px;border:none;z-index:9999;background:transparent;';
+  document.body.appendChild(iframe);
+  
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'aliice-chat') {
+      iframe.style.width = e.data.width + 'px';
+      iframe.style.height = e.data.height + 'px';
+    }
+  });
+})();
+</script>`;
 
   return (
     <div className="fixed inset-0 overflow-auto z-[9998]" style={{ background: "linear-gradient(135deg, #f8fafc 0%, #e0f2fe 50%, #f0f9ff 100%)" }}>
@@ -108,13 +136,16 @@ export default function AliiceChatEmbedDocs() {
           </p>
         </section>
 
-        {/* Method 1: iframe */}
+        {/* Method 1: Smart Embed Script (Recommended) */}
         <section>
-          <h2 className="text-2xl font-bold text-slate-800 mb-4">Method 1: iframe (Recommended)</h2>
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">Smart Embed Script (Recommended)</h2>
           <p className="text-slate-600 mb-4">
-            The simplest method that works on all platforms including WordPress. Just paste this code 
-            before the closing <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sm">&lt;/body&gt;</code> tag.
+            This smart script creates an auto-resizing iframe that <strong>doesn&apos;t block clicks</strong> on your page.
+            Just paste this code before the closing <code className="bg-slate-100 px-1.5 py-0.5 rounded text-sm">&lt;/body&gt;</code> tag.
           </p>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-4">
+            <p className="text-emerald-800 text-sm">✅ <strong>Recommended:</strong> The iframe auto-resizes to only cover the widget, allowing clicks to pass through to your page.</p>
+          </div>
           
           <div className="space-y-4">
             {/* English */}
@@ -122,14 +153,14 @@ export default function AliiceChatEmbedDocs() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-semibold text-slate-700">🇬🇧 English Version</span>
                 <button
-                  onClick={() => copyToClipboard(iframeCodeEN, "iframe-en")}
+                  onClick={() => copyToClipboard(smartEmbedEN, "embed-en")}
                   className="text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-1.5 rounded-full transition-colors"
                 >
-                  {copied === "iframe-en" ? "✓ Copied!" : "Copy Code"}
+                  {copied === "embed-en" ? "✓ Copied!" : "Copy Code"}
                 </button>
               </div>
               <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto">
-                <code>{iframeCodeEN}</code>
+                <code>{smartEmbedEN}</code>
               </pre>
             </div>
 
@@ -138,37 +169,36 @@ export default function AliiceChatEmbedDocs() {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-semibold text-slate-700">🇫🇷 French Version</span>
                 <button
-                  onClick={() => copyToClipboard(iframeCodeFR, "iframe-fr")}
+                  onClick={() => copyToClipboard(smartEmbedFR, "embed-fr")}
                   className="text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-1.5 rounded-full transition-colors"
                 >
-                  {copied === "iframe-fr" ? "✓ Copied!" : "Copy Code"}
+                  {copied === "embed-fr" ? "✓ Copied!" : "Copy Code"}
                 </button>
               </div>
               <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto">
-                <code>{iframeCodeFR}</code>
+                <code>{smartEmbedFR}</code>
               </pre>
             </div>
           </div>
         </section>
 
-        {/* Method 2: JavaScript */}
+        {/* How It Works */}
         <section>
-          <h2 className="text-2xl font-bold text-slate-800 mb-4">Method 2: JavaScript Snippet</h2>
-          <p className="text-slate-600 mb-4">
-            For dynamic loading, use this JavaScript snippet. It injects the iframe after page load.
-          </p>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-slate-700">JavaScript Loader</span>
-            <button
-              onClick={() => copyToClipboard(scriptCode, "script")}
-              className="text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 px-3 py-1.5 rounded-full transition-colors"
-            >
-              {copied === "script" ? "✓ Copied!" : "Copy Code"}
-            </button>
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">How The Smart Embed Works</h2>
+          <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="w-6 h-6 bg-sky-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
+              <p className="text-slate-600 text-sm">Creates a small iframe (320×120px) positioned at bottom-right - only covering the chat bubble</p>
+            </div>
+            <div className="flex items-start gap-3">
+              <span className="w-6 h-6 bg-sky-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
+              <p className="text-slate-600 text-sm">When user clicks the bubble, the widget expands and sends a message to resize the iframe (400×620px)</p>
+            </div>
+            <div className="flex items-start gap-3">
+              <span className="w-6 h-6 bg-sky-500 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
+              <p className="text-slate-600 text-sm">When minimized, iframe shrinks back - <strong>your page buttons remain clickable!</strong></p>
+            </div>
           </div>
-          <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto">
-            <code>{scriptCode}</code>
-          </pre>
         </section>
 
         {/* WordPress Instructions */}
