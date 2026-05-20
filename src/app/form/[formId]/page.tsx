@@ -43,6 +43,13 @@ const BREAST_SURGERY_FORM_IDS = new Set([
   "consentement-eclaire-en",
   "preoperative-instructions-en",
   "consignes-pre-post-op-fr",
+  "surgery-questionnaire-anesthesie-fr",
+  "surgery-questionnaire-anesthesie-en",
+  "surgery-consentement-anesthesie-fr",
+  "surgery-consentement-anesthesie-en",
+  "surgery-consentement-eclaire-fr",
+  "surgery-consentement-eclaire-en",
+  "surgery-preoperative-instructions-en",
 ]);
 
 function getFormFieldIds(form: FormDefinition): Set<string> {
@@ -556,14 +563,14 @@ function PdfRadioChoice({
   onChange: (fieldId: string, value: string | boolean | string[]) => void;
 }) {
   return (
-    <label className="inline-flex items-center gap-1 whitespace-nowrap text-[13px] leading-5 text-slate-900">
+    <label className="inline-flex items-start gap-1 text-[13px] leading-5 text-slate-900">
       <input
         type="radio"
         name={id}
         value={option}
         checked={value === option}
         onChange={(event) => onChange(id, event.target.value)}
-        className="h-3 w-3 border-slate-500 text-sky-600 focus:ring-1 focus:ring-sky-400"
+        className="mt-1 h-3 w-3 shrink-0 border-slate-500 text-sky-600 focus:ring-1 focus:ring-sky-400"
       />
       {label}
     </label>
@@ -699,6 +706,52 @@ function PdfDocumentLine({
 
   const lower = trimmed.toLowerCase();
   const normalized = lower.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const placeholderPattern = /(?:[._\u2026]{4,}|(?:â€¦){2,}|(?:Ã¢â‚¬Â¦){2,})/;
+  const placeholderGlobalPattern = /(?:[._\u2026]{4,}|(?:â€¦){2,}|(?:Ã¢â‚¬Â¦){2,})/g;
+  const placeholderOnlyPattern = /^(?:[._\u2026\s]|â€¦|Ã¢â‚¬Â¦)+$/;
+
+  if (placeholderOnlyPattern.test(trimmed)) {
+    return <div className="my-3 h-4 w-full border-b border-dotted border-slate-700" />;
+  }
+
+  if (/^(nom|surname)\s*:/.test(normalized) && /(prenom|first name)\s*:/.test(normalized)) {
+    return (
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
+        <div className="flex min-w-0 flex-1 items-end gap-2">
+          <span>{trimmed.match(/^[^:]+/)?.[0] || "NOM"}:</span>
+          <PdfTextInput id="last_name" value={formData.last_name} onChange={onChange} className="min-w-24 flex-1" />
+        </div>
+        <div className="flex min-w-0 flex-1 items-end gap-2">
+          <span>{trimmed.match(/(PRENOM|Prénom|First name|FIRST NAME)/)?.[0] || "PRENOM"}:</span>
+          <PdfTextInput id="first_name" value={formData.first_name} onChange={onChange} className="min-w-24 flex-1" />
+        </div>
+      </div>
+    );
+  }
+
+  if (/^first name\s*:/.test(normalized) && /\bname\s*:/.test(normalized)) {
+    return (
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
+        <div className="flex min-w-0 flex-1 items-end gap-2">
+          <span>FIRST NAME:</span>
+          <PdfTextInput id="first_name" value={formData.first_name} onChange={onChange} className="min-w-24 flex-1" />
+        </div>
+        <div className="flex min-w-0 flex-1 items-end gap-2">
+          <span>NAME:</span>
+          <PdfTextInput id="last_name" value={formData.last_name} onChange={onChange} className="min-w-24 flex-1" />
+        </div>
+      </div>
+    );
+  }
+
+  if (/^(nom du patient|patient name)\s*:/.test(normalized)) {
+    return (
+      <div className="flex flex-wrap items-end gap-2">
+        <span>{trimmed.split(":")[0]}:</span>
+        <PdfTextInput id="full_name" value={formData.full_name} onChange={onChange} />
+      </div>
+    );
+  }
 
   if (/^(nom|surname|name)\s*:/.test(normalized)) {
     const fieldId = normalized.startsWith("name") && fieldIds.has("first_name")
@@ -724,7 +777,7 @@ function PdfDocumentLine({
     );
   }
 
-  if (/^(date de naissance|date of birth)\s*:/.test(normalized)) {
+  if (/^(date de naissance|date naissance|date of birth|ne\(e\) le)\s*:/.test(normalized)) {
     return (
       <div className="flex flex-wrap items-end gap-2">
         <span>{trimmed.split(":")[0]}:</span>
@@ -739,6 +792,72 @@ function PdfDocumentLine({
         <span>{trimmed.split(":")[0]}:</span>
         <PdfTextInput id="signature_date" type="date" value={formData.signature_date} onChange={onChange} className="w-44" />
       </div>
+    );
+  }
+
+  if (/^lieu\/date\s*:/.test(normalized)) {
+    return (
+      <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
+        <div className="flex items-end gap-2">
+          <span>Lieu/Date:</span>
+          <PdfTextInput id="signature_date" type="date" value={formData.signature_date} onChange={onChange} className="w-44" />
+        </div>
+        <div className="flex min-w-52 flex-1 items-end gap-2">
+          <span>Lieu/Date:</span>
+          <span className="h-5 flex-1 border-b border-dotted border-slate-700" />
+        </div>
+      </div>
+    );
+  }
+
+  if (normalized.includes("the undersigned authorizes")) {
+    return (
+      <PdfRadioChoice
+        id="photo_video_authorization"
+        option="authorized"
+        label="The undersigned authorizes the use of the photography and video material for medical research, scientific presentations and illustration, as long as his/her identity is not revealed."
+        value={formData.photo_video_authorization}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (normalized.includes("le/la patient/e autorise")) {
+    return (
+      <PdfRadioChoice
+        id="photo_video_authorization"
+        option="authorized"
+        label="Le/la patient/e autorise l'utilisation du matériel photographique et vidéo dans le but de la recherche médicale, des présentations scientifiques et comme matériel d'illustration, à condition que son identité ne soit pas dévoilée."
+        value={formData.photo_video_authorization}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (normalized.includes("the patient does not authorize")) {
+    return (
+      <PdfRadioChoice
+        id="photo_video_authorization"
+        option="not_authorized"
+        label="The patient does not authorize the use of photographic or video material."
+        value={formData.photo_video_authorization}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (
+    normalized.includes("le/la patient/e n'autorise") ||
+    normalized.includes("le/la patient/e n’autorise")
+  ) {
+    return (
+      <PdfRadioChoice
+        id="photo_video_authorization"
+        option="not_authorized"
+        label="Le/la patient/e n'autorise en aucun cas l'utilisation de son matériel photographique et vidéo."
+        value={formData.photo_video_authorization}
+        onChange={onChange}
+      />
     );
   }
 
@@ -758,7 +877,19 @@ function PdfDocumentLine({
     return <p className="pl-4">{trimmed}</p>;
   }
 
-  return <p>{trimmed}</p>;
+  if (placeholderPattern.test(trimmed)) {
+    const label = trimmed.replace(placeholderGlobalPattern, "").trim();
+    if (label) {
+      return (
+        <div className="flex flex-wrap items-end gap-2">
+          <span className="min-w-0 break-words">{label}</span>
+          <span className="h-5 min-w-32 flex-1 border-b border-dotted border-slate-700" />
+        </div>
+      );
+    }
+  }
+
+  return <p className="break-words">{trimmed}</p>;
 }
 
 function PdfDocumentContent({
@@ -1255,7 +1386,11 @@ export default function PublicFormPage() {
   const alternateLanguageUrl = alternateLanguageForm
     ? `/form/${alternateLanguageForm.id}${token ? `?token=${encodeURIComponent(token)}` : ""}`
     : null;
-  const isAnesthesiaQuestionnaire = form.id === "questionnaire-anesthesie-fr" || form.id === "questionnaire-anesthesie-en";
+  const isAnesthesiaQuestionnaire =
+    form.id === "questionnaire-anesthesie-fr" ||
+    form.id === "questionnaire-anesthesie-en" ||
+    form.id === "surgery-questionnaire-anesthesie-fr" ||
+    form.id === "surgery-questionnaire-anesthesie-en";
   const isBreastSurgeryForm = BREAST_SURGERY_FORM_IDS.has(form.id);
 
   return (

@@ -42,6 +42,22 @@ const breastSurgeryFormIdsByLanguage = {
   ],
 };
 
+const surgeryFormIdsByLanguage = {
+  en: [
+    "surgery-questionnaire-anesthesie-en",
+    "surgery-consentement-anesthesie-en",
+    "surgery-consentement-eclaire-en",
+    "surgery-preoperative-instructions-en",
+  ],
+  fr: [
+    "surgery-questionnaire-anesthesie-fr",
+    "surgery-consentement-anesthesie-fr",
+    "surgery-consentement-eclaire-fr",
+    "surgery-consentement-eclaire-en",
+    "surgery-preoperative-instructions-en",
+  ],
+};
+
 type BreastFormsSendModalProps = {
   patientId: string;
   patientEmail: string | null;
@@ -58,13 +74,25 @@ function BreastFormsSendModal({
   onSuccess,
 }: BreastFormsSendModalProps) {
   const language: "fr" = "fr";
-  const [selectedFormIds, setSelectedFormIds] = useState<string[]>(breastSurgeryFormIdsByLanguage.fr);
+  const formGroups = [
+    {
+      title: "Chirurgie mammaire",
+      formIds: breastSurgeryFormIdsByLanguage[language],
+    },
+    {
+      title: "Chirurgie",
+      formIds: surgeryFormIdsByLanguage[language],
+    },
+  ].map((group) => ({
+    ...group,
+    forms: group.formIds
+      .map((formId) => getFormById(formId))
+      .filter((form): form is NonNullable<ReturnType<typeof getFormById>> => Boolean(form)),
+  }));
+
+  const [selectedFormIds, setSelectedFormIds] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const forms = breastSurgeryFormIdsByLanguage[language]
-    .map((formId) => getFormById(formId))
-    .filter((form): form is NonNullable<ReturnType<typeof getFormById>> => Boolean(form));
 
   const handleToggleForm = (formId: string) => {
     setSelectedFormIds((current) =>
@@ -129,7 +157,7 @@ function BreastFormsSendModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: patientEmail,
-          subject: "Formulaires de chirurgie mammaire à compléter",
+          subject: "Formulaires de chirurgie à compléter",
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto;">
               <h2 style="color: #1e293b;">${greeting}</h2>
@@ -151,7 +179,7 @@ function BreastFormsSendModal({
       onSuccess();
       onClose();
     } catch (err) {
-      console.error("Error sending breast surgery forms:", err);
+      console.error("Error sending surgery forms:", err);
       setError(err instanceof Error ? err.message : "Failed to send forms");
     } finally {
       setSending(false);
@@ -178,35 +206,39 @@ function BreastFormsSendModal({
           </div>
         )}
 
-        <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-              Chirurgie mammaire
-            </h3>
-            <span className="text-[11px] font-medium text-slate-500">
-              {forms.length} forms
-            </span>
-          </div>
-          <div className="space-y-2">
-            {forms.map((form) => (
-              <label key={form.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-sky-50">
-                <input
-                  type="checkbox"
-                  checked={selectedFormIds.includes(form.id)}
-                  onChange={() => handleToggleForm(form.id)}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-slate-900">
-                    {form.language === "fr" && form.nameFr ? form.nameFr : form.name}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-slate-500">
-                    {form.language === "fr" && form.descriptionFr ? form.descriptionFr : form.description}
-                  </span>
+        <div className="max-h-72 space-y-4 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {formGroups.map((group) => (
+            <div key={group.title}>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  {group.title}
+                </h3>
+                <span className="text-[11px] font-medium text-slate-500">
+                  {group.forms.length} forms
                 </span>
-              </label>
-            ))}
-          </div>
+              </div>
+              <div className="space-y-2">
+                {group.forms.map((form) => (
+                  <label key={form.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-sky-50">
+                    <input
+                      type="checkbox"
+                      checked={selectedFormIds.includes(form.id)}
+                      onChange={() => handleToggleForm(form.id)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-sky-500 focus:ring-2 focus:ring-sky-100"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-slate-900">
+                        {form.language === "fr" && form.nameFr ? form.nameFr : form.name}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        {form.language === "fr" && form.descriptionFr ? form.descriptionFr : form.description}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="mt-4 flex items-center justify-between gap-3">

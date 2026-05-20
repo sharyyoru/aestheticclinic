@@ -2084,6 +2084,22 @@ function overrideForm(formId: string, originalFile: string, sections: FormSectio
   form.sections = sections;
 }
 
+function cloneFormForFolder(formId: string, clonedFormId: string, folder: string, originalFile: string) {
+  const form = FORM_DEFINITIONS.find((definition) => definition.id === formId);
+  if (!form) return;
+
+  FORM_DEFINITIONS.push({
+    ...form,
+    id: clonedFormId,
+    originalFile: `${folder}/${originalFile}`,
+    sections: form.sections.map((section) => ({
+      ...section,
+      fields: section.fields.map((field) => ({ ...field })),
+      content: section.content?.map((block) => ({ ...block })),
+    })),
+  });
+}
+
 const anesthesiaQuestionnaireFr = FORM_DEFINITIONS.find((form) => form.id === "questionnaire-anesthesie-fr");
 if (anesthesiaQuestionnaireFr) {
   anesthesiaQuestionnaireFr.sections = ANESTHESIA_QUESTIONNAIRE_FR_SECTIONS;
@@ -2155,6 +2171,14 @@ overrideForm("consentement-eclaire-en", "INFORMED CONSENT.docx", exactDocumentSe
 overrideForm("preoperative-instructions-en", "Preoperative instruction OP ENG (1).docx", exactDocumentSections("en", "Pre and Post-operative Instructions", undefined, PRE_POST_INSTRUCTIONS_EN_SOURCE));
 overrideForm("consignes-pre-post-op-fr", "consignes pre et post op FR (1).docx", exactDocumentSections("fr", "Pre and Post-operative Instructions", "Consignes pré et post-opératoires", PRE_POST_INSTRUCTIONS_FR_SOURCE));
 
+cloneFormForFolder("questionnaire-anesthesie-fr", "surgery-questionnaire-anesthesie-fr", "surgery", "FR - Questionnaire d'anesthésie (1).pdf");
+cloneFormForFolder("questionnaire-anesthesie-en", "surgery-questionnaire-anesthesie-en", "surgery", "EN - Questionnaire d'anesthésie .pdf");
+cloneFormForFolder("consentement-anesthesie-fr", "surgery-consentement-anesthesie-fr", "surgery", "Consentement anesthésie - Aesthetics.pdf");
+cloneFormForFolder("consentement-anesthesie-en", "surgery-consentement-anesthesie-en", "surgery", "EN - Consentement anesthésie.pdf");
+cloneFormForFolder("consentement-eclaire-fr", "surgery-consentement-eclaire-fr", "surgery", "CONSENTEMENT ÉCLAIRÉ (1).docx");
+cloneFormForFolder("consentement-eclaire-en", "surgery-consentement-eclaire-en", "surgery", "INFORMED CONSENT.docx");
+cloneFormForFolder("preoperative-instructions-en", "surgery-preoperative-instructions-en", "surgery", "Preoperative instruction OP ENG (1).docx");
+
 const ALTERNATE_LANGUAGE_FORM_IDS: Record<string, string> = {
   "questionnaire-anesthesie-fr": "questionnaire-anesthesie-en",
   "questionnaire-anesthesie-en": "questionnaire-anesthesie-fr",
@@ -2168,6 +2192,12 @@ const ALTERNATE_LANGUAGE_FORM_IDS: Record<string, string> = {
   "consentement-eclaire-en": "consentement-eclaire-fr",
   "preoperative-instructions-en": "consignes-pre-post-op-fr",
   "consignes-pre-post-op-fr": "preoperative-instructions-en",
+  "surgery-questionnaire-anesthesie-fr": "surgery-questionnaire-anesthesie-en",
+  "surgery-questionnaire-anesthesie-en": "surgery-questionnaire-anesthesie-fr",
+  "surgery-consentement-anesthesie-fr": "surgery-consentement-anesthesie-en",
+  "surgery-consentement-anesthesie-en": "surgery-consentement-anesthesie-fr",
+  "surgery-consentement-eclaire-fr": "surgery-consentement-eclaire-en",
+  "surgery-consentement-eclaire-en": "surgery-consentement-eclaire-fr",
 };
 
 export function getAlternateLanguageFormId(formId: string): string | undefined {
