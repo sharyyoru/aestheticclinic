@@ -87,10 +87,17 @@ function linkify(text: string): React.ReactNode[] {
 }
 
 const globalStyles = `
-  html, body, body > div, body > div > div, #__next, #__next > div { 
+  html, body, #__next, div:not(.aliice-keep-bg) { 
     background: transparent !important; 
     background-color: transparent !important;
     background-image: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+  html, body {
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
   @keyframes embedBounce {
     0% { transform: scale(0) rotate(-10deg); opacity: 0; }
@@ -355,7 +362,7 @@ export default function AliiceChatEmbed() {
       <div className="fixed bottom-4 right-4 z-[9999] flex items-end gap-3">
         <style>{globalStyles}</style>
         <div onClick={() => setMinimized(false)}
-          className="embed-msg-bubble cursor-pointer bg-white rounded-2xl rounded-br-sm px-4 py-3 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow">
+          className="aliice-keep-bg embed-msg-bubble cursor-pointer bg-white rounded-2xl rounded-br-sm px-4 py-3 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow">
           <p className="text-sm font-medium text-slate-800">
             {lang === "fr" ? "Parler avec Aliice 💬" : "Speak to Aliice 💬"}
           </p>
@@ -374,7 +381,7 @@ export default function AliiceChatEmbed() {
   }
 
   // Widget container - small offset from iframe edge
-  const widgetContainerClass = "fixed bottom-4 right-4 z-[9999] w-[400px] max-w-[calc(100vw-32px)] h-[600px] max-h-[calc(100vh-32px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden";
+  const widgetContainerClass = "aliice-keep-bg fixed bottom-4 right-4 z-[9999] w-[400px] max-w-[calc(100vw-32px)] h-[600px] max-h-[calc(100vh-32px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden";
   const widgetContainerStyle = { boxShadow: "0 25px 60px -12px rgba(0,0,0,0.3)" };
 
   // Header component

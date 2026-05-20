@@ -20,13 +20,9 @@ function isTransparentRoute(pathname: string): boolean {
 export function ShellBackground({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   
-  // Embed routes get transparent background with no padding
+  // Embed routes: NO wrapper div at all - just render children directly
   if (isTransparentRoute(pathname)) {
-    return (
-      <div className="min-h-screen bg-transparent">
-        {children}
-      </div>
-    );
+    return <>{children}</>;
   }
   
   // Regular routes get the gradient background with padding
