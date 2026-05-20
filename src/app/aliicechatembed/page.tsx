@@ -20,7 +20,7 @@ export default function AliiceChatEmbedDocs() {
   iframe.id = 'aliice-chat-widget';
   iframe.src = '${baseUrl}/aliicechat/embed?lang=en';
   iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:120px;border:none;z-index:9999;background:transparent;';
+  iframe.style.cssText = 'position:fixed;bottom:60px;right:0;width:340px;height:160px;border:none;z-index:9999;background:transparent;';
   document.body.appendChild(iframe);
   
   window.addEventListener('message', function(e) {
@@ -38,7 +38,7 @@ export default function AliiceChatEmbedDocs() {
   iframe.id = 'aliice-chat-widget';
   iframe.src = '${baseUrl}/aliicechat/embed?lang=fr';
   iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:120px;border:none;z-index:9999;background:transparent;';
+  iframe.style.cssText = 'position:fixed;bottom:60px;right:0;width:340px;height:160px;border:none;z-index:9999;background:transparent;';
   document.body.appendChild(iframe);
   
   window.addEventListener('message', function(e) {
@@ -57,7 +57,7 @@ export default function AliiceChatEmbedDocs() {
   iframe.id = 'aliice-chat-widget';
   iframe.src = '${baseUrl}/aliicechat/embed?lang=fr';
   iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:120px;border:none;z-index:9999;background:transparent;';
+  iframe.style.cssText = 'position:fixed;bottom:60px;right:0;width:340px;height:160px;border:none;z-index:9999;background:transparent;';
   document.body.appendChild(iframe);
   
   window.addEventListener('message', function(e) {

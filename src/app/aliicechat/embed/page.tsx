@@ -91,10 +91,6 @@ const globalStyles = `
     background: transparent !important; 
     background-color: transparent !important;
     background-image: none !important;
-    pointer-events: none !important;
-  }
-  .aliice-widget, .aliice-widget * {
-    pointer-events: auto !important;
   }
   @keyframes embedBounce {
     0% { transform: scale(0) rotate(-10deg); opacity: 0; }
@@ -165,8 +161,8 @@ export default function AliiceChatEmbed() {
     if (typeof window !== "undefined" && window.parent !== window) {
       // Send dimensions so parent can resize iframe to only cover widget area
       const dimensions = minimized 
-        ? { width: 320, height: 120 }  // Bubble + message tooltip
-        : { width: 400, height: 620 }; // Full widget
+        ? { width: 340, height: 160 }  // Bubble + message tooltip + padding
+        : { width: 420, height: 640 }; // Full widget + padding
       window.parent.postMessage({ 
         type: "aliice-chat", 
         open: !minimized,
@@ -353,10 +349,10 @@ export default function AliiceChatEmbed() {
   }, [input, chatId, thinking, t]);
 
 
-  // Minimized bubble - positioned higher to avoid scroll-to-top buttons on external sites
+  // Minimized bubble - small offset from iframe edge
   if (minimized) {
     return (
-      <div className="aliice-widget fixed bottom-20 right-5 z-[9999] flex items-end gap-3">
+      <div className="fixed bottom-4 right-4 z-[9999] flex items-end gap-3">
         <style>{globalStyles}</style>
         <div onClick={() => setMinimized(false)}
           className="embed-msg-bubble cursor-pointer bg-white rounded-2xl rounded-br-sm px-4 py-3 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow">
@@ -377,8 +373,8 @@ export default function AliiceChatEmbed() {
     );
   }
 
-  // Widget container - positioned higher to avoid scroll-to-top buttons
-  const widgetContainerClass = "aliice-widget fixed bottom-20 right-5 z-[9999] w-[380px] max-w-[calc(100vw-40px)] h-[560px] max-h-[calc(100vh-100px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden";
+  // Widget container - small offset from iframe edge
+  const widgetContainerClass = "fixed bottom-4 right-4 z-[9999] w-[400px] max-w-[calc(100vw-32px)] h-[600px] max-h-[calc(100vh-32px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden";
   const widgetContainerStyle = { boxShadow: "0 25px 60px -12px rgba(0,0,0,0.3)" };
 
   // Header component
