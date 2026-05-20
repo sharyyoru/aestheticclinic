@@ -91,8 +91,11 @@ const globalStyles = `
     background: transparent !important; 
     background-color: transparent !important;
     background-image: none !important;
+    pointer-events: none !important;
   }
-  * { background-color: inherit; }
+  .aliice-widget, .aliice-widget * {
+    pointer-events: auto !important;
+  }
   @keyframes embedBounce {
     0% { transform: scale(0) rotate(-10deg); opacity: 0; }
     60% { transform: scale(1.1) rotate(3deg); }
@@ -345,7 +348,7 @@ export default function AliiceChatEmbed() {
   // Minimized bubble - positioned higher to avoid scroll-to-top buttons on external sites
   if (minimized) {
     return (
-      <div className="fixed bottom-20 right-5 z-[9999] flex items-end gap-3">
+      <div className="aliice-widget fixed bottom-20 right-5 z-[9999] flex items-end gap-3">
         <style>{globalStyles}</style>
         <div onClick={() => setMinimized(false)}
           className="embed-msg-bubble cursor-pointer bg-white rounded-2xl rounded-br-sm px-4 py-3 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow">
@@ -367,7 +370,7 @@ export default function AliiceChatEmbed() {
   }
 
   // Widget container - positioned higher to avoid scroll-to-top buttons
-  const widgetContainerClass = "fixed bottom-20 right-5 z-[9999] w-[380px] max-w-[calc(100vw-40px)] h-[560px] max-h-[calc(100vh-100px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden";
+  const widgetContainerClass = "aliice-widget fixed bottom-20 right-5 z-[9999] w-[380px] max-w-[calc(100vw-40px)] h-[560px] max-h-[calc(100vh-100px)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden";
   const widgetContainerStyle = { boxShadow: "0 25px 60px -12px rgba(0,0,0,0.3)" };
 
   // Header component
