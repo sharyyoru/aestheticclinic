@@ -167,8 +167,10 @@ export default function AliiceChatEmbed() {
   useEffect(() => {
     if (typeof window !== "undefined" && window.parent !== window) {
       // Send dimensions so parent can resize iframe to only cover widget area
+      // MINIMIZED: Just the bubble (88x88px) - tiny footprint, doesn't block page
+      // EXPANDED: Full chat widget
       const dimensions = minimized 
-        ? { width: 340, height: 160 }  // Bubble + message tooltip + padding
+        ? { width: 88, height: 88 }    // Just the circular bubble + padding
         : { width: 420, height: 640 }; // Full widget + padding
       window.parent.postMessage({ 
         type: "aliice-chat", 
@@ -356,22 +358,14 @@ export default function AliiceChatEmbed() {
   }, [input, chatId, thinking, t]);
 
 
-  // Minimized bubble - small offset from iframe edge
+  // Minimized bubble - JUST the circular button, no tooltip text
+  // This makes the iframe tiny (80x80px) so it doesn't block page content
   if (minimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-[9999] flex items-end gap-3">
+      <div className="fixed bottom-0 right-0 z-[9999] p-3">
         <style>{globalStyles}</style>
-        <div onClick={() => setMinimized(false)}
-          className="aliice-keep-bg embed-msg-bubble cursor-pointer bg-white rounded-2xl rounded-br-sm px-4 py-3 shadow-lg border border-slate-100 hover:shadow-xl transition-shadow">
-          <p className="text-sm font-medium text-slate-800">
-            {lang === "fr" ? "Parler avec Aliice 💬" : "Speak to Aliice 💬"}
-          </p>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {lang === "fr" ? "Je suis là pour vous aider!" : "I'm here to help!"}
-          </p>
-        </div>
         <button onClick={() => setMinimized(false)}
-          className="embed-bubble embed-pulse relative w-16 h-16 rounded-full bg-gradient-to-br from-sky-400 via-sky-500 to-blue-600 shadow-2xl flex items-center justify-center transition-transform cursor-pointer flex-shrink-0"
+          className="embed-bubble embed-pulse relative w-16 h-16 rounded-full bg-gradient-to-br from-sky-400 via-sky-500 to-blue-600 shadow-2xl flex items-center justify-center transition-transform cursor-pointer"
           style={{ boxShadow: "0 8px 32px rgba(14,165,233,0.5)" }}>
           <Image src="/logos/AliiceAgent.jpg" alt="Chat with Aliice" width={52} height={52} className="rounded-full border-2 border-white/90 object-cover" />
           <span className="absolute bottom-1 right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-white" />

@@ -13,14 +13,14 @@ export default function AliiceChatEmbedDocs() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  // New smart embed code that auto-resizes and doesn't block clicks
+  // New smart embed code - TINY iframe that only covers the bubble
   const smartEmbedEN = `<script>
 (function() {
   var iframe = document.createElement('iframe');
   iframe.id = 'aliice-chat-widget';
   iframe.src = '${baseUrl}/aliicechat/embed?lang=en';
   iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:60px;right:0;width:340px;height:160px;border:none;z-index:9999;background:transparent;';
+  iframe.style.cssText = 'position:fixed;bottom:60px;right:12px;width:88px;height:88px;border:none;z-index:9999;background:transparent;';
   document.body.appendChild(iframe);
   
   window.addEventListener('message', function(e) {
@@ -38,7 +38,7 @@ export default function AliiceChatEmbedDocs() {
   iframe.id = 'aliice-chat-widget';
   iframe.src = '${baseUrl}/aliicechat/embed?lang=fr';
   iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:60px;right:0;width:340px;height:160px;border:none;z-index:9999;background:transparent;';
+  iframe.style.cssText = 'position:fixed;bottom:60px;right:12px;width:88px;height:88px;border:none;z-index:9999;background:transparent;';
   document.body.appendChild(iframe);
   
   window.addEventListener('message', function(e) {
@@ -57,7 +57,7 @@ export default function AliiceChatEmbedDocs() {
   iframe.id = 'aliice-chat-widget';
   iframe.src = '${baseUrl}/aliicechat/embed?lang=fr';
   iframe.allow = 'microphone';
-  iframe.style.cssText = 'position:fixed;bottom:60px;right:0;width:340px;height:160px;border:none;z-index:9999;background:transparent;';
+  iframe.style.cssText = 'position:fixed;bottom:60px;right:12px;width:88px;height:88px;border:none;z-index:9999;background:transparent;';
   document.body.appendChild(iframe);
   
   window.addEventListener('message', function(e) {
