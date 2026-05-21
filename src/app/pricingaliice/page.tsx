@@ -5,7 +5,7 @@ import Image from "next/image";
 import { 
   Building2, CheckCircle, HardDrive,
   Rocket, Stethoscope, Calculator, ArrowRight,
-  ChevronDown
+  ChevronDown, X, Loader2
 } from "lucide-react";
 
 // Currency rates (CHF as base)
@@ -132,6 +132,37 @@ export default function PricingAliicePage() {
   const [extraStorage, setExtraStorage] = useState(0);
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">("monthly");
   const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
+  const [showInquiryModal, setShowInquiryModal] = useState(false);
+  const [inquiryForm, setInquiryForm] = useState({ name: "", email: "", mobile: "" });
+  const [inquiryLoading, setInquiryLoading] = useState(false);
+  const [inquirySuccess, setInquirySuccess] = useState(false);
+  const [inquiryError, setInquiryError] = useState("");
+
+  const handleInquirySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInquiryLoading(true);
+    setInquiryError("");
+    try {
+      const res = await fetch("/api/public/inquiry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(inquiryForm),
+      });
+      if (!res.ok) throw new Error("Failed to send");
+      setInquirySuccess(true);
+      setInquiryForm({ name: "", email: "", mobile: "" });
+    } catch {
+      setInquiryError("Failed to send inquiry. Please try again.");
+    } finally {
+      setInquiryLoading(false);
+    }
+  };
+
+  const openInquiryModal = () => {
+    setShowInquiryModal(true);
+    setInquirySuccess(false);
+    setInquiryError("");
+  };
 
   const currencyData = CURRENCIES[currency];
   
@@ -588,22 +619,111 @@ export default function PricingAliicePage() {
             Join clinics that are saving time and money with Aliice&apos;s all-in-one platform.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <a
-              href="/"
+            <button
+              onClick={openInquiryModal}
               className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all"
             >
               Start Free Trial
               <ArrowRight className="w-5 h-5" />
-            </a>
-            <a
-              href="mailto:contact@aliice.ch"
+            </button>
+            <button
+              onClick={openInquiryModal}
               className="inline-flex items-center gap-2 px-8 py-4 bg-slate-700 text-white font-semibold rounded-xl hover:bg-slate-600 transition-all"
             >
               Contact Sales
-            </a>
+            </button>
           </div>
         </section>
       </main>
+
+      {/* Inquiry Modal */}
+      {showInquiryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-md bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl">
+            <button
+              onClick={() => setShowInquiryModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="p-8">
+              {inquirySuccess ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                    <CheckCircle className="w-8 h-8 text-emerald-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">Thank You!</h3>
+                  <p className="text-slate-400 mb-6">We&apos;ll be in touch shortly.</p>
+                  <button
+                    onClick={() => setShowInquiryModal(false)}
+                    className="px-6 py-3 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <h3 className="text-2xl font-bold text-white mb-2">Get Started with Aliice</h3>
+                  <p className="text-slate-400 mb-6">Fill in your details and we&apos;ll contact you soon.</p>
+
+                  <form onSubmit={handleInquirySubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={inquiryForm.name}
+                        onChange={(e) => setInquiryForm({ ...inquiryForm, name: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 transition-colors"
+                        placeholder="Your name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
+                      <input
+                        type="email"
+                        required
+                        value={inquiryForm.email}
+                        onChange={(e) => setInquiryForm({ ...inquiryForm, email: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 transition-colors"
+                        placeholder="you@clinic.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">Mobile</label>
+                      <input
+                        type="tel"
+                        required
+                        value={inquiryForm.mobile}
+                        onChange={(e) => setInquiryForm({ ...inquiryForm, mobile: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 transition-colors"
+                        placeholder="+41 79 123 4567"
+                      />
+                    </div>
+
+                    {inquiryError && (
+                      <p className="text-red-400 text-sm">{inquiryError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={inquiryLoading}
+                      className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {inquiryLoading ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" /> Sending...</>
+                      ) : (
+                        <>Submit Inquiry<ArrowRight className="w-5 h-5" /></>
+                      )}
+                    </button>
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
