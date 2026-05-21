@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { 
-  Sparkles, 
   Play, 
   Pause, 
   RotateCcw, 
@@ -11,7 +10,8 @@ import {
   Volume2,
   Loader2,
   Wand2,
-  ChevronDown
+  Square,
+  VolumeX
 } from "lucide-react";
 
 type StoryTheme = "adventure" | "fantasy" | "animals" | "space" | "ocean" | "friendship";
@@ -25,76 +25,57 @@ const THEMES: { id: StoryTheme; label: string; emoji: string }[] = [
   { id: "friendship", label: "Friendship", emoji: "💫" },
 ];
 
-const VOICES = [
-  { id: "nova", label: "Nova", description: "Warm & gentle" },
-  { id: "shimmer", label: "Shimmer", description: "Soft & dreamy" },
-  { id: "alloy", label: "Alloy", description: "Calm & neutral" },
-  { id: "echo", label: "Echo", description: "Deep & soothing" },
-  { id: "fable", label: "Fable", description: "British & warm" },
-  { id: "onyx", label: "Onyx", description: "Deep & rich" },
-];
-
 export default function AliiceStoryPage() {
   const [childName, setChildName] = useState("");
   const [theme, setTheme] = useState<StoryTheme>("fantasy");
   const [customPrompt, setCustomPrompt] = useState("");
-  const [voice, setVoice] = useState("nova");
+  const [selectedVoiceIndex, setSelectedVoiceIndex] = useState(0);
   
   const [story, setStory] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
   const [error, setError] = useState("");
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [speechSupported, setSpeechSupported] = useState(true);
   
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUrlRef = useRef<string | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // Cleanup audio URL on unmount
+  // Load available voices
   useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      setSpeechSupported(false);
+      return;
+    }
+
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoices = voices.filter(v => v.lang.startsWith("en"));
+      setAvailableVoices(englishVoices.length > 0 ? englishVoices.slice(0, 8) : voices.slice(0, 8));
+    };
+
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
     return () => {
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
+      window.speechSynthesis.cancel();
     };
   }, []);
 
-  // Update progress during playback
+  // Cleanup on unmount
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const updateProgress = () => {
-      if (audio.duration) {
-        setProgress((audio.currentTime / audio.duration) * 100);
+    return () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
       }
     };
-
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setProgress(0);
-    };
-
-    const handleLoadedMetadata = () => {
-      setDuration(audio.duration);
-    };
-
-    audio.addEventListener("timeupdate", updateProgress);
-    audio.addEventListener("ended", handleEnded);
-    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
-
-    return () => {
-      audio.removeEventListener("timeupdate", updateProgress);
-      audio.removeEventListener("ended", handleEnded);
-      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
-    };
-  }, [story]);
+  }, []);
 
   const generateStory = async () => {
     setIsGenerating(true);
     setError("");
     setStory("");
+    stopSpeech();
     
     try {
       const response = await fetch("/api/story/generate", {
@@ -121,89 +102,98 @@ export default function AliiceStoryPage() {
     }
   };
 
-  const generateAudio = async () => {
-    if (!story) return;
+  const startSpeech = () => {
+    if (!story || !speechSupported) return;
     
-    setIsGeneratingAudio(true);
-    setError("");
+    window.speechSynthesis.cancel();
     
-    try {
-      const response = await fetch("/api/story/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: story, voice }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate audio");
-      }
-
-      const audioBlob = await response.blob();
-      
-      // Revoke previous URL
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
-      
-      const audioUrl = URL.createObjectURL(audioBlob);
-      audioUrlRef.current = audioUrl;
-      
-      if (audioRef.current) {
-        audioRef.current.src = audioUrl;
-        audioRef.current.load();
-      }
-    } catch (err) {
-      setError("Failed to generate audio. Please try again.");
-      console.error(err);
-    } finally {
-      setIsGeneratingAudio(false);
+    const utterance = new SpeechSynthesisUtterance(story);
+    utterance.rate = 0.85; // Slower for bedtime
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    
+    if (availableVoices[selectedVoiceIndex]) {
+      utterance.voice = availableVoices[selectedVoiceIndex];
     }
+    
+    utterance.onstart = () => {
+      setIsPlaying(true);
+      setIsPaused(false);
+    };
+    
+    utterance.onend = () => {
+      setIsPlaying(false);
+      setIsPaused(false);
+    };
+    
+    utterance.onerror = () => {
+      setIsPlaying(false);
+      setIsPaused(false);
+    };
+    
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const pauseSpeech = () => {
+    if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+      window.speechSynthesis.pause();
+      setIsPaused(true);
+    }
+  };
+
+  const resumeSpeech = () => {
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+      setIsPaused(false);
+    }
+  };
+
+  const stopSpeech = () => {
+    window.speechSynthesis.cancel();
+    setIsPlaying(false);
+    setIsPaused(false);
   };
 
   const togglePlayPause = () => {
-    if (!audioRef.current) return;
-    
-    if (isPlaying) {
-      audioRef.current.pause();
+    if (!isPlaying) {
+      startSpeech();
+    } else if (isPaused) {
+      resumeSpeech();
     } else {
-      audioRef.current.play();
+      pauseSpeech();
     }
-    setIsPlaying(!isPlaying);
   };
 
-  const restart = () => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = 0;
-    audioRef.current.play();
-    setIsPlaying(true);
+  const resetStory = () => {
+    stopSpeech();
+    setStory("");
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!audioRef.current || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    audioRef.current.currentTime = percent * duration;
-  };
+  // Generate stable star positions
+  const [stars] = useState(() => 
+    Array.from({ length: 50 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      top: Math.random() * 100,
+      delay: Math.random() * 3,
+      opacity: Math.random() * 0.7 + 0.3,
+    }))
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-950 via-purple-950 to-slate-950 text-white overflow-hidden">
       {/* Animated stars background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        {[...Array(50)].map((_, i) => (
+        {stars.map((star) => (
           <div
-            key={i}
+            key={star.id}
             className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              opacity: Math.random() * 0.7 + 0.3,
+              left: `${star.left}%`,
+              top: `${star.top}%`,
+              animationDelay: `${star.delay}s`,
+              opacity: star.opacity,
             }}
           />
         ))}
@@ -283,27 +273,29 @@ export default function AliiceStoryPage() {
             </div>
 
             {/* Voice Selection */}
-            <div>
-              <label className="block text-sm font-medium text-purple-200 mb-2">
-                Narrator Voice
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {VOICES.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => setVoice(v.id)}
-                    className={`px-4 py-2 rounded-xl text-sm transition-all text-left ${
-                      voice === v.id
-                        ? "bg-purple-500/50 border-2 border-purple-400"
-                        : "bg-white/10 border border-white/20 hover:bg-white/20"
-                    }`}
-                  >
-                    <div className="font-medium">{v.label}</div>
-                    <div className="text-xs text-white/60">{v.description}</div>
-                  </button>
-                ))}
+            {speechSupported && availableVoices.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-purple-200 mb-2">
+                  Narrator Voice
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableVoices.slice(0, 6).map((v, idx) => (
+                    <button
+                      key={v.name}
+                      onClick={() => setSelectedVoiceIndex(idx)}
+                      className={`px-4 py-2 rounded-xl text-sm transition-all text-left ${
+                        selectedVoiceIndex === idx
+                          ? "bg-purple-500/50 border-2 border-purple-400"
+                          : "bg-white/10 border border-white/20 hover:bg-white/20"
+                      }`}
+                    >
+                      <div className="font-medium truncate">{v.name.replace("Microsoft ", "").replace("Google ", "").split(" ")[0]}</div>
+                      <div className="text-xs text-white/60">{v.lang}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Generate Button */}
             <button
@@ -324,6 +316,12 @@ export default function AliiceStoryPage() {
               )}
             </button>
 
+            {!speechSupported && (
+              <p className="text-amber-400/80 text-center text-sm">
+                ⚠️ Text-to-speech is not supported in your browser
+              </p>
+            )}
+
             {error && (
               <p className="text-red-400 text-center">{error}</p>
             )}
@@ -336,94 +334,74 @@ export default function AliiceStoryPage() {
             {/* Story Text */}
             <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/10">
               <div className="prose prose-invert prose-lg max-w-none">
-                <div className="whitespace-pre-wrap leading-relaxed text-purple-100/90 font-serif">
+                <div className="whitespace-pre-wrap leading-relaxed text-purple-100/90 font-serif text-lg">
                   {story}
                 </div>
               </div>
             </div>
 
             {/* Audio Controls */}
-            <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/10">
-              <audio ref={audioRef} className="hidden" />
-              
-              {!audioUrlRef.current && !isGeneratingAudio && (
-                <button
-                  onClick={generateAudio}
-                  className="w-full py-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-amber-500/25"
-                >
-                  <Volume2 className="w-5 h-5" />
-                  Generate Audio Narration
-                </button>
-              )}
-
-              {isGeneratingAudio && (
-                <div className="text-center py-4">
-                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-amber-400" />
-                  <p className="text-purple-200">Creating audio narration...</p>
-                  <p className="text-purple-300/60 text-sm">This may take a moment</p>
-                </div>
-              )}
-
-              {audioUrlRef.current && !isGeneratingAudio && (
-                <div className="space-y-4">
-                  {/* Progress Bar */}
-                  <div 
-                    className="h-2 bg-white/20 rounded-full cursor-pointer overflow-hidden"
-                    onClick={handleProgressClick}
+            {speechSupported && (
+              <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-6 border border-white/10">
+                <div className="flex items-center justify-center gap-4">
+                  <button
+                    onClick={stopSpeech}
+                    className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"
+                    title="Stop"
                   >
-                    <div 
-                      className="h-full bg-gradient-to-r from-amber-400 to-orange-400 rounded-full transition-all duration-100"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-
-                  {/* Time */}
-                  <div className="flex justify-between text-sm text-purple-300/60">
-                    <span>{formatTime((progress / 100) * duration)}</span>
-                    <span>{formatTime(duration)}</span>
-                  </div>
-
-                  {/* Controls */}
-                  <div className="flex items-center justify-center gap-4">
-                    <button
-                      onClick={restart}
-                      className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"
-                    >
-                      <RotateCcw className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={togglePlayPause}
-                      className="p-5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-full transition-all shadow-lg shadow-amber-500/25"
-                    >
-                      {isPlaying ? (
-                        <Pause className="w-7 h-7" />
-                      ) : (
-                        <Play className="w-7 h-7 ml-1" />
-                      )}
-                    </button>
-                    <button
-                      onClick={generateAudio}
-                      className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"
-                      title="Regenerate with different voice"
-                    >
-                      <Sparkles className="w-5 h-5" />
-                    </button>
-                  </div>
+                    <Square className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={togglePlayPause}
+                    className="p-5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 rounded-full transition-all shadow-lg shadow-amber-500/25"
+                  >
+                    {isPlaying && !isPaused ? (
+                      <Pause className="w-7 h-7" />
+                    ) : (
+                      <Play className="w-7 h-7 ml-1" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      stopSpeech();
+                      startSpeech();
+                    }}
+                    className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"
+                    title="Restart"
+                  >
+                    <RotateCcw className="w-5 h-5" />
+                  </button>
                 </div>
-              )}
-            </div>
+                
+                {isPlaying && (
+                  <div className="mt-4 flex items-center justify-center gap-2 text-purple-200/60">
+                    <Volume2 className="w-4 h-4 animate-pulse" />
+                    <span className="text-sm">{isPaused ? "Paused" : "Reading story..."}</span>
+                  </div>
+                )}
+
+                {/* Voice selector when story is showing */}
+                {availableVoices.length > 0 && !isPlaying && (
+                  <div className="mt-4">
+                    <select
+                      value={selectedVoiceIndex}
+                      onChange={(e) => setSelectedVoiceIndex(Number(e.target.value))}
+                      className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    >
+                      {availableVoices.map((v, idx) => (
+                        <option key={v.name} value={idx} className="bg-slate-800">
+                          {v.name} ({v.lang})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* New Story Button */}
             <button
-              onClick={() => {
-                setStory("");
-                if (audioUrlRef.current) {
-                  URL.revokeObjectURL(audioUrlRef.current);
-                  audioUrlRef.current = null;
-                }
-                setProgress(0);
-                setIsPlaying(false);
-              }}
+              onClick={resetStory}
               className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-medium flex items-center justify-center gap-2 transition-all border border-white/20"
             >
               <Wand2 className="w-4 h-4" />

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(request: NextRequest) {
   try {
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
     const { childName, theme, customPrompt } = await request.json();
 
     const themeDescriptions: Record<string, string> = {
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     const themeDesc = themeDescriptions[theme] || themeDescriptions.fantasy;
 
-    const systemPrompt = `You are a gentle, loving storyteller creating bedtime stories for children. 
+    const prompt = `You are a gentle, loving storyteller creating bedtime stories for children. 
 Your stories should be:
 - Calming and soothing, perfect for bedtime
 - About 400-500 words long
@@ -30,26 +30,18 @@ Your stories should be:
 - End with the character(s) feeling peaceful, safe, and ready to sleep
 
 Write in a warm, tender narrative voice. Include moments of wonder and gentle adventure, 
-but always guide the story toward a peaceful, cozy conclusion.`;
+but always guide the story toward a peaceful, cozy conclusion.
 
-    const userPrompt = `Create a bedtime story for ${childName || "a little dreamer"}.
+Create a bedtime story for ${childName || "a little dreamer"}.
 
 Theme: ${themeDesc}
 ${customPrompt ? `Special request: ${customPrompt}` : ""}
 
-Begin the story with a gentle opening and end with the character feeling safe, warm, and sleepy.`;
+Begin the story with a gentle opening and end with the character feeling safe, warm, and sleepy.
+Write ONLY the story, no titles or headers.`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.8,
-      max_tokens: 1000,
-    });
-
-    const story = completion.choices[0]?.message?.content || "";
+    const result = await model.generateContent(prompt);
+    const story = result.response.text();
 
     return NextResponse.json({ story });
   } catch (error) {
