@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
+import { createPortal } from "react-dom";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { Image, Upload, Trash2, X, Loader2, Copy, Check, ChevronDown, ChevronRight, Eye } from "lucide-react";
 
@@ -90,6 +91,7 @@ export default function EmailTemplateBuilder({
   const [success, setSuccess] = useState<string | null>(null);
   const [editorReady, setEditorReady] = useState(false);
   const [view, setView] = useState<"list" | "editor">("list");
+  const [mounted, setMounted] = useState(false);
   
   // AI generation state
   const [aiPrompt, setAiPrompt] = useState("");
@@ -108,9 +110,27 @@ export default function EmailTemplateBuilder({
   const [previewImage, setPreviewImage] = useState<GalleryImage | null>(null);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     if (open) {
       loadTemplates();
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
   }, [open]);
 
   // Load images from Supabase emailgallery bucket
@@ -485,9 +505,9 @@ export default function EmailTemplateBuilder({
     onClose();
   }
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex bg-black/50">
       <div className="flex h-[100dvh] w-[100dvw] min-w-0 flex-col overflow-hidden bg-white">
         {/* Header */}
@@ -1079,6 +1099,7 @@ export default function EmailTemplateBuilder({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
