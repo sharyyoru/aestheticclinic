@@ -593,7 +593,7 @@ export default function AliiceChatEmbed() {
               </div>
             )}
             <div className={`max-w-[78%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
-              msg.role === "user" ? "bg-sky-500 text-white rounded-br-sm" : "bg-white text-slate-800 rounded-bl-sm border border-slate-100"
+              msg.role === "user" ? "bg-sky-100 text-slate-900 rounded-br-sm border border-sky-200" : "bg-white text-slate-800 rounded-bl-sm border border-slate-100"
             }`}>
               {msg.role === "agent" ? linkify(msg.content) : msg.content}
             </div>
