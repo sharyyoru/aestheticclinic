@@ -203,29 +203,58 @@ export default function PricingAliicePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <header className="border-b border-slate-700/50 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Image
-            src="/logos/aliice-logo.png"
-            alt="Aliice Logo"
-            width={120}
-            height={40}
-          />
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-white hidden sm:block">Subscription Pricing</h1>
+      {/* Sticky Header */}
+      <header className="border-b border-slate-700/50 bg-slate-900/95 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          {/* Desktop & Tablet Layout */}
+          <div className="hidden sm:flex items-center justify-between py-3">
+            {/* Logo */}
+            <Image
+              src="/logos/aliice-logo.png"
+              alt="Aliice Logo"
+              width={100}
+              height={33}
+              className="flex-shrink-0"
+            />
             
+            {/* Billing Toggle - Center */}
+            <div className="flex items-center gap-3">
+              <span className={`text-sm ${billingPeriod === "monthly" ? "text-white font-semibold" : "text-slate-400"}`}>
+                Monthly
+              </span>
+              <button
+                onClick={() => setBillingPeriod(billingPeriod === "monthly" ? "annual" : "monthly")}
+                className={`relative w-14 h-7 rounded-full transition-colors flex-shrink-0 ${
+                  billingPeriod === "annual" ? "bg-emerald-500" : "bg-slate-600"
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                    billingPeriod === "annual" ? "translate-x-8" : "translate-x-1"
+                  }`}
+                />
+              </button>
+              <span className={`text-sm ${billingPeriod === "annual" ? "text-white font-semibold" : "text-slate-400"}`}>
+                Annual
+              </span>
+              {billingPeriod === "annual" && (
+                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs font-medium rounded-full whitespace-nowrap">
+                  -10%
+                </span>
+              )}
+            </div>
+
             {/* Currency Switcher */}
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <button
                 onClick={() => setCurrencyDropdownOpen(!currencyDropdownOpen)}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg text-white transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg text-white transition-colors text-sm"
               >
                 <span className="font-semibold">{currency}</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${currencyDropdownOpen ? "rotate-180" : ""}`} />
               </button>
               {currencyDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-slate-800 rounded-xl border border-slate-700 shadow-xl overflow-hidden z-50">
+                <div className="absolute right-0 mt-2 w-44 bg-slate-800 rounded-xl border border-slate-700 shadow-xl overflow-hidden z-50">
                   {Object.entries(CURRENCIES).map(([code, data]) => (
                     <button
                       key={code}
@@ -233,7 +262,7 @@ export default function PricingAliicePage() {
                         setCurrency(code as CurrencyCode);
                         setCurrencyDropdownOpen(false);
                       }}
-                      className={`w-full px-4 py-3 text-left hover:bg-slate-700/50 transition-colors flex items-center justify-between ${
+                      className={`w-full px-4 py-2.5 text-left hover:bg-slate-700/50 transition-colors flex items-center justify-between text-sm ${
                         currency === code ? "bg-emerald-500/20 text-emerald-400" : "text-white"
                       }`}
                     >
@@ -242,6 +271,74 @@ export default function PricingAliicePage() {
                     </button>
                   ))}
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile Layout */}
+          <div className="sm:hidden py-3 space-y-3">
+            {/* Top row: Logo + Currency */}
+            <div className="flex items-center justify-between">
+              <Image
+                src="/logos/aliice-logo.png"
+                alt="Aliice Logo"
+                width={90}
+                height={30}
+              />
+              <div className="relative">
+                <button
+                  onClick={() => setCurrencyDropdownOpen(!currencyDropdownOpen)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700/50 hover:bg-slate-700 rounded-lg text-white transition-colors text-sm"
+                >
+                  <span className="font-semibold">{currency}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${currencyDropdownOpen ? "rotate-180" : ""}`} />
+                </button>
+                {currencyDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-40 bg-slate-800 rounded-xl border border-slate-700 shadow-xl overflow-hidden z-50">
+                    {Object.entries(CURRENCIES).map(([code, data]) => (
+                      <button
+                        key={code}
+                        onClick={() => {
+                          setCurrency(code as CurrencyCode);
+                          setCurrencyDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-2 text-left hover:bg-slate-700/50 transition-colors flex items-center justify-between text-sm ${
+                          currency === code ? "bg-emerald-500/20 text-emerald-400" : "text-white"
+                        }`}
+                      >
+                        <span>{data.name}</span>
+                        <span className="font-semibold">{data.symbol}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Bottom row: Billing Toggle centered */}
+            <div className="flex items-center justify-center gap-2.5 py-1 bg-slate-800/50 rounded-lg">
+              <span className={`text-xs ${billingPeriod === "monthly" ? "text-white font-semibold" : "text-slate-400"}`}>
+                Monthly
+              </span>
+              <button
+                onClick={() => setBillingPeriod(billingPeriod === "monthly" ? "annual" : "monthly")}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  billingPeriod === "annual" ? "bg-emerald-500" : "bg-slate-600"
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                    billingPeriod === "annual" ? "translate-x-6" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+              <span className={`text-xs ${billingPeriod === "annual" ? "text-white font-semibold" : "text-slate-400"}`}>
+                Annual
+              </span>
+              {billingPeriod === "annual" && (
+                <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-medium rounded-full">
+                  -10%
+                </span>
               )}
             </div>
           </div>
@@ -257,37 +354,10 @@ export default function PricingAliicePage() {
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
             Choose Your Perfect Plan
           </h2>
-          <p className="text-xl text-slate-300 max-w-3xl mx-auto mb-8">
+          <p className="text-xl text-slate-300 max-w-3xl mx-auto">
             One platform that replaces CRM + ERP + Booking systems. 
             Save up to <span className="text-emerald-400 font-semibold">{monthlySavings}%</span> compared to using separate tools.
           </p>
-
-          {/* Billing Toggle */}
-          <div className="flex items-center justify-center gap-4 mb-12">
-            <span className={`text-lg ${billingPeriod === "monthly" ? "text-white font-semibold" : "text-slate-400"}`}>
-              Monthly
-            </span>
-            <button
-              onClick={() => setBillingPeriod(billingPeriod === "monthly" ? "annual" : "monthly")}
-              className={`relative w-16 h-8 rounded-full transition-colors ${
-                billingPeriod === "annual" ? "bg-emerald-500" : "bg-slate-600"
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-transform ${
-                  billingPeriod === "annual" ? "translate-x-9" : "translate-x-1"
-                }`}
-              />
-            </button>
-            <span className={`text-lg ${billingPeriod === "annual" ? "text-white font-semibold" : "text-slate-400"}`}>
-              Annual
-            </span>
-            {billingPeriod === "annual" && (
-              <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-sm font-medium rounded-full">
-                Save 10%
-              </span>
-            )}
-          </div>
         </section>
 
         {/* Pricing Tiers */}
