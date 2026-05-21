@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import "./prodapp.css";
 
 export const metadata: Metadata = {
   title: "Aliice - Clinic CRM",
@@ -28,48 +29,5 @@ export default function ProdAppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <>
-      <style jsx global>{`
-        /* Disable text selection for native feel */
-        body {
-          -webkit-user-select: none;
-          -webkit-touch-callout: none;
-          -webkit-tap-highlight-color: transparent;
-          overscroll-behavior: none;
-        }
-        
-        /* Allow text selection in inputs */
-        input, textarea {
-          -webkit-user-select: text;
-          user-select: text;
-        }
-        
-        /* iOS safe areas */
-        .safe-area-top {
-          padding-top: env(safe-area-inset-top);
-        }
-        .safe-area-bottom {
-          padding-bottom: env(safe-area-inset-bottom);
-        }
-        
-        /* Smooth scrolling */
-        .overscroll-contain {
-          overscroll-behavior: contain;
-          -webkit-overflow-scrolling: touch;
-        }
-        
-        /* Hide scrollbars for native feel */
-        ::-webkit-scrollbar {
-          display: none;
-        }
-        
-        /* Active states for touch */
-        button:active, a:active {
-          opacity: 0.7;
-        }
-      `}</style>
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }
