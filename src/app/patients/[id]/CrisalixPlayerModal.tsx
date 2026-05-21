@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 type ReconstructionType = "breast" | "face" | "body";
 
@@ -66,9 +67,28 @@ export default function CrisalixPlayerModal({
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (!open || !playerId || !reconstructionType) return;
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !playerId || !reconstructionType || !mounted) return;
     if (typeof window === "undefined") return;
 
     let cancelled = false;
@@ -135,9 +155,9 @@ export default function CrisalixPlayerModal({
     return () => {
       cancelled = true;
     };
-  }, [open, playerId, reconstructionType]);
+  }, [open, playerId, reconstructionType, mounted]);
 
-  if (!open || !playerId || !reconstructionType) {
+  if (!open || !playerId || !reconstructionType || !mounted) {
     return null;
   }
 
@@ -145,49 +165,38 @@ export default function CrisalixPlayerModal({
     router.push(`/patients/${patientId}?mode=medical`);
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
-      <div className="relative flex h-[78vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 text-slate-50 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/80 px-4 py-2 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-sky-500 px-2 py-0.5 text-[10px] font-semibold text-white">
-              3D Player
-            </span>
-            <span className="text-[11px] text-slate-300">
-              Crisalix reconstruction viewer
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-            aria-label="Close 3D player"
-          >
-            <svg
-              className="h-3.5 w-3.5"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M5 5l10 10M15 5L5 15" />
-            </svg>
-          </button>
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-slate-950 text-slate-50">
+      <div ref={containerRef} className="h-[100dvh] w-[100dvw]" />
+
+      <button
+        type="button"
+        onClick={handleClose}
+        className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-950/80 text-slate-200 shadow-lg ring-1 ring-white/15 backdrop-blur hover:bg-slate-800 hover:text-white"
+        aria-label="Close 3D player"
+      >
+        <svg
+          className="h-5 w-5"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M5 5l10 10M15 5L5 15" />
+        </svg>
+      </button>
+
+      {loading ? (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80">
+          <div className="mb-3 h-10 w-10 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+          <p className="text-[11px] font-medium text-slate-200">
+            Generating 3D simulation...
+          </p>
         </div>
-        <div className="relative flex-1 bg-slate-950">
-          <div ref={containerRef} className="h-full w-full" />
-          {loading ? (
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80">
-              <div className="mb-3 h-10 w-10 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
-              <p className="text-[11px] font-medium text-slate-200">
-                Generating 3D simulation...
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
+      ) : null}
+    </div>,
+    document.body
   );
 }
