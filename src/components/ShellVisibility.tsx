@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 // Routes that should be completely standalone (no sidebar, header, or shell)
-const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/appx"];
+const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/pricingaliice", "/appx"];
 
 // Routes that should have transparent/minimal background (for iframe embedding)
 const TRANSPARENT_ROUTES = ["/embed", "/aliicechat/embed", "/aliicechatembed"];
