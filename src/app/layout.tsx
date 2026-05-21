@@ -22,6 +22,8 @@ import PatientTabBar from "@/components/PatientTabBar";
 import { AuthProvider } from "@/components/AuthContext";
 import GlobalLoader from "@/components/GlobalLoader";
 import SidebarLeadImportDropdown from "@/components/SidebarLeadImportDropdown";
+import { ProdAppProvider } from "@/components/ProdAppContext";
+import ProdAppHeader from "@/components/ProdAppHeader";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -50,7 +52,9 @@ export default function RootLayout({
       >
         <ShellBackground>
           <GlobalLoader />
+          <ProdAppProvider>
           <AuthProvider>
+          <ProdAppHeader />
           <CommentsUnreadProvider>
           <TasksNotificationsProvider>
           <EmailNotificationsProvider>
@@ -596,6 +600,7 @@ export default function RootLayout({
           </TasksNotificationsProvider>
           </CommentsUnreadProvider>
           </AuthProvider>
+          </ProdAppProvider>
         </ShellBackground>
       </body>
     </html>

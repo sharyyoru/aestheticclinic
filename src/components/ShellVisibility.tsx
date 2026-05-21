@@ -2,6 +2,7 @@
 
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { useProdApp } from "./ProdAppContext";
 
 // Routes that should be completely standalone (no sidebar, header, or shell)
 const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/pricingaliice", "/appx", "/prodapp"];
@@ -19,10 +20,20 @@ function isTransparentRoute(pathname: string): boolean {
 
 export function ShellBackground({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { isAppMode } = useProdApp();
   
   // Embed routes: NO wrapper div at all - just render children directly
   if (isTransparentRoute(pathname)) {
     return <>{children}</>;
+  }
+
+  // App mode: simple white background, no padding (header handles spacing)
+  if (isAppMode && !isStandaloneRoute(pathname)) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        {children}
+      </div>
+    );
   }
   
   // Regular routes get the gradient background with padding
@@ -35,7 +46,10 @@ export function ShellBackground({ children }: { children: ReactNode }) {
 
 export function ShellSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  if (isStandaloneRoute(pathname)) {
+  const { isAppMode } = useProdApp();
+  
+  // Hide sidebar in app mode
+  if (isAppMode || isStandaloneRoute(pathname)) {
     return null;
   }
   return <>{children}</>;
@@ -43,7 +57,10 @@ export function ShellSidebar({ children }: { children: ReactNode }) {
 
 export function ShellHeader({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  if (isStandaloneRoute(pathname)) {
+  const { isAppMode } = useProdApp();
+  
+  // Hide desktop header in app mode (ProdAppHeader handles it)
+  if (isAppMode || isStandaloneRoute(pathname)) {
     return null;
   }
   return <>{children}</>;
@@ -51,6 +68,16 @@ export function ShellHeader({ children }: { children: ReactNode }) {
 
 export function ShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { isAppMode } = useProdApp();
+
+  // App mode: simple full-width container
+  if (isAppMode && !isStandaloneRoute(pathname)) {
+    return (
+      <div className="min-h-screen w-full">
+        {children}
+      </div>
+    );
+  }
 
   // Standalone pages render without any shell wrapper
   if (isStandaloneRoute(pathname)) {

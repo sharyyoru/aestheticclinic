@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useProdApp } from "@/components/ProdAppContext";
 import {
   Home,
   Users,
@@ -78,10 +79,16 @@ const TABS: { id: TabId; label: string; icon: typeof Home }[] = [
 
 export default function ProdAppPage() {
   const router = useRouter();
+  const { setAppMode } = useProdApp();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Set app mode on mount
+  useEffect(() => {
+    setAppMode(true);
+  }, [setAppMode]);
   
   // Data states
   const [appointments, setAppointments] = useState<Appointment[]>([]);
