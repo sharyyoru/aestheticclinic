@@ -11,11 +11,16 @@
       "resizeMode": "contain",
       "backgroundColor": "#0ea5e9"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ch.aliice.crm",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,8 +31,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "8440789d-0012-4783-a413-674b8ae619e0"
       }
-    }
+    },
+    "owner": "sharyyoru"
   }
 }
