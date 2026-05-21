@@ -6,6 +6,14 @@
   color-scheme: light;
 }
 
+.email-template-editor-shell > div,
+.email-template-editor-shell > div > div,
+.email-template-editor-shell iframe {
+  min-height: 0 !important;
+  height: 100% !important;
+  width: 100% !important;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MEDICAL JARVIS DESIGN SYSTEM - Ambient Clinical AI Interface
    ═══════════════════════════════════════════════════════════════════════════ */

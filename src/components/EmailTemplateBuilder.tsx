@@ -489,7 +489,7 @@ export default function EmailTemplateBuilder({
 
   return (
     <div className="fixed inset-0 z-50 flex bg-black/50">
-      <div className="flex h-full w-full flex-col bg-white">
+      <div className="flex h-[100dvh] w-[100dvw] min-w-0 flex-col overflow-hidden bg-white">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-4">
@@ -643,9 +643,9 @@ export default function EmailTemplateBuilder({
           </div>
         ) : (
           /* Editor View */
-          <div className="flex flex-1 overflow-hidden h-[calc(100vh-80px)]">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
             {/* Sidebar */}
-            <div className="w-80 shrink-0 overflow-auto border-r border-slate-200 bg-slate-50 p-4 h-full">
+            <div className="w-80 shrink-0 overflow-auto border-r border-slate-200 bg-slate-50 p-4">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -855,12 +855,13 @@ export default function EmailTemplateBuilder({
             </div>
 
             {/* Email Editor */}
-            <div className="flex-1 relative h-full">
+            <div className="email-template-editor-shell relative flex min-h-0 flex-1">
               <EmailEditor
                 ref={emailEditorRef}
                 onLoad={onEditorLoad}
                 onReady={onEditorReady}
                 projectId={284973}
+                minHeight="calc(100dvh - 73px)"
                 options={{
                   mergeTags: MERGE_TAGS,
                   features: {
@@ -872,7 +873,7 @@ export default function EmailTemplateBuilder({
                     theme: "light",
                   },
                 }}
-                style={{ height: '100%', width: '100%' }}
+                style={{ height: "100%", width: "100%" }}
               />
             </div>
           </div>
