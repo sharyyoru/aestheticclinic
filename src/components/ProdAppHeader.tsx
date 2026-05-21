@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Image from "next/image";
-import { ArrowLeft, Search, X, Home, User, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, X, Home, User, Loader2, LogIn, LogOut } from "lucide-react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useProdApp } from "./ProdAppContext";
 
@@ -18,14 +18,27 @@ type PatientResult = {
 export default function ProdAppHeader() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAppMode } = useProdApp();
+  const { isAppMode, setAppMode } = useProdApp();
   
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<PatientResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Check auth state
+  useEffect(() => {
+    supabaseClient.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user || null);
+    });
+    const { data: listener } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
 
   // Don't render if not in app mode or on /prodapp itself
   if (!isAppMode || pathname === "/prodapp") {
@@ -114,6 +127,23 @@ export default function ProdAppHeader() {
     setSearchResults([]);
   };
 
+  const handleLogin = () => {
+    router.push("/login?redirect=/prodapp");
+  };
+
+  const handleLogout = async () => {
+    setUserMenuOpen(false);
+    await supabaseClient.auth.signOut();
+    setAppMode(false);
+    router.push("/login?redirect=/prodapp");
+  };
+
+  const getUserInitials = () => {
+    const meta = user?.user_metadata || {};
+    const first = meta.first_name?.[0] || user?.email?.[0] || "U";
+    return first.toUpperCase();
+  };
+
   return (
     <>
       {/* Main Header */}
@@ -148,7 +178,7 @@ export default function ProdAppHeader() {
           </h1>
 
           {/* Right: Actions */}
-          <div className="flex items-center gap-1 w-20 justify-end">
+          <div className="flex items-center gap-0.5 justify-end">
             <button
               onClick={openSearch}
               className="p-2 rounded-full text-slate-600 active:bg-slate-100"
@@ -161,6 +191,46 @@ export default function ProdAppHeader() {
             >
               <Home className="w-5 h-5" />
             </button>
+            {/* User/Login Button */}
+            {user ? (
+              <div className="relative">
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="p-1.5 rounded-full bg-sky-500 text-white active:bg-sky-600 ml-1"
+                >
+                  <span className="w-5 h-5 flex items-center justify-center text-xs font-semibold">
+                    {getUserInitials()}
+                  </span>
+                </button>
+                {userMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                      <div className="px-3 py-2 border-b border-slate-100">
+                        <p className="text-sm font-medium text-slate-900 truncate">
+                          {user.user_metadata?.first_name || "User"}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                      </div>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 active:bg-red-100"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Log Out
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={handleLogin}
+                className="p-2 rounded-full text-sky-600 active:bg-sky-50 ml-1"
+              >
+                <LogIn className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
       </header>
