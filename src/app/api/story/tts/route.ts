@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 type Voice = "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 
 export async function POST(request: NextRequest) {
   try {
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+    
     const { text, voice = "nova" } = await request.json();
 
     if (!text) {
