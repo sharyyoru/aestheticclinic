@@ -759,6 +759,148 @@ async function sendAppointmentConfirmationEmail(
   return { success: true };
 }
 
+async function sendAppointmentRescheduledEmail(
+  newAppointment: CalendarAppointment,
+  oldAppointment: CalendarAppointment,
+): Promise<{ success: boolean; error?: string }> {
+  const patientEmail = newAppointment.patient?.email ?? null;
+  if (!patientEmail) {
+    console.warn(`[Email Rescheduled] No email address for patient ${newAppointment.patient_id}. Skipping.`);
+    return { success: false, error: "No email address on file" };
+  }
+
+  try {
+    const { data: authData } = await supabaseClient.auth.getUser();
+    const authUser = authData?.user ?? null;
+    const fromAddress = authUser?.email ?? null;
+
+    const oldStart = new Date(oldAppointment.start_time);
+    const oldEnd = oldAppointment.end_time ? new Date(oldAppointment.end_time) : null;
+    const newStart = new Date(newAppointment.start_time);
+    const newEnd = newAppointment.end_time ? new Date(newAppointment.end_time) : null;
+
+    const oldDateLabel = formatSwissDate(oldStart);
+    const oldTimeLabel = formatTimeRangeLabel(oldStart, oldEnd);
+    const newDateLabel = formatSwissDate(newStart);
+    const newTimeLabel = formatTimeRangeLabel(newStart, newEnd);
+
+    const patientName = `${newAppointment.patient?.first_name ?? ""} ${newAppointment.patient?.last_name ?? ""}`
+      .trim()
+      .replace(/\s+/g, " ");
+
+    const doctorName =
+      getDoctorNameFromReason(newAppointment.reason) ??
+      newAppointment.provider?.name ??
+      "your doctor";
+
+    const location = newAppointment.location ?? "the clinic";
+
+    const subject = `Appointment rescheduled - ${newDateLabel} ${newTimeLabel}`;
+
+    const htmlBody = `
+      <p>Dear ${patientName || "patient"},</p>
+      <p>Your appointment with ${doctorName} has been <strong>rescheduled</strong>.</p>
+      <p>
+        <strong>Previous:</strong> ${oldDateLabel} ${oldTimeLabel}<br />
+        <strong>New:</strong> ${newDateLabel} ${newTimeLabel}<br />
+        <strong>Location:</strong> ${location}
+      </p>
+      <p>
+        If you have any questions or need to reschedule again, please contact the clinic or reply to this email.
+      </p>
+      <p>
+        <strong>Aesthetics Clinic</strong><br />
+        <strong>RHÔNE</strong><br />
+        Rue du Rhône 17, 1204 Genève (3ème étage)<br />
+        📞 0227322223 ✉️ info@aesthetics-ge.ch<br /><br />
+        <strong>CHAMPEL</strong><br />
+        Chemin Rieu 18, 1208 Genève<br />
+        📞 0227322223 ✉️ info@aesthetics-ge.ch<br /><br />
+        <strong>MONTREUX</strong><br />
+        Avenue Claude Nobs 2, 1820 Montreux<br />
+        📞 +41 21 991 98 98 ✉️ info@thebeautybooth.shop<br /><br />
+        <strong>GSTAAD</strong><br />
+        Alpinastrasse 23, 3780 Gstaad<br />
+        📞 +41 337 483 437 ✉️ info@aesthetics-ge.ch
+      </p>
+    `;
+
+    const nowIso = new Date().toISOString();
+
+    const { data, error } = await supabaseClient
+      .from("emails")
+      .insert({
+        patient_id: newAppointment.patient_id,
+        deal_id: null,
+        to_address: patientEmail,
+        from_address: fromAddress,
+        subject,
+        body: htmlBody,
+        direction: "outbound",
+        status: "sent",
+        sent_at: nowIso,
+      })
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      console.error("[Email Rescheduled] Failed to insert email record:", error);
+      return { success: false, error: error?.message || "Failed to save email record" };
+    }
+
+    const emailId = (data as any).id as string;
+
+    try {
+      const sendResponse = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: patientEmail,
+          subject,
+          html: htmlBody,
+          fromUserEmail: fromAddress,
+          emailId,
+          patientId: newAppointment.patient_id,
+        }),
+      });
+
+      if (!sendResponse.ok) {
+        const errorText = await sendResponse.text().catch(() => "Unknown error");
+        console.error(`[Email Rescheduled] Send failed (${sendResponse.status}):`, errorText);
+      } else {
+        console.log(`[Email Rescheduled] Email sent successfully to ${patientEmail}`);
+      }
+    } catch (sendError) {
+      console.error("[Email Rescheduled] Failed to send via provider:", sendError);
+    }
+
+    // Also send WhatsApp notification
+    const patientPhone = newAppointment.patient?.phone ?? null;
+    if (patientPhone && patientPhone.trim().length > 0) {
+      const whatsappText = `Your appointment has been rescheduled from ${oldDateLabel} ${oldTimeLabel} to ${newDateLabel} ${newTimeLabel} with ${doctorName} at ${location}`;
+
+      try {
+        await fetch("/api/whatsapp/queue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            toPhone: patientPhone,
+            messageBody: whatsappText,
+            patientId: newAppointment.patient_id,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to enqueue WhatsApp rescheduling notification", error);
+      }
+    }
+  } catch (error) {
+    console.error("[Email Rescheduled] Failed to prepare email:", error);
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+  }
+
+  return { success: true };
+}
+
 export default function CalendarPage() {
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const now = new Date();
@@ -2525,6 +2667,15 @@ export default function CalendarPage() {
       }
 
       const updated = data as unknown as CalendarAppointment;
+
+      // Check if time changed and send rescheduling email
+      const originalStartTime = new Date(editingAppointment.start_time).getTime();
+      const newStartTime = new Date(updated.start_time).getTime();
+      const timeChanged = originalStartTime !== newStartTime;
+      
+      if (timeChanged && updated.status !== "cancelled") {
+        void sendAppointmentRescheduledEmail(updated, editingAppointment);
+      }
 
       setAppointments((prev) => {
         if (updated.status === "cancelled") {
