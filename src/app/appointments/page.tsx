@@ -371,6 +371,24 @@ type CalendarAppointment = {
 
 type CalendarView = "month" | "day" | "range";
 
+type AppointmentHistoryEntry = {
+  id: string;
+  appointment_id: string;
+  changed_by_user_id: string | null;
+  changed_by_email: string | null;
+  changed_at: string;
+  change_type: "created" | "rescheduled" | "cancelled" | "updated";
+  original_start_time: string | null;
+  original_end_time: string | null;
+  original_status: string | null;
+  original_location: string | null;
+  new_start_time: string | null;
+  new_end_time: string | null;
+  new_status: string | null;
+  new_location: string | null;
+  notes: string | null;
+};
+
 const DAY_VIEW_START_MINUTES = 6 * 60;
 const DAY_VIEW_END_MINUTES = 20 * 60; // 8 PM
 const DAY_VIEW_SLOT_MINUTES = 15;
@@ -1083,6 +1101,8 @@ export default function CalendarPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingAppointment, setDeletingAppointment] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [appointmentHistory, setAppointmentHistory] = useState<AppointmentHistoryEntry[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Helper to close all edit modal dropdowns
   const closeEditModalDropdowns = () => {
@@ -2475,6 +2495,21 @@ export default function CalendarPage() {
 
       void sendAppointmentConfirmationEmail(inserted);
 
+      // Log the creation to appointment_history
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const currentUser = authData?.user;
+      
+      await supabaseClient.from("appointment_history").insert({
+        appointment_id: inserted.id,
+        changed_by_user_id: currentUser?.id || null,
+        changed_by_email: currentUser?.email || null,
+        change_type: "created",
+        new_start_time: inserted.start_time,
+        new_end_time: inserted.end_time,
+        new_status: inserted.status,
+        new_location: inserted.location,
+      });
+
       setAppointments((prev) => {
         const next = [...prev, inserted];
         next.sort((a, b) => {
@@ -2515,10 +2550,29 @@ export default function CalendarPage() {
     }
   }
 
-  function openEditModalForAppointment(appt: CalendarAppointment) {
+  async function openEditModalForAppointment(appt: CalendarAppointment) {
     setEditingAppointment(appt);
     setEditError(null);
     setSavingEdit(false);
+    setAppointmentHistory([]);
+    setLoadingHistory(true);
+
+    // Load appointment history
+    try {
+      const { data: historyData } = await supabaseClient
+        .from("appointment_history")
+        .select("*")
+        .eq("appointment_id", appt.id)
+        .order("changed_at", { ascending: false });
+      
+      if (historyData) {
+        setAppointmentHistory(historyData as AppointmentHistoryEntry[]);
+      }
+    } catch (error) {
+      console.error("Failed to load appointment history:", error);
+    } finally {
+      setLoadingHistory(false);
+    }
 
     const workflow = appointmentStatusToWorkflow(appt.status);
     setEditWorkflowStatus(workflow);
@@ -2695,13 +2749,45 @@ export default function CalendarPage() {
         updated.status !== "cancelled" &&
         appointmentCommunicationDetailsChanged(editingAppointment, updated);
 
-      // Check if time changed and send rescheduling email
+      // Check if date or time changed
       const originalStartTime = new Date(editingAppointment.start_time).getTime();
+      const originalEndTime = editingAppointment.end_time ? new Date(editingAppointment.end_time).getTime() : null;
       const newStartTime = new Date(updated.start_time).getTime();
-      const timeChanged = originalStartTime !== newStartTime;
+      const newEndTime = updated.end_time ? new Date(updated.end_time).getTime() : null;
+      const dateTimeChanged = originalStartTime !== newStartTime || originalEndTime !== newEndTime;
+      const statusChanged = editingAppointment.status !== updated.status;
+      const locationChanged = (editingAppointment.location || "") !== (updated.location || "");
       
-      if (timeChanged && updated.status !== "cancelled") {
+      // Send rescheduling email if date/time changed and not cancelled
+      if (dateTimeChanged && updated.status !== "cancelled") {
         void sendAppointmentRescheduledEmail(updated, editingAppointment);
+      }
+
+      // Log the change to appointment_history
+      if (dateTimeChanged || statusChanged || locationChanged) {
+        const { data: authData } = await supabaseClient.auth.getUser();
+        const currentUser = authData?.user;
+        
+        const changeType = updated.status === "cancelled" 
+          ? "cancelled" 
+          : dateTimeChanged 
+            ? "rescheduled" 
+            : "updated";
+        
+        await supabaseClient.from("appointment_history").insert({
+          appointment_id: updated.id,
+          changed_by_user_id: currentUser?.id || null,
+          changed_by_email: currentUser?.email || null,
+          change_type: changeType,
+          original_start_time: editingAppointment.start_time,
+          original_end_time: editingAppointment.end_time,
+          original_status: editingAppointment.status,
+          original_location: editingAppointment.location,
+          new_start_time: updated.start_time,
+          new_end_time: updated.end_time,
+          new_status: updated.status,
+          new_location: updated.location,
+        });
       }
 
       setAppointments((prev) => {
@@ -4061,6 +4147,61 @@ export default function CalendarPage() {
                     placeholder="Add notes for this appointment"
                   />
                 </div>
+
+                {/* Appointment History */}
+                {(appointmentHistory.length > 0 || loadingHistory) && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 space-y-2">
+                  <p className="text-[11px] font-semibold text-amber-800 flex items-center gap-1">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Change History
+                  </p>
+                  {loadingHistory ? (
+                    <p className="text-[10px] text-amber-600">Loading history...</p>
+                  ) : (
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {appointmentHistory.map((entry) => {
+                        const changedAt = new Date(entry.changed_at);
+                        const dateStr = formatSwissDate(changedAt, { year: "numeric", month: "short", day: "numeric" });
+                        const timeStr = formatSwissTime(changedAt);
+                        
+                        const originalStart = entry.original_start_time ? new Date(entry.original_start_time) : null;
+                        const newStart = entry.new_start_time ? new Date(entry.new_start_time) : null;
+                        
+                        return (
+                          <div key={entry.id} className="border-l-2 border-amber-300 pl-2 py-1">
+                            <div className="flex items-center gap-2 text-[10px] text-amber-700">
+                              <span className={`font-semibold px-1.5 py-0.5 rounded text-[9px] uppercase ${
+                                entry.change_type === "created" ? "bg-green-100 text-green-700" :
+                                entry.change_type === "rescheduled" ? "bg-amber-100 text-amber-700" :
+                                entry.change_type === "cancelled" ? "bg-red-100 text-red-700" :
+                                "bg-slate-100 text-slate-700"
+                              }`}>
+                                {entry.change_type}
+                              </span>
+                              <span>{dateStr} {timeStr}</span>
+                            </div>
+                            {entry.changed_by_email && (
+                              <p className="text-[9px] text-amber-600 mt-0.5">
+                                By: {entry.changed_by_email}
+                              </p>
+                            )}
+                            {entry.change_type === "rescheduled" && originalStart && newStart && (
+                              <p className="text-[9px] text-amber-600 mt-0.5">
+                                {formatSwissDate(originalStart)} {formatSwissTime(originalStart)} → {formatSwissDate(newStart)} {formatSwissTime(newStart)}
+                              </p>
+                            )}
+                            {entry.change_type === "created" && newStart && (
+                              <p className="text-[9px] text-amber-600 mt-0.5">
+                                Originally booked for: {formatSwissDate(newStart)} {formatSwissTime(newStart)}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                )}
 
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Workflow status</p>
