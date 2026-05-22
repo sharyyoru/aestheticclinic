@@ -21,6 +21,7 @@ import {
   type InvoiceServiceInput as SumexServiceInput,
   type InvoiceDiagnosis as SumexDiagnosis,
 } from "@/lib/sumexInvoice";
+import { deriveTariffType } from "@/lib/tariffType";
 
 type PatientData = {
   first_name: string;
@@ -237,8 +238,9 @@ export async function POST(request: NextRequest) {
       const isValidGln = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
 
       const sumexServices: SumexServiceInput[] = lineItems.map((item: any) => {
-        // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "590");
+        // Resolve tariff_type honoring `catalog_name` first so TMA gestures
+        // emit as "TMA". See src/lib/tariffType.ts.
+        const tariffType = deriveTariffType(item);
         const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
         const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
         
@@ -567,8 +569,9 @@ export async function POST(request: NextRequest) {
         const svcGln = isValidGln2(item.provider_gln) ? item.provider_gln : provGln;
         const svcRespGln = isValidGln2(item.responsible_gln) ? item.responsible_gln : svcGln;
         
-        // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "590");
+        // Resolve tariff_type honoring `catalog_name` first so TMA gestures
+        // emit as "TMA". See src/lib/tariffType.ts.
+        const tariffType = deriveTariffType(item);
         
         // TARMED (tariff_code=1) vs TARDOC (tariff_code=7) have different handling
         const isTardoc = item.tariff_code === 7 || tariffType === "007";

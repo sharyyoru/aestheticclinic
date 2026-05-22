@@ -93,6 +93,43 @@ function statusBadge(status: InvoiceStatus, isComplimentary: boolean) {
 
 const RECEIPT_STATUSES: InvoiceStatus[] = ["PAID", "PARTIAL_PAID", "PARTIAL_LOSS", "OVERPAID"];
 
+// Map a medidata_submissions.status string to a tiny visual badge config.
+// Mirrors the conservative semantics: this is **purely display** of what
+// MediData/Sumex told us; we never mutate medidata_submissions from the
+// invoices page.
+function insuranceBadge(status: string | null | undefined, billingType: string | null | undefined): {
+  label: string;
+  cls: string;
+  title: string;
+} {
+  // No submission at all
+  if (!status) {
+    if ((billingType ?? "").toUpperCase() === "TG") {
+      // TG invoices are intentionally not transmitted to the insurer (patient
+      // pays the clinic, then claims back themselves) — show a neutral marker.
+      return { label: "TG (no submission)", cls: "bg-slate-50 text-slate-500 border-slate-200", title: "Tiers Garant — patient pays the clinic and claims back from their insurer separately. No MediData submission expected." };
+    }
+    return { label: "Not submitted", cls: "bg-slate-100 text-slate-700 border-slate-300 font-semibold", title: "No insurance submission has been sent for this invoice yet." };
+  }
+  switch (status.toLowerCase()) {
+    case "draft":         return { label: "Draft",       cls: "bg-slate-50 text-slate-600 border-slate-200", title: "Draft submission" };
+    case "pending":       return { label: "Pending",     cls: "bg-amber-50 text-amber-700 border-amber-200", title: "Submission queued — waiting on MediData / insurer" };
+    case "transmitted":   return { label: "Transmitted", cls: "bg-blue-50  text-blue-700  border-blue-200",  title: "Submission delivered to MediData; awaiting insurer response" };
+    case "delivered":     return { label: "Delivered",   cls: "bg-blue-50  text-blue-700  border-blue-200",  title: "Submission delivered to insurer; awaiting decision" };
+    case "accepted":      return { label: "Accepted",    cls: "bg-emerald-50 text-emerald-700 border-emerald-200", title: "Insurer accepted the submission" };
+    case "paid":          return { label: "Paid",        cls: "bg-emerald-50 text-emerald-700 border-emerald-200", title: "Insurer marked the submission as paid via Sumex" };
+    case "partially_paid":return { label: "Partial",     cls: "bg-amber-50 text-amber-700 border-amber-200", title: "Partial Sumex payment recorded" };
+    case "rejected":      return { label: "Rejected",    cls: "bg-rose-50 text-rose-700 border-rose-200", title: "Insurer formally rejected via Sumex (read the explanation in the MediData page; bank reality may differ)" };
+    case "disputed":      return { label: "Disputed",    cls: "bg-orange-50 text-orange-700 border-orange-200", title: "Disputed" };
+    case "reminder_1":    return { label: "Reminder 1",  cls: "bg-yellow-50 text-yellow-700 border-yellow-200", title: "First reminder sent" };
+    case "reminder_2":    return { label: "Reminder 2",  cls: "bg-orange-50 text-orange-700 border-orange-200", title: "Second reminder sent" };
+    case "reminder_3":    return { label: "Reminder 3",  cls: "bg-red-50 text-red-700 border-red-200", title: "Third reminder sent" };
+    case "collection":    return { label: "Collection",  cls: "bg-red-100 text-red-800 border-red-300", title: "Sent to collection" };
+    case "cancelled":     return { label: "Cancelled",   cls: "bg-slate-100 text-slate-500 border-slate-200", title: "Submission cancelled (storno)" };
+    default:              return { label: status, cls: "bg-slate-50 text-slate-600 border-slate-200", title: status };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -107,8 +144,26 @@ export default function InvoicesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
+  const [billingTypeFilter, setBillingTypeFilter] = useState<string>("all");      // all | TG | TP
+  // Insurance-submission filter buckets:
+  //   all                = no filter
+  //   not_submitted      = TP invoices with zero medidata_submissions
+  //   in_flight          = latest submission is pending / transmitted / draft / delivered
+  //   rejected           = latest submission is rejected (or rejected_paid_via_bank)
+  //   accepted           = latest submission is accepted / paid / partially_paid
+  const [insuranceFilter, setInsuranceFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  // Latest medidata_submissions row per invoice — for the new "Insurance" column.
+  // We don't mutate medidata_submissions from anywhere else; this is a pure
+  // read used by the filter and column rendering.
+  type LatestInsurance = {
+    status: string;          // pending|transmitted|delivered|accepted|paid|partial_paid|rejected|cancelled|...
+    created_at: string;
+    has_response: boolean;   // any insurer response received
+  };
+  const [latestInsByInvoice, setLatestInsByInvoice] = useState<Record<string, LatestInsurance>>({});
 
   // Pagination
   const ROWS_PER_PAGE = 50;
@@ -171,6 +226,40 @@ export default function InvoicesPage() {
           }
           if (isMounted) setPatientsById(map);
         }
+
+        // Fetch the latest medidata submission per invoice for the new
+        // "Insurance" column / filter. We pull all submissions for the
+        // current invoice set in batches, then reduce to the latest per
+        // invoice on the client. medidata_submissions is small (<1k rows)
+        // so this is cheap.
+        const invoiceIds = rows.map(r => r.id);
+        if (invoiceIds.length > 0) {
+          const latestMap: Record<string, LatestInsurance> = {};
+          const BATCH = 100;
+          for (let i = 0; i < invoiceIds.length; i += BATCH) {
+            if (!isMounted) return;
+            const batch = invoiceIds.slice(i, i + BATCH);
+            const { data: subs } = await supabaseClient
+              .from("medidata_submissions")
+              .select("invoice_id, status, created_at, insurance_response_date")
+              .in("invoice_id", batch)
+              .order("created_at", { ascending: false });
+            if (subs) {
+              for (const s of subs as any[]) {
+                if (!s.invoice_id) continue;
+                // First seen wins because the query is ordered desc.
+                if (!latestMap[s.invoice_id]) {
+                  latestMap[s.invoice_id] = {
+                    status: String(s.status || "draft"),
+                    created_at: String(s.created_at || ""),
+                    has_response: !!s.insurance_response_date,
+                  };
+                }
+              }
+            }
+          }
+          if (isMounted) setLatestInsByInvoice(latestMap);
+        }
         setLoading(false);
       } catch {
         if (isMounted) { setError("Failed to load invoices."); setInvoices([]); setLoading(false); }
@@ -208,8 +297,29 @@ export default function InvoicesPage() {
     return invoices.filter(r => {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (paymentMethodFilter !== "all" && r.payment_method !== paymentMethodFilter) return false;
+      if (billingTypeFilter !== "all" && (r.billing_type ?? "").toUpperCase() !== billingTypeFilter) return false;
       if (dateFrom && r.invoice_date && r.invoice_date < dateFrom) return false;
       if (dateTo && r.invoice_date && r.invoice_date > dateTo) return false;
+      // Insurance-submission filter
+      if (insuranceFilter !== "all") {
+        const latest = latestInsByInvoice[r.id];
+        const st = latest?.status?.toLowerCase();
+        switch (insuranceFilter) {
+          case "not_submitted":
+            if (latest) return false; // has a submission → exclude
+            if ((r.billing_type ?? "").toUpperCase() === "TG") return false; // TG not expected
+            break;
+          case "in_flight":
+            if (!st || !["pending","transmitted","draft","delivered"].includes(st)) return false;
+            break;
+          case "rejected":
+            if (st !== "rejected") return false;
+            break;
+          case "accepted":
+            if (!st || !["accepted","paid","partially_paid"].includes(st)) return false;
+            break;
+        }
+      }
       if (q) {
         const pName = patientName(r.patient_id).toLowerCase();
         const invNum = (r.invoice_number || "").toLowerCase();
@@ -218,7 +328,7 @@ export default function InvoicesPage() {
       }
       return true;
     });
-  }, [invoices, search, statusFilter, paymentMethodFilter, dateFrom, dateTo, patientName]);
+  }, [invoices, search, statusFilter, paymentMethodFilter, billingTypeFilter, insuranceFilter, latestInsByInvoice, dateFrom, dateTo, patientName]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
   const paginated = useMemo(() => {
@@ -243,7 +353,7 @@ export default function InvoicesPage() {
   }, [filtered]);
 
   // Reset page on filter change
-  useEffect(() => { setPage(0); setSelected(new Set()); }, [search, statusFilter, paymentMethodFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(0); setSelected(new Set()); }, [search, statusFilter, paymentMethodFilter, billingTypeFilter, insuranceFilter, dateFrom, dateTo]);
 
   // ---------------------------------------------------------------------------
   // Selection helpers
@@ -728,10 +838,22 @@ export default function InvoicesPage() {
           <option value="all">All methods</option>
           {paymentMethods.map(m => <option key={m} value={m}>{m}</option>)}
         </select>
+        <select value={billingTypeFilter} onChange={e => setBillingTypeFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+          <option value="all">All billing</option>
+          <option value="TP">TP (Tiers Payant)</option>
+          <option value="TG">TG (Tiers Garant)</option>
+        </select>
+        <select value={insuranceFilter} onChange={e => setInsuranceFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
+          <option value="all">All insurance</option>
+          <option value="not_submitted">⚠ Not submitted (TP)</option>
+          <option value="in_flight">⏳ Pending / Transmitted</option>
+          <option value="rejected">❌ Rejected</option>
+          <option value="accepted">✓ Accepted / Paid</option>
+        </select>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500" placeholder="From" />
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500" placeholder="To" />
-        {(search || statusFilter !== "all" || paymentMethodFilter !== "all" || dateFrom || dateTo) && (
-          <button type="button" onClick={() => { setSearch(""); setStatusFilter("all"); setPaymentMethodFilter("all"); setDateFrom(""); setDateTo(""); }} className="text-[10px] text-sky-600 hover:text-sky-800 font-medium">
+        {(search || statusFilter !== "all" || paymentMethodFilter !== "all" || billingTypeFilter !== "all" || insuranceFilter !== "all" || dateFrom || dateTo) && (
+          <button type="button" onClick={() => { setSearch(""); setStatusFilter("all"); setPaymentMethodFilter("all"); setBillingTypeFilter("all"); setInsuranceFilter("all"); setDateFrom(""); setDateTo(""); }} className="text-[10px] text-sky-600 hover:text-sky-800 font-medium">
             Clear filters
           </button>
         )}
@@ -788,6 +910,7 @@ export default function InvoicesPage() {
                 <th className="px-3 py-2.5 font-semibold text-slate-600 text-right">Remaining</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">Status</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">Method</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">Insurance</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">Doctor</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600 text-center">PDF</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600 text-center">Actions</th>
@@ -828,6 +951,17 @@ export default function InvoicesPage() {
                       <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}>{badge.label}</span>
                     </td>
                     <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{row.payment_method || "-"}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {(() => {
+                        const latest = latestInsByInvoice[row.id];
+                        const b = insuranceBadge(latest?.status, row.billing_type);
+                        return (
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${b.cls}`} title={b.title}>
+                            {b.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[120px] truncate">{row.doctor_name || "-"}</td>
                     <td className="px-3 py-2 text-center">
                       {row.pdf_path ? (

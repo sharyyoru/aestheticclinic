@@ -15,6 +15,7 @@ import {
   SexType,
   YesNo,
 } from "@/lib/sumexInvoice";
+import { deriveTariffType } from "@/lib/tariffType";
 
 const MEDIDATA_INTERMEDIATE_GLN = "7601001304307";
 const SIMULATOR_GLN = "2099988876514";
@@ -164,8 +165,9 @@ export async function POST(request: NextRequest) {
         const treatmentDateEnd = inv.treatment_date_end ? new Date(inv.treatment_date_end).toISOString().split("T")[0] : treatmentDate;
 
         const sumexServices: SumexServiceInput[] = lineItems.map((li: any, idx: number) => {
-          // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-          const tariffType = li.tariff_type || (li.tariff_code ? String(li.tariff_code).padStart(3, "0") : "590");
+          // Resolve tariff_type honoring `catalog_name` first so TMA gestures
+          // emit as "TMA". See src/lib/tariffType.ts.
+          const tariffType = deriveTariffType(li);
           // When tp_al is populated, use it with the real unitFactor.
           // When tp_al is 0, total_price already includes the factor → use unitFactor=1.
           const hasTpAl = Number(li.tp_al) > 0;

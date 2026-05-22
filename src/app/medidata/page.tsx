@@ -31,6 +31,9 @@ type Submission = {
     id: string;
     pdf_path: string | null;
     pdf_generated_at: string | null;
+    status: string | null;            // OPEN | PAID | PARTIAL_PAID | OVERPAID | CANCELLED | PARTIAL_LOSS
+    paid_amount: number | null;
+    total_amount: number | null;
   } | null;
   status: MediDataInvoiceStatus;
   patient_id: string;
@@ -165,6 +168,53 @@ type ParsedNotification = {
   errorCode: string | null;
   communication: string | null;
 };
+
+// ---------------------------------------------------------------------------
+// Invoice payment badge — purely informational, sourced from `invoices.status`
+// and `invoices.paid_amount`. The MediData submission status reflects what
+// the insurer told us via Sumex; the invoice payment status reflects bank
+// reality. They are independent — this badge surfaces the latter alongside
+// the existing MediData status badge so a "rejected as duplicate but bank-
+// paid" case is legible at a glance.
+// ---------------------------------------------------------------------------
+
+type InvoicePaymentInfo = {
+  status: string | null;
+  paid_amount: number | null;
+  total_amount: number | null;
+};
+
+function InvoicePaymentBadge({ invoice }: { invoice?: InvoicePaymentInfo | null }) {
+  if (!invoice) {
+    return <span className="text-[10px] text-slate-400">—</span>;
+  }
+  const paid = Number(invoice.paid_amount ?? 0);
+  const total = Number(invoice.total_amount ?? 0);
+  const status = (invoice.status ?? "OPEN").toUpperCase();
+  // Map invoice status → label + tailwind colors
+  const config: Record<string, { label: string; cls: string }> = {
+    PAID:         { label: "Paid",     cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+    PARTIAL_PAID: { label: "Partial",  cls: "bg-amber-50  text-amber-700  border-amber-200"  },
+    OVERPAID:     { label: "Overpaid", cls: "bg-cyan-50   text-cyan-700   border-cyan-200"   },
+    PARTIAL_LOSS: { label: "Loss",     cls: "bg-rose-50   text-rose-700   border-rose-200"   },
+    CANCELLED:    { label: "Cancelled",cls: "bg-slate-50  text-slate-500  border-slate-200"  },
+    OPEN:         { label: "Unpaid",   cls: "bg-slate-50  text-slate-600  border-slate-200"  },
+  };
+  const c = config[status] ?? config.OPEN;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${c.cls}`}
+      title={`Invoice ${status} — paid CHF ${paid.toFixed(2)} / total CHF ${total.toFixed(2)}`}
+    >
+      {c.label}
+      {paid > 0 && (
+        <span className="font-mono text-[10px] opacity-80">
+          {paid.toFixed(0)}
+        </span>
+      )}
+    </span>
+  );
+}
 
 function parseNotificationMessage(message: string | null): ParsedNotification {
   const result: ParsedNotification = {
@@ -319,7 +369,7 @@ export default function MediDataDashboard() {
         .select(`
           *,
           patient:patients(id,first_name,last_name),
-          invoice:invoices(id,pdf_path,pdf_generated_at),
+          invoice:invoices(id,pdf_path,pdf_generated_at,status,paid_amount,total_amount),
           history:medidata_submission_history(*)
         `, { count: "exact" })
         .neq("patient_id", TEST_PATIENT_ID)
@@ -1183,12 +1233,13 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
             </div>
           ) : (
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.8fr)_minmax(110px,0.9fr)_minmax(90px,0.8fr)_minmax(140px,1fr)_32px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <div className="grid grid-cols-[minmax(0,2.2fr)_minmax(0,1.8fr)_minmax(110px,0.9fr)_minmax(90px,0.8fr)_minmax(110px,0.9fr)_minmax(140px,1fr)_32px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 <div>Invoice</div>
                 <div>Patient</div>
                 <div>Billing</div>
                 <div>Amount</div>
-                <div>Status</div>
+                <div title="Bank-confirmed payment status from the invoices table — independent of the MediData/Sumex response">Payment</div>
+                <div>MediData status</div>
                 <div></div>
               </div>
 
@@ -1196,7 +1247,7 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
                 <div key={sub.id} className="border-b border-slate-100 last:border-b-0">
                   <button
                     type="button"
-                    className="grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1.8fr)_minmax(110px,0.9fr)_minmax(90px,0.8fr)_minmax(140px,1fr)_32px] gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                    className="grid w-full grid-cols-[minmax(0,2.2fr)_minmax(0,1.8fr)_minmax(110px,0.9fr)_minmax(90px,0.8fr)_minmax(110px,0.9fr)_minmax(140px,1fr)_32px] gap-3 px-4 py-3 text-left hover:bg-slate-50"
                     onClick={() => setExpandedSub(expandedSub === sub.id ? null : sub.id)}
                   >
                     <div className="min-w-0">
@@ -1228,6 +1279,9 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
                       <p className="text-sm font-medium text-slate-700">
                         {sub.invoice_amount != null ? `CHF ${sub.invoice_amount.toFixed(2)}` : "—"}
                       </p>
+                    </div>
+                    <div className="min-w-0">
+                      <InvoicePaymentBadge invoice={sub.invoice} />
                     </div>
                     <div className="min-w-0">
                       <InvoiceStatusBadge status={sub.status} />
@@ -1271,6 +1325,43 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
                           )}
                         </div>
                       </div>
+
+                      {/* Invoice payment block — independent of MediData/Sumex.
+                          Surfaces the invoices.status / paid_amount truth so a
+                          "rejected (déjà payée)" submission is plainly paid here. */}
+                      {sub.invoice && (
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Invoice payment</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                Bank-confirmed payment status. Independent of the MediData/Sumex response above.
+                              </p>
+                            </div>
+                            <InvoicePaymentBadge invoice={sub.invoice} />
+                          </div>
+                          <div className="mt-2 grid grid-cols-3 gap-3 text-xs">
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-slate-400">Total</p>
+                              <p className="mt-0.5 font-medium text-slate-700">
+                                CHF {Number(sub.invoice.total_amount ?? 0).toFixed(2)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-slate-400">Paid</p>
+                              <p className="mt-0.5 font-medium text-emerald-700">
+                                CHF {Number(sub.invoice.paid_amount ?? 0).toFixed(2)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-slate-400">Outstanding</p>
+                              <p className="mt-0.5 font-medium text-amber-700">
+                                CHF {(Number(sub.invoice.total_amount ?? 0) - Number(sub.invoice.paid_amount ?? 0)).toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Error Notifications Alert (transmission errors) */}
                       {sub.error_notifications && sub.error_notifications.length > 0 && (

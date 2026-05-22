@@ -23,6 +23,7 @@ import {
   type InvoiceDiagnosis,
 } from "@/lib/sumexInvoice";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { deriveTariffType } from "@/lib/tariffType";
 
 /**
  * GET /api/sumex/invoice?action=info|requestInfo|responseInfo
@@ -206,8 +207,16 @@ async function handleBuildFromConsultation(body: Record<string, unknown>) {
   const services: InvoiceServiceInput[] = [];
   if (invoiceItems?.line_items && Array.isArray(invoiceItems.line_items)) {
     for (const item of invoiceItems.line_items as Array<Record<string, unknown>>) {
+      // Resolve tariff_type honoring `catalog_name` first so TMA gestures
+      // emit as "TMA". See src/lib/tariffType.ts.
+      const tariffType =
+        deriveTariffType({
+          tariff_type: (item.tariff_type as string) ?? (item.tariffType as string) ?? null,
+          tariff_code: (item.tariff_code as number) ?? null,
+          catalog_name: (item.catalog_name as string) ?? null,
+        }) || "007";
       services.push({
-        tariffType: (item.tariff_type as string) || (item.tariffType as string) || "007",
+        tariffType,
         code: (item.code as string) || (item.service_code as string) || "",
         referenceCode: (item.reference_code as string) || "",
         quantity: (item.quantity as number) || 1,

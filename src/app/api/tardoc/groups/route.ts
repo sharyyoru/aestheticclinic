@@ -1,7 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { autofillGroupRefs, type AutofillSummary } from "@/lib/groupRefAutofill";
 
 export const runtime = "nodejs";
+
+// Per-group autofill summary echoed back to the client so the UI can show
+// which refs were filled and which still need manual input.
+type AutofillReport = {
+  filled: number;
+  kept: number;
+  standalone: number;
+  needsManual: number;
+  skipAcf: number;
+  unknown: number;
+  details: Array<{
+    tardoc_code: string;
+    sort_order: number;
+    ref_code: string | null;
+    filledBy: AutofillSummary["items"][number]["filledBy"];
+    baseCode?: string;
+  }>;
+};
+
+function summaryToReport(s: AutofillSummary): AutofillReport {
+  return {
+    filled: s.filled,
+    kept: s.kept,
+    standalone: s.standalone,
+    needsManual: s.needsManual,
+    skipAcf: s.skipAcf,
+    unknown: s.unknown,
+    details: s.items.map((it) => ({
+      tardoc_code: it.tardoc_code,
+      sort_order: it.sort_order,
+      ref_code: it.ref_code,
+      filledBy: it.filledBy,
+      baseCode: it.baseCode,
+    })),
+  };
+}
 
 /**
  * GET /api/tardoc/groups — List all active TarDoc groups with their items
@@ -72,7 +109,7 @@ export async function POST(request: NextRequest) {
         tardoc_code: string;
         description?: string;
         quantity?: number;
-        ref_code?: string;
+        ref_code?: string | null;
         side_type?: number;
         tp_mt?: number;
         tp_tt?: number;
@@ -110,9 +147,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Insert items
+    // Run the catalog-driven autofill pass. Only fills empty ref_codes; never
+    // overwrites a user-supplied value. See src/lib/groupRefAutofill.ts.
+    let autofillReport: AutofillReport | null = null;
+    let resolvedItems = items;
     if (items.length > 0) {
-      const itemRows = items.map((item, idx) => ({
+      try {
+        const summary = await autofillGroupRefs(
+          items.map((item, idx) => ({
+            tardoc_code: item.tardoc_code,
+            ref_code: item.ref_code ?? null,
+            sort_order: item.sort_order ?? idx,
+          })),
+        );
+        autofillReport = summaryToReport(summary);
+        // Map enriched ref_codes back onto the original items by index.
+        const refByOrder = new Map(summary.items.map((r) => [r.sort_order, r.ref_code]));
+        resolvedItems = items.map((item, idx) => ({
+          ...item,
+          ref_code: refByOrder.get(item.sort_order ?? idx) ?? item.ref_code ?? null,
+        }));
+      } catch (err) {
+        console.error("[POST /api/tardoc/groups] autofill failed (continuing with raw refs):", err);
+      }
+    }
+
+    // Insert items
+    if (resolvedItems.length > 0) {
+      const itemRows = resolvedItems.map((item, idx) => ({
         group_id: group.id,
         tardoc_code: item.tardoc_code,
         description: item.description || null,
@@ -137,7 +199,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, id: group.id });
+    return NextResponse.json({ success: true, id: group.id, autofill: autofillReport });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -163,7 +225,7 @@ export async function PUT(request: NextRequest) {
         tardoc_code: string;
         description?: string;
         quantity?: number;
-        ref_code?: string;
+        ref_code?: string | null;
         side_type?: number;
         tp_mt?: number;
         tp_tt?: number;
@@ -206,13 +268,36 @@ export async function PUT(request: NextRequest) {
     }
 
     // Replace items if provided
+    let autofillReport: AutofillReport | null = null;
     if (items !== undefined) {
+      // Run the catalog-driven autofill pass first (only fills empties).
+      let resolvedItems = items;
+      if (items.length > 0) {
+        try {
+          const summary = await autofillGroupRefs(
+            items.map((item, idx) => ({
+              tardoc_code: item.tardoc_code,
+              ref_code: item.ref_code ?? null,
+              sort_order: item.sort_order ?? idx,
+            })),
+          );
+          autofillReport = summaryToReport(summary);
+          const refByOrder = new Map(summary.items.map((r) => [r.sort_order, r.ref_code]));
+          resolvedItems = items.map((item, idx) => ({
+            ...item,
+            ref_code: refByOrder.get(item.sort_order ?? idx) ?? item.ref_code ?? null,
+          }));
+        } catch (err) {
+          console.error("[PUT /api/tardoc/groups] autofill failed (continuing with raw refs):", err);
+        }
+      }
+
       // Delete old items
       await supabaseAdmin.from("tardoc_group_items").delete().eq("group_id", id);
 
       // Insert new items
-      if (items.length > 0) {
-        const itemRows = items.map((item, idx) => ({
+      if (resolvedItems.length > 0) {
+        const itemRows = resolvedItems.map((item, idx) => ({
           group_id: id,
           tardoc_code: item.tardoc_code,
           description: item.description || null,
@@ -238,7 +323,7 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, autofill: autofillReport });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     return NextResponse.json({ error: message }, { status: 500 });

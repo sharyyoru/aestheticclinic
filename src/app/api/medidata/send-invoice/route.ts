@@ -27,6 +27,7 @@ import {
   type InvoiceServiceInput as SumexServiceInput,
   type InvoiceDiagnosis as SumexDiagnosis,
 } from "@/lib/sumexInvoice";
+import { deriveTariffType } from "@/lib/tariffType";
 
 type ConsultationData = {
   id: string;
@@ -318,8 +319,10 @@ export async function POST(request: NextRequest) {
 
       // Map actual line items to InvoiceServiceLine for XML generation
       services = billableLineItems.map((item: any, idx: number) => {
-        // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-        const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "590");
+        // Resolve tariff_type honoring `catalog_name` first so TMA gestures
+        // (catalog_name='TMA' but tariff_code=5/7) emit as "TMA", not "005".
+        // See src/lib/tariffType.ts for the full priority chain.
+        const tariffType = deriveTariffType(item);
         const isAcf = tariffType === "005";
         // ACF (005) with ignoreValidate=Yes: use sessionNumber=1 (simple tariff default per docs)
         const rawSession = item.session_number ?? 1;

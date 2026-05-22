@@ -233,7 +233,15 @@ export default function AcfAccordionTree({
   // ── Add resulting ACF code to invoice ──────────────────────────────────────
   // Standard: add TMA gesture line (TP=0) first, then the generated ACF flat rate line
   const handleAddAcfResult = useCallback((acf: any) => {
-    // 1. TMA gesture code line (documents what was performed, TP = 0)
+    // 1. TMA gesture code line (documents what was performed, TP = 0).
+    //    Per acfvalidator100.chm → IValidateTMA::AddService::bstrReferenceCode:
+    //    "The reference code must be set if the enServicePropertyIsNeedsRefCode
+    //     bit of that service is defined. If a reference code is needed than
+    //     that parent service must be supplied before this one."
+    //    So the ref on a TMA gesture is a *master TMA code* (not the ICD).
+    //    The ICD travels on the resulting ACF flat-rate line below
+    //    (cf. IValidate005::AddService::bstrReferenceCode: "this variable can
+    //     be used as an ICD-10 container").
     if (staged) {
       onAddService({
         code: staged.code,
@@ -243,13 +251,14 @@ export default function AcfAccordionTree({
         chapterName: staged.chapterName || "",
         sideType: stageSide,
         externalFactor: 1.0,
-        refCode: stageIcd.trim(),
+        refCode: "", // Intentionally empty — the gesture ref is master/slave-only
         tmaGestureCode: staged.code,
         tmaGestureName: staged.name,
         isTmaGesture: true,
       });
     }
-    // 2. ACF flat rate code line (the billable amount)
+    // 2. ACF flat rate code line (the billable amount). The ICD goes here per
+    //    IValidate005::AddService::bstrReferenceCode.
     onAddService({
       code: acf.code,
       name: acf.name,

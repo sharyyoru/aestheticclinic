@@ -16,6 +16,7 @@ import {
   type InvoiceServiceInput as SumexServiceInput,
   type InvoiceDiagnosis as SumexDiagnosis,
 } from "@/lib/sumexInvoice";
+import { deriveTariffType } from "@/lib/tariffType";
 
 // Default QR-IBAN fallback (IID 30000-31999 required for QR type)
 const FALLBACK_QR_IBAN = "CH0930788000050249289";
@@ -220,8 +221,10 @@ export async function POST(request: NextRequest) {
     const billableLineItems = dbLineItems || [];
 
     const sumexServices: SumexServiceInput[] = billableLineItems.map((item: any, idx: number) => {
-      // Use stored tariff_type, or derive from tariff_code (zero-padded to 3 digits)
-      const tariffType = item.tariff_type || (item.tariff_code ? String(item.tariff_code).padStart(3, "0") : "590");
+      // Resolve tariff_type honoring `catalog_name` first so TMA gestures
+      // (catalog_name='TMA' but tariff_code=5/7) emit as "TMA", not "005".
+      // See src/lib/tariffType.ts for the full priority chain.
+      const tariffType = deriveTariffType(item);
       const isAcf = tariffType === "005";
       const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
       const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;

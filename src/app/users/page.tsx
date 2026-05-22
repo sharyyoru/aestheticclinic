@@ -71,7 +71,7 @@ export default function UsersPage() {
     };
   }, [router]);
 
-  async function handleMakeAdmin(userId: string) {
+  async function handleRoleChange(userId: string, newRole: string) {
     if (!isAdmin || updatingUserId) return;
 
     try {
@@ -80,36 +80,12 @@ export default function UsersPage() {
       const response = await fetch("/api/users/update-role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, role: "admin" }),
+        body: JSON.stringify({ userId, role: newRole }),
       });
 
       if (response.ok) {
         setUsers((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, role: "admin" } : u))
-        );
-      }
-    } catch {
-      // Ignore errors
-    } finally {
-      setUpdatingUserId(null);
-    }
-  }
-
-  async function handleRemoveAdmin(userId: string) {
-    if (!isAdmin || updatingUserId) return;
-
-    try {
-      setUpdatingUserId(userId);
-
-      const response = await fetch("/api/users/update-role", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, role: "staff" }),
-      });
-
-      if (response.ok) {
-        setUsers((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, role: "staff" } : u))
+          prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
         );
       }
     } catch {
@@ -207,8 +183,7 @@ export default function UsersPage() {
         isAdmin={isAdmin}
         currentUserId={currentUserId}
         updatingUserId={updatingUserId}
-        onMakeAdmin={handleMakeAdmin}
-        onRemoveAdmin={handleRemoveAdmin}
+        onRoleChange={handleRoleChange}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         currentPage={currentPage}
@@ -226,8 +201,7 @@ function UserTable({
   isAdmin,
   currentUserId,
   updatingUserId,
-  onMakeAdmin,
-  onRemoveAdmin,
+  onRoleChange,
   searchQuery,
   onSearchChange,
   currentPage,
@@ -240,8 +214,7 @@ function UserTable({
   isAdmin: boolean;
   currentUserId: string | null;
   updatingUserId: string | null;
-  onMakeAdmin: (userId: string) => void;
-  onRemoveAdmin: (userId: string) => void;
+  onRoleChange: (userId: string, newRole: string) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   currentPage: number;
@@ -328,30 +301,20 @@ function UserTable({
                     </td>
                     {isAdmin && (
                       <td className="py-2 pr-4">
-                        {!isSelf && (
-                          <>
-                            {isUserAdmin ? (
-                              <button
-                                type="button"
-                                onClick={() => onRemoveAdmin(user.id)}
-                                disabled={isUpdating}
-                                className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-50"
-                              >
-                                {isUpdating ? "..." : "Remove Admin"}
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => onMakeAdmin(user.id)}
-                                disabled={isUpdating}
-                                className="inline-flex items-center rounded-full border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 shadow-sm hover:bg-amber-100 disabled:opacity-50"
-                              >
-                                {isUpdating ? "..." : "Make Admin"}
-                              </button>
-                            )}
-                          </>
-                        )}
-                        {isSelf && (
+                        {!isSelf ? (
+                          <select
+                            value={userRole}
+                            onChange={(e) => onRoleChange(user.id, e.target.value)}
+                            disabled={isUpdating}
+                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 outline-none focus:border-sky-400 disabled:opacity-50"
+                          >
+                            <option value="admin">Admin</option>
+                            <option value="staff">Staff</option>
+                            <option value="user">User</option>
+                            <option value="expert">Expert</option>
+                            <option value="contact_owner">Contact Owner</option>
+                          </select>
+                        ) : (
                           <span className="text-[10px] text-slate-400">You</span>
                         )}
                       </td>

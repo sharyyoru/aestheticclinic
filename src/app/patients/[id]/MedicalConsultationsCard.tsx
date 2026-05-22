@@ -3931,8 +3931,19 @@ export default function MedicalConsultationsCard({
 
                             // Determine tariff code: 7=TARDOC, 5=ACF Flat Rate / TMA, 406=Matériel, null=regular
                             const tariffCode = isTardocLine ? 7 : isAcfRelated ? ACF_TARIFF_CODE : isMaterielLine ? MATERIEL_406_TARIFF_CODE : null;
-                            // Derive tariff type string from tariff code (zero-padded to 3 digits)
-                            const tariffType = tariffCode != null ? String(tariffCode).padStart(3, "0") : null;
+                            // Derive the official Forum-Datenaustausch tariff type. Note that
+                            // `tariff_code` alone CANNOT distinguish TMA gestures from ACF flat
+                            // rates (both use 5) — sending a TMA gesture as tariff "005" makes
+                            // the insurer's validator reject the invoice with
+                            // "Cumul: impossible de décompter G|T_005_005". So derive from the
+                            // line type instead. See src/lib/tariffType.ts for the consume-side
+                            // mirror of this rule.
+                            const tariffType =
+                              isTardocLine    ? "007" :
+                              isFlatRateLine  ? "005" :
+                              isTmaLine       ? "TMA" :
+                              isMaterielLine  ? "406" :
+                              null;
 
                             return {
                               name: line.customName || service?.name || materielItem?.name || (tardocCode ? `TARDOC ${tardocCode}` : flatRateCode ? `Flat Rate ${flatRateCode}` : tmaCode ? `TMA ${tmaCode}` : materielCode ? `Matériel ${materielCode}` : "Service"),
