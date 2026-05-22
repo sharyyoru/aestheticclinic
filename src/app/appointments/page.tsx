@@ -427,6 +427,23 @@ function formatTimeRangeLabel(start: Date, end: Date | null): string {
   return formatSwissTimeRange(start, end, DAY_VIEW_SLOT_MINUTES);
 }
 
+function normalizeComparableText(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+function appointmentCommunicationDetailsChanged(
+  previous: CalendarAppointment,
+  next: CalendarAppointment,
+): boolean {
+  return (
+    previous.status !== next.status ||
+    previous.start_time !== next.start_time ||
+    (previous.end_time ?? null) !== (next.end_time ?? null) ||
+    normalizeComparableText(previous.location) !== normalizeComparableText(next.location) ||
+    normalizeComparableText(previous.reason) !== normalizeComparableText(next.reason)
+  );
+}
+
 function getServiceAndStatusFromReason(reason: string | null): {
   serviceLabel: string;
   statusLabel: string | null;
@@ -607,6 +624,7 @@ function calculateOverlapPositions(
 
 async function sendAppointmentConfirmationEmail(
   appointment: CalendarAppointment,
+  variant: "created" | "updated" = "created",
 ): Promise<{ success: boolean; error?: string }> {
   const patientEmail = appointment.patient?.email ?? null;
   if (!patientEmail) {
@@ -620,10 +638,9 @@ async function sendAppointmentConfirmationEmail(
     const fromAddress = authUser?.email ?? null;
 
     const start = new Date(appointment.start_time);
-    const end = appointment.end_time ? new Date(appointment.end_time) : null;
 
     const dateLabel = formatSwissDate(start);
-    const timeLabel = formatTimeRangeLabel(start, end);
+    const timeLabel = formatSwissTime(start);
     const dateTimeLabel = `${dateLabel} ${timeLabel}`;
 
     const patientName = `${appointment.patient?.first_name ?? ""} ${appointment
@@ -642,11 +659,16 @@ async function sendAppointmentConfirmationEmail(
 
     const preConsultationUrl = "https://aestheticclinic.vercel.app/intake";
 
-    const subject = `Appointment confirmation - ${dateLabel} ${timeLabel}`;
+    const isUpdate = variant === "updated";
+    const subjectPrefix = isUpdate ? "Appointment updated" : "Appointment confirmation";
+    const introText = isUpdate
+      ? `Your appointment details have been updated with ${doctorName}.`
+      : `Your appointment has been booked with ${doctorName}.`;
+    const subject = `${subjectPrefix} - ${dateLabel} ${timeLabel}`;
 
     const htmlBody = `
       <p>Dear ${patientName || "patient"},</p>
-      <p>Your appointment has been booked with ${doctorName}.</p>
+      <p>${introText}</p>
       <p>
         <strong>Date:</strong> ${dateLabel}<br />
         <strong>Time:</strong> ${timeLabel}<br />
@@ -733,7 +755,9 @@ async function sendAppointmentConfirmationEmail(
 
     const patientPhone = appointment.patient?.phone ?? null;
     if (patientPhone && patientPhone.trim().length > 0) {
-      const whatsappText = `Appointment confirmation on ${dateTimeLabel} for ${serviceLabel} with ${doctorName} at ${location}`;
+      const whatsappText = isUpdate
+        ? `Appointment updated to ${dateTimeLabel} for ${serviceLabel} with ${doctorName} at ${location}`
+        : `Appointment confirmation on ${dateTimeLabel} for ${serviceLabel} with ${doctorName} at ${location}`;
 
       try {
         await fetch("/api/whatsapp/queue", {
@@ -2667,6 +2691,9 @@ export default function CalendarPage() {
       }
 
       const updated = data as unknown as CalendarAppointment;
+      const shouldSendUpdatedConfirmation =
+        updated.status !== "cancelled" &&
+        appointmentCommunicationDetailsChanged(editingAppointment, updated);
 
       // Check if time changed and send rescheduling email
       const originalStartTime = new Date(editingAppointment.start_time).getTime();
@@ -2692,6 +2719,10 @@ export default function CalendarPage() {
         });
         return next;
       });
+
+      if (shouldSendUpdatedConfirmation) {
+        void sendAppointmentConfirmationEmail(updated, "updated");
+      }
 
       setSavingEdit(false);
       setEditModalOpen(false);
