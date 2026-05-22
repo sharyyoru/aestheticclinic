@@ -104,12 +104,7 @@ function insuranceBadge(status: string | null | undefined, billingType: string |
 } {
   // No submission at all
   if (!status) {
-    if ((billingType ?? "").toUpperCase() === "TG") {
-      // TG invoices are intentionally not transmitted to the insurer (patient
-      // pays the clinic, then claims back themselves) — show a neutral marker.
-      return { label: "TG (no submission)", cls: "bg-slate-50 text-slate-500 border-slate-200", title: "Tiers Garant — patient pays the clinic and claims back from their insurer separately. No MediData submission expected." };
-    }
-    return { label: "Not submitted", cls: "bg-slate-100 text-slate-700 border-slate-300 font-semibold", title: "No insurance submission has been sent for this invoice yet." };
+    return { label: "Not submitted", cls: "bg-slate-100 text-slate-700 border-slate-300 font-semibold", title: "No insurance submission sent yet" };
   }
   switch (status.toLowerCase()) {
     case "draft":         return { label: "Draft",       cls: "bg-slate-50 text-slate-600 border-slate-200", title: "Draft submission" };
@@ -227,34 +222,28 @@ export default function InvoicesPage() {
           if (isMounted) setPatientsById(map);
         }
 
-        // Fetch the latest medidata submission per invoice for the new
-        // "Insurance" column / filter. We pull all submissions for the
-        // current invoice set in batches, then reduce to the latest per
-        // invoice on the client. medidata_submissions is small (<1k rows)
-        // so this is cheap.
-        const invoiceIds = rows.map(r => r.id);
-        if (invoiceIds.length > 0) {
+        // Fetch the latest medidata submission per invoice. We pull ALL
+        // submissions (typically <500 rows) in one query ordered by
+        // created_at DESC, then reduce to the latest per invoice_id on the
+        // client. This guarantees we always show the NEWEST submission's
+        // status, not an older rejected one that was since resubmitted.
+        {
           const latestMap: Record<string, LatestInsurance> = {};
-          const BATCH = 100;
-          for (let i = 0; i < invoiceIds.length; i += BATCH) {
-            if (!isMounted) return;
-            const batch = invoiceIds.slice(i, i + BATCH);
-            const { data: subs } = await supabaseClient
-              .from("medidata_submissions")
-              .select("invoice_id, status, created_at, insurance_response_date")
-              .in("invoice_id", batch)
-              .order("created_at", { ascending: false });
-            if (subs) {
-              for (const s of subs as any[]) {
-                if (!s.invoice_id) continue;
-                // First seen wins because the query is ordered desc.
-                if (!latestMap[s.invoice_id]) {
-                  latestMap[s.invoice_id] = {
-                    status: String(s.status || "draft"),
-                    created_at: String(s.created_at || ""),
-                    has_response: !!s.insurance_response_date,
-                  };
-                }
+          const { data: subs } = await supabaseClient
+            .from("medidata_submissions")
+            .select("invoice_id, status, created_at, insurance_response_date")
+            .not("invoice_id", "is", null)
+            .order("created_at", { ascending: false });
+          if (subs) {
+            for (const s of subs as any[]) {
+              if (!s.invoice_id) continue;
+              // First seen wins (query is ordered DESC → newest first).
+              if (!latestMap[s.invoice_id]) {
+                latestMap[s.invoice_id] = {
+                  status: String(s.status || "draft"),
+                  created_at: String(s.created_at || ""),
+                  has_response: !!s.insurance_response_date,
+                };
               }
             }
           }
@@ -304,16 +293,30 @@ export default function InvoicesPage() {
       if (insuranceFilter !== "all") {
         const latest = latestInsByInvoice[r.id];
         const st = latest?.status?.toLowerCase();
+        const invoicePaid = (Number(r.paid_amount) || 0) > 0;
+        const isInsuranceInvoice = !!r.billing_type && ["TP","TG"].includes(r.billing_type.toUpperCase())
+          || (r.payment_method ?? "").toLowerCase() === "insurance";
+        const isNotSubmitted = !latest && isInsuranceInvoice;
+        const isRejectedUnpaid = st === "rejected" && !invoicePaid;
         switch (insuranceFilter) {
+          case "needs_action":
+            // Invoices that need (re)submission: insurance invoices never sent OR rejected & unpaid
+            if (!isNotSubmitted && !isRejectedUnpaid) return false;
+            break;
           case "not_submitted":
-            if (latest) return false; // has a submission → exclude
-            if ((r.billing_type ?? "").toUpperCase() === "TG") return false; // TG not expected
+            if (!isNotSubmitted) return false;
             break;
           case "in_flight":
             if (!st || !["pending","transmitted","draft","delivered"].includes(st)) return false;
             break;
           case "rejected":
             if (st !== "rejected") return false;
+            break;
+          case "rejected_unpaid":
+            if (!isRejectedUnpaid) return false;
+            break;
+          case "rejected_paid":
+            if (st !== "rejected" || !invoicePaid) return false;
             break;
           case "accepted":
             if (!st || !["accepted","paid","partially_paid"].includes(st)) return false;
@@ -845,10 +848,13 @@ export default function InvoicesPage() {
         </select>
         <select value={insuranceFilter} onChange={e => setInsuranceFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500">
           <option value="all">All insurance</option>
-          <option value="not_submitted">⚠ Not submitted (TP)</option>
+          <option value="needs_action">⚠ Needs submission (not sent + rejected unpaid)</option>
+          <option value="not_submitted">📋 Never submitted</option>
           <option value="in_flight">⏳ Pending / Transmitted</option>
-          <option value="rejected">❌ Rejected</option>
-          <option value="accepted">✓ Accepted / Paid</option>
+          <option value="rejected">❌ Rejected (all)</option>
+          <option value="rejected_unpaid">❌ Rejected &amp; Unpaid</option>
+          <option value="rejected_paid">✓ Rejected but Paid (bank)</option>
+          <option value="accepted">✓ Accepted / Paid (Sumex)</option>
         </select>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500" placeholder="From" />
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500" placeholder="To" />
