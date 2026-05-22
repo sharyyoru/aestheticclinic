@@ -73,9 +73,9 @@ const ALL_DOCTORS = [
   {
     slug: "xavier-tenorio",
     name: "Dr. Xavier Tenorio",
-    specialty: "Chirurgien plasticien et esthétique",
+    specialty: "Plastic Surgeon, Founder of Aesthetics Clinic",
     image: "/doctors/xavier-tenorio.jpg",
-    description: "Expert in facial rejuvenation and body contouring procedures.",
+    description: "FMH specialist in plastic, reconstructive, and aesthetic surgery. Fellow EBOPRAS.",
   },
   {
     slug: "cesar-rodriguez",

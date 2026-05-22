@@ -17,10 +17,10 @@ const DOCTORS: Record<string, {
 }> = {
   "xavier-tenorio": {
     name: "Dr. Xavier Tenorio",
-    specialty: "Chirurgien plasticien et esthétique",
+    specialty: "Plastic Surgeon, Founder of Aesthetics Clinic",
     image: "/doctors/xavier-tenorio.jpg",
     email: "xavier@aesthetics-ge.ch",
-    description: "Expert in facial rejuvenation and body contouring procedures with over 15 years of experience.",
+    description: "FMH specialist in plastic, reconstructive, and aesthetic surgery. Fellow EBOPRAS.",
   },
   "cesar-rodriguez": {
     name: "Dr. Cesar Rodriguez",
