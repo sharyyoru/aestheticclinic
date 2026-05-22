@@ -24,10 +24,10 @@ const DOCTORS: Record<string, {
   },
   "cesar-rodriguez": {
     name: "Dr. Cesar Rodriguez",
-    specialty: "Aesthetic Medicine Specialist",
+    specialty: "Plastic Surgery Expert",
     image: "/doctors/cesar-rodriguez.jpg",
     email: "cesar@aesthetics-ge.ch",
-    description: "Specialized in non-invasive aesthetic treatments and advanced skin care solutions.",
+    description: "Expert in plastic and reconstructive surgery, including breast augmentation and body contouring procedures.",
   },
   "yulia-raspertova": {
     name: "Dr. Yulia Raspertova",

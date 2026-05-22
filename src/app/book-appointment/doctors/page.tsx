@@ -80,9 +80,9 @@ const ALL_DOCTORS = [
   {
     slug: "cesar-rodriguez",
     name: "Dr. Cesar Rodriguez",
-    specialty: "Aesthetic Medicine Specialist",
+    specialty: "Plastic Surgery Expert",
     image: "/doctors/cesar-rodriguez.jpg",
-    description: "Specialized in non-invasive aesthetic treatments and skin care.",
+    description: "Expert in plastic surgery, breast augmentation and body contouring.",
   },
   {
     slug: "yulia-raspertova",
