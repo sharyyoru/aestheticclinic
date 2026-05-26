@@ -497,13 +497,22 @@ function getDoctorNameFromReason(reason: string | null): string | null {
   return raw || null;
 }
 
+function formatDoctorNameWithTitle(name: string): string {
+  // Add "Dr." prefix if not already present and it's a real doctor name
+  if (!name || name === "your doctor") return name;
+  if (name.toLowerCase().startsWith("dr.") || name.toLowerCase().startsWith("dr ")) {
+    return name;
+  }
+  return `Dr. ${name}`;
+}
+
 function getAppointmentDoctorName(appointment: {
   reason: string | null;
   provider?: { name: string | null } | null;
 }): string {
   // Priority 1: Extract from [Doctor: Name] tag in reason
   const fromReason = getDoctorNameFromReason(appointment.reason);
-  if (fromReason) return fromReason;
+  if (fromReason) return formatDoctorNameWithTitle(fromReason);
   
   // Priority 2: Check if reason contains a known doctor name pattern
   const reason = appointment.reason?.toLowerCase() || "";
@@ -518,13 +527,13 @@ function getAppointmentDoctorName(appointment: {
   
   for (const doc of knownDoctors) {
     if (doc.pattern.test(reason)) {
-      return doc.name;
+      return formatDoctorNameWithTitle(doc.name);
     }
   }
   
   // Priority 3: Use provider name from relation (less reliable)
   if (appointment.provider?.name) {
-    return appointment.provider.name;
+    return formatDoctorNameWithTitle(appointment.provider.name);
   }
   
   return "your doctor";
@@ -858,9 +867,9 @@ async function sendAppointmentRescheduledEmail(
     const newEnd = newAppointment.end_time ? new Date(newAppointment.end_time) : null;
 
     const oldDateLabel = formatSwissDate(oldStart);
-    const oldTimeLabel = formatTimeRangeLabel(oldStart, oldEnd);
+    const oldTimeLabel = formatSwissTime(oldStart); // Only show start time, not duration
     const newDateLabel = formatSwissDate(newStart);
-    const newTimeLabel = formatTimeRangeLabel(newStart, newEnd);
+    const newTimeLabel = formatSwissTime(newStart); // Only show start time, not duration
 
     const patientName = `${newAppointment.patient?.first_name ?? ""} ${newAppointment.patient?.last_name ?? ""}`
       .trim()
@@ -991,9 +1000,8 @@ async function sendAppointmentCancellationEmail(
     const fromAddress = authUser?.email ?? null;
 
     const startDate = new Date(appointment.start_time);
-    const endDate = appointment.end_time ? new Date(appointment.end_time) : null;
     const dateLabel = formatSwissDate(startDate);
-    const timeLabel = formatTimeRangeLabel(startDate, endDate);
+    const timeLabel = formatSwissTime(startDate); // Only show start time, not duration
 
     const patientName = `${appointment.patient?.first_name ?? ""} ${appointment.patient?.last_name ?? ""}`
       .trim()

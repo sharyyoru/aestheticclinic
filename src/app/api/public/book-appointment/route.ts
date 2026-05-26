@@ -102,6 +102,15 @@ function formatTime(date: Date): string {
   return formatSwissTimeAmPm(date);
 }
 
+function formatDoctorNameWithTitle(name: string): string {
+  // Add "Dr." prefix if not already present
+  if (!name) return name;
+  if (name.toLowerCase().startsWith("dr.") || name.toLowerCase().startsWith("dr ")) {
+    return name;
+  }
+  return `Dr. ${name}`;
+}
+
 function generatePatientConfirmationEmail(
   patientName: string,
   doctorName: string,
@@ -594,10 +603,13 @@ export async function POST(request: Request) {
     console.log("Patient email:", email);
     console.log("Doctor email:", doctorEmail);
     
+    // Format doctor name with "Dr." title for all patient-facing emails
+    const formattedDoctorName = formatDoctorNameWithTitle(doctorName);
+    
     try {
       const patientEmailHtml = generatePatientConfirmationEmail(
         patientName,
-        doctorName,
+        formattedDoctorName,
         appointmentDateObj,
         service,
         location || null
@@ -612,7 +624,7 @@ export async function POST(request: Request) {
       console.error("✗ Error sending patient email:", err);
     }
 
-    // Send notification email to doctor
+    // Send notification email to doctor (use original name for internal email)
     try {
       const doctorEmailHtml = generateDoctorNotificationEmail(
         doctorName,
@@ -645,7 +657,7 @@ export async function POST(request: Request) {
         try {
           const reminderHtml = generatePatientReminderEmail(
             patientName,
-            doctorName,
+            formattedDoctorName,
             appointmentDateObj,
             service,
             location || null
