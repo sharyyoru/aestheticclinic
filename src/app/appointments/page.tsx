@@ -943,6 +943,144 @@ async function sendAppointmentRescheduledEmail(
   return { success: true };
 }
 
+async function sendAppointmentCancellationEmail(
+  appointment: CalendarAppointment,
+): Promise<{ success: boolean; error?: string }> {
+  const patientEmail = appointment.patient?.email ?? null;
+  if (!patientEmail) {
+    console.warn(`[Email Cancellation] No email address for patient ${appointment.patient_id}. Skipping.`);
+    return { success: false, error: "No email address on file" };
+  }
+
+  try {
+    const { data: authData } = await supabaseClient.auth.getUser();
+    const authUser = authData?.user ?? null;
+    const fromAddress = authUser?.email ?? null;
+
+    const startDate = new Date(appointment.start_time);
+    const endDate = appointment.end_time ? new Date(appointment.end_time) : null;
+    const dateLabel = formatSwissDate(startDate);
+    const timeLabel = formatTimeRangeLabel(startDate, endDate);
+
+    const patientName = `${appointment.patient?.first_name ?? ""} ${appointment.patient?.last_name ?? ""}`
+      .trim()
+      .replace(/\s+/g, " ");
+
+    const doctorName =
+      getDoctorNameFromReason(appointment.reason) ??
+      appointment.provider?.name ??
+      "your doctor";
+
+    const location = appointment.location ?? "the clinic";
+
+    const subject = `Appointment cancelled - ${dateLabel}`;
+
+    const htmlBody = `
+      <p>Dear ${patientName || "patient"},</p>
+      <p>Your appointment has been <strong>cancelled</strong>.</p>
+      <p>
+        <strong>Cancelled appointment:</strong><br />
+        Date: ${dateLabel}<br />
+        Time: ${timeLabel}<br />
+        Doctor: ${doctorName}<br />
+        Location: ${location}
+      </p>
+      <p>
+        If you would like to reschedule or have any questions, please contact the clinic or reply to this email.
+      </p>
+      <p>
+        <strong>Aesthetics Clinic</strong><br />
+        <strong>RHÔNE</strong><br />
+        Rue du Rhône 17, 1204 Genève (3ème étage)<br />
+        📞 0227322223 ✉️ info@aesthetics-ge.ch<br /><br />
+        <strong>CHAMPEL</strong><br />
+        Chemin Rieu 18, 1208 Genève<br />
+        📞 0227322223 ✉️ info@aesthetics-ge.ch<br /><br />
+        <strong>MONTREUX</strong><br />
+        Avenue Claude Nobs 2, 1820 Montreux<br />
+        📞 +41 21 991 98 98 ✉️ info@thebeautybooth.shop<br /><br />
+        <strong>GSTAAD</strong><br />
+        Alpinastrasse 23, 3780 Gstaad<br />
+        📞 +41 337 483 437 ✉️ info@aesthetics-ge.ch
+      </p>
+    `;
+
+    const nowIso = new Date().toISOString();
+
+    const { data, error } = await supabaseClient
+      .from("emails")
+      .insert({
+        patient_id: appointment.patient_id,
+        deal_id: null,
+        to_address: patientEmail,
+        from_address: fromAddress,
+        subject,
+        body: htmlBody,
+        direction: "outbound",
+        status: "sent",
+        sent_at: nowIso,
+      })
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      console.error("[Email Cancellation] Failed to insert email record:", error);
+      return { success: false, error: error?.message || "Failed to save email record" };
+    }
+
+    const emailId = (data as any).id as string;
+
+    try {
+      const sendResponse = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: patientEmail,
+          subject,
+          html: htmlBody,
+          fromUserEmail: fromAddress,
+          emailId,
+          patientId: appointment.patient_id,
+        }),
+      });
+
+      if (!sendResponse.ok) {
+        const errorText = await sendResponse.text().catch(() => "Unknown error");
+        console.error(`[Email Cancellation] Send failed (${sendResponse.status}):`, errorText);
+      } else {
+        console.log(`[Email Cancellation] Email sent successfully to ${patientEmail}`);
+      }
+    } catch (sendError) {
+      console.error("[Email Cancellation] Failed to send via provider:", sendError);
+    }
+
+    // Also send WhatsApp notification
+    const patientPhone = appointment.patient?.phone ?? null;
+    if (patientPhone && patientPhone.trim().length > 0) {
+      const whatsappText = `Your appointment on ${dateLabel} at ${timeLabel} with ${doctorName} at ${location} has been cancelled. Please contact the clinic if you would like to reschedule.`;
+
+      try {
+        await fetch("/api/whatsapp/queue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            toPhone: patientPhone,
+            messageBody: whatsappText,
+            patientId: appointment.patient_id,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to enqueue WhatsApp cancellation notification", error);
+      }
+    }
+  } catch (error) {
+    console.error("[Email Cancellation] Failed to prepare email:", error);
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+  }
+
+  return { success: true };
+}
+
 export default function CalendarPage() {
   const [visibleMonth, setVisibleMonth] = useState(() => {
     const now = new Date();
@@ -2745,10 +2883,7 @@ export default function CalendarPage() {
       }
 
       const updated = data as unknown as CalendarAppointment;
-      const shouldSendUpdatedConfirmation =
-        updated.status !== "cancelled" &&
-        appointmentCommunicationDetailsChanged(editingAppointment, updated);
-
+      
       // Check if date or time changed
       const originalStartTime = new Date(editingAppointment.start_time).getTime();
       const originalEndTime = editingAppointment.end_time ? new Date(editingAppointment.end_time).getTime() : null;
@@ -2757,10 +2892,18 @@ export default function CalendarPage() {
       const dateTimeChanged = originalStartTime !== newStartTime || originalEndTime !== newEndTime;
       const statusChanged = editingAppointment.status !== updated.status;
       const locationChanged = (editingAppointment.location || "") !== (updated.location || "");
+      const wasCancelled = updated.status === "cancelled" && editingAppointment.status !== "cancelled";
       
-      // Send rescheduling email if date/time changed and not cancelled
-      if (dateTimeChanged && updated.status !== "cancelled") {
+      // Send appropriate email based on what changed
+      if (wasCancelled) {
+        // Send cancellation email
+        void sendAppointmentCancellationEmail(updated);
+      } else if (dateTimeChanged && updated.status !== "cancelled") {
+        // Send rescheduling email (NOT updated email - they contain similar info)
         void sendAppointmentRescheduledEmail(updated, editingAppointment);
+      } else if (updated.status !== "cancelled" && appointmentCommunicationDetailsChanged(editingAppointment, updated)) {
+        // Send updated email only if no rescheduling email was sent
+        void sendAppointmentConfirmationEmail(updated, "updated");
       }
 
       // Log the change to appointment_history
@@ -2805,10 +2948,6 @@ export default function CalendarPage() {
         });
         return next;
       });
-
-      if (shouldSendUpdatedConfirmation) {
-        void sendAppointmentConfirmationEmail(updated, "updated");
-      }
 
       setSavingEdit(false);
       setEditModalOpen(false);
