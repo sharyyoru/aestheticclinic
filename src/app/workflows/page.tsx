@@ -62,6 +62,13 @@ export default function WorkflowsPage() {
   const [enrollmentCounts, setEnrollmentCounts] = useState<Map<string, number>>(new Map());
   const [showEnrollmentsModal, setShowEnrollmentsModal] = useState<string | null>(null);
   
+  // Test call modal state
+  const [showTestCallModal, setShowTestCallModal] = useState(false);
+  const [testCallPhone, setTestCallPhone] = useState("");
+  const [testCallLanguage, setTestCallLanguage] = useState<"english" | "french">("english");
+  const [testCallLoading, setTestCallLoading] = useState(false);
+  const [testCallResult, setTestCallResult] = useState<{ success: boolean; message: string; call_id?: string } | null>(null);
+  
   // Filters
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [triggerFilter, setTriggerFilter] = useState<string>("all");
@@ -233,6 +240,49 @@ export default function WorkflowsPage() {
     }
   }
 
+  async function handleTestCall() {
+    if (!testCallPhone.trim()) {
+      setTestCallResult({ success: false, message: "Please enter a phone number" });
+      return;
+    }
+
+    try {
+      setTestCallLoading(true);
+      setTestCallResult(null);
+
+      const response = await fetch("/api/workflows/test-retell-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone_number: testCallPhone.trim(),
+          agent_language: testCallLanguage,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setTestCallResult({
+          success: true,
+          message: `Call initiated successfully!`,
+          call_id: data.call_id,
+        });
+      } else {
+        setTestCallResult({
+          success: false,
+          message: data.error || data.details || "Failed to initiate call",
+        });
+      }
+    } catch (err) {
+      setTestCallResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Failed to initiate call",
+      });
+    } finally {
+      setTestCallLoading(false);
+    }
+  }
+
   function getTriggerDescription(workflow: WorkflowRow): string {
     const config = workflow.config as { to_stage_id?: string; from_stage_id?: string; nodes?: any[] } | null;
     
@@ -281,15 +331,30 @@ export default function WorkflowsPage() {
               Automate tasks, emails, and notifications based on triggers
             </p>
           </div>
-          <Link
-            href="/workflows/builder"
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Create Workflow
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setShowTestCallModal(true);
+                setTestCallResult(null);
+                setTestCallPhone("");
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              Test AI Call
+            </button>
+            <Link
+              href="/workflows/builder"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Workflow
+            </Link>
+          </div>
         </header>
 
         {error && (
@@ -531,6 +596,107 @@ export default function WorkflowsPage() {
           workflowName={workflows.find((w) => w.id === showEnrollmentsModal)?.name || "Workflow"}
           onClose={() => setShowEnrollmentsModal(null)}
         />
+      )}
+
+      {/* Test AI Call Modal */}
+      {showTestCallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <svg className="h-5 w-5 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  Test AI Phone Call
+                </h3>
+                <button
+                  onClick={() => setShowTestCallModal(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                Test the Retell AI outbound call functionality
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={testCallPhone}
+                  onChange={(e) => setTestCallPhone(e.target.value)}
+                  placeholder="+41 79 123 4567"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <p className="mt-1 text-xs text-slate-400">Enter phone number in international format (E.164)</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Agent Language
+                </label>
+                <select
+                  value={testCallLanguage}
+                  onChange={(e) => setTestCallLanguage(e.target.value as "english" | "french")}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="english">🇬🇧 English Agent</option>
+                  <option value="french">🇫🇷 French Agent</option>
+                </select>
+              </div>
+
+              {testCallResult && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${
+                  testCallResult.success
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-red-200 bg-red-50 text-red-700"
+                }`}>
+                  <p className="font-medium">{testCallResult.success ? "✓ Success" : "✗ Error"}</p>
+                  <p className="mt-0.5">{testCallResult.message}</p>
+                  {testCallResult.call_id && (
+                    <p className="mt-1 text-xs opacity-75">Call ID: {testCallResult.call_id}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 px-6 py-4 flex justify-end gap-3">
+              <button
+                onClick={() => setShowTestCallModal(false)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleTestCall}
+                disabled={testCallLoading || !testCallPhone.trim()}
+                className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                {testCallLoading ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Calling...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    Make Test Call
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
