@@ -84,6 +84,8 @@ export default function ProdAppPage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [rightMenuOpen, setRightMenuOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
 
   // Set app mode on mount
   useEffect(() => {
@@ -100,6 +102,13 @@ export default function ProdAppPage() {
 
   // Search ref for focus management
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Sync global search with patient search
+  useEffect(() => {
+    if (activeTab === "patients") {
+      setGlobalSearch(patientSearch);
+    }
+  }, [patientSearch, activeTab]);
 
   // Check auth on mount
   useEffect(() => {
@@ -235,24 +244,42 @@ export default function ProdAppPage() {
       <div className="bg-white safe-area-top" style={{ paddingTop: "env(safe-area-inset-top)" }} />
       
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <Image src="/logos/aliice-logo.png" alt="Aliice" width={80} height={26} className="h-7 w-auto" />
+      <header className="bg-white border-b border-slate-200 px-3 py-2 flex items-center gap-2 flex-shrink-0">
+        {/* Left Menu Button */}
+        <button
+          onClick={() => setMenuOpen(true)}
+          className="p-2 rounded-full bg-slate-100 text-slate-600 active:bg-slate-200 flex-shrink-0"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        
+        {/* Full-width Search Bar */}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={globalSearch}
+            onChange={(e) => {
+              setGlobalSearch(e.target.value);
+              if (e.target.value && activeTab !== "patients") {
+                setActiveTab("patients");
+                setPatientSearch(e.target.value);
+              } else {
+                setPatientSearch(e.target.value);
+              }
+            }}
+            placeholder="Search patients..."
+            className="w-full pl-9 pr-3 py-2 bg-slate-100 rounded-full text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white text-sm"
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigateInternal("/patients/new")}
-            className="p-2 rounded-full bg-sky-500 text-white active:bg-sky-600"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setMenuOpen(true)}
-            className="p-2 rounded-full bg-slate-100 text-slate-600 active:bg-slate-200"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        </div>
+        
+        {/* Right Menu Button (Quick Actions) */}
+        <button
+          onClick={() => setRightMenuOpen(true)}
+          className="p-2 rounded-full bg-sky-500 text-white active:bg-sky-600 flex-shrink-0"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
       </header>
 
       {/* Main Content Area */}
@@ -397,19 +424,23 @@ export default function ProdAppPage() {
         {/* Patients Tab */}
         {activeTab === "patients" && (
           <div className="p-4 space-y-4">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={patientSearch}
-                onChange={(e) => setPatientSearch(e.target.value)}
-                placeholder="Search patients..."
-                className="w-full pl-10 pr-4 py-3 bg-white rounded-xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-              />
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">
+                {patientSearch ? `Results for "${patientSearch}"` : "Recent Patients"}
+              </h2>
+              {patientSearch && (
+                <button
+                  onClick={() => {
+                    setPatientSearch("");
+                    setGlobalSearch("");
+                  }}
+                  className="text-sky-600 text-sm font-medium"
+                >
+                  Clear
+                </button>
+              )}
             </div>
-
             {/* Patient List */}
             <div className="space-y-2">
               {patients.map((patient) => (
@@ -579,13 +610,13 @@ export default function ProdAppPage() {
         </div>
       </nav>
 
-      {/* Slide-out Menu */}
+      {/* Left Slide-out Menu */}
       {menuOpen && (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} />
-          <div className="absolute right-0 top-0 bottom-0 w-72 bg-white shadow-xl" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+          <div className="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-xl" style={{ paddingTop: "env(safe-area-inset-top)" }}>
             <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">Menu</h3>
+              <Image src="/logos/aliice-logo.png" alt="Aliice" width={80} height={26} className="h-7 w-auto" />
               <button onClick={() => setMenuOpen(false)} className="p-2 rounded-full hover:bg-slate-100">
                 <X className="w-5 h-5 text-slate-500" />
               </button>
@@ -624,6 +655,85 @@ export default function ProdAppPage() {
               >
                 <LogOut className="w-5 h-5" />
                 <span className="font-medium">Log Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Right Quick Actions Menu */}
+      {rightMenuOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setRightMenuOpen(false)} />
+          <div className="absolute right-0 top-0 bottom-0 w-72 bg-white shadow-xl" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900">Quick Actions</h3>
+              <button onClick={() => setRightMenuOpen(false)} className="p-2 rounded-full hover:bg-slate-100">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <button
+                onClick={() => {
+                  setRightMenuOpen(false);
+                  navigateInternal("/add-patients");
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-sky-50 text-sky-700 active:bg-sky-100"
+              >
+                <UserPlus className="w-5 h-5" />
+                <span className="font-medium">Add New Patient</span>
+              </button>
+              <button
+                onClick={() => {
+                  setRightMenuOpen(false);
+                  navigateInternal("/appointments");
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50 text-emerald-700 active:bg-emerald-100"
+              >
+                <CalendarPlus className="w-5 h-5" />
+                <span className="font-medium">Schedule Appointment</span>
+              </button>
+              <button
+                onClick={() => {
+                  setRightMenuOpen(false);
+                  navigateInternal("/tasks");
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 text-amber-700 active:bg-amber-100"
+              >
+                <CheckCircle2 className="w-5 h-5" />
+                <span className="font-medium">Create Task</span>
+              </button>
+              <button
+                onClick={() => {
+                  setRightMenuOpen(false);
+                  navigateInternal("/deals");
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-purple-50 text-purple-700 active:bg-purple-100"
+              >
+                <TrendingUp className="w-5 h-5" />
+                <span className="font-medium">New Deal</span>
+              </button>
+              <button
+                onClick={() => {
+                  setRightMenuOpen(false);
+                  navigateInternal("/chat");
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-100 text-slate-700 active:bg-slate-200"
+              >
+                <MessageCircle className="w-5 h-5" />
+                <span className="font-medium">Chat with Aliice</span>
+              </button>
+            </div>
+            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}>
+              <button
+                onClick={() => {
+                  setRightMenuOpen(false);
+                  navigateInternal("/notifications");
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-600 hover:bg-slate-50"
+              >
+                <Bell className="w-5 h-5" />
+                <span className="font-medium">Notifications</span>
               </button>
             </div>
           </div>
