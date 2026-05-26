@@ -2925,16 +2925,16 @@ export default function CalendarPage() {
       const wasCancelled = updated.status === "cancelled" && editingAppointment.status !== "cancelled";
       
       // Send appropriate email based on what changed
+      // Per Xavier's request: Only send emails for cancellations and reschedules (date/time changes)
+      // Do NOT send generic "updated" emails - they're confusing without specific details
       if (wasCancelled) {
         // Send cancellation email
         void sendAppointmentCancellationEmail(updated);
       } else if (dateTimeChanged && updated.status !== "cancelled") {
-        // Send rescheduling email (NOT updated email - they contain similar info)
+        // Send rescheduling email with new date/time
         void sendAppointmentRescheduledEmail(updated, editingAppointment);
-      } else if (updated.status !== "cancelled" && appointmentCommunicationDetailsChanged(editingAppointment, updated)) {
-        // Send updated email only if no rescheduling email was sent
-        void sendAppointmentConfirmationEmail(updated, "updated");
       }
+      // Note: No "updated" email sent for other changes (location, notes, etc.) per clinic policy
 
       // Log the change to appointment_history
       if (dateTimeChanged || statusChanged || locationChanged) {
