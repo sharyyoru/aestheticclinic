@@ -1,11 +1,9 @@
 "use client";
 
 import { FormEvent, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 export default function LoginForm() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -52,9 +50,11 @@ export default function LoginForm() {
     // Get redirect URL directly from URL in case state wasn't updated
     const params = new URLSearchParams(window.location.search);
     const finalRedirect = params.get("redirect") || redirectUrl || "/";
+    const targetUrl = finalRedirect.startsWith("/") ? finalRedirect : "/";
     
-    router.replace(finalRedirect.startsWith("/") ? finalRedirect : "/");
-    router.refresh();
+    // Use window.location for WebView compatibility (prodapp)
+    // router.replace doesn't work properly in WKWebView
+    window.location.href = targetUrl;
   }
 
   return (
