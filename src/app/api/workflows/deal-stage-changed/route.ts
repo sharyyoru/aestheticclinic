@@ -1223,10 +1223,13 @@ export async function POST(request: Request) {
           } else {
             await enqueueWhatsAppMessage(null);
           }
+          continue;
         }
 
         // ── Handle trigger_retell_call action type — AI outbound phone call via Retell
         if (action.action_type === "trigger_retell_call") {
+          console.log(`[Workflow Retell] Entering trigger_retell_call handler`);
+          
           const config = (action.config || {}) as {
             agent_language?: "english" | "french";
             call_purpose?: string;
