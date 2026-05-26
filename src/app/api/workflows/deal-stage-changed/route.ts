@@ -438,7 +438,11 @@ export async function POST(request: Request) {
 
       // Check for new builder format (config.nodes)
       const workflowConfig = workflow.config as { nodes?: any[] } | null;
+      console.log(`[Workflow Debug] Config for ${workflow.id}:`, JSON.stringify(workflowConfig));
+      
       if (workflowConfig?.nodes && Array.isArray(workflowConfig.nodes)) {
+        console.log(`[Workflow Debug] Found ${workflowConfig.nodes.length} nodes in workflow config`);
+        
         // Extract action AND delay nodes from the new format (preserving order)
         stepsToRun = workflowConfig.nodes
           .filter((node: any) => node.type === "action" || node.type === "delay")
@@ -474,6 +478,9 @@ export async function POST(request: Request) {
 
       // Use stepsToRun if available (includes delays), otherwise fall back to actionsToRun
       const hasSteps = stepsToRun.length > 0;
+      console.log(`[Workflow Debug] stepsToRun:`, JSON.stringify(stepsToRun));
+      console.log(`[Workflow Debug] actionsToRun:`, JSON.stringify(actionsToRun));
+      
       if (!hasSteps && actionsToRun.length === 0) {
         console.log(`Workflow ${workflow.id} has no actions to run`);
         continue;
@@ -524,6 +531,7 @@ export async function POST(request: Request) {
 
         const action = { action_type: step.action_type, config: step.config };
         console.log(`Processing action: ${action.action_type}`, JSON.stringify(action.config));
+        console.log(`[Workflow Debug] Step details:`, JSON.stringify({ step_type: step.step_type, action_type: step.action_type }));
         
         // Handle create_task action type
         if (action.action_type === "create_task") {
@@ -1287,6 +1295,9 @@ export async function POST(request: Request) {
             },
           };
 
+          console.log(`[Workflow Retell] Preparing to call patient ${safePatient.id} at ${normalizedPhone} with agent ${agentId}`);
+          console.log(`[Workflow Retell] Call payload:`, JSON.stringify(callPayload));
+          
           try {
             const retellApiKey = process.env.RETELL_API_KEY;
             if (!retellApiKey) {
@@ -1363,6 +1374,20 @@ export async function POST(request: Request) {
             }
           }
           continue;
+        }
+
+        // Log unhandled action types
+        console.log(`[Workflow] Unhandled action type: ${action.action_type}`);
+        if (enrollmentId) {
+          await supabaseAdmin.from("workflow_enrollment_steps").insert({
+            enrollment_id: enrollmentId,
+            step_type: "action",
+            step_action: action.action_type,
+            step_config: action.config,
+            status: "skipped",
+            executed_at: new Date().toISOString(),
+            error_message: `Unknown action type: ${action.action_type}`,
+          });
         }
       }
     }
