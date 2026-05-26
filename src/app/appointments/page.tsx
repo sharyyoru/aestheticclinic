@@ -497,6 +497,45 @@ function getDoctorNameFromReason(reason: string | null): string | null {
   return raw || null;
 }
 
+function getAppointmentDoctorName(appointment: {
+  reason: string | null;
+  provider?: { name: string | null } | null;
+}): string {
+  // Priority 1: Extract from [Doctor: Name] tag in reason
+  const fromReason = getDoctorNameFromReason(appointment.reason);
+  if (fromReason) return fromReason;
+  
+  // Priority 2: Check if reason contains a known doctor name pattern
+  const reason = appointment.reason?.toLowerCase() || "";
+  const knownDoctors = [
+    { pattern: /yulia\s*raspertova|raspertova\s*yulia/i, name: "Yulia Raspertova" },
+    { pattern: /cesar\s*rodrigue[sz]|rodrigue[sz]\s*cesar|cezar\s*rodrigue[sz]|rodrigue[sz]\s*cezar/i, name: "Cezar Rodrigues" },
+    { pattern: /aileen\s*bodenmann|bodenmann\s*aileen/i, name: "Aileen Bodenmann" },
+    { pattern: /amelie\s*klein|klein\s*amelie/i, name: "Amelie Klein" },
+    { pattern: /borhan\s*rosa|rosa\s*borhan/i, name: "Borhan Rosa" },
+    { pattern: /xavier\s*tenorio|tenorio\s*xavier/i, name: "Xavier Tenorio" },
+  ];
+  
+  for (const doc of knownDoctors) {
+    if (doc.pattern.test(reason)) {
+      return doc.name;
+    }
+  }
+  
+  // Priority 3: Use provider name from relation (less reliable)
+  if (appointment.provider?.name) {
+    return appointment.provider.name;
+  }
+  
+  return "your doctor";
+}
+
+function isPatientFrench(patient: { first_name?: string | null; last_name?: string | null } | null): boolean {
+  // Check if patient likely prefers French based on name patterns
+  // This is a heuristic - ideally we'd check language_preference from database
+  return false; // Default to English, could be enhanced with actual language preference lookup
+}
+
 function getCategoryFromReason(reason: string | null): string | null {
   if (!reason) return null;
   const match = reason.match(/\[Category:\s*(.+?)\s*]/);
@@ -666,10 +705,7 @@ async function sendAppointmentConfirmationEmail(
       .trim()
       .replace(/\s+/g, " ");
 
-    const doctorName =
-      getDoctorNameFromReason(appointment.reason) ??
-      appointment.provider?.name ??
-      "your doctor";
+    const doctorName = getAppointmentDoctorName(appointment);
 
     const location = appointment.location ?? "the clinic";
 
@@ -830,10 +866,7 @@ async function sendAppointmentRescheduledEmail(
       .trim()
       .replace(/\s+/g, " ");
 
-    const doctorName =
-      getDoctorNameFromReason(newAppointment.reason) ??
-      newAppointment.provider?.name ??
-      "your doctor";
+    const doctorName = getAppointmentDoctorName(newAppointment);
 
     const location = newAppointment.location ?? "the clinic";
 
@@ -966,10 +999,7 @@ async function sendAppointmentCancellationEmail(
       .trim()
       .replace(/\s+/g, " ");
 
-    const doctorName =
-      getDoctorNameFromReason(appointment.reason) ??
-      appointment.provider?.name ??
-      "your doctor";
+    const doctorName = getAppointmentDoctorName(appointment);
 
     const location = appointment.location ?? "the clinic";
 
