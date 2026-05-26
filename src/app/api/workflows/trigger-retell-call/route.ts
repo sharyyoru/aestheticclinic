@@ -9,6 +9,12 @@ const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID;
 const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER;
 
+// Agent IDs for different languages
+const RETELL_AGENTS = {
+  english: "agent_f5cc331b4b4c944efb6cd29d0a",
+  french: "agent_16738cdb79c26e811fc1cffcc6",
+} as const;
+
 export const runtime = "nodejs";
 
 /**
@@ -31,9 +37,19 @@ export async function POST(request: NextRequest) {
       patient_id,
       phone_number,
       agent_id,
+      agent_language,
       dynamic_variables,
       metadata,
     } = body;
+
+    // Resolve agent ID from language if not explicitly provided
+    let resolvedAgentId = agent_id;
+    if (!resolvedAgentId && agent_language) {
+      resolvedAgentId = RETELL_AGENTS[agent_language as keyof typeof RETELL_AGENTS];
+    }
+    if (!resolvedAgentId) {
+      resolvedAgentId = RETELL_AGENT_ID || RETELL_AGENTS.english;
+    }
 
     // Validate required fields
     if (!phone_number) {
@@ -73,7 +89,7 @@ export async function POST(request: NextRequest) {
     } = {
       from_number: RETELL_FROM_NUMBER || "+41799029555", // Default Switzerland number
       to_number: phone_number,
-      agent_id: agent_id || RETELL_AGENT_ID || "",
+      agent_id: resolvedAgentId,
     };
 
     // Add dynamic variables for the AI conversation
@@ -160,8 +176,12 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     configured: !!RETELL_API_KEY,
-    agent_id: RETELL_AGENT_ID || null,
+    default_agent_id: RETELL_AGENT_ID || null,
     from_number: RETELL_FROM_NUMBER || null,
+    available_agents: {
+      english: RETELL_AGENTS.english,
+      french: RETELL_AGENTS.french,
+    },
     endpoints: {
       initiate_call: "/api/workflows/trigger-retell-call (POST)",
     },
@@ -171,6 +191,7 @@ export async function GET() {
         patient_id: "string (optional) - Patient ID from database",
         phone_number: "string (required) - Phone number to call",
         agent_id: "string (optional) - Override default agent ID",
+        agent_language: "string (optional) - 'english' or 'french' - selects pre-configured agent",
         dynamic_variables: "object (optional) - Variables for AI conversation",
         metadata: "object (optional) - Additional metadata for tracking",
       },

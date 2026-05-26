@@ -264,6 +264,7 @@ export default function WorkflowsPage() {
         case "send_notification": return "🔔 Notification";
         case "create_task": return "📋 Create Task";
         case "update_deal": return "📈 Update Deal";
+        case "trigger_retell_call": return "📞 AI Phone Call";
         default: return a.data?.actionType || "Action";
       }
     }).slice(0, 3);

@@ -28,7 +28,8 @@ type ActionType =
   | "update_deal"
   | "update_patient"
   | "webhook"
-  | "delay";
+  | "delay"
+  | "trigger_retell_call";
 
 type ConditionOperator = "equals" | "not_equals" | "contains" | "greater_than" | "less_than" | "is_empty" | "is_not_empty";
 
@@ -101,6 +102,7 @@ const ACTION_OPTIONS: { value: ActionType; label: string; description: string; i
   { value: "update_patient", label: "Update Patient", description: "Update patient information", icon: "👤", color: "cyan" },
   { value: "webhook", label: "Send Webhook", description: "Send data to external URL", icon: "🌐", color: "slate" },
   { value: "delay", label: "Add Delay", description: "Wait before next action", icon: "⏰", color: "orange" },
+  { value: "trigger_retell_call", label: "AI Phone Call", description: "Trigger outbound call via Retell AI", icon: "📞", color: "violet" },
 ];
 
 const CONDITION_FIELDS = [
@@ -1035,6 +1037,48 @@ export default function WorkflowBuilderPage() {
                   <option value="GET">GET</option>
                   <option value="PUT">PUT</option>
                 </select>
+              </div>
+            </>
+          )}
+
+          {data.actionType === "trigger_retell_call" && (
+            <>
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-3">
+                <label className="block text-xs font-semibold text-violet-800 uppercase tracking-wide">AI Phone Call Settings</label>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Agent Language</label>
+                  <select
+                    value={(data.config as { agent_language?: string }).agent_language || "english"}
+                    onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, agent_language: e.target.value } })}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  >
+                    <option value="english">🇬🇧 English Agent</option>
+                    <option value="french">🇫🇷 French Agent</option>
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {(data.config as { agent_language?: string }).agent_language === "french" 
+                      ? "Agent will speak French with the patient"
+                      : "Agent will speak English with the patient"}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Call Purpose</label>
+                  <input
+                    type="text"
+                    value={(data.config as { call_purpose?: string }).call_purpose || ""}
+                    onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, call_purpose: e.target.value } })}
+                    placeholder="e.g., Follow up on consultation inquiry"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Optional context for the AI agent</p>
+                </div>
+
+                <div className="bg-violet-100 rounded-md p-2 text-xs text-violet-700">
+                  <strong>Note:</strong> The call will be made to the patient&apos;s phone number on file. 
+                  Patient name and deal service will be passed to the AI agent automatically.
+                </div>
               </div>
             </>
           )}

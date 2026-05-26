@@ -1216,6 +1216,154 @@ export async function POST(request: Request) {
             await enqueueWhatsAppMessage(null);
           }
         }
+
+        // ── Handle trigger_retell_call action type — AI outbound phone call via Retell
+        if (action.action_type === "trigger_retell_call") {
+          const config = (action.config || {}) as {
+            agent_language?: "english" | "french";
+            call_purpose?: string;
+          };
+
+          // Agent IDs for English and French
+          const RETELL_AGENTS = {
+            english: "agent_f5cc331b4b4c944efb6cd29d0a",
+            french: "agent_16738cdb79c26e811fc1cffcc6",
+          };
+
+          const agentLanguage = config.agent_language || "english";
+          const agentId = RETELL_AGENTS[agentLanguage];
+
+          // Get patient phone number
+          const patientPhone = safePatient.phone;
+          if (!patientPhone) {
+            console.log("No phone number for patient, skipping Retell call action");
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "trigger_retell_call",
+                step_config: config,
+                status: "skipped",
+                executed_at: new Date().toISOString(),
+                error_message: "Patient has no phone number",
+              });
+            }
+            continue;
+          }
+
+          // Normalize phone number to E.164 format
+          const normalizedPhone = normalizePhone(patientPhone);
+
+          // Fetch service name if deal has a service
+          let serviceName = "consultation";
+          if (deal.service_id) {
+            const { data: serviceData } = await supabaseAdmin
+              .from("services")
+              .select("name")
+              .eq("id", deal.service_id)
+              .single();
+            if (serviceData?.name) {
+              serviceName = serviceData.name;
+            }
+          }
+
+          // Prepare the call payload
+          const callPayload = {
+            from_number: RETELL_FROM_NUMBER || "+41799029555",
+            to_number: normalizedPhone,
+            agent_id: agentId,
+            retell_llm_dynamic_variables: {
+              user_name: safePatient.first_name || "there",
+              service_name: serviceName,
+              call_purpose: config.call_purpose || "",
+            },
+            metadata: {
+              source: "workflow",
+              patient_id: safePatient.id,
+              deal_id: safeDeal.id,
+              workflow_id: workflow.id,
+              agent_language: agentLanguage,
+              triggered_at: new Date().toISOString(),
+            },
+          };
+
+          try {
+            const retellApiKey = process.env.RETELL_API_KEY;
+            if (!retellApiKey) {
+              throw new Error("RETELL_API_KEY not configured");
+            }
+
+            // Apply cumulative delay if any
+            if (cumulativeDelayMinutes > 0) {
+              console.log(`Retell call scheduled with ${cumulativeDelayMinutes} minute delay`);
+              // For now, we'll make the call immediately but log the intended delay
+              // Future enhancement: implement scheduled calls via a queue
+            }
+
+            const retellResponse = await fetch("https://api.retellai.com/v2/create-phone-call", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${retellApiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(callPayload),
+            });
+
+            if (!retellResponse.ok) {
+              const errorText = await retellResponse.text();
+              console.error("[Workflow Retell] API error:", retellResponse.status, errorText);
+              
+              if (enrollmentId) {
+                await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                  enrollment_id: enrollmentId,
+                  step_type: "action",
+                  step_action: "trigger_retell_call",
+                  step_config: config,
+                  status: "failed",
+                  executed_at: new Date().toISOString(),
+                  error_message: `Retell API error: ${retellResponse.status} - ${errorText}`,
+                });
+              }
+              continue;
+            }
+
+            const callData = await retellResponse.json();
+            console.log(`[Workflow Retell] Call initiated to ${normalizedPhone} with ${agentLanguage} agent:`, callData.call_id);
+
+            // Log successful step
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "trigger_retell_call",
+                step_config: config,
+                status: "completed",
+                executed_at: new Date().toISOString(),
+                result: {
+                  call_id: callData.call_id,
+                  to_number: normalizedPhone,
+                  agent_id: agentId,
+                  agent_language: agentLanguage,
+                },
+              });
+            }
+            actionsRun += 1;
+          } catch (retellError) {
+            console.error("[Workflow Retell] Error initiating call:", retellError);
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "trigger_retell_call",
+                step_config: config,
+                status: "failed",
+                executed_at: new Date().toISOString(),
+                error_message: retellError instanceof Error ? retellError.message : "Unknown error",
+              });
+            }
+          }
+          continue;
+        }
       }
     }
 
