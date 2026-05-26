@@ -114,8 +114,8 @@ export default function ProdAppPage() {
   useEffect(() => {
     supabaseClient.auth.getSession().then(({ data }) => {
       if (!data.session) {
-        // Redirect to login but stay in app
-        window.location.href = "/login?redirect=/prodapp";
+        // Redirect to dedicated prodapp login (WebView compatible)
+        window.location.href = "/prodapp/login";
       } else {
         setUser(data.session.user);
         setLoading(false);
@@ -211,7 +211,7 @@ export default function ProdAppPage() {
 
   const handleLogout = async () => {
     await supabaseClient.auth.signOut();
-    window.location.href = "/login?redirect=/prodapp";
+    window.location.href = "/prodapp/login";
   };
 
   const formatTime = (isoString: string) => {
