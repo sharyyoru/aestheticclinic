@@ -1157,6 +1157,8 @@ export default function CalendarPage() {
   
   // Refs for touch event handling on iPad/tablets
   const dayViewContainerRef = useRef<HTMLDivElement>(null);
+  const calendarScrollRef = useRef<HTMLDivElement>(null);
+  const horizontalScrollRef = useRef<HTMLDivElement>(null);
   const touchDragInfoRef = useRef<{
     date: Date;
     doctorCalendarId: string | null;
@@ -1164,6 +1166,12 @@ export default function CalendarPage() {
     slotHeight: number;
     startMinutesOffset: number;
   } | null>(null);
+
+  // Scroll shadow states
+  const [showTopShadow, setShowTopShadow] = useState(false);
+  const [showBottomShadow, setShowBottomShadow] = useState(true);
+  const [showLeftShadow, setShowLeftShadow] = useState(false);
+  const [showRightShadow, setShowRightShadow] = useState(true);
 
   // iOS Safari viewport height fix
   const [viewportHeight, setViewportHeight] = useState<string>("100vh");
@@ -1803,6 +1811,71 @@ export default function CalendarPage() {
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isDraggingRange]);
+
+  // Scroll to current time when day/week view loads
+  useEffect(() => {
+    if (view !== "day" && view !== "range") return;
+    
+    const scrollToCurrentTime = () => {
+      const scrollEl = calendarScrollRef.current;
+      if (!scrollEl) return;
+      
+      const { hour: nowH, minute: nowM } = getSwissHourMinute(new Date());
+      const nowMinutes = nowH * 60 + nowM;
+      
+      // Only scroll if current time is within view bounds
+      if (nowMinutes >= DAY_VIEW_START_MINUTES && nowMinutes <= DAY_VIEW_END_MINUTES) {
+        const scrollPosition = ((nowMinutes - DAY_VIEW_START_MINUTES) / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
+        // Scroll to 1 hour before current time for context
+        const offsetPosition = Math.max(0, scrollPosition - 120);
+        scrollEl.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+      }
+    };
+    
+    // Delay slightly for DOM to be ready
+    const timer = setTimeout(scrollToCurrentTime, 300);
+    return () => clearTimeout(timer);
+  }, [view, selectedDate]);
+
+  // Handle scroll shadows for visual feedback
+  const handleCalendarScroll = useCallback(() => {
+    const el = calendarScrollRef.current;
+    if (!el) return;
+    
+    // Vertical scroll shadows
+    setShowTopShadow(el.scrollTop > 10);
+    setShowBottomShadow(el.scrollTop < el.scrollHeight - el.clientHeight - 10);
+  }, []);
+
+  const handleHorizontalScroll = useCallback(() => {
+    const el = horizontalScrollRef.current;
+    if (!el) return;
+    
+    // Horizontal scroll shadows
+    setShowLeftShadow(el.scrollLeft > 10);
+    setShowRightShadow(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
+  }, []);
+
+  // Attach scroll listeners
+  useEffect(() => {
+    const scrollEl = calendarScrollRef.current;
+    const hScrollEl = horizontalScrollRef.current;
+    
+    if (scrollEl) {
+      scrollEl.addEventListener('scroll', handleCalendarScroll, { passive: true });
+      handleCalendarScroll(); // Initial check
+    }
+    
+    if (hScrollEl) {
+      hScrollEl.addEventListener('scroll', handleHorizontalScroll, { passive: true });
+      handleHorizontalScroll(); // Initial check
+    }
+    
+    return () => {
+      if (scrollEl) scrollEl.removeEventListener('scroll', handleCalendarScroll);
+      if (hScrollEl) hScrollEl.removeEventListener('scroll', handleHorizontalScroll);
+    };
+  }, [view, handleCalendarScroll, handleHorizontalScroll]);
 
   const appointmentsByDay = useMemo(() => {
     const map: Record<string, CalendarAppointment[]> = {};
@@ -3855,24 +3928,60 @@ export default function CalendarPage() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
+          <div className="flex-1 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/95 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.10)] relative">
+            {/* Scroll shadows for visual feedback - like Google Calendar */}
+            <div 
+              className={`absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-slate-200/60 to-transparent z-20 pointer-events-none transition-opacity duration-200 ${showTopShadow ? 'opacity-100' : 'opacity-0'}`}
+              style={{ top: selectedDoctorCalendars.length > 1 ? '70px' : '44px' }}
+            />
+            <div 
+              className={`absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-slate-200/80 to-transparent z-20 pointer-events-none transition-opacity duration-200 ${showBottomShadow ? 'opacity-100' : 'opacity-0'}`}
+            />
+            {/* Horizontal scroll shadows */}
+            <div 
+              className={`absolute top-0 bottom-0 left-16 w-6 bg-gradient-to-r from-slate-200/60 to-transparent z-20 pointer-events-none transition-opacity duration-200 ${showLeftShadow ? 'opacity-100' : 'opacity-0'}`}
+            />
+            <div 
+              className={`absolute top-0 bottom-0 right-0 w-6 bg-gradient-to-l from-slate-200/60 to-transparent z-20 pointer-events-none transition-opacity duration-200 ${showRightShadow ? 'opacity-100' : 'opacity-0'}`}
+            />
+            
             <div className="flex flex-col h-full">
               {/* Sticky header row with doctor columns when multiple selected */}
-              <div className="flex border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium text-slate-500 sticky top-0 z-10">
+              <div className="flex border-b border-slate-100 bg-slate-50/80 text-[11px] font-medium text-slate-500 sticky top-0 z-30">
                 {/* Empty cell for time axis column */}
-                <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0" />
+                <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0 flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Scroll to current time
+                      const scrollEl = calendarScrollRef.current;
+                      if (!scrollEl) return;
+                      const { hour: nowH, minute: nowM } = getSwissHourMinute(new Date());
+                      const nowMinutes = nowH * 60 + nowM;
+                      if (nowMinutes >= DAY_VIEW_START_MINUTES && nowMinutes <= DAY_VIEW_END_MINUTES) {
+                        const scrollPosition = ((nowMinutes - DAY_VIEW_START_MINUTES) / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
+                        const offsetPosition = Math.max(0, scrollPosition - 120);
+                        scrollEl.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+                      }
+                    }}
+                    className="text-[9px] text-sky-600 hover:text-sky-700 font-medium touch-manipulation"
+                    title="Jump to current time"
+                  >
+                    Now
+                  </button>
+                </div>
                 {/* Day headers - show doctor sub-columns when multiple selected */}
                 {activeRangeDates.map((date) => (
                   <div
                     key={formatYmd(date)}
-                    className="flex-1 border-r border-slate-100 last:border-r-0"
+                    className="flex-1 border-r border-slate-100 last:border-r-0 min-w-[100px]"
                   >
                     {/* Date header */}
                     <div className="px-2 py-1 text-center border-b border-slate-100">
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">
                         {date.toLocaleDateString(SWISS_LOCALE, { weekday: "short", timeZone: SWISS_TIMEZONE })}
                       </div>
-                      <div className="text-sm font-semibold text-slate-800">
+                      <div className={`text-sm font-semibold ${formatYmd(date) === todayYmd ? 'text-white bg-sky-600 rounded-full w-7 h-7 flex items-center justify-center mx-auto' : 'text-slate-800'}`}>
                         {date.toLocaleDateString(SWISS_LOCALE, { day: "numeric", timeZone: SWISS_TIMEZONE })}
                       </div>
                     </div>
@@ -3894,10 +4003,18 @@ export default function CalendarPage() {
                 ))}
               </div>
               {/* Scrollable content area with time axis and day columns */}
-              <div className="flex-1 overflow-auto" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-                <div className="flex">
-                  {/* Time axis - scrolls with content */}
-                  <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0">
+              <div 
+                ref={calendarScrollRef}
+                className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth"
+                style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+              >
+                <div 
+                  ref={horizontalScrollRef}
+                  className="flex overflow-x-auto scroll-smooth"
+                  style={{ WebkitOverflowScrolling: 'touch', scrollSnapType: 'x proximity' } as React.CSSProperties}
+                >
+                  {/* Time axis - sticky on left side */}
+                  <div className="w-16 border-r border-slate-100 bg-slate-50/80 shrink-0 sticky left-0 z-10">
                     {timeSlots.map((totalMinutes) => (
                       <div
                         key={totalMinutes}
@@ -3915,6 +4032,7 @@ export default function CalendarPage() {
                       minHeight:
                         (DAY_VIEW_END_MINUTES - DAY_VIEW_START_MINUTES) *
                         (DAY_VIEW_SLOT_HEIGHT / DAY_VIEW_SLOT_MINUTES),
+                      minWidth: activeRangeDates.length > 1 ? `${activeRangeDates.length * 150}px` : 'auto',
                     }}
                   >
                     {/* Current time indicator line */}
