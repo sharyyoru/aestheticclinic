@@ -1707,41 +1707,86 @@ export default function CalendarPage() {
     return () => { isMounted = false; };
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
+  // Debounced patient search - like Calendly/Doctolib approach
+  const patientSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const patientSearchAbortRef = useRef<AbortController | null>(null);
 
-    async function loadPatientsForCreate() {
-      try {
-        setPatientOptionsLoading(true);
-        setPatientOptionsError(null);
-
-        const { data, error } = await supabaseClient
-          .from("patients")
-          .select("id, first_name, last_name, email, phone")
-          .order("created_at", { ascending: false });
-
-        if (!isMounted) return;
-
-        if (error || !data) {
-          setPatientOptions([]);
-          setPatientOptionsError(error?.message ?? "Failed to load patients.");
-        } else {
-          setPatientOptions(data as AppointmentPatientSuggestion[]);
-        }
-
-        setPatientOptionsLoading(false);
-      } catch {
-        if (!isMounted) return;
-        setPatientOptions([]);
-        setPatientOptionsError("Failed to load patients.");
-        setPatientOptionsLoading(false);
-      }
+  // Search patients with debouncing (300ms delay like top booking apps)
+  const searchPatients = useCallback(async (query: string) => {
+    // Cancel previous request
+    if (patientSearchAbortRef.current) {
+      patientSearchAbortRef.current.abort();
     }
 
-    void loadPatientsForCreate();
+    // Clear previous timeout
+    if (patientSearchTimeoutRef.current) {
+      clearTimeout(patientSearchTimeoutRef.current);
+    }
 
+    // If empty query, fetch recent patients
+    if (!query.trim()) {
+      setPatientOptionsLoading(true);
+      try {
+        const response = await fetch(`/api/patients/search?limit=15`);
+        if (response.ok) {
+          const data = await response.json();
+          setPatientOptions(data.patients ?? []);
+          setPatientOptionsError(null);
+        }
+      } catch {
+        // Ignore abort errors
+      } finally {
+        setPatientOptionsLoading(false);
+      }
+      return;
+    }
+
+    // Debounce: wait 300ms before searching
+    patientSearchTimeoutRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      patientSearchAbortRef.current = controller;
+
+      setPatientOptionsLoading(true);
+      setPatientOptionsError(null);
+
+      try {
+        const response = await fetch(
+          `/api/patients/search?q=${encodeURIComponent(query)}&limit=20`,
+          { signal: controller.signal }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setPatientOptions(data.patients ?? []);
+        } else {
+          setPatientOptionsError("Search failed");
+        }
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          setPatientOptionsError("Search failed");
+        }
+      } finally {
+        setPatientOptionsLoading(false);
+      }
+    }, 300);
+  }, []);
+
+  // Load initial recent patients when dropdown opens
+  useEffect(() => {
+    if (showCreatePatientSuggestions && patientOptions.length === 0 && !patientOptionsLoading) {
+      void searchPatients("");
+    }
+  }, [showCreatePatientSuggestions, patientOptions.length, patientOptionsLoading, searchPatients]);
+
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
-      isMounted = false;
+      if (patientSearchTimeoutRef.current) {
+        clearTimeout(patientSearchTimeoutRef.current);
+      }
+      if (patientSearchAbortRef.current) {
+        patientSearchAbortRef.current.abort();
+      }
     };
   }, []);
 
@@ -2424,21 +2469,9 @@ export default function CalendarPage() {
     return `${displayHour}:${minutePadded} ${suffix}`;
   }
 
-  const filteredCreatePatientSuggestions = useMemo(() => {
-    const term = createPatientSearch.trim().toLowerCase();
-    if (!term) return patientOptions;
-
-    return patientOptions.filter((p) => {
-      const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`
-        .trim()
-        .toLowerCase();
-      const email = (p.email ?? "").toLowerCase();
-      const phone = (p.phone ?? "").toLowerCase();
-      return (
-        name.includes(term) || email.includes(term) || phone.includes(term)
-      );
-    });
-  }, [createPatientSearch, patientOptions]);
+  // Server-side search already filters - just use results directly
+  // This is the Calendly/Doctolib approach: server does the heavy lifting
+  const filteredCreatePatientSuggestions = patientOptions;
 
   async function handleCreateNewPatient() {
     const firstName = newPatientFirstName.trim();
@@ -4666,13 +4699,16 @@ export default function CalendarPage() {
                       autoCapitalize="off"
                       value={createPatientSearch}
                       onChange={(event) => {
-                        setCreatePatientSearch(event.target.value);
+                        const value = event.target.value;
+                        setCreatePatientSearch(value);
                         setShowCreatePatientSuggestions(true);
                         setCreatePatientId(null);
                         setCreatePatientName("");
+                        // Trigger debounced server-side search
+                        void searchPatients(value);
                       }}
                       onFocus={() => { closeAllCreateDropdowns("patient"); setShowCreatePatientSuggestions(true); }}
-                      placeholder="Search patient name..."
+                      placeholder="Search by name, email, phone, DOB..."
                       style={{ fontSize: '16px' }}
                       className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     />
@@ -4682,12 +4718,16 @@ export default function CalendarPage() {
                         style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
                       >
                         {patientOptionsLoading ? (
-                          <div className="px-3 py-3 text-sm text-slate-500">
-                            Loading patients...
+                          <div className="px-4 py-4 flex items-center justify-center gap-2 text-sm text-slate-500">
+                            <svg className="animate-spin h-4 w-4 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Searching...
                           </div>
                         ) : filteredCreatePatientSuggestions.length === 0 ? (
-                          <div className="px-3 py-3 text-sm text-slate-500">
-                            No patients found
+                          <div className="px-4 py-4 text-sm text-slate-500 text-center">
+                            {createPatientSearch.trim() ? "No patients found" : "Type to search patients"}
                           </div>
                         ) : (
                           filteredCreatePatientSuggestions.map((p) => {
