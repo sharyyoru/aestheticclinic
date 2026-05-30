@@ -113,11 +113,34 @@ export async function POST(request: Request) {
 
     console.log(`[SMS] Sent successfully, SID: ${sid}`);
 
-    // Log to database if we have sms_messages table, otherwise just return success
+    // Log to sms_logs table
     try {
-      // Try to insert into a generic messages log or create one
-      // For now, we'll just log to console and return success
-      console.log(`[SMS] Message logged - To: ${normalizedPhone}, Body: ${messageBody.substring(0, 50)}...`);
+      const logData: Record<string, unknown> = {
+        to_number: normalizedPhone,
+        from_number: fromNumber,
+        message: messageBody,
+        message_type: (metadata?.message_type as string) || "general",
+        source: (metadata?.source as string) || "manual",
+        twilio_sid: sid,
+        status: "sent",
+        metadata: metadata || {},
+        created_at: sentAt,
+      };
+
+      // Add patient_id if provided
+      if (patientId) {
+        logData.patient_id = patientId;
+      }
+
+      const { error: logError } = await supabaseAdmin
+        .from("sms_logs")
+        .insert(logData);
+
+      if (logError) {
+        console.warn("[SMS] Failed to log to database:", logError.message);
+      } else {
+        console.log(`[SMS] Message logged to sms_logs table`);
+      }
     } catch (dbError) {
       console.warn("[SMS] Could not log to database:", dbError);
     }

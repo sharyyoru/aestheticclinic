@@ -13,6 +13,21 @@ type Patient = {
   avatar_url: string | null;
 };
 
+type SmsLog = {
+  id: string;
+  patient_id: string | null;
+  to_number: string;
+  from_number: string | null;
+  message: string;
+  message_type: string;
+  source: string;
+  twilio_sid: string | null;
+  status: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  patient: Patient | null;
+};
+
 type Message = {
   role: "agent" | "user";
   content: string;
@@ -52,12 +67,41 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   ended: { label: "Ended", color: "bg-slate-100 text-slate-500" },
 };
 
+const SMS_SOURCE_LABELS: Record<string, { label: string; color: string; icon: string }> = {
+  retell_ai: { label: "AI Call", color: "bg-violet-100 text-violet-700", icon: "🤖" },
+  workflow: { label: "Workflow", color: "bg-amber-100 text-amber-700", icon: "⚡" },
+  manual: { label: "Manual", color: "bg-slate-100 text-slate-600", icon: "✍️" },
+  system: { label: "System", color: "bg-sky-100 text-sky-700", icon: "🔧" },
+};
+
+const SMS_TYPE_LABELS: Record<string, { label: string; color: string }> = {
+  booking_link: { label: "Booking Link", color: "bg-emerald-100 text-emerald-700" },
+  contact_info: { label: "Contact Info", color: "bg-blue-100 text-blue-700" },
+  reminder: { label: "Reminder", color: "bg-orange-100 text-orange-700" },
+  general: { label: "General", color: "bg-slate-100 text-slate-600" },
+};
+
 export default function ChatLogsPage() {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"chats" | "sms">("chats");
+
+  // Chat logs state
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  
+  // SMS logs state
+  const [smsLogs, setSmsLogs] = useState<SmsLog[]>([]);
+  const [smsLoading, setSmsLoading] = useState(false);
+  const [smsTotal, setSmsTotal] = useState(0);
+  const [smsPage, setSmsPage] = useState(1);
+  const [smsTotalPages, setSmsTotalPages] = useState(1);
+  const [smsSourceFilter, setSmsSourceFilter] = useState<string>("");
+  const [smsLinkedFilter, setSmsLinkedFilter] = useState<string>("");
+  const [smsSearch, setSmsSearch] = useState("");
+  const [selectedSms, setSelectedSms] = useState<SmsLog | null>(null);
   
   // Filters
   const [typeFilter, setTypeFilter] = useState<string>("");
@@ -90,9 +134,35 @@ export default function ChatLogsPage() {
     }
   }, [page, typeFilter, statusFilter, linkedFilter, search]);
 
+  const fetchSmsLogs = useCallback(async () => {
+    setSmsLoading(true);
+    const params = new URLSearchParams({ page: smsPage.toString(), limit: "25" });
+    if (smsSourceFilter) params.set("source", smsSourceFilter);
+    if (smsLinkedFilter) params.set("patient_linked", smsLinkedFilter);
+    if (smsSearch) params.set("search", smsSearch);
+
+    try {
+      const res = await fetch(`/api/sms/logs?${params}`);
+      const data = await res.json();
+      setSmsLogs(data.logs || []);
+      setSmsTotal(data.total || 0);
+      setSmsTotalPages(data.totalPages || 1);
+    } catch (e) {
+      console.error("Failed to fetch SMS logs:", e);
+    } finally {
+      setSmsLoading(false);
+    }
+  }, [smsPage, smsSourceFilter, smsLinkedFilter, smsSearch]);
+
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+
+  useEffect(() => {
+    if (activeTab === "sms") {
+      fetchSmsLogs();
+    }
+  }, [activeTab, fetchSmsLogs]);
 
   const handleCreatePatient = async (conversationId: string) => {
     setActionLoading(true);
@@ -136,22 +206,51 @@ export default function ChatLogsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Chat Logs</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Communication Logs</h1>
           <p className="text-sm text-slate-500 mt-1">
-            View and manage all Aliice conversations ({total} total)
+            View all AI conversations and SMS messages
           </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="px-2 py-1 rounded-full bg-sky-100 text-sky-700">💬 Chat</span>
-            <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">🎙️ Voice</span>
-            <span className="px-2 py-1 rounded-full bg-violet-100 text-violet-700">📞 Phone</span>
-          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 p-4">
+      {/* Tabs */}
+      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab("chats")}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === "chats"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          💬 Chat Logs ({total})
+        </button>
+        <button
+          onClick={() => setActiveTab("sms")}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === "sms"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          📱 SMS Logs ({smsTotal})
+        </button>
+      </div>
+
+      {/* Chat Logs Tab */}
+      {activeTab === "chats" && (
+        <>
+          {/* Legend */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 rounded-full bg-sky-100 text-sky-700">💬 Chat</span>
+              <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">🎙️ Voice</span>
+              <span className="px-2 py-1 rounded-full bg-violet-100 text-violet-700">📞 Phone</span>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 p-4">
         <input
           type="text"
           placeholder="Search by email or phone..."
@@ -449,6 +548,283 @@ export default function ChatLogsPage() {
           )}
         </div>
       </div>
+        </>
+      )}
+
+      {/* SMS Logs Tab */}
+      {activeTab === "sms" && (
+        <>
+          {/* Legend */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 rounded-full bg-violet-100 text-violet-700">🤖 AI Call</span>
+              <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-700">⚡ Workflow</span>
+              <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-600">✍️ Manual</span>
+            </div>
+          </div>
+
+          {/* SMS Filters */}
+          <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-slate-200 p-4">
+            <input
+              type="text"
+              placeholder="Search by phone or message..."
+              value={smsSearch}
+              onChange={(e) => { setSmsSearch(e.target.value); setSmsPage(1); }}
+              className="flex-1 min-w-[200px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-200"
+            />
+            <select
+              value={smsSourceFilter}
+              onChange={(e) => { setSmsSourceFilter(e.target.value); setSmsPage(1); }}
+              className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-200"
+            >
+              <option value="">All Sources</option>
+              <option value="retell_ai">AI Call</option>
+              <option value="workflow">Workflow</option>
+              <option value="manual">Manual</option>
+              <option value="system">System</option>
+            </select>
+            <select
+              value={smsLinkedFilter}
+              onChange={(e) => { setSmsLinkedFilter(e.target.value); setSmsPage(1); }}
+              className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-200"
+            >
+              <option value="">All Patients</option>
+              <option value="true">Linked to Patient</option>
+              <option value="false">Not Linked</option>
+            </select>
+            <button
+              onClick={() => { setSmsSearch(""); setSmsSourceFilter(""); setSmsLinkedFilter(""); setSmsPage(1); }}
+              className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700"
+            >
+              Clear Filters
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* SMS List */}
+            <div className="lg:col-span-2 space-y-3">
+              {smsLoading ? (
+                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                  <div className="animate-spin w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full mx-auto" />
+                  <p className="text-sm text-slate-500 mt-3">Loading SMS logs...</p>
+                </div>
+              ) : smsLogs.length === 0 ? (
+                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                    <span className="text-3xl">📱</span>
+                  </div>
+                  <p className="text-slate-500">No SMS messages found</p>
+                  <p className="text-sm text-slate-400 mt-1">SMS messages sent via AI calls or workflows will appear here</p>
+                </div>
+              ) : (
+                <>
+                  {smsLogs.map((sms) => (
+                    <div
+                      key={sms.id}
+                      onClick={() => setSelectedSms(sms)}
+                      className={`bg-white rounded-xl border p-4 cursor-pointer transition-all hover:shadow-md ${
+                        selectedSms?.id === sms.id ? "border-sky-400 ring-2 ring-sky-100" : "border-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Source Icon */}
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${SMS_SOURCE_LABELS[sms.source]?.color || "bg-slate-100"}`}>
+                          {SMS_SOURCE_LABELS[sms.source]?.icon || "📱"}
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${SMS_SOURCE_LABELS[sms.source]?.color}`}>
+                              {SMS_SOURCE_LABELS[sms.source]?.label || sms.source}
+                            </span>
+                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${SMS_TYPE_LABELS[sms.message_type]?.color || "bg-slate-100"}`}>
+                              {SMS_TYPE_LABELS[sms.message_type]?.label || sms.message_type}
+                            </span>
+                            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                              ✓ {sms.status}
+                            </span>
+                          </div>
+                          
+                          <div className="mt-1.5">
+                            {sms.patient ? (
+                              <div className="flex items-center gap-2">
+                                {sms.patient.avatar_url ? (
+                                  <img src={sms.patient.avatar_url} alt="" className="w-5 h-5 rounded-full" />
+                                ) : (
+                                  <span className="w-5 h-5 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-[10px] font-bold text-white">
+                                    {sms.patient.first_name?.[0]}{sms.patient.last_name?.[0]}
+                                  </span>
+                                )}
+                                <Link 
+                                  href={`/patients/${sms.patient.id}`} 
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-sm font-medium text-slate-800 hover:text-sky-600"
+                                >
+                                  {sms.patient.first_name} {sms.patient.last_name}
+                                </Link>
+                                <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                  🔗 Linked
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="text-sm">
+                                <span className="text-slate-700 font-medium">📱 {sms.to_number}</span>
+                                <span className="text-slate-400 ml-2 text-xs">(Not linked)</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">
+                            {sms.message.slice(0, 120)}{sms.message.length > 120 ? "..." : ""}
+                          </p>
+
+                          <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
+                            <span>{formatTime(sms.created_at)}</span>
+                            {sms.twilio_sid && (
+                              <>
+                                <span>•</span>
+                                <span className="truncate max-w-[120px]" title={sms.twilio_sid}>
+                                  SID: {sms.twilio_sid.slice(-8)}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Pagination */}
+                  <div className="flex items-center justify-between pt-4">
+                    <p className="text-sm text-slate-500">
+                      Page {smsPage} of {smsTotalPages} ({smsTotal} total)
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSmsPage(p => Math.max(1, p - 1))}
+                        disabled={smsPage === 1}
+                        className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => setSmsPage(p => Math.min(smsTotalPages, p + 1))}
+                        disabled={smsPage === smsTotalPages}
+                        className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* SMS Detail Panel */}
+            <div className="lg:col-span-1">
+              {selectedSms ? (
+                <div className="bg-white rounded-xl border border-slate-200 sticky top-4">
+                  {/* Header */}
+                  <div className="p-4 border-b border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${SMS_SOURCE_LABELS[selectedSms.source]?.color}`}>
+                          {SMS_SOURCE_LABELS[selectedSms.source]?.icon}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{SMS_SOURCE_LABELS[selectedSms.source]?.label || selectedSms.source}</p>
+                          <p className="text-xs text-slate-400">{formatTime(selectedSms.created_at)}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedSms(null)} className="text-slate-400 hover:text-slate-600">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Recipient Info */}
+                  <div className="p-4 border-b border-slate-100 space-y-2">
+                    <h4 className="text-xs font-semibold text-slate-600 uppercase">Recipient</h4>
+                    <p className="text-sm"><span className="text-slate-500">To:</span> <span className="text-slate-800 font-medium">{selectedSms.to_number}</span></p>
+                    {selectedSms.from_number && (
+                      <p className="text-sm"><span className="text-slate-500">From:</span> <span className="text-slate-800">{selectedSms.from_number}</span></p>
+                    )}
+
+                    {/* Patient Link */}
+                    <div className="pt-2">
+                      {selectedSms.patient ? (
+                        <Link
+                          href={`/patients/${selectedSms.patient.id}`}
+                          className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                        >
+                          {selectedSms.patient.avatar_url ? (
+                            <img src={selectedSms.patient.avatar_url} alt="" className="w-8 h-8 rounded-full" />
+                          ) : (
+                            <span className="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-xs font-bold text-white">
+                              {selectedSms.patient.first_name?.[0]}{selectedSms.patient.last_name?.[0]}
+                            </span>
+                          )}
+                          <div>
+                            <p className="text-sm font-medium text-emerald-800">
+                              {selectedSms.patient.first_name} {selectedSms.patient.last_name}
+                            </p>
+                            <p className="text-[10px] text-emerald-600">
+                              View Profile →
+                            </p>
+                          </div>
+                        </Link>
+                      ) : (
+                        <p className="text-xs text-slate-400 text-center py-2">
+                          Not linked to a patient
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Message Content */}
+                  <div className="p-4 border-b border-slate-100">
+                    <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Message</h4>
+                    <div className="bg-sky-50 border border-sky-100 rounded-lg p-3">
+                      <p className="text-sm text-slate-800 whitespace-pre-wrap">{selectedSms.message}</p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${SMS_TYPE_LABELS[selectedSms.message_type]?.color}`}>
+                        {SMS_TYPE_LABELS[selectedSms.message_type]?.label || selectedSms.message_type}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Metadata */}
+                  {selectedSms.metadata && Object.keys(selectedSms.metadata).length > 0 && (
+                    <div className="p-4">
+                      <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Details</h4>
+                      <div className="bg-slate-50 rounded-lg p-3 text-xs space-y-1">
+                        {selectedSms.twilio_sid && (
+                          <p><span className="text-slate-500">Twilio SID:</span> <span className="text-slate-700 font-mono">{selectedSms.twilio_sid}</span></p>
+                        )}
+                        <p><span className="text-slate-500">Status:</span> <span className="text-emerald-600 font-medium">{selectedSms.status}</span></p>
+                        <pre className="whitespace-pre-wrap text-slate-600 mt-2">
+                          {JSON.stringify(selectedSms.metadata, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center sticky top-4">
+                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                    <span className="text-3xl">📱</span>
+                  </div>
+                  <h3 className="font-semibold text-slate-800">Select an SMS</h3>
+                  <p className="text-sm text-slate-500 mt-1">Click on a message to view details</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
