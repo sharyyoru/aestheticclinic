@@ -4161,7 +4161,8 @@ export default function CalendarPage() {
                           }}
                           onFocus={() => setEditCategoryDropdownOpen(true)}
                           placeholder="Search category..."
-                          className={`w-full rounded-md border border-slate-200 bg-white py-1.5 text-[11px] text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400 ${editCategory ? "pl-7 pr-2" : "px-2"}`}
+                          style={{ fontSize: '16px' }}
+                          className={`w-full rounded-md border border-slate-200 bg-white py-2.5 text-sm text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400 touch-manipulation ${editCategory ? "pl-7 pr-2" : "px-2"}`}
                         />
                       </div>
                       {editCategory && (
@@ -4274,7 +4275,8 @@ export default function CalendarPage() {
                         }}
                         onFocus={() => setEditBookingStatusDropdownOpen(true)}
                         placeholder="Search status..."
-                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                        style={{ fontSize: '16px' }}
+                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-2.5 text-sm text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400 touch-manipulation"
                       />
                       {editBookingStatus && (
                         <button
@@ -4321,7 +4323,8 @@ export default function CalendarPage() {
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
                     rows={3}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    style={{ fontSize: '16px' }}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     placeholder="Add notes for this appointment"
                   />
                 </div>
@@ -4432,7 +4435,8 @@ export default function CalendarPage() {
                       }}
                       onFocus={() => setEditDurationDropdownOpen(true)}
                       placeholder="Search duration..."
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      style={{ fontSize: '16px' }}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     />
                     {editConsultationDuration > 0 && editDurationSearch && (
                       <button
@@ -4656,6 +4660,10 @@ export default function CalendarPage() {
                   <div className="relative">
                     <input
                       type="text"
+                      inputMode="search"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      autoCapitalize="off"
                       value={createPatientSearch}
                       onChange={(event) => {
                         setCreatePatientSearch(event.target.value);
@@ -4664,17 +4672,21 @@ export default function CalendarPage() {
                         setCreatePatientName("");
                       }}
                       onFocus={() => { closeAllCreateDropdowns("patient"); setShowCreatePatientSuggestions(true); }}
-                      placeholder="Select patient"
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      placeholder="Search patient name..."
+                      style={{ fontSize: '16px' }}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     />
                     {showCreatePatientSuggestions ? (
-                      <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                      <div 
+                        className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl"
+                        style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+                      >
                         {patientOptionsLoading ? (
-                          <div className="px-3 py-1.5 text-[11px] text-slate-500">
+                          <div className="px-3 py-3 text-sm text-slate-500">
                             Loading patients...
                           </div>
                         ) : filteredCreatePatientSuggestions.length === 0 ? (
-                          <div className="px-3 py-1.5 text-[11px] text-slate-500">
+                          <div className="px-3 py-3 text-sm text-slate-500">
                             No patients found
                           </div>
                         ) : (
@@ -4687,7 +4699,7 @@ export default function CalendarPage() {
                               <button
                                 key={p.id}
                                 type="button"
-                                className="flex w-full flex-col items-start px-3 py-1.5 text-left hover:bg-slate-50"
+                                className="flex w-full flex-col items-start px-3 py-3 text-left hover:bg-slate-50 active:bg-slate-100 touch-manipulation border-b border-slate-100 last:border-b-0"
                                 onClick={() => {
                                   setCreatePatientId(p.id);
                                   setCreatePatientName(name);
@@ -4696,10 +4708,10 @@ export default function CalendarPage() {
                                   setDraftTitle(`Consultation for ${name}`);
                                 }}
                               >
-                                <span className="text-[11px] font-medium text-slate-800">
+                                <span className="text-sm font-medium text-slate-800">
                                   {name}
                                 </span>
-                                <span className="text-[10px] text-slate-500">
+                                <span className="text-xs text-slate-500">
                                   {details}
                                 </span>
                               </button>
@@ -4719,9 +4731,11 @@ export default function CalendarPage() {
                 <div className="space-y-1">
                   <input
                     type="text"
+                    autoComplete="off"
                     value={draftTitle}
                     onChange={(event) => setDraftTitle(event.target.value)}
-                    className="w-full border-b border-slate-200 bg-transparent px-0 pb-1 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none"
+                    style={{ fontSize: '16px' }}
+                    className="w-full border-b border-slate-200 bg-transparent px-0 pb-2 text-base font-semibold text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none touch-manipulation"
                     placeholder="Add title"
                   />
                 </div>
@@ -4746,7 +4760,8 @@ export default function CalendarPage() {
                         setLocationSearch("");
                       }
                     }}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    style={{ fontSize: '16px' }}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                   >
                     <option value="appointment">Appointment</option>
                     <option value="meeting">Meeting</option>
@@ -4773,7 +4788,8 @@ export default function CalendarPage() {
                       setDraftTime("");
                       setTimeSearch("");
                     }}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    style={{ fontSize: '16px' }}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                   >
                     <option value="">
                       {doctorCalendars.length === 0
@@ -4869,7 +4885,8 @@ export default function CalendarPage() {
                       }}
                       onFocus={() => { closeAllCreateDropdowns("service"); setServiceDropdownOpen(true); }}
                       placeholder={serviceOptionsLoading ? "Loading..." : "Search service..."}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      style={{ fontSize: '16px' }}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     />
                     {selectedServiceId && (
                       <button
@@ -4920,7 +4937,8 @@ export default function CalendarPage() {
                         }}
                         onFocus={() => { closeAllCreateDropdowns("status"); setStatusDropdownOpen(true); }}
                         placeholder="Search status..."
-                        className={`w-full rounded-lg border border-slate-200 bg-slate-50/80 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 ${bookingStatus && getStatusIcon(bookingStatus) ? "pl-7 pr-3" : "px-3"}`}
+                        style={{ fontSize: '16px' }}
+                        className={`w-full rounded-lg border border-slate-200 bg-slate-50/80 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation ${bookingStatus && getStatusIcon(bookingStatus) ? "pl-7 pr-3" : "px-3"}`}
                       />
                     </div>
                     {bookingStatus && (
@@ -4975,7 +4993,8 @@ export default function CalendarPage() {
                         }}
                         onFocus={() => { closeAllCreateDropdowns("category"); setCategoryDropdownOpen(true); }}
                         placeholder="Search category..."
-                        className={`w-full rounded-lg border border-slate-200 bg-slate-50/80 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 ${appointmentCategory ? "pl-7 pr-3" : "px-3"}`}
+                        style={{ fontSize: '16px' }}
+                        className={`w-full rounded-lg border border-slate-200 bg-slate-50/80 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation ${appointmentCategory ? "pl-7 pr-3" : "px-3"}`}
                       />
                     </div>
                     {appointmentCategory && (
@@ -5091,7 +5110,8 @@ export default function CalendarPage() {
                       }}
                       onFocus={() => { closeAllCreateDropdowns("location"); setLocationDropdownOpen(true); }}
                       placeholder="Search location..."
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      style={{ fontSize: '16px' }}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     />
                     {draftLocation && (
                       <button
@@ -5134,7 +5154,8 @@ export default function CalendarPage() {
                       }}
                       onFocus={() => { closeAllCreateDropdowns("duration"); setDurationDropdownOpen(true); }}
                       placeholder="Search duration..."
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      style={{ fontSize: '16px' }}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     />
                     {consultationDuration > 0 && durationSearch && (
                       <button
@@ -5173,18 +5194,19 @@ export default function CalendarPage() {
                     value={draftDescription}
                     onChange={(event) => setDraftDescription(event.target.value)}
                     rows={3}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    style={{ fontSize: '16px' }}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     placeholder="Add notes for this appointment"
                   />
                 </div>
               </div>
               {createError ? (
-                <p className="mt-2 text-[11px] text-red-600">{createError}</p>
+                <p className="mt-2 text-xs text-red-600">{createError}</p>
               ) : null}
               <div className="mt-4 flex items-center justify-between gap-2">
                 <button
                   type="button"
-                  className="text-[11px] font-medium text-sky-600 hover:underline hover:underline-offset-2"
+                  className="text-xs font-medium text-sky-600 hover:underline hover:underline-offset-2 touch-manipulation py-2"
                 >
                   More options
                 </button>
@@ -5195,7 +5217,7 @@ export default function CalendarPage() {
                       if (savingCreate) return;
                       setCreateModalOpen(false);
                     }}
-                    className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                    className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 active:bg-slate-100 touch-manipulation"
                   >
                     Cancel
                   </button>
@@ -5203,7 +5225,7 @@ export default function CalendarPage() {
                     type="button"
                     onClick={() => void handleSaveAppointment()}
                     disabled={savingCreate}
-                    className="inline-flex items-center rounded-full border border-sky-500/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center rounded-full border border-sky-500/80 bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-sky-700 active:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60 touch-manipulation"
                   >
                     Save
                   </button>

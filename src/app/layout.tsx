@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import Image from "next/image";
@@ -38,6 +38,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Clinic CRM",
   description: "Medical CRM and ERP for clinics",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
