@@ -7,6 +7,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString, createSwissDateTime } from "@/lib/swissTimezone";
 import { pushToDataLayer } from "@/components/GoogleTagManager";
+import MobileCalendar from "@/components/MobileCalendar";
 
 const DOCTORS: Record<string, {
   name: string;
@@ -618,44 +619,71 @@ function DoctorBookingContent() {
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Personal Information</h3>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">First Name *</label>
+                    <label htmlFor="firstName" className="block text-sm font-medium text-slate-700 mb-1.5">First Name *</label>
                     <input
+                      id="firstName"
                       type="text"
+                      inputMode="text"
+                      autoComplete="given-name"
+                      autoCapitalize="words"
+                      autoCorrect="off"
+                      spellCheck="false"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all touch-manipulation"
+                      style={{ fontSize: '16px' }} /* Prevents iOS zoom on focus */
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Last Name *</label>
+                    <label htmlFor="lastName" className="block text-sm font-medium text-slate-700 mb-1.5">Last Name *</label>
                     <input
+                      id="lastName"
                       type="text"
+                      inputMode="text"
+                      autoComplete="family-name"
+                      autoCapitalize="words"
+                      autoCorrect="off"
+                      spellCheck="false"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all touch-manipulation"
+                      style={{ fontSize: '16px' }}
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Email Address *</label>
+                  <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">Email Address *</label>
                   <input
+                    id="email"
                     type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck="false"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all touch-manipulation"
+                    style={{ fontSize: '16px' }}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone Number</label>
+                  <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1.5">Phone Number</label>
                   <input
+                    id="phone"
                     type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
+                    placeholder="+41 XX XXX XX XX"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all touch-manipulation"
+                    style={{ fontSize: '16px' }}
                   />
                 </div>
                 <div className="pt-4">
                   <button
+                    type="button"
                     onClick={() => {
                       if (!firstName || !lastName || !email) {
                         setError("Please fill in all required fields");
@@ -676,7 +704,8 @@ function DoctorBookingContent() {
                       setStep("datetime");
                       setError(null);
                     }}
-                    className="w-full bg-slate-900 text-white py-3 rounded-xl font-medium hover:bg-slate-800 transition-colors"
+                    disabled={!firstName || !lastName || !email}
+                    className="w-full bg-slate-900 text-white py-4 rounded-xl font-medium hover:bg-slate-800 active:bg-slate-700 transition-colors touch-manipulation active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Continue
                   </button>
@@ -689,30 +718,42 @@ function DoctorBookingContent() {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Select Date & Time</h3>
                 <p className="text-sm text-slate-600 mb-4">
-                  Please select a date when {doctor.name} is available at {locationLabel}.
+                  Please select a date when {doctor.name} is available at {locationLabel}. 
+                  <span className="text-emerald-600 font-medium"> Green dots</span> indicate available dates.
                 </p>
+                
+                {/* Custom iOS-friendly Calendar */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Date *</label>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => {
-                      const newDate = e.target.value;
-                      setSelectedDate(newDate);
+                  <label className="block text-sm font-medium text-slate-700 mb-3">Select a Date *</label>
+                  <MobileCalendar
+                    selectedDate={selectedDate}
+                    onDateSelect={(date) => {
+                      setSelectedDate(date);
                       setSelectedTime("");
                     }}
-                    min={getMinDate()}
-                    max={getMaxDate()}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all"
+                    availableDates={availableDatesSet}
+                    minDate={(() => {
+                      const tomorrow = new Date();
+                      tomorrow.setDate(tomorrow.getDate() + 1);
+                      tomorrow.setHours(0, 0, 0, 0);
+                      return tomorrow;
+                    })()}
+                    maxDate={(() => {
+                      const max = new Date();
+                      max.setMonth(max.getMonth() + 3);
+                      return max;
+                    })()}
+                    blockedDates={blockedDates}
+                    isLoading={isLoadingDates}
                   />
                   {nearestAvailableDate && !selectedDate && (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Next available date: {new Date(nearestAvailableDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                    <p className="mt-3 text-xs text-slate-500">
+                      Next available: <span className="font-medium text-slate-700">{new Date(nearestAvailableDate + "T12:00:00").toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
                     </p>
                   )}
-                  {availableDatesSet.size > 0 && (
-                    <p className="mt-2 text-xs text-slate-500">
-                      {availableDatesSet.size} available dates in the next 3 months
+                  {availableDatesSet.size > 0 && selectedDate && (
+                    <p className="mt-2 text-xs text-emerald-600 font-medium">
+                      ✓ Selected: {new Date(selectedDate + "T12:00:00").toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                     </p>
                   )}
                 </div>
@@ -741,17 +782,23 @@ function DoctorBookingContent() {
                         {openSlots.map((time: string) => (
                           <button
                             key={time}
+                            type="button"
                             onClick={() => setSelectedTime(time)}
-                            className={`py-3 rounded-xl text-sm font-medium transition-all ${
+                            className={`py-4 rounded-xl text-sm font-medium transition-all touch-manipulation active:scale-95 ${
                               selectedTime === time
-                                ? "bg-slate-900 text-white"
-                                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                ? "bg-slate-900 text-white shadow-lg"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300"
                             }`}
                           >
                             {time}
                           </button>
                         ))}
                       </div>
+                      {selectedTime && (
+                        <p className="mt-3 text-xs text-emerald-600 font-medium">
+                          ✓ Time selected: {selectedTime}
+                        </p>
+                      )}
                     </div>
                   );
                 })()}
@@ -779,24 +826,28 @@ function DoctorBookingContent() {
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Additional Notes</label>
+                  <label htmlFor="notes" className="block text-sm font-medium text-slate-700 mb-1.5">Additional Notes</label>
                   <textarea
+                    id="notes"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     rows={3}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all resize-none"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all resize-none touch-manipulation"
                     placeholder="Any specific concerns or requests..."
+                    style={{ fontSize: '16px' }}
                   />
                 </div>
 
                 <div className="flex gap-3 pt-4">
                   <button
+                    type="button"
                     onClick={() => setStep("info")}
-                    className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-medium hover:bg-slate-200 transition-colors"
+                    className="flex-1 bg-slate-100 text-slate-700 py-4 rounded-xl font-medium hover:bg-slate-200 active:bg-slate-300 transition-colors touch-manipulation active:scale-[0.98]"
                   >
                     Back
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       if (selectedDate && selectedTime) {
                         setStep("confirm");
@@ -805,7 +856,8 @@ function DoctorBookingContent() {
                         setError("Please select a date and time");
                       }
                     }}
-                    className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-medium hover:bg-slate-800 transition-colors"
+                    disabled={!selectedDate || !selectedTime}
+                    className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-medium hover:bg-slate-800 active:bg-slate-700 transition-colors touch-manipulation active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Continue
                   </button>
@@ -869,16 +921,18 @@ function DoctorBookingContent() {
 
                 <div className="flex gap-3">
                   <button
+                    type="button"
                     onClick={() => setStep("datetime")}
                     disabled={loading}
-                    className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-medium hover:bg-slate-200 transition-colors disabled:opacity-50"
+                    className="flex-1 bg-slate-100 text-slate-700 py-4 rounded-xl font-medium hover:bg-slate-200 active:bg-slate-300 transition-colors touch-manipulation active:scale-[0.98] disabled:opacity-50"
                   >
                     Back
                   </button>
                   <button
+                    type="button"
                     onClick={handleSubmit}
                     disabled={loading}
-                    className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-medium hover:bg-slate-800 active:bg-slate-700 transition-colors touch-manipulation active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {loading ? (
                       <>

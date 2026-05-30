@@ -81,7 +81,7 @@ export default function LocationSelectionPage() {
             <Link
               key={location.id}
               href={`/book-appointment/doctors?location=${location.id}`}
-              className="group bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-400 transition-all transform hover:-translate-y-1 p-6 sm:p-8"
+              className="group bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-400 active:bg-slate-50 transition-all transform hover:-translate-y-1 active:scale-[0.98] p-6 sm:p-8 touch-manipulation"
             >
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 sm:w-14 sm:h-14 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-slate-900 transition-colors">
