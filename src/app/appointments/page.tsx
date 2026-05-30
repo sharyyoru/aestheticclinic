@@ -15,6 +15,7 @@ import {
   getSwissHourMinute,
   createSwissDateTime,
 } from "@/lib/swissTimezone";
+import MobileDateInput from "@/components/MobileDateInput";
 
 type AppointmentStatus =
   | "scheduled"
@@ -4404,18 +4405,18 @@ export default function CalendarPage() {
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Date &amp; time</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="date"
+                    <MobileDateInput
                       value={editDate}
-                      onChange={(event) => setEditDate(event.target.value)}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      onChange={(newDate) => setEditDate(newDate)}
+                      placeholder="Select date"
                     />
                     <input
                       type="time"
                       value={editTime}
                       onChange={(event) => setEditTime(event.target.value)}
                       step={15 * 60}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      style={{ fontSize: '16px' }}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
                     />
                   </div>
                 </div>
@@ -4789,20 +4790,20 @@ export default function CalendarPage() {
                 <div className="space-y-1">
                   <p className="text-[11px] font-medium text-slate-600">Date &amp; time</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="date"
+                    <MobileDateInput
                       value={draftDate}
-                      onChange={(event) => {
-                        setDraftDate(event.target.value);
+                      onChange={(newDate) => {
+                        setDraftDate(newDate);
                         setDraftTime("");
                         setTimeSearch("");
                       }}
                       min={isSystemUser ? undefined : new Date().toISOString().split('T')[0]}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      placeholder="Select date"
                     />
                     <div className="relative">
                       <input
                         type="text"
+                        inputMode="none"
                         value={timeSearch}
                         onChange={(e) => {
                           setTimeSearch(e.target.value);
@@ -4812,9 +4813,11 @@ export default function CalendarPage() {
                           }
                         }}
                         onFocus={() => { closeAllCreateDropdowns("time"); setTimeDropdownOpen(true); }}
-                        placeholder={!draftDate ? "Select date first" : "Search time..."}
+                        placeholder={!draftDate ? "Select date first" : "Select time..."}
                         disabled={!draftDate}
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed disabled:bg-slate-100"
+                        readOnly
+                        style={{ fontSize: '16px' }}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed disabled:bg-slate-100 touch-manipulation cursor-pointer"
                       />
                       {draftTime && (
                         <button
@@ -4826,7 +4829,10 @@ export default function CalendarPage() {
                         </button>
                       )}
                       {timeDropdownOpen && draftDate && filteredTimeOptions.length > 0 && (
-                        <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg">
+                        <div 
+                          className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg"
+                          style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+                        >
                           {filteredTimeOptions.map((opt) => (
                             <button
                               key={opt.value}
@@ -4836,7 +4842,7 @@ export default function CalendarPage() {
                                 setTimeSearch(opt.label);
                                 setTimeDropdownOpen(false);
                               }}
-                              className={`w-full px-3 py-1.5 text-left hover:bg-sky-50 ${draftTime === opt.value ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
+                              className={`w-full px-3 py-2.5 text-left hover:bg-sky-50 active:bg-sky-100 touch-manipulation ${draftTime === opt.value ? "bg-sky-50 text-sky-700" : "text-slate-700"}`}
                             >
                               {opt.label}
                             </button>
