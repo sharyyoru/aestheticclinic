@@ -5,6 +5,11 @@ import { normalizePhone, RETELL_FROM_NUMBER } from "@/lib/retell";
 
 export const runtime = "nodejs";
 
+// Webhook URL for Retell to call when AI triggers functions (send_sms, end_call, etc.)
+const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL 
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/retell/webhook`
+  : "https://aestheticclinic.vercel.app/api/retell/webhook";
+
 // Sales team users for round-robin assignment
 const SALES_TEAM_NAMES = ["Charline", "Elite", "Audrey", "Bubuque", "Victoria"];
 
@@ -1278,22 +1283,38 @@ export async function POST(request: Request) {
             }
           }
 
+          // Build patient name - use first name or leave empty for AI to ask
+          const patientName = safePatient.first_name?.trim() || "";
+          
+          // Prepare dynamic variables - only include if we have valid data
+          // If empty, the AI will ask the caller for the information
+          const dynamicVariables: Record<string, string> = {};
+          if (patientName) {
+            dynamicVariables.user_name = patientName;
+          }
+          if (serviceName && serviceName !== "consultation") {
+            dynamicVariables.service_name = serviceName;
+          }
+          if (config.call_purpose) {
+            dynamicVariables.call_purpose = config.call_purpose;
+          }
+
           // Prepare the call payload
           const callPayload = {
             from_number: RETELL_FROM_NUMBER || "+41799029555",
             to_number: normalizedPhone,
             agent_id: agentId,
-            retell_llm_dynamic_variables: {
-              user_name: safePatient.first_name || "there",
-              service_name: serviceName,
-              call_purpose: config.call_purpose || "",
-            },
+            webhook_url: RETELL_WEBHOOK_URL,
+            retell_llm_dynamic_variables: dynamicVariables,
             metadata: {
               source: "workflow",
               patient_id: safePatient.id,
+              patient_name: patientName,
+              patient_phone: normalizedPhone,
               deal_id: safeDeal.id,
               workflow_id: workflow.id,
               agent_language: agentLanguage,
+              service_name: serviceName,
               triggered_at: new Date().toISOString(),
             },
           };

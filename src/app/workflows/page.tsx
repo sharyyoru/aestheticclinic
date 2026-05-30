@@ -66,6 +66,8 @@ export default function WorkflowsPage() {
   const [showTestCallModal, setShowTestCallModal] = useState(false);
   const [testCallPhone, setTestCallPhone] = useState("");
   const [testCallLanguage, setTestCallLanguage] = useState<"english" | "french">("english");
+  const [testCallUserName, setTestCallUserName] = useState("");
+  const [testCallServiceName, setTestCallServiceName] = useState("");
   const [testCallLoading, setTestCallLoading] = useState(false);
   const [testCallResult, setTestCallResult] = useState<{ success: boolean; message: string; call_id?: string } | null>(null);
   
@@ -256,15 +258,19 @@ export default function WorkflowsPage() {
         body: JSON.stringify({
           phone_number: testCallPhone.trim(),
           agent_language: testCallLanguage,
+          user_name: testCallUserName.trim() || undefined,
+          service_name: testCallServiceName.trim() || undefined,
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
+        const nameInfo = testCallUserName.trim() ? `for ${testCallUserName.trim()}` : "(name will be asked)";
+        const serviceInfo = testCallServiceName.trim() ? `about ${testCallServiceName.trim()}` : "(service will be asked)";
         setTestCallResult({
           success: true,
-          message: `Call initiated successfully!`,
+          message: `Call initiated ${nameInfo} ${serviceInfo}`,
           call_id: data.call_id,
         });
       } else {
@@ -337,6 +343,8 @@ export default function WorkflowsPage() {
                 setShowTestCallModal(true);
                 setTestCallResult(null);
                 setTestCallPhone("");
+                setTestCallUserName("");
+                setTestCallServiceName("");
               }}
               className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
             >
@@ -627,7 +635,7 @@ export default function WorkflowsPage() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Phone Number
+                  Phone Number <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="tel"
@@ -637,6 +645,35 @@ export default function WorkflowsPage() {
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 <p className="mt-1 text-xs text-slate-400">Enter phone number in international format (E.164)</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Patient Name
+                  </label>
+                  <input
+                    type="text"
+                    value={testCallUserName}
+                    onChange={(e) => setTestCallUserName(e.target.value)}
+                    placeholder="e.g., John"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <p className="mt-1 text-xs text-slate-400">Leave empty → AI will ask</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Service Interest
+                  </label>
+                  <input
+                    type="text"
+                    value={testCallServiceName}
+                    onChange={(e) => setTestCallServiceName(e.target.value)}
+                    placeholder="e.g., Botox"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <p className="mt-1 text-xs text-slate-400">Leave empty → AI will ask</p>
+                </div>
               </div>
 
               <div>
@@ -651,6 +688,16 @@ export default function WorkflowsPage() {
                   <option value="english">🇬🇧 English Agent</option>
                   <option value="french">🇫🇷 French Agent</option>
                 </select>
+              </div>
+
+              <div className="rounded-lg bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-700">
+                <p className="font-medium">💡 How it works:</p>
+                <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                  <li>If name is provided, AI greets: &quot;Am I speaking with [Name]?&quot;</li>
+                  <li>If empty, AI asks: &quot;May I know who I&apos;m speaking with?&quot;</li>
+                  <li>Same for service - AI asks if not provided</li>
+                  <li>AI can send booking SMS during the call via our webhook</li>
+                </ul>
               </div>
 
               {testCallResult && (

@@ -10,11 +10,22 @@ const RETELL_AGENTS = {
   french: "agent_16738cdb79c26e811fc1cffcc6",
 } as const;
 
+// Webhook URL for Retell to call when AI triggers functions (send_sms, etc.)
+const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL 
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/retell/webhook`
+  : "https://aestheticclinic.vercel.app/api/retell/webhook";
+
 /**
  * POST /api/workflows/test-retell-call
  * 
  * Test endpoint to verify Retell API integration
- * Body: { phone_number: string, agent_language?: "english" | "french" }
+ * Body: { 
+ *   phone_number: string, 
+ *   agent_language?: "english" | "french",
+ *   user_name?: string,
+ *   service_name?: string,
+ *   call_purpose?: string
+ * }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +37,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { phone_number, agent_language = "english" } = body;
+    const { 
+      phone_number, 
+      agent_language = "english",
+      user_name,
+      service_name,
+      call_purpose,
+    } = body;
 
     if (!phone_number) {
       return NextResponse.json(
@@ -35,20 +52,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Normalize phone number to E.164 format
+    let normalizedPhone = phone_number.replace(/[^\d+]/g, "");
+    if (!normalizedPhone.startsWith("+")) {
+      if (normalizedPhone.startsWith("0")) {
+        normalizedPhone = "+41" + normalizedPhone.slice(1);
+      } else {
+        normalizedPhone = "+" + normalizedPhone;
+      }
+    }
+
     const agentId = RETELL_AGENTS[agent_language as keyof typeof RETELL_AGENTS] || RETELL_AGENTS.english;
+
+    // Build dynamic variables - use provided values or leave empty for AI to ask
+    // Per Retell best practices: if empty, AI will ask for the info during the call
+    const dynamicVariables: Record<string, string> = {};
+    
+    // Only set user_name if provided and not empty
+    if (user_name && user_name.trim()) {
+      dynamicVariables.user_name = user_name.trim();
+    }
+    // If not provided, AI will ask "May I know who I'm speaking with?"
+    
+    // Only set service_name if provided and not empty
+    if (service_name && service_name.trim()) {
+      dynamicVariables.service_name = service_name.trim();
+    }
+    // If not provided, AI will ask "Which treatment or service were you interested in?"
+    
+    // Always include call_purpose for context
+    dynamicVariables.call_purpose = call_purpose || "follow-up on inquiry";
 
     const callPayload = {
       from_number: RETELL_FROM_NUMBER || "+41799029555",
-      to_number: phone_number,
+      to_number: normalizedPhone,
       agent_id: agentId,
-      retell_llm_dynamic_variables: {
-        user_name: "Test User",
-        service_name: "Test Service",
-        call_purpose: "Test call from workflow system",
-      },
+      retell_llm_dynamic_variables: dynamicVariables,
+      webhook_url: RETELL_WEBHOOK_URL,
       metadata: {
         source: "test",
+        patient_phone: normalizedPhone,
         triggered_at: new Date().toISOString(),
+        user_name_provided: !!user_name,
+        service_name_provided: !!service_name,
       },
     };
 
@@ -97,23 +143,34 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/workflows/test-retell-call
  * 
- * Returns test configuration
+ * Returns test configuration and usage info
  */
 export async function GET() {
   return NextResponse.json({
     configured: !!RETELL_API_KEY,
     from_number: RETELL_FROM_NUMBER || "+41799029555",
+    webhook_url: RETELL_WEBHOOK_URL,
     agents: RETELL_AGENTS,
     usage: {
       method: "POST",
       body: {
         phone_number: "string (required) - Phone number to call in E.164 format",
         agent_language: "string (optional) - 'english' or 'french', default: 'english'",
+        user_name: "string (optional) - Patient name. If empty, AI will ask during call",
+        service_name: "string (optional) - Service of interest. If empty, AI will ask during call",
+        call_purpose: "string (optional) - Context for the call, default: 'follow-up on inquiry'",
       },
       example: {
         phone_number: "+41791234567",
         agent_language: "english",
+        user_name: "John Smith",
+        service_name: "Botox",
       },
+      notes: [
+        "If user_name is empty, AI will say: 'May I know who I'm speaking with?'",
+        "If service_name is empty, AI will say: 'Which treatment or service were you interested in?'",
+        "The webhook_url is called when AI triggers functions like send_sms",
+      ],
     },
   });
 }
