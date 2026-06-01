@@ -51,7 +51,7 @@ function phoneToWaChatId(phone: string): string {
 }
 
 export default function GlobalWhatsAppPanel({ open, onClose, onStatusChange }: GlobalWhatsAppPanelProps) {
-  const [status, setStatus] = useState<"disconnected" | "launching" | "qr" | "qr_pending" | "authenticated" | "ready">("disconnected");
+  const [status, setStatus] = useState<"disconnected" | "launching" | "qr" | "qr_pending" | "authenticated" | "ready" | "reconnecting">("disconnected");
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [filteredChats, setFilteredChats] = useState<Chat[]>([]);
@@ -422,7 +422,11 @@ export default function GlobalWhatsAppPanel({ open, onClose, onStatusChange }: G
               </h2>
               {!selectedChat && (
                 <p className="text-[10px] text-green-100">
-                  {status === "ready" ? `${chats.length} chats` : status === "qr" ? "Scan QR to connect" : status}
+                  {status === "ready" ? `${chats.length} chats` : 
+                   status === "qr" || status === "qr_pending" ? "Scan QR to connect" : 
+                   status === "reconnecting" ? "Reconnecting..." :
+                   status === "launching" ? "Initializing..." :
+                   status}
                 </p>
               )}
             </div>
@@ -501,6 +505,14 @@ export default function GlobalWhatsAppPanel({ open, onClose, onStatusChange }: G
                 >
                   Connect WhatsApp
                 </button>
+              </>
+            ) : status === "reconnecting" ? (
+              <>
+                <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+                <p className="text-sm font-medium text-slate-700">Reconnecting...</p>
+                <p className="text-xs text-slate-500 text-center max-w-xs">
+                  WhatsApp session was interrupted. Attempting to reconnect automatically...
+                </p>
               </>
             ) : (
               <>

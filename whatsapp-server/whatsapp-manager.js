@@ -11,6 +11,48 @@ const {
   logEvent
 } = require('./db');
 
+// ═══════════════════════════════════════════════════════════════════════════
+// WhatsApp Web Version Cache - CRITICAL for session stability
+// WhatsApp frequently updates their web client, which can invalidate sessions.
+// Caching a known-working version prevents unexpected disconnections.
+// ═══════════════════════════════════════════════════════════════════════════
+const WEB_VERSION_CACHE = {
+  // Use a stable, known-working version
+  // Update this periodically when WhatsApp releases breaking changes
+  remotePath: 'https://raw.githubusercontent.com/AltriusRS/WhatsApp-Web-Cache/main/versions.json',
+  type: 'remote'
+};
+
+// Alternative: Local cache fallback
+const LOCAL_WEB_VERSION = '2.3000.1014764534-alpha';
+
+// Puppeteer args optimized for Railway/Docker environments
+const PUPPETEER_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-accelerated-2d-canvas',
+  '--no-first-run',
+  '--no-zygote',
+  '--disable-gpu',
+  '--disable-extensions',
+  '--disable-default-apps',
+  '--disable-translate',
+  '--disable-sync',
+  '--hide-scrollbars',
+  '--metrics-recording-only',
+  '--mute-audio',
+  '--no-default-browser-check',
+  '--disable-hang-monitor',
+  '--disable-prompt-on-repost',
+  '--disable-background-networking',
+  '--disable-breakpad',
+  '--disable-component-update',
+  '--disable-domain-reliability',
+  '--disable-features=TranslateUI',
+  '--single-process', // Important for low-memory environments
+];
+
 // Lazy-loaded to avoid circular dependency (queue-processor requires whatsapp-manager)
 let _resetSessionFailedItems = null;
 function getResetSessionFailed() {
@@ -26,8 +68,52 @@ const clients = new Map();
 // Track init watchdog timers per user
 const initWatchdogs = new Map();
 
+// Track keepalive intervals per user
+const keepaliveIntervals = new Map();
+
 // WebSocket clients per user for real-time updates
 const wsClientsByUser = new Map();
+
+/**
+ * Start keepalive ping to prevent idle disconnections
+ * WhatsApp Web can disconnect after extended periods of inactivity
+ */
+function startKeepalive(userId, client) {
+  // Clear any existing keepalive for this user
+  stopKeepalive(userId);
+  
+  // Ping every 5 minutes to keep connection alive
+  const interval = setInterval(async () => {
+    try {
+      const state = await client.getState();
+      if (state !== 'CONNECTED') {
+        console.log(`[Keepalive] User ${userId} state is ${state}, stopping keepalive`);
+        stopKeepalive(userId);
+        return;
+      }
+      // Light operation to keep connection alive
+      await client.getChats().catch(() => {});
+      console.log(`[Keepalive] Ping successful for user ${userId}`);
+    } catch (err) {
+      console.error(`[Keepalive] Ping failed for user ${userId}:`, err.message);
+    }
+  }, 5 * 60 * 1000); // 5 minutes
+  
+  keepaliveIntervals.set(userId, interval);
+  console.log(`[Keepalive] Started for user ${userId}`);
+}
+
+/**
+ * Stop keepalive ping for a user
+ */
+function stopKeepalive(userId) {
+  const interval = keepaliveIntervals.get(userId);
+  if (interval) {
+    clearInterval(interval);
+    keepaliveIntervals.delete(userId);
+    console.log(`[Keepalive] Stopped for user ${userId}`);
+  }
+}
 
 /**
  * Get or create WhatsApp client for a specific user
@@ -47,16 +133,24 @@ function getWhatsAppClient(userId) {
     puppeteer: {
       headless: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu'
-      ]
-    }
+      args: PUPPETEER_ARGS,
+      // Increase timeouts for slow environments
+      timeout: 60000,
+    },
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRITICAL: Web version cache prevents session loss from WhatsApp updates
+    // ═══════════════════════════════════════════════════════════════════════
+    webVersionCache: WEB_VERSION_CACHE,
+    // Fallback version if remote cache fails
+    webVersion: LOCAL_WEB_VERSION,
+    // Take over session if another device tries to use it
+    takeoverOnConflict: true,
+    // Retry QR code generation up to 3 times
+    qrMaxRetries: 3,
+    // Timeout for QR code scan (5 minutes)
+    authTimeoutMs: 300000,
+    // Restart session if disconnected unexpectedly
+    restartOnAuthFail: true,
   });
 
   // Helpful diagnostics (Railway debugging)
@@ -153,6 +247,9 @@ function getWhatsAppClient(userId) {
 
     // Auto-resend any queued messages that failed due to session disconnect
     try { getResetSessionFailed()(userId); } catch {}
+    
+    // Start keepalive ping to prevent idle disconnections
+    startKeepalive(userId, client);
   });
 
   // Message event
@@ -181,8 +278,8 @@ function getWhatsAppClient(userId) {
     }
   });
 
-  // Disconnected event
-  client.on('disconnected', (reason) => {
+  // Disconnected event with auto-reconnect
+  client.on('disconnected', async (reason) => {
     console.log(`WhatsApp disconnected for user ${userId}:`, reason);
 
     const watchdog = initWatchdogs.get(userId);
@@ -190,14 +287,41 @@ function getWhatsAppClient(userId) {
       clearTimeout(watchdog);
       initWatchdogs.delete(userId);
     }
-    updateSessionStatus(userId, 'disconnected');
-    logEvent(userId, 'disconnected', { reason });
     
-    broadcastToUser(userId, 'status', { status: 'disconnected', reason });
-    broadcastToUser(userId, 'disconnected', { reason });
+    // Stop keepalive pings
+    stopKeepalive(userId);
     
-    // Clean up client
+    // Clean up client first
     clients.delete(userId);
+    
+    // Check if this is a recoverable disconnect (not user-initiated logout)
+    const isRecoverable = !['LOGOUT', 'CONFLICT', 'TOS_BLOCK', 'SMB_TOS_BLOCK'].includes(reason);
+    
+    if (isRecoverable) {
+      console.log(`[AutoReconnect] Attempting auto-reconnect for user ${userId} in 5 seconds...`);
+      logEvent(userId, 'auto_reconnect_scheduled', { reason });
+      updateSessionStatus(userId, 'reconnecting');
+      broadcastToUser(userId, 'status', { status: 'reconnecting', reason });
+      
+      // Wait 5 seconds before attempting reconnect
+      setTimeout(async () => {
+        try {
+          console.log(`[AutoReconnect] Starting reconnect for user ${userId}`);
+          await initializeWhatsApp(userId);
+        } catch (err) {
+          console.error(`[AutoReconnect] Failed to reconnect user ${userId}:`, err.message);
+          updateSessionStatus(userId, 'disconnected');
+          logEvent(userId, 'auto_reconnect_failed', { error: err.message });
+          broadcastToUser(userId, 'status', { status: 'disconnected', reason: 'Auto-reconnect failed' });
+        }
+      }, 5000);
+    } else {
+      // User-initiated or blocked - don't auto-reconnect
+      updateSessionStatus(userId, 'disconnected');
+      logEvent(userId, 'disconnected', { reason, recoverable: false });
+      broadcastToUser(userId, 'status', { status: 'disconnected', reason });
+      broadcastToUser(userId, 'disconnected', { reason });
+    }
   });
 
   // Auth failure
