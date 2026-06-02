@@ -351,6 +351,31 @@ export default function RootLayout({
                 </div>
                 <div className="border-b border-slate-100/80">
                   <Link
+                    href="/agents"
+                    className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-white/70 text-slate-500 shadow-[0_6px_18px_rgba(15,23,42,0.18)] backdrop-blur group-hover:bg-violet-500/90 group-hover:text-white">
+                      <svg
+                        className="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M12 8V4H8" />
+                        <rect x="2" y="2" width="20" height="20" rx="5" />
+                        <path d="M6 12h4m4 0h4" />
+                        <path d="M9 17a3 3 0 0 0 6 0" />
+                      </svg>
+                    </span>
+                    <span>AI Agents</span>
+                  </Link>
+                </div>
+                <div className="border-b border-slate-100/80">
+                  <Link
                     href="/marketing"
                     className="group flex items-center gap-3 px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-sky-50/80 hover:text-slate-900 sm:text-sm"
                   >
