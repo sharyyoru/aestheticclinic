@@ -34,7 +34,8 @@ function normalizePhone(phone: string): string {
 }
 
 function normalizeQuery(query: string): string {
-  return query.trim().toLowerCase();
+  const trimmed = query.trim().toLowerCase();
+  return trimmed.includes("@") ? trimmed.replace(/\s+/g, "") : trimmed;
 }
 
 function calculateRelevanceScore(
