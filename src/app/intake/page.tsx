@@ -306,13 +306,14 @@ export default function IntakePage() {
       if (subError) throw subError;
 
       // Trigger patient_created workflow ONLY for new patients
+      // This will create a deal under "Request for Information" stage
       try {
         await fetch("/api/workflows/patient-created", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             patient_id: newPatient?.id,
-            skip_deal_creation: true,
+            form_type: "intake_form",
           }),
         });
       } catch {
