@@ -26,6 +26,9 @@ export async function POST(request: NextRequest) {
     console.log("[Dropped Call] Received:", JSON.stringify(body, null, 2));
 
     // Extract data from Retell payload
+    // Retell sends data in different formats depending on context:
+    // - During real calls: args/arguments contain function parameters
+    // - During tests: data comes as dynamic variables or direct body fields
     const {
       // Function call arguments
       args,
@@ -35,17 +38,24 @@ export async function POST(request: NextRequest) {
       call_id,
       metadata,
       retell_llm_dynamic_variables,
+      // Direct body fields (test mode)
+      from_number: directFromNumber,
+      reason: directReason,
     } = body;
 
     // Get the arguments (Retell can send them in different formats)
     const arguments_ = args || funcArgs || {};
     const fromNumber = arguments_.from_number || 
                        arguments_.phone_number || 
+                       directFromNumber ||
+                       retell_llm_dynamic_variables?.from_number ||
+                       retell_llm_dynamic_variables?.phone ||
                        call?.from_number || 
-                       metadata?.from_number ||
-                       retell_llm_dynamic_variables?.phone;
+                       metadata?.from_number;
     
     const reason = arguments_.reason || 
+                   directReason ||
+                   retell_llm_dynamic_variables?.reason ||
                    arguments_.disconnection_reason || 
                    "AI could not understand caller";
 
