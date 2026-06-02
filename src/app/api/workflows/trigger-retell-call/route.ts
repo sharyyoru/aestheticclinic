@@ -15,6 +15,12 @@ const RETELL_AGENTS = {
   french: "agent_16738cdb79c26e811fc1cffcc6",
 } as const;
 
+// Webhook URL for Retell to call when AI triggers functions (send_sms, etc.)
+// CRITICAL: Without this, the AI cannot send SMS or perform other actions
+const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL 
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/retell/webhook`
+  : "https://aestheticclinic.vercel.app/api/retell/webhook";
+
 export const runtime = "nodejs";
 
 /**
@@ -84,12 +90,15 @@ export async function POST(request: NextRequest) {
       from_number: string;
       to_number: string;
       agent_id: string;
+      webhook_url: string;
       retell_llm_dynamic_variables?: Record<string, unknown>;
       metadata?: Record<string, unknown>;
     } = {
       from_number: RETELL_FROM_NUMBER || "+41799029555", // Default Switzerland number
       to_number: phone_number,
       agent_id: resolvedAgentId,
+      // CRITICAL: webhook_url tells Retell where to send function calls (send_sms, etc.)
+      webhook_url: RETELL_WEBHOOK_URL,
     };
 
     // Add dynamic variables for the AI conversation
@@ -110,11 +119,13 @@ export async function POST(request: NextRequest) {
       callPayload.retell_llm_dynamic_variables = vars;
     }
 
-    // Add metadata for tracking
+    // Add metadata for tracking AND for SMS function to use
     callPayload.metadata = {
       ...metadata,
       source: "workflow",
       patient_id: patient?.id || null,
+      patient_name: patient ? `${patient.first_name || ""} ${patient.last_name || ""}`.trim() : null,
+      patient_phone: patient?.phone || phone_number, // CRITICAL: SMS webhook uses this
       triggered_at: new Date().toISOString(),
     };
 
