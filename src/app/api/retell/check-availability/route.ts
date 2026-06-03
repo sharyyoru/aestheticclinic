@@ -126,6 +126,15 @@ const DOCTOR_NAMES: Record<string, string> = {
   "lily-radionova": "Nurse Lily Radionova",
 };
 
+// Maps doctor slugs to keywords that appear in provider names
+const DOCTOR_NAME_KEYWORDS: Record<string, string[]> = {
+  "xavier-tenorio": ["tenorio", "xavier"],
+  "cesar-rodriguez": ["rodriguez", "cesar"],
+  "yulia-raspertova": ["raspertova", "yulia"],
+  clinic: ["clinic", "laser"],
+  "lily-radionova": ["radionova", "lily"],
+};
+
 const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez"];
 
 function getMaxCapacity(doctorSlug: string): number {
@@ -306,17 +315,18 @@ export async function POST(request: NextRequest) {
       endDate.setDate(endDate.getDate() + days);
       endDate.setHours(23, 59, 59, 999);
 
-      // Fetch existing appointments
+      // Fetch existing appointments with provider info
       const { data: appointments } = await supabase
         .from("appointments")
-        .select("id, start_time, end_time, status, reason, no_patient, provider_id")
+        .select("id, start_time, end_time, status, reason, no_patient, provider_id, provider:providers(id, name)")
         .lt("start_time", endDate.toISOString())
         .gt("end_time", startDate.toISOString())
         .neq("status", "cancelled");
 
       // PAUSE/no_patient appointments now BLOCK booking (not skipped)
       // This ensures doctor breaks, meetings etc. prevent online bookings
-      const filteredAppointments = appointments || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const filteredAppointments = (appointments || []) as Array<any>;
 
       // Generate slots for each doctor
       const allSlots: Array<{
@@ -372,15 +382,38 @@ export async function POST(request: NextRequest) {
                 const aptEnd = new Date(apt.end_time);
                 if (!(aptStart < proposedEnd && aptEnd > slotTime)) return false;
 
-                // Check if it's for this doctor
+                // Check if this appointment is for this doctor using multiple methods:
+                const keywords = DOCTOR_NAME_KEYWORDS[docSlug] || [];
+                
+                // Method 1: Check provider name from join
+                const providerName = apt.provider?.name?.toLowerCase() || "";
+                if (providerName && keywords.some(kw => providerName.includes(kw))) {
+                  return true;
+                }
+                
+                // Method 2: Check [Doctor:] tag in reason field
                 if (apt.reason) {
-                  const match = apt.reason.match(/\[Doctor:\s*(.+?)\s*\]/i);
-                  if (match) {
-                    const docName = DOCTOR_NAMES[docSlug]?.toLowerCase() || "";
-                    return match[1].toLowerCase().includes(docName.split(" ").pop() || "");
+                  const reasonLower = apt.reason.toLowerCase();
+                  const doctorMatch = apt.reason.match(/\[Doctor:\s*(.+?)\s*\]/i);
+                  if (doctorMatch) {
+                    const taggedDoctor = doctorMatch[1].toLowerCase();
+                    if (keywords.some(kw => taggedDoctor.includes(kw))) {
+                      return true;
+                    }
+                  }
+                  // Also check if doctor name appears anywhere in reason
+                  if (keywords.some(kw => reasonLower.includes(kw))) {
+                    return true;
                   }
                 }
-                return true; // Count it to be safe
+                
+                // Method 3: If no provider/reason match, assume it blocks if times overlap
+                // This is safer - unknown appointments block the slot
+                if (!apt.provider_id && !apt.reason?.includes("[Doctor:")) {
+                  return true;
+                }
+                
+                return false;
               });
 
               if (overlapping.length < maxCapacity) {
