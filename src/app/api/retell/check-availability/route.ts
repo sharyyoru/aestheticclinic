@@ -327,19 +327,6 @@ export async function POST(request: NextRequest) {
       // This ensures doctor breaks, meetings etc. prevent online bookings
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const filteredAppointments = (appointments || []) as Array<any>;
-      
-      // Debug: Log appointments for troubleshooting slot availability
-      console.log(`[Check Availability] Found ${filteredAppointments.length} appointments in date range`);
-      if (filteredAppointments.length > 0) {
-        console.log(`[Check Availability] Sample appointments:`, 
-          filteredAppointments.slice(0, 5).map(a => ({
-            start: a.start_time,
-            reason: a.reason?.substring(0, 100),
-            provider: a.provider?.name,
-            provider_id: a.provider_id
-          }))
-        );
-      }
 
       // Generate slots for each doctor
       const allSlots: Array<{
@@ -476,15 +463,6 @@ export async function POST(request: NextRequest) {
         instruction: nextAvailable.length > 0
           ? `Suggest these times to the patient: ${nextAvailable.slice(0, 3).map((s) => s.formatted + " with " + s.doctor).join(", ")}. When they choose, use /api/retell/book-appointment to complete the booking.`
           : "No slots available in the next " + days + " days. Offer to check more dates or a different location.",
-        _debug: {
-          appointments_in_range: filteredAppointments.length,
-          sample_appointments: filteredAppointments.slice(0, 3).map(a => ({
-            start: a.start_time,
-            reason: a.reason?.substring(0, 80),
-            provider_name: a.provider?.name || a.provider?.[0]?.name,
-            provider_id: a.provider_id
-          }))
-        }
       });
     }
 
