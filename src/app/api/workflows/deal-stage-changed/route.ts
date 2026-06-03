@@ -546,6 +546,8 @@ export async function POST(request: Request) {
             assign_to_users?: string[];
             assignment_mode?: string;
             due_days?: number;
+            due_value?: number;
+            due_unit?: "minutes" | "hours" | "days";
             assign_deal_owner?: boolean;
           };
 
@@ -555,9 +557,19 @@ export async function POST(request: Request) {
           
           const taskName = renderTemplate(config.title || "New Task", templateContext);
           console.log(`Rendered task name: "${taskName}"`);
-          const dueDays = typeof config.due_days === "number" ? config.due_days : 1;
+          
+          // Support new due_value/due_unit format with fallback to legacy due_days
+          const dueValue = config.due_value ?? config.due_days ?? 1;
+          const dueUnit = config.due_unit || "days";
           const activityDate = new Date();
-          activityDate.setDate(activityDate.getDate() + dueDays);
+          
+          if (dueUnit === "minutes") {
+            activityDate.setMinutes(activityDate.getMinutes() + dueValue);
+          } else if (dueUnit === "hours") {
+            activityDate.setHours(activityDate.getHours() + dueValue);
+          } else {
+            activityDate.setDate(activityDate.getDate() + dueValue);
+          }
 
           // USE WORKFLOW-SPECIFIC ASSIGNEES from config.assign_to
           let assignedUserId: string | null = null;
