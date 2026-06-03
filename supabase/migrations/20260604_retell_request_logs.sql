@@ -51,4 +51,4 @@ CREATE POLICY "Authenticated users can view retell logs"
 CREATE POLICY "Service role can insert retell logs"
   ON retell_request_logs FOR INSERT
   TO service_role
-  USING (true);
+  WITH CHECK (true);
