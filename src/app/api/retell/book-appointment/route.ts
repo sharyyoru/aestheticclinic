@@ -261,8 +261,9 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (patientError || !newPatient) {
+        console.error("[Retell Book] Failed to create patient:", patientError);
         return NextResponse.json(
-          { error: "Failed to create patient" },
+          { error: "Failed to create patient", details: patientError?.message, code: patientError?.code },
           { status: 500 }
         );
       }
@@ -302,7 +303,7 @@ export async function POST(request: NextRequest) {
     if (aptError || !apt) {
       console.error("[Retell Book] Failed to create appointment:", aptError);
       return NextResponse.json(
-        { error: "Failed to create appointment" },
+        { error: "Failed to create appointment", details: aptError?.message, code: aptError?.code },
         { status: 500 }
       );
     }
