@@ -162,6 +162,87 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // ── Handle send_whatsapp function - Send WhatsApp message via Twilio template
+      if (funcName === "send_whatsapp") {
+        const { phone_number, message_type } = args;
+        
+        // Get phone from args or from call metadata
+        const toPhone = phone_number || metadata?.patient_phone || call?.to_number;
+        const patientName = retell_llm_dynamic_variables?.first_name || 
+                           metadata?.patient_first_name || 
+                           metadata?.patient_name?.split(" ")[0] || "there";
+        
+        if (!toPhone) {
+          console.error("[Retell Webhook] No phone number for WhatsApp");
+          return NextResponse.json({
+            success: false,
+            error: "No phone number provided for WhatsApp",
+            result: "I apologize, but I couldn't send the WhatsApp message because I don't have your phone number.",
+          });
+        }
+
+        // Template SID for booking link message
+        const templateSid = "HXdff188b222fe82c18233b2422dd04792";
+
+        try {
+          const whatsappResponse = await fetch(new URL("/api/whatsapp/send", request.url).toString(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: toPhone,
+              templateSid: templateSid,
+              templateVariables: {
+                "1": patientName, // Variable for patient name in template
+              },
+              patientId: metadata?.patient_id,
+            }),
+          });
+
+          if (whatsappResponse.ok) {
+            console.log(`[Retell Webhook] WhatsApp sent to ${toPhone}`);
+            
+            // Log WhatsApp to activity
+            if (metadata?.patient_id) {
+              try {
+                await supabaseAdmin.from("activity_log").insert({
+                  patient_id: metadata.patient_id,
+                  activity_type: "whatsapp_sent",
+                  description: `WhatsApp sent during AI call: ${message_type || "booking_link"}`,
+                  metadata: {
+                    call_id,
+                    phone: toPhone,
+                    message_type: message_type || "booking_link",
+                    template_sid: templateSid,
+                  },
+                });
+              } catch (logError) {
+                console.warn("[Retell Webhook] Failed to log WhatsApp:", logError);
+              }
+            }
+
+            return NextResponse.json({
+              success: true,
+              result: "WhatsApp message sent successfully. The patient should receive the booking link on WhatsApp shortly.",
+            });
+          } else {
+            const errorData = await whatsappResponse.json().catch(() => ({}));
+            console.error("[Retell Webhook] WhatsApp send failed:", errorData);
+            return NextResponse.json({
+              success: false,
+              error: "Failed to send WhatsApp",
+              result: "I apologize, but there was an issue sending the WhatsApp message. Would you like me to try SMS instead, or you can visit aestheticclinic.vercel.app to book online.",
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[Retell Webhook] WhatsApp error:", whatsappError);
+          return NextResponse.json({
+            success: false,
+            error: whatsappError instanceof Error ? whatsappError.message : "WhatsApp error",
+            result: "I apologize, but I couldn't send the WhatsApp message right now. You can book online at aestheticclinic.vercel.app.",
+          });
+        }
+      }
+
       // ── Handle end_call function
       if (funcName === "end_call") {
         console.log(`[Retell Webhook] End call requested for ${call_id}`);
@@ -340,6 +421,7 @@ export async function GET() {
     supported_functions: [
       "check_availability - Check appointment availability (action: get_services, get_locations, get_slots, get_next_available)",
       "book_appointment - Book an appointment directly (requires service_name, doctor_name, date_time_iso, location)",
+      "send_whatsapp - Send booking link via WhatsApp template (HXdff188b222fe82c18233b2422dd04792)",
       "send_sms - Send booking link or contact info via SMS",
       "end_call - Properly end the call",
       "transfer_call - Transfer to another department",
