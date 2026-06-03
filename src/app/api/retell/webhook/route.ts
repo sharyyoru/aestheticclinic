@@ -65,9 +65,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle custom function calls from the AI agent
-    if (event === "function_call" || function_name) {
-      const funcName = function_name || body.name;
-      const args = funcArgs || body.args || {};
+    // Detect function from args if "Payload: args only" is enabled in Retell
+    let detectedFunction = function_name || body.name;
+    const args = funcArgs || body.args || body; // body itself might be the args
+
+    // Auto-detect function based on arguments if function_name not provided
+    if (!detectedFunction) {
+      if (body.action && body.location) {
+        detectedFunction = "check_availability";
+      } else if (body.service_name && body.doctor_name && body.date_time_iso) {
+        detectedFunction = "book_appointment";
+      } else if (body.message_type !== undefined || body.phone_number) {
+        detectedFunction = "send_whatsapp";
+      }
+    }
+
+    if (event === "function_call" || detectedFunction) {
+      const funcName = detectedFunction;
 
       console.log(`[Retell Webhook] Function call: ${funcName}`, args);
 
