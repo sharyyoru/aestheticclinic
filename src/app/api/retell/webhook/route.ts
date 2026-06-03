@@ -5,6 +5,40 @@ export const runtime = "nodejs";
 
 const BOOKING_URL = "https://aestheticclinic.vercel.app/book-appointment";
 
+// Helper to log Retell requests to database
+async function logRetellRequest(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  body: any,
+  response: { body: unknown; status: number } | null,
+  startTime: number,
+  error?: string
+) {
+  try {
+    const dynamicVars = body.retell_llm_dynamic_variables || 
+                        body.call?.retell_llm_dynamic_variables;
+    const patientId = dynamicVars?.patient_id || 
+                      body.metadata?.patient_id;
+    
+    await supabaseAdmin.from("retell_request_logs").insert({
+      call_id: body.call_id as string || (body.call as Record<string, unknown>)?.call_id as string,
+      event_type: body.event as string || "function_call",
+      function_name: body.function_name as string || body.name as string,
+      request_body: body,
+      args: body.arguments || body.args,
+      metadata: body.metadata,
+      dynamic_variables: dynamicVars,
+      call_data: body.call,
+      response_body: response?.body,
+      response_status: response?.status,
+      processing_time_ms: Date.now() - startTime,
+      error_message: error,
+      patient_id: patientId && typeof patientId === 'string' ? patientId : null,
+    });
+  } catch (logError) {
+    console.error("[Retell Webhook] Failed to log request:", logError);
+  }
+}
+
 /**
  * POST /api/retell/webhook
  * 
@@ -14,10 +48,19 @@ const BOOKING_URL = "https://aestheticclinic.vercel.app/book-appointment";
  * Retell calls this endpoint when the AI agent uses a custom function
  */
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  let requestBody: Record<string, unknown> = {};
+  
   try {
-    const body = await request.json();
+    requestBody = await request.json();
     
-    console.log("[Retell Webhook] Received:", JSON.stringify(body, null, 2));
+    console.log("[Retell Webhook] Received:", JSON.stringify(requestBody, null, 2));
+    
+    // Log request to database (fire and forget - don't await)
+    logRetellRequest(requestBody, null, startTime).catch(() => {});
+    
+    // Alias for easier access
+    const body = requestBody;
 
     // Retell sends different payload structures depending on the event type
     const { 

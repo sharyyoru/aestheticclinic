@@ -2,12 +2,30 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { Phone, PhoneOff, Search, Filter, RefreshCw, CheckCircle, XCircle, User, ChevronDown, Plus, Trash2, Bot } from "lucide-react";
+import { Phone, PhoneOff, Search, Filter, RefreshCw, CheckCircle, XCircle, User, ChevronDown, Plus, Trash2, Bot, FileJson, Clock, AlertCircle, ChevronLeft, ChevronRight, Eye, Copy, Check } from "lucide-react";
 
 type ProfileData = {
   id: string;
   email: string;
   full_name: string | null;
+};
+
+type RetellLog = {
+  id: string;
+  call_id: string | null;
+  event_type: string | null;
+  function_name: string | null;
+  request_body: Record<string, unknown>;
+  args: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  dynamic_variables: Record<string, unknown> | null;
+  call_data: Record<string, unknown> | null;
+  response_body: Record<string, unknown> | null;
+  response_status: number | null;
+  processing_time_ms: number | null;
+  error_message: string | null;
+  patient_id: string | null;
+  created_at: string;
 };
 
 type DroppedCall = {
@@ -50,7 +68,7 @@ type SystemUser = {
 
 export default function AgentsPage() {
   const supabase = supabaseClient;
-  const [activeTab, setActiveTab] = useState<"dropped-calls" | "round-robin">("dropped-calls");
+  const [activeTab, setActiveTab] = useState<"dropped-calls" | "round-robin" | "retell-logs">("dropped-calls");
   
   // Dropped calls state
   const [droppedCalls, setDroppedCalls] = useState<DroppedCall[]>([]);
@@ -63,6 +81,17 @@ export default function AgentsPage() {
   const [roundRobinUsers, setRoundRobinUsers] = useState<RoundRobinUser[]>([]);
   const [allUsers, setAllUsers] = useState<SystemUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  
+  // Retell logs state
+  const [retellLogs, setRetellLogs] = useState<RetellLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logSearchTerm, setLogSearchTerm] = useState("");
+  const [functionFilter, setFunctionFilter] = useState<string>("all");
+  const [logsPage, setLogsPage] = useState(1);
+  const [logsTotalPages, setLogsTotalPages] = useState(1);
+  const [logsTotal, setLogsTotal] = useState(0);
+  const [selectedLog, setSelectedLog] = useState<RetellLog | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Fetch dropped calls
   const fetchDroppedCalls = useCallback(async () => {
@@ -172,6 +201,35 @@ export default function AgentsPage() {
     }
   }, [supabase]);
 
+  // Fetch Retell logs
+  const fetchRetellLogs = useCallback(async () => {
+    setLoadingLogs(true);
+    try {
+      const params = new URLSearchParams({
+        page: logsPage.toString(),
+        limit: "50",
+      });
+      if (functionFilter !== "all") params.set("function", functionFilter);
+      if (logSearchTerm) params.set("search", logSearchTerm);
+
+      const response = await fetch(`/api/retell/logs?${params.toString()}`);
+      const data = await response.json();
+
+      if (data.error) {
+        console.error("Error fetching logs:", data.error);
+        return;
+      }
+
+      setRetellLogs(data.logs || []);
+      setLogsTotalPages(data.pagination?.totalPages || 1);
+      setLogsTotal(data.pagination?.total || 0);
+    } catch (err) {
+      console.error("Error:", err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  }, [logsPage, functionFilter, logSearchTerm]);
+
   useEffect(() => {
     fetchDroppedCalls();
   }, [fetchDroppedCalls]);
@@ -180,7 +238,10 @@ export default function AgentsPage() {
     if (activeTab === "round-robin") {
       fetchRoundRobinUsers();
     }
-  }, [activeTab, fetchRoundRobinUsers]);
+    if (activeTab === "retell-logs") {
+      fetchRetellLogs();
+    }
+  }, [activeTab, fetchRoundRobinUsers, fetchRetellLogs]);
 
   // Filter dropped calls by search term
   const filteredCalls = droppedCalls.filter((call) => {
@@ -334,6 +395,17 @@ export default function AgentsPage() {
         >
           <User className="h-4 w-4 inline-block mr-2" />
           Round Robin Users
+        </button>
+        <button
+          onClick={() => setActiveTab("retell-logs")}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === "retell-logs"
+              ? "border-violet-500 text-violet-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          <FileJson className="h-4 w-4 inline-block mr-2" />
+          Retell Logs
         </button>
       </div>
 
@@ -628,6 +700,341 @@ export default function AgentsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Retell Logs Tab */}
+      {activeTab === "retell-logs" && (
+        <div className="space-y-4">
+          {/* Filters */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative flex-1 min-w-[250px] max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by call ID or function..."
+                value={logSearchTerm}
+                onChange={(e) => {
+                  setLogSearchTerm(e.target.value);
+                  setLogsPage(1);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && fetchRetellLogs()}
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none"
+              />
+            </div>
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <select
+                value={functionFilter}
+                onChange={(e) => {
+                  setFunctionFilter(e.target.value);
+                  setLogsPage(1);
+                }}
+                className="pl-10 pr-8 py-2 rounded-lg border border-slate-200 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none appearance-none bg-white"
+              >
+                <option value="all">All Functions</option>
+                <option value="check_availability">check_availability</option>
+                <option value="book_appointment">book_appointment</option>
+                <option value="send_whatsapp">send_whatsapp</option>
+                <option value="end_call">end_call</option>
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+            </div>
+            <button
+              onClick={fetchRetellLogs}
+              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600"
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingLogs ? "animate-spin" : ""}`} />
+            </button>
+            <span className="text-sm text-slate-500">
+              {logsTotal} total logs
+            </span>
+          </div>
+
+          {/* Logs Table */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Time</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Function</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Call ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Dynamic Variables</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Args</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loadingLogs ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                        <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
+                        Loading...
+                      </td>
+                    </tr>
+                  ) : retellLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                        <FileJson className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                        No logs found
+                      </td>
+                    </tr>
+                  ) : (
+                    retellLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-slate-400" />
+                            <span className="text-sm text-slate-600">
+                              {new Date(log.created_at).toLocaleString("en-GB", {
+                                day: "2-digit",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            log.function_name === "book_appointment" ? "bg-green-100 text-green-700" :
+                            log.function_name === "check_availability" ? "bg-blue-100 text-blue-700" :
+                            log.function_name === "send_whatsapp" ? "bg-violet-100 text-violet-700" :
+                            "bg-slate-100 text-slate-700"
+                          }`}>
+                            {log.function_name || log.event_type || "unknown"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs font-mono text-slate-500 max-w-[120px] truncate">
+                              {log.call_id || "-"}
+                            </span>
+                            {log.call_id && (
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(log.call_id || "");
+                                  setCopiedId(log.id);
+                                  setTimeout(() => setCopiedId(null), 2000);
+                                }}
+                                className="p-1 rounded hover:bg-slate-100"
+                              >
+                                {copiedId === log.id ? (
+                                  <Check className="h-3 w-3 text-green-500" />
+                                ) : (
+                                  <Copy className="h-3 w-3 text-slate-400" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {log.dynamic_variables ? (
+                            <div className="text-xs text-slate-600 max-w-[200px]">
+                              {"patient_id" in log.dynamic_variables && log.dynamic_variables.patient_id && (
+                                <div><span className="text-slate-400">patient_id:</span> {String(log.dynamic_variables.patient_id).slice(0, 8)}...</div>
+                              )}
+                              {"first_name" in log.dynamic_variables && log.dynamic_variables.first_name && (
+                                <div><span className="text-slate-400">name:</span> {String(log.dynamic_variables.first_name)}</div>
+                              )}
+                              {!("patient_id" in log.dynamic_variables) && !("first_name" in log.dynamic_variables) && (
+                                <span className="text-amber-600 flex items-center gap-1">
+                                  <AlertCircle className="h-3 w-3" />
+                                  No patient data
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-amber-600 flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3" />
+                              None
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {log.args ? (
+                            <div className="text-xs text-slate-600 max-w-[150px] truncate">
+                              {Object.entries(log.args).slice(0, 2).map(([k, v]) => (
+                                <div key={k}><span className="text-slate-400">{k}:</span> {String(v).slice(0, 20)}</div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => setSelectedLog(log)}
+                            className="p-1.5 rounded hover:bg-violet-50 text-violet-500 hover:text-violet-700"
+                            title="View full request"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {logsTotalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+                <span className="text-sm text-slate-500">
+                  Page {logsPage} of {logsTotalPages}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setLogsPage((p) => Math.max(1, p - 1))}
+                    disabled={logsPage === 1}
+                    className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setLogsPage((p) => Math.min(logsTotalPages, p + 1))}
+                    disabled={logsPage === logsTotalPages}
+                    className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Retell Log Detail Modal */}
+      {selectedLog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Request Details</h3>
+                  <p className="text-sm text-slate-500">
+                    {selectedLog.function_name || selectedLog.event_type} • {new Date(selectedLog.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedLog(null)}
+                  className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"
+                >
+                  <XCircle className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {/* Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 uppercase">Call ID</label>
+                  <p className="text-sm font-mono text-slate-900 break-all">{selectedLog.call_id || "-"}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 uppercase">Function</label>
+                  <p className="text-sm text-slate-900">{selectedLog.function_name || "-"}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 uppercase">Processing Time</label>
+                  <p className="text-sm text-slate-900">{selectedLog.processing_time_ms || 0}ms</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-500 uppercase">Patient ID</label>
+                  <p className="text-sm text-slate-900 break-all">
+                    {selectedLog.patient_id ? (
+                      <a href={`/patients/${selectedLog.patient_id}`} className="text-violet-600 hover:underline">
+                        {selectedLog.patient_id.slice(0, 8)}...
+                      </a>
+                    ) : (
+                      <span className="text-amber-600">None</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* Dynamic Variables */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">
+                  Dynamic Variables (retell_llm_dynamic_variables)
+                </label>
+                <pre className="text-xs bg-slate-50 rounded-lg p-4 overflow-x-auto border border-slate-200">
+                  {selectedLog.dynamic_variables 
+                    ? JSON.stringify(selectedLog.dynamic_variables, null, 2) 
+                    : "null (Not passed by Retell)"}
+                </pre>
+              </div>
+
+              {/* Metadata */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Metadata</label>
+                <pre className="text-xs bg-slate-50 rounded-lg p-4 overflow-x-auto border border-slate-200">
+                  {selectedLog.metadata 
+                    ? JSON.stringify(selectedLog.metadata, null, 2) 
+                    : "null"}
+                </pre>
+              </div>
+
+              {/* Arguments */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Function Arguments</label>
+                <pre className="text-xs bg-slate-50 rounded-lg p-4 overflow-x-auto border border-slate-200">
+                  {selectedLog.args 
+                    ? JSON.stringify(selectedLog.args, null, 2) 
+                    : "null"}
+                </pre>
+              </div>
+
+              {/* Call Data */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Call Data</label>
+                <pre className="text-xs bg-slate-50 rounded-lg p-4 overflow-x-auto border border-slate-200 max-h-48">
+                  {selectedLog.call_data 
+                    ? JSON.stringify(selectedLog.call_data, null, 2) 
+                    : "null"}
+                </pre>
+              </div>
+
+              {/* Full Request Body */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 uppercase mb-2 block">Full Request Body</label>
+                <pre className="text-xs bg-slate-900 text-green-400 rounded-lg p-4 overflow-x-auto max-h-64">
+                  {JSON.stringify(selectedLog.request_body, null, 2)}
+                </pre>
+              </div>
+
+              {/* Error */}
+              {selectedLog.error_message && (
+                <div>
+                  <label className="text-xs font-medium text-red-500 uppercase mb-2 block">Error</label>
+                  <pre className="text-xs bg-red-50 text-red-700 rounded-lg p-4 overflow-x-auto border border-red-200">
+                    {selectedLog.error_message}
+                  </pre>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-slate-100 flex gap-2 flex-shrink-0">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(selectedLog.request_body, null, 2));
+                }}
+                className="flex-1 py-2 px-4 rounded-lg bg-slate-100 text-slate-700 font-medium hover:bg-slate-200 transition-colors"
+              >
+                <Copy className="h-4 w-4 inline-block mr-2" />
+                Copy Full Request
+              </button>
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="flex-1 py-2 px-4 rounded-lg bg-violet-500 text-white font-medium hover:bg-violet-600 transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
