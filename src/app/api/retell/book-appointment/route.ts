@@ -278,18 +278,24 @@ export async function POST(request: NextRequest) {
     const endTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000); // 1 hour duration
     const reason = `${service.name}${appointment.notes ? ` - ${appointment.notes}` : ""} [Doctor: ${doctorName}] [Location: ${locationInfo.name}] [Retell AI Booking] [Call: ${effectiveCallId}]`;
 
+    // Build appointment insert data - don't include source if column doesn't exist
+    const appointmentInsert: Record<string, unknown> = {
+      patient_id: patientId,
+      start_time: appointmentDate.toISOString(),
+      end_time: endTime.toISOString(),
+      reason,
+      location: fullLocation,
+      status: "scheduled",
+    };
+    
+    // Only include provider_id if we found one (avoid FK constraint issues)
+    if (providerId) {
+      appointmentInsert.provider_id = providerId;
+    }
+
     const { data: apt, error: aptError } = await supabase
       .from("appointments")
-      .insert({
-        patient_id: patientId,
-        provider_id: providerId,
-        start_time: appointmentDate.toISOString(),
-        end_time: endTime.toISOString(),
-        reason,
-        location: fullLocation,
-        status: "scheduled",
-        source: "retell_ai",
-      })
+      .insert(appointmentInsert)
       .select("id")
       .single();
 
