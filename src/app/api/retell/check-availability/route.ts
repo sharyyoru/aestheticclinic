@@ -270,10 +270,10 @@ export async function POST(request: NextRequest) {
     // ACTION: get_slots - Get available booking slots for a service at a location
     // ─────────────────────────────────────────────────────────────────────────
     if (action === "get_slots") {
-      if (!service_name || !location) {
+      if (!location) {
         return NextResponse.json({
-          error: "service_name and location are required",
-          instruction: "Call get_locations first to find available locations for the service",
+          error: "location is required",
+          instruction: "Ask which location the patient prefers: rhone, champel, gstaad, or montreux",
         }, { status: 400 });
       }
 
@@ -437,11 +437,7 @@ export async function POST(request: NextRequest) {
     // ACTION: get_next_available - Quick check for next available slot
     // ─────────────────────────────────────────────────────────────────────────
     if (action === "get_next_available") {
-      if (!service_name) {
-        return NextResponse.json({
-          error: "service_name is required",
-        }, { status: 400 });
-      }
+      // service_name defaults to "consultation" if not provided
 
       const locations = getLocationsForService(service_name);
       const results: Array<{
