@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
     const body = requestBody;
 
     // Retell sends different payload structures depending on the event type
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { 
       event,
       call,
@@ -74,7 +75,13 @@ export async function POST(request: NextRequest) {
       metadata,
       // Dynamic variables from the call
       retell_llm_dynamic_variables,
-    } = body;
+    } = body as Record<string, any>;
+    
+    // Type aliases for cleaner code
+    const meta = (metadata || {}) as Record<string, unknown>;
+    const funcArguments = (funcArgs || {}) as Record<string, unknown>;
+    const dynVars = (retell_llm_dynamic_variables || call?.retell_llm_dynamic_variables || {}) as Record<string, unknown>;
+    const callData = (call || {}) as Record<string, unknown>;
 
     // Handle different event types
     if (event === "call_started") {
@@ -86,17 +93,17 @@ export async function POST(request: NextRequest) {
       console.log(`[Retell Webhook] Call ended: ${call_id}`);
       
       // Log call completion to database
-      if (metadata?.patient_id) {
+      if (meta.patient_id) {
         try {
           await supabaseAdmin.from("activity_log").insert({
-            patient_id: metadata.patient_id,
+            patient_id: meta.patient_id as string,
             activity_type: "ai_call_completed",
             description: `AI outbound call completed`,
             metadata: {
               call_id,
-              duration: call?.duration_seconds,
-              agent_language: metadata.agent_language,
-              deal_id: metadata.deal_id,
+              duration: callData.duration_seconds,
+              agent_language: meta.agent_language,
+              deal_id: meta.deal_id,
             },
           });
         } catch (logError) {
@@ -109,8 +116,8 @@ export async function POST(request: NextRequest) {
 
     // Handle custom function calls from the AI agent
     // Detect function from args if "Payload: args only" is enabled in Retell
-    let detectedFunction = function_name || body.name;
-    const args = funcArgs || body.args || body; // body itself might be the args
+    let detectedFunction = function_name || (body as Record<string, unknown>).name;
+    const args = (funcArgs || (body as Record<string, unknown>).args || body) as Record<string, unknown>;
 
     // Auto-detect function based on arguments if function_name not provided or is "test_tool"
     if (!detectedFunction || detectedFunction === "test_tool") {
@@ -155,7 +162,7 @@ export async function POST(request: NextRequest) {
         } else if (message_type === "contact_info") {
           smsBody = `Aesthetics Clinic Contact:\n📞 +41 22 732 22 23\n📧 info@aesthetics-ge.ch\n📍 Rue du Rhône 17, 1204 Geneva`;
         } else if (message_type === "custom" && args.custom_message) {
-          smsBody = args.custom_message;
+          smsBody = String(args.custom_message);
         } else {
           smsBody = `Hi ${patientName}! Thank you for your interest in Aesthetics Clinic. Book your complimentary consultation: ${BOOKING_URL}`;
         }
