@@ -102,13 +102,17 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as BookingRequest;
     const { call_id, agent_id, patient, appointment } = body;
 
-    // Validate required fields
-    if (!call_id || !patient?.phone || !appointment?.service_name || !appointment?.date_time_iso) {
+    // Validate required fields - only service and date are truly required
+    if (!appointment?.service_name || !appointment?.date_time_iso) {
       return NextResponse.json(
-        { error: "Missing required fields: call_id, patient.phone, appointment.service_name, appointment.date_time_iso" },
+        { error: "Missing required fields: appointment.service_name, appointment.date_time_iso" },
         { status: 400 }
       );
     }
+    
+    // Use defaults for missing optional fields
+    const effectiveCallId = call_id || `ai-${Date.now()}`;
+    const effectivePhone = patient?.phone || "unknown";
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -190,7 +194,7 @@ export async function POST(request: NextRequest) {
 
     // Find or create patient
     let patientId: string;
-    const normalizedPhone = patient.phone.replace(/[^\d+]/g, "");
+    const normalizedPhone = effectivePhone.replace(/[^\d+]/g, "");
     const phoneVariants = [normalizedPhone, normalizedPhone.replace(/^\+/, ""), normalizedPhone.slice(-9)];
 
     let existingPatient: { id: string } | null = null;
@@ -220,7 +224,7 @@ export async function POST(request: NextRequest) {
 
     const callInfo = {
       source: "Retell AI Booking",
-      call_id,
+      call_id: effectiveCallId,
       agent_id,
       service: service.name,
       appointment_date: appointmentDate.toISOString(),
@@ -272,7 +276,7 @@ export async function POST(request: NextRequest) {
 
     // Create the appointment
     const endTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000); // 1 hour duration
-    const reason = `${service.name}${appointment.notes ? ` - ${appointment.notes}` : ""} [Doctor: ${doctorName}] [Location: ${locationInfo.name}] [Retell AI Booking] [Call: ${call_id}]`;
+    const reason = `${service.name}${appointment.notes ? ` - ${appointment.notes}` : ""} [Doctor: ${doctorName}] [Location: ${locationInfo.name}] [Retell AI Booking] [Call: ${effectiveCallId}]`;
 
     const { data: apt, error: aptError } = await supabase
       .from("appointments")
@@ -320,7 +324,7 @@ export async function POST(request: NextRequest) {
           title: `${patient.first_name || "Unknown"} ${patient.last_name || "Caller"} - ${service.name}`,
           pipeline: "Lead to Surgery",
           service_id: service.id,
-          notes: `Booked via Retell AI Call\nCall ID: ${call_id}\nAppointment: ${formatSwissDateWithWeekday(appointmentDate)} at ${formatSwissTimeAmPm(appointmentDate)}`,
+          notes: `Booked via Retell AI Call\nCall ID: ${effectiveCallId}\nAppointment: ${formatSwissDateWithWeekday(appointmentDate)} at ${formatSwissTimeAmPm(appointmentDate)}`,
         });
       }
     }
