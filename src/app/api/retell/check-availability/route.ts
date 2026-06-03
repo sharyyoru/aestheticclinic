@@ -187,7 +187,9 @@ function getLocationsForService(serviceName: string): string[] {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, service_name, location, doctor_slug, days = 14 } = body;
+    const { action, location, doctor_slug, days = 14 } = body;
+    // Default to "consultation" if no service specified - this shows ALL doctors
+    const service_name = body.service_name || "consultation";
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
