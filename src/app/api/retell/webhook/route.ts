@@ -324,6 +324,10 @@ export async function POST(request: NextRequest) {
       if (funcName === "book_appointment") {
         console.log(`[Retell Webhook] Book appointment:`, args);
         
+        // Get patient_id from dynamic variables or metadata (set during call creation)
+        const patientId = retell_llm_dynamic_variables?.patient_id || 
+                          metadata?.patient_id || null;
+        
         // Get patient details from args, dynamic variables, or metadata
         const patientFirstName = args.first_name || 
                                   retell_llm_dynamic_variables?.first_name || 
@@ -339,10 +343,13 @@ export async function POST(request: NextRequest) {
                               metadata?.patient_phone || 
                               call?.to_number || "";
 
+        console.log(`[Retell Webhook] Patient ID from variables: ${patientId}`);
+
         // Build booking request
         const bookingPayload = {
           call_id: call_id || "webhook-" + Date.now(),
           agent_id: call?.agent_id || "webhook",
+          patient_id: patientId, // Pass patient_id to use existing patient
           patient: {
             first_name: patientFirstName,
             last_name: patientLastName,

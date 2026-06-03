@@ -99,8 +99,8 @@ async function sendEmail(to: string, subject: string, html: string) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as BookingRequest;
-    const { call_id, agent_id, patient, appointment } = body;
+    const body = await request.json();
+    const { call_id, agent_id, patient, appointment, patient_id } = body;
 
     // Validate required fields - only service and date are truly required
     if (!appointment?.service_name || !appointment?.date_time_iso) {
@@ -113,6 +113,10 @@ export async function POST(request: NextRequest) {
     // Use defaults for missing optional fields
     const effectiveCallId = call_id || `ai-${Date.now()}`;
     const effectivePhone = patient?.phone || "unknown";
+    
+    // If patient_id is provided, use it directly (from dynamic variables)
+    const providedPatientId = patient_id || null;
+    console.log(`[Retell Book] Provided patient_id: ${providedPatientId}`);
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -194,25 +198,44 @@ export async function POST(request: NextRequest) {
 
     // Find or create patient
     let patientId: string;
-    const normalizedPhone = effectivePhone.replace(/[^\d+]/g, "");
-    const phoneVariants = [normalizedPhone, normalizedPhone.replace(/^\+/, ""), normalizedPhone.slice(-9)];
-
     let existingPatient: { id: string } | null = null;
-    for (const phoneVariant of phoneVariants) {
-      if (!phoneVariant) continue;
-      const { data } = await supabase
+    const normalizedPhone = effectivePhone.replace(/[^\d+]/g, "");
+    
+    // FIRST: If patient_id is provided directly, use it
+    if (providedPatientId) {
+      const { data: directPatient } = await supabase
         .from("patients")
         .select("id")
-        .or(`phone.eq.${phoneVariant},phone.ilike.%${phoneVariant.slice(-9)}%`)
-        .limit(1)
-        .maybeSingle();
-      if (data) {
-        existingPatient = data;
-        break;
+        .eq("id", providedPatientId)
+        .single();
+      
+      if (directPatient) {
+        existingPatient = directPatient;
+        console.log(`[Retell Book] Using provided patient_id: ${providedPatientId}`);
+      }
+    }
+    
+    // SECOND: Try to find by phone
+    if (!existingPatient) {
+      const phoneVariants = [normalizedPhone, normalizedPhone.replace(/^\+/, ""), normalizedPhone.slice(-9)];
+
+      for (const phoneVariant of phoneVariants) {
+        if (!phoneVariant || phoneVariant === "unknown") continue;
+        const { data } = await supabase
+          .from("patients")
+          .select("id")
+          .or(`phone.eq.${phoneVariant},phone.ilike.%${phoneVariant.slice(-9)}%`)
+          .limit(1)
+          .maybeSingle();
+        if (data) {
+          existingPatient = data;
+          break;
+        }
       }
     }
 
-    if (!existingPatient && patient.email) {
+    // THIRD: Try to find by email
+    if (!existingPatient && patient?.email) {
       const { data } = await supabase
         .from("patients")
         .select("id")
