@@ -186,6 +186,123 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // ── Handle check_availability function - proxies to check-availability endpoint
+      if (funcName === "check_availability") {
+        console.log(`[Retell Webhook] Check availability:`, args);
+        
+        try {
+          const checkResponse = await fetch(new URL("/api/retell/check-availability", request.url).toString(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(args),
+          });
+
+          const checkData = await checkResponse.json();
+          console.log(`[Retell Webhook] Availability result:`, checkData);
+
+          if (checkResponse.ok && checkData.success) {
+            return NextResponse.json({
+              success: true,
+              ...checkData,
+              result: checkData.instruction || "Availability checked successfully.",
+            });
+          } else {
+            return NextResponse.json({
+              success: false,
+              error: checkData.error || "Failed to check availability",
+              result: checkData.error || "I'm having trouble checking availability right now. Would you like me to take your details and have someone call you back?",
+            });
+          }
+        } catch (checkError) {
+          console.error("[Retell Webhook] Check availability error:", checkError);
+          return NextResponse.json({
+            success: false,
+            error: checkError instanceof Error ? checkError.message : "Error",
+            result: "I'm having trouble accessing the booking system. Would you like me to take your details instead?",
+          });
+        }
+      }
+
+      // ── Handle book_appointment function - creates the actual booking
+      if (funcName === "book_appointment") {
+        console.log(`[Retell Webhook] Book appointment:`, args);
+        
+        // Get patient details from args, dynamic variables, or metadata
+        const patientFirstName = args.first_name || 
+                                  retell_llm_dynamic_variables?.first_name || 
+                                  metadata?.patient_first_name || "";
+        const patientLastName = args.last_name || 
+                                 retell_llm_dynamic_variables?.last_name || 
+                                 metadata?.patient_last_name || "";
+        const patientEmail = args.email || 
+                              retell_llm_dynamic_variables?.email || 
+                              metadata?.patient_email || "";
+        const patientPhone = args.phone || 
+                              retell_llm_dynamic_variables?.phone || 
+                              metadata?.patient_phone || 
+                              call?.to_number || "";
+
+        // Build booking request
+        const bookingPayload = {
+          call_id: call_id || "webhook-" + Date.now(),
+          agent_id: call?.agent_id || "webhook",
+          patient: {
+            first_name: patientFirstName,
+            last_name: patientLastName,
+            email: patientEmail,
+            phone: patientPhone,
+          },
+          appointment: {
+            service_name: args.service_name,
+            doctor_name: args.doctor_name,
+            date_time_iso: args.date_time_iso,
+            location: args.location,
+            notes: args.notes || `Booked via AI call`,
+          },
+        };
+
+        console.log(`[Retell Webhook] Booking payload:`, bookingPayload);
+
+        try {
+          const bookResponse = await fetch(new URL("/api/retell/book-appointment", request.url).toString(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bookingPayload),
+          });
+
+          const bookData = await bookResponse.json();
+          console.log(`[Retell Webhook] Booking result:`, bookData);
+
+          if (bookResponse.ok && bookData.success) {
+            const booking = bookData.booking;
+            return NextResponse.json({
+              success: true,
+              booking,
+              result: `Appointment booked successfully for ${booking.date} at ${booking.time} with ${booking.doctor}. ${patientEmail ? "A confirmation email has been sent." : ""}`,
+            });
+          } else if (bookData.code === "SLOT_UNAVAILABLE") {
+            return NextResponse.json({
+              success: false,
+              error: "slot_unavailable",
+              result: "I apologize, but that time slot is no longer available. Let me find another option for you.",
+            });
+          } else {
+            return NextResponse.json({
+              success: false,
+              error: bookData.error || "Booking failed",
+              result: bookData.error || "I'm having trouble completing the booking. Would you like me to take your details and have someone call you back to confirm?",
+            });
+          }
+        } catch (bookError) {
+          console.error("[Retell Webhook] Booking error:", bookError);
+          return NextResponse.json({
+            success: false,
+            error: bookError instanceof Error ? bookError.message : "Error",
+            result: "I apologize, but there was an issue with the booking system. Would you like me to take your details and have someone call you back?",
+          });
+        }
+      }
+
       // Unknown function
       console.warn(`[Retell Webhook] Unknown function: ${funcName}`);
       return NextResponse.json({
@@ -221,10 +338,13 @@ export async function GET() {
     status: "ok",
     service: "Retell AI Webhook",
     supported_functions: [
+      "check_availability - Check appointment availability (action: get_services, get_locations, get_slots, get_next_available)",
+      "book_appointment - Book an appointment directly (requires service_name, doctor_name, date_time_iso, location)",
       "send_sms - Send booking link or contact info via SMS",
       "end_call - Properly end the call",
       "transfer_call - Transfer to another department",
     ],
     booking_url: BOOKING_URL,
+    note: "For outbound calls, patient details (name, email, phone) are passed via metadata from trigger-retell-call",
   });
 }

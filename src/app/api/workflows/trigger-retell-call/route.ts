@@ -119,13 +119,17 @@ export async function POST(request: NextRequest) {
       callPayload.retell_llm_dynamic_variables = vars;
     }
 
-    // Add metadata for tracking AND for SMS function to use
+    // Add metadata for tracking AND for booking/SMS functions to use
+    // CRITICAL: These fields are used by the webhook for booking appointments
     callPayload.metadata = {
       ...metadata,
       source: "workflow",
       patient_id: patient?.id || null,
+      patient_first_name: patient?.first_name || null,
+      patient_last_name: patient?.last_name || null,
       patient_name: patient ? `${patient.first_name || ""} ${patient.last_name || ""}`.trim() : null,
-      patient_phone: patient?.phone || phone_number, // CRITICAL: SMS webhook uses this
+      patient_email: patient?.email || null, // CRITICAL: Used for booking confirmation emails
+      patient_phone: patient?.phone || phone_number, // CRITICAL: Used for booking
       triggered_at: new Date().toISOString(),
     };
 

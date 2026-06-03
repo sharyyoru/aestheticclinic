@@ -14,6 +14,30 @@ const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailg
 // Doctor-specific capacity
 const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez"];
 
+// Clinic location details for emails
+const LOCATION_DETAILS: Record<string, { name: string; address: string; city: string }> = {
+  rhone: { 
+    name: "Rhône", 
+    address: "Rue du Rhône 17", 
+    city: "1204 Geneva" 
+  },
+  champel: { 
+    name: "Champel", 
+    address: "Avenue de Champel 4", 
+    city: "1206 Geneva" 
+  },
+  gstaad: { 
+    name: "Gstaad", 
+    address: "Promenade 52", 
+    city: "3780 Gstaad" 
+  },
+  montreux: { 
+    name: "Montreux", 
+    address: "Grand-Rue 80", 
+    city: "1820 Montreux" 
+  },
+};
+
 export const runtime = "nodejs";
 
 type BookingRequest = {
@@ -29,6 +53,7 @@ type BookingRequest = {
     service_name: string;
     doctor_name?: string;
     date_time_iso: string;
+    location?: string; // rhone, champel, gstaad, montreux
     notes?: string;
   };
 };
@@ -240,9 +265,14 @@ export async function POST(request: NextRequest) {
       patientId = newPatient.id;
     }
 
+    // Get location details
+    const locationId = appointment.location?.toLowerCase() || "rhone";
+    const locationInfo = LOCATION_DETAILS[locationId] || LOCATION_DETAILS.rhone;
+    const fullLocation = `${locationInfo.name} - ${locationInfo.address}, ${locationInfo.city}`;
+
     // Create the appointment
     const endTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000); // 1 hour duration
-    const reason = `${service.name}${appointment.notes ? ` - ${appointment.notes}` : ""} [Doctor: ${doctorName}] [Retell AI Booking] [Call: ${call_id}]`;
+    const reason = `${service.name}${appointment.notes ? ` - ${appointment.notes}` : ""} [Doctor: ${doctorName}] [Location: ${locationInfo.name}] [Retell AI Booking] [Call: ${call_id}]`;
 
     const { data: apt, error: aptError } = await supabase
       .from("appointments")
@@ -252,7 +282,7 @@ export async function POST(request: NextRequest) {
         start_time: appointmentDate.toISOString(),
         end_time: endTime.toISOString(),
         reason,
-        location: "Geneva",
+        location: fullLocation,
         status: "scheduled",
         source: "retell_ai",
       })
@@ -301,26 +331,67 @@ export async function POST(request: NextRequest) {
 <!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <h2 style="color: #1e293b;">Appointment Confirmed</h2>
-  <p>Dear ${patient.first_name || "Patient"},</p>
-  <p>Your appointment has been booked through our automated booking system.</p>
-  <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
-    <p><strong>Service:</strong> ${service.name}</p>
-    <p><strong>Date:</strong> ${formatSwissDateWithWeekday(appointmentDate)}</p>
-    <p><strong>Time:</strong> ${formatSwissTimeAmPm(appointmentDate)}</p>
-    <p><strong>Doctor:</strong> ${doctorName}</p>
-    <p><strong>Location:</strong> Geneva</p>
+  <div style="text-align: center; margin-bottom: 30px;">
+    <h1 style="color: #0f172a; font-size: 24px; margin: 0;">Aesthetics Clinic</h1>
+    <p style="color: #64748b; margin: 5px 0 0 0;">Geneva • Gstaad • Montreux</p>
   </div>
-  <p>If you need to reschedule, please call us at +41 22 732 22 23.</p>
-  <p>Main Telephone Number: +41 22 732 22 23<br>
-  Main Email Address: info@aesthetics-ge.ch<br>
-  Book an appointment: https://aestheticclinic.vercel.app/book-appointment/location</p>
+  
+  <h2 style="color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">✓ Appointment Confirmed</h2>
+  
+  <p>Dear ${patient.first_name || "Patient"},</p>
+  <p>Your appointment has been successfully booked. We look forward to seeing you!</p>
+  
+  <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding: 25px; border-radius: 12px; margin: 25px 0; border-left: 4px solid #0ea5e9;">
+    <h3 style="margin: 0 0 15px 0; color: #0f172a;">Appointment Details</h3>
+    <table style="width: 100%; border-collapse: collapse;">
+      <tr>
+        <td style="padding: 8px 0; color: #64748b; width: 100px;">Service:</td>
+        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${service.name}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 0; color: #64748b;">Date:</td>
+        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${formatSwissDateWithWeekday(appointmentDate)}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 0; color: #64748b;">Time:</td>
+        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${formatSwissTimeAmPm(appointmentDate)}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 0; color: #64748b;">Doctor:</td>
+        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${doctorName}</td>
+      </tr>
+    </table>
+  </div>
+  
+  <div style="background: #fefce8; padding: 20px; border-radius: 12px; margin: 25px 0; border: 1px solid #fef08a;">
+    <h3 style="margin: 0 0 10px 0; color: #854d0e; font-size: 16px;">📍 Location</h3>
+    <p style="margin: 0; color: #713f12; font-weight: 600;">${locationInfo.name}</p>
+    <p style="margin: 5px 0 0 0; color: #a16207;">${locationInfo.address}<br>${locationInfo.city}</p>
+  </div>
+  
+  <div style="background: #f0fdf4; padding: 20px; border-radius: 12px; margin: 25px 0; border: 1px solid #bbf7d0;">
+    <h3 style="margin: 0 0 10px 0; color: #166534; font-size: 16px;">📞 Need to reschedule?</h3>
+    <p style="margin: 0; color: #15803d;">Call us at <a href="tel:+41227322223" style="color: #166534; font-weight: 600;">+41 22 732 22 23</a></p>
+    <p style="margin: 5px 0 0 0; color: #15803d;">Email: <a href="mailto:info@aesthetics-ge.ch" style="color: #166534;">info@aesthetics-ge.ch</a></p>
+  </div>
+  
+  <p style="color: #64748b; font-size: 14px; text-align: center; margin-top: 30px;">
+    Thank you for choosing Aesthetics Clinic.<br>
+    Your first consultation is complimentary.
+  </p>
+  
+  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+  
+  <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+    Aesthetics Clinic • Geneva, Gstaad, Montreux<br>
+    <a href="https://aestheticclinic.vercel.app/book-appointment/location" style="color: #0ea5e9;">Book Online</a>
+  </p>
 </body>
 </html>`;
 
       await sendEmail(
         patient.email,
-        `Appointment Confirmed - ${formatSwissDateWithWeekday(appointmentDate)}`,
+        `✓ Appointment Confirmed - ${formatSwissDateWithWeekday(appointmentDate)} at ${locationInfo.name}`,
         emailHtml
       );
     }
@@ -333,9 +404,12 @@ export async function POST(request: NextRequest) {
         patient_id: patientId,
         service: service.name,
         doctor: doctorName,
+        location: locationInfo.name,
+        location_address: `${locationInfo.address}, ${locationInfo.city}`,
         date: formatSwissDateWithWeekday(appointmentDate),
         time: formatSwissTimeAmPm(appointmentDate),
         datetime_iso: appointmentDate.toISOString(),
+        email_sent: !!patient.email,
       },
       message: "Appointment booked successfully via Retell AI",
     });
