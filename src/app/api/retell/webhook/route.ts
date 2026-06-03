@@ -69,13 +69,15 @@ export async function POST(request: NextRequest) {
     let detectedFunction = function_name || body.name;
     const args = funcArgs || body.args || body; // body itself might be the args
 
-    // Auto-detect function based on arguments if function_name not provided
-    if (!detectedFunction) {
-      if (body.action && body.location) {
+    // Auto-detect function based on arguments if function_name not provided or is "test_tool"
+    if (!detectedFunction || detectedFunction === "test_tool") {
+      // Check args first, then body for the parameters
+      const checkArgs = args || body;
+      if (checkArgs.action && checkArgs.location) {
         detectedFunction = "check_availability";
-      } else if (body.service_name && body.doctor_name && body.date_time_iso) {
+      } else if (checkArgs.service_name && checkArgs.doctor_name && checkArgs.date_time_iso) {
         detectedFunction = "book_appointment";
-      } else if (body.message_type !== undefined || body.phone_number) {
+      } else if (checkArgs.message_type !== undefined) {
         detectedFunction = "send_whatsapp";
       }
     }
