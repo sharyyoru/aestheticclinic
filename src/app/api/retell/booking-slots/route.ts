@@ -103,10 +103,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Filter appointments by doctor if specified
-    let filteredAppointments = (appointments || []).filter(
-      (apt) => apt.no_patient !== true
-    );
+    // PAUSE/no_patient appointments now BLOCK booking (not skipped)
+    // This ensures doctor breaks, meetings etc. prevent online bookings
+    let filteredAppointments = appointments || [];
 
     if (doctorName && providerId) {
       const doctorNameLower = doctorName.toLowerCase().replace(/^dr\.\s*/i, "");

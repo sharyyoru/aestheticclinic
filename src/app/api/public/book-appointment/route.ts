@@ -426,10 +426,8 @@ export async function POST(request: Request) {
     console.log(`[Booking] Found ${existingAppointments?.length || 0} total appointments in time range`);
 
     // Filter to only this doctor's appointments
+    // PAUSE/no_patient appointments now BLOCK booking (included in capacity check)
     const doctorAppointments = (existingAppointments || []).filter((apt) => {
-      // Skip placeholder appointments
-      if (apt.no_patient === true) return false;
-      
       // Check by provider_id first (most reliable)
       if (providerId && apt.provider_id === providerId) {
         return true;

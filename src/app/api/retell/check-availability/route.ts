@@ -312,9 +312,9 @@ export async function POST(request: NextRequest) {
         .gt("end_time", startDate.toISOString())
         .neq("status", "cancelled");
 
-      const filteredAppointments = (appointments || []).filter(
-        (apt) => apt.no_patient !== true
-      );
+      // PAUSE/no_patient appointments now BLOCK booking (not skipped)
+      // This ensures doctor breaks, meetings etc. prevent online bookings
+      const filteredAppointments = appointments || [];
 
       // Generate slots for each doctor
       const allSlots: Array<{

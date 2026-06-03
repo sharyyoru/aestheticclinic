@@ -169,8 +169,8 @@ export async function POST(request: NextRequest) {
       .lt("start_time", slotEnd.toISOString())
       .neq("status", "cancelled");
 
+    // PAUSE/no_patient appointments now BLOCK booking (included in capacity check)
     const doctorAppointments = (existingAppointments || []).filter((apt) => {
-      if (apt.no_patient === true) return false;
       if (providerId && apt.provider_id === providerId) return true;
       if (apt.reason) {
         const match = apt.reason.match(/\[Doctor:\s*(.+?)\s*\]/i);
