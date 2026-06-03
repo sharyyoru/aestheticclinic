@@ -834,13 +834,13 @@ export default function AgentsPage() {
                         <td className="px-4 py-3">
                           {log.dynamic_variables ? (
                             <div className="text-xs text-slate-600 max-w-[200px]">
-                              {"patient_id" in log.dynamic_variables && log.dynamic_variables.patient_id && (
-                                <div><span className="text-slate-400">patient_id:</span> {String(log.dynamic_variables.patient_id).slice(0, 8)}...</div>
-                              )}
-                              {"first_name" in log.dynamic_variables && log.dynamic_variables.first_name && (
-                                <div><span className="text-slate-400">name:</span> {String(log.dynamic_variables.first_name)}</div>
-                              )}
-                              {!("patient_id" in log.dynamic_variables) && !("first_name" in log.dynamic_variables) && (
+                              {(log.dynamic_variables as Record<string, unknown>).patient_id ? (
+                                <div><span className="text-slate-400">patient_id:</span> {String((log.dynamic_variables as Record<string, unknown>).patient_id).slice(0, 8)}...</div>
+                              ) : null}
+                              {(log.dynamic_variables as Record<string, unknown>).first_name ? (
+                                <div><span className="text-slate-400">name:</span> {String((log.dynamic_variables as Record<string, unknown>).first_name)}</div>
+                              ) : null}
+                              {!(log.dynamic_variables as Record<string, unknown>).patient_id && !(log.dynamic_variables as Record<string, unknown>).first_name && (
                                 <span className="text-amber-600 flex items-center gap-1">
                                   <AlertCircle className="h-3 w-3" />
                                   No patient data
