@@ -9,7 +9,6 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const ws = require('ws');
 const { getConnectionStatus, sendMessage, getChatByPhoneNumber, broadcastToUser } = require('./whatsapp-manager');
 const { logEvent } = require('./db');
 
@@ -32,8 +31,7 @@ function initSupabase() {
   }
 
   supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-    realtime: { transport: ws },
+    auth: { autoRefreshToken: false, persistSession: false }
   });
 
   console.log('[Queue] Supabase client initialized');
