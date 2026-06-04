@@ -1,6 +1,6 @@
 FROM node:18-slim
 
-# Install Chromium dependencies for Puppeteer (used by whatsapp-web.js)
+# Install Chromium and required system libs for Puppeteer
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-ipafont-gothic \
@@ -8,8 +8,23 @@ RUN apt-get update && apt-get install -y \
     fonts-thai-tlwg \
     fonts-kacst \
     fonts-freefont-ttf \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+
+# Increase /dev/shm size workaround: symlink shm to /tmp/shm
+# Railway containers have limited /dev/shm (64MB by default); this prevents
+# Chromium from crashing with "cannot map shared memory" on startup.
+RUN mkdir -p /tmp/chromium-shm
 
 # Tell Puppeteer to use installed Chromium instead of downloading its own
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true

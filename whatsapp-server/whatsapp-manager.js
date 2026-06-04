@@ -44,9 +44,16 @@ function getWhatsAppClient(userId) {
       clientId: userId,
       dataPath: process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions')
     }),
+    // Increase protocol timeout — Railway shared compute can be slow to start Chromium
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1017440870-alpha.html',
+    },
     puppeteer: {
       headless: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      timeout: 120000, // 2 minutes for browser launch
+      protocolTimeout: 120000, // 2 minutes for protocol commands
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -54,7 +61,14 @@ function getWhatsAppClient(userId) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--single-process', // Required for low-memory containers
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--memory-pressure-off',
+        '--disable-features=VizDisplayCompositor'
       ]
     }
   });
@@ -319,7 +333,7 @@ async function initializeWhatsApp(userId) {
     } catch (e) {
       console.error(`Error destroying timed-out client for user ${userId}:`, e);
     }
-  }, 90000));
+  }, 180000)); // 3 minutes — must be > puppeteer timeout (2 min)
   
   // Remove stale Chromium lock files left by previous container (persistent volume)
   cleanStaleLockFiles(userId);
