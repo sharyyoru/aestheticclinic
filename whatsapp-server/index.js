@@ -284,39 +284,68 @@ server.listen(PORT, () => {
 
 /**
  * Auto-reconnect WhatsApp sessions that were active before a redeploy.
- * Only reconnects if LocalAuth session files exist on disk (persisted via volume).
+ *
+ * Two sources of truth are combined:
+ *  1. SQLite DB — users whose status was 'ready'/'authenticated' last run
+ *  2. Disk scan  — session-{uuid} directories on the volume that have no DB
+ *                  record yet (e.g. after a DB path migration / first boot with
+ *                  a fresh DB but existing volume data)
+ *
+ * Any user with session files on disk is attempted — LocalAuth will use the
+ * saved credentials and skip the QR scan if the phone is still connected.
  */
 async function autoReconnectSessions() {
   try {
-    const sessions = getReconnectableSessions();
-    if (!sessions || sessions.length === 0) {
+    const sessionBasePath = process.env.WA_SESSION_PATH || '/data/whatsapp-sessions';
+
+    // Source 1: DB records
+    const dbSessions = getReconnectableSessions() || [];
+    const dbUserIds = new Set(dbSessions.map(s => s.user_id));
+
+    // Source 2: Disk scan — find all session-<uuid> directories on the volume
+    let diskUserIds = [];
+    try {
+      const entries = fs.readdirSync(sessionBasePath);
+      diskUserIds = entries
+        .filter(e => e.startsWith('session-'))
+        .map(e => e.replace('session-', ''))
+        .filter(id => !dbUserIds.has(id)); // only ones not already in DB list
+      if (diskUserIds.length > 0) {
+        console.log(`[AutoReconnect] Found ${diskUserIds.length} session(s) on disk not in DB (DB migration?) — will attempt reconnect`);
+      }
+    } catch (err) {
+      console.warn('[AutoReconnect] Could not scan session directory:', err.message);
+    }
+
+    // Merge both sources
+    const allToReconnect = [
+      ...dbSessions.map(s => ({ userId: s.user_id, displayName: s.display_name || 'unknown', source: 'db' })),
+      ...diskUserIds.map(id => ({ userId: id, displayName: 'unknown (disk only)', source: 'disk' })),
+    ];
+
+    if (allToReconnect.length === 0) {
       console.log('[AutoReconnect] No previously-active sessions to restore');
       return;
     }
 
-    const sessionBasePath = process.env.WA_SESSION_PATH || '/data/whatsapp-sessions';
+    console.log(`[AutoReconnect] Restoring ${allToReconnect.length} session(s) (1 at a time, 15s apart to protect memory)...`);
 
-    console.log(`[AutoReconnect] Found ${sessions.length} session(s) to restore`);
-
-    for (const session of sessions) {
-      const userId = session.user_id;
-
-      // Check if LocalAuth session files exist on disk
-      // LocalAuth stores data in: {dataPath}/session-{clientId}/
+    for (const { userId, displayName, source } of allToReconnect) {
       const sessionDir = path.join(sessionBasePath, `session-${userId}`);
       if (!fs.existsSync(sessionDir)) {
-        console.log(`[AutoReconnect] No session files for user ${userId} at ${sessionDir} — skipping (will need QR re-scan)`);
+        console.log(`[AutoReconnect] No session files for user ${userId} — skipping (will need QR re-scan)`);
         updateSessionStatus(userId, 'disconnected');
         continue;
       }
 
-      console.log(`[AutoReconnect] Restoring session for user ${userId} (${session.display_name || 'unknown'})`);
+      console.log(`[AutoReconnect] Restoring session for user ${userId} (${displayName}) [source: ${source}]`);
       logEvent(userId, 'auto_reconnect_start');
 
       try {
         await initializeWhatsApp(userId);
-        // Stagger reconnects to avoid overloading the container
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Stagger reconnects — each Chromium instance needs ~15s to fully load
+        // before launching the next one, otherwise the container runs out of memory
+        await new Promise(resolve => setTimeout(resolve, 15000));
       } catch (err) {
         console.error(`[AutoReconnect] Failed to restore session for user ${userId}:`, err.message);
         logEvent(userId, 'auto_reconnect_error', { error: err.message });
