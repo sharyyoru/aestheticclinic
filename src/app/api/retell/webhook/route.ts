@@ -267,9 +267,10 @@ export async function POST(request: NextRequest) {
           if (whatsappResponse.ok) {
             console.log(`[Retell Webhook] WhatsApp sent to ${toPhone}`);
             
-            // Log WhatsApp to activity
+            // Log WhatsApp to activity AND whatsapp_queue for patient history
             if (metadata?.patient_id) {
               try {
+                // Log to activity_log
                 await supabaseAdmin.from("activity_log").insert({
                   patient_id: metadata.patient_id,
                   activity_type: "whatsapp_sent",
@@ -280,6 +281,15 @@ export async function POST(request: NextRequest) {
                     message_type: message_type || "booking_link",
                     template_sid: templateSid,
                   },
+                });
+
+                // Also log to whatsapp_queue so it appears in patient's sent messages
+                await supabaseAdmin.from("whatsapp_queue").insert({
+                  to_phone: toPhone,
+                  message_body: `📅 Booking link sent via AI call (Template: booking_link)\n\nHi ${patientName}, here's your booking link for Aesthetics Clinic.`,
+                  patient_id: metadata.patient_id,
+                  status: "sent",
+                  sent_at: new Date().toISOString(),
                 });
               } catch (logError) {
                 console.warn("[Retell Webhook] Failed to log WhatsApp:", logError);
