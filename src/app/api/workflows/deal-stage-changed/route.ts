@@ -1142,6 +1142,7 @@ export async function POST(request: Request) {
         if (action.action_type === "send_whatsapp") {
           const config = (action.config || {}) as {
             // New template-based config
+            use_template?: boolean;
             template_id?: string;
             template_sid?: string;
             template_name?: string;
@@ -1156,7 +1157,7 @@ export async function POST(request: Request) {
           };
 
           // Detect which path: new template config vs. legacy free-form
-          const isTemplatePath = !!config.template_sid;
+          const isTemplatePath = config.use_template === true || !!config.template_sid;
 
           // Get patient phone number
           const patientPhone = safePatient.phone;
@@ -1243,10 +1244,15 @@ export async function POST(request: Request) {
             if (isTemplatePath) {
               // New path: resolve variable_mappings → contentVariables
               const contentVariables: Record<string, string> = {};
-              for (const [slot, mapping] of Object.entries(config.variable_mappings ?? {})) {
-                contentVariables[slot] = mapping.type === "static"
-                  ? mapping.value
-                  : (fieldLookup[mapping.value] ?? "");
+              if (config.variable_mappings && Object.keys(config.variable_mappings).length > 0) {
+                for (const [slot, mapping] of Object.entries(config.variable_mappings)) {
+                  contentVariables[slot] = mapping.type === "static"
+                    ? mapping.value
+                    : (fieldLookup[mapping.value] ?? "");
+                }
+              } else {
+                // Default: use patient first name as variable 1 (standard for booking link template)
+                contentVariables["1"] = safePatient.first_name || "there";
               }
               sendPayload = {
                 patientId: safePatient.id,

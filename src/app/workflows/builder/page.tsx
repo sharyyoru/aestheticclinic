@@ -166,29 +166,72 @@ function WhatsAppNodeConfig({
             Loading templates…
           </div>
         ) : templates.length === 0 ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] text-amber-800">
-            No approved templates yet. Go to{" "}
-            <a href="/settings?tab=whatsapp-templates" target="_blank" className="font-semibold underline">
-              Settings → WhatsApp Templates
-            </a>{" "}
-            to sync your templates from Twilio.
+          <div className="space-y-3">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] text-amber-800">
+              No approved templates synced yet. Go to{" "}
+              <a href="/settings?tab=whatsapp-templates" target="_blank" className="font-semibold underline">
+                Settings → WhatsApp Templates
+              </a>{" "}
+              to sync templates, or enter a Template SID manually below.
+            </div>
+            {/* Manual SID input when no templates */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Template SID (manual)</label>
+              <input
+                type="text"
+                value={selectedSid}
+                onChange={(e) => onUpdate({ ...config, template_sid: e.target.value, use_template: true })}
+                placeholder="HXdff188b222fe82c18233b2422dd04792"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 font-mono"
+              />
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => onUpdate({ ...config, template_sid: "HXdff188b222fe82c18233b2422dd04792", use_template: true })}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 transition-colors"
+                >
+                  📅 bookinglink
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
-          <select
-            value={selectedSid}
-            onChange={(e) => {
-              const tmpl = templates.find((t) => t.twilio_content_sid === e.target.value);
-              if (tmpl) pickTemplate(tmpl);
-            }}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400/30"
-          >
-            <option value="">— select a template —</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.twilio_content_sid ?? ""}>
-                {t.name} · {t.category}
-              </option>
-            ))}
-          </select>
+          <div className="space-y-2">
+            <select
+              value={selectedSid}
+              onChange={(e) => {
+                if (e.target.value === "__manual__") {
+                  // Switch to manual mode
+                  onUpdate({ ...config, template_sid: "", template_id: null, template_name: null, variable_mappings: {} });
+                } else {
+                  const tmpl = templates.find((t) => t.twilio_content_sid === e.target.value);
+                  if (tmpl) pickTemplate(tmpl);
+                }
+              }}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400/30"
+            >
+              <option value="">— select a template —</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.twilio_content_sid ?? ""}>
+                  {t.name} · {t.category}
+                </option>
+              ))}
+              <option value="__manual__">✏️ Enter SID manually...</option>
+            </select>
+            {/* Show manual input if no template selected from dropdown */}
+            {!selectedTmpl && selectedSid && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                <label className="mb-1 block text-[10px] font-medium text-slate-500">Manual Template SID</label>
+                <input
+                  type="text"
+                  value={selectedSid}
+                  onChange={(e) => onUpdate({ ...config, template_sid: e.target.value, use_template: true })}
+                  placeholder="HXdff188b222fe82c18233b2422dd04792"
+                  className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 font-mono"
+                />
+              </div>
+            )}
+          </div>
         )}
       </div>
 
