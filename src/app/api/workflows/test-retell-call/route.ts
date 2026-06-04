@@ -24,7 +24,8 @@ const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
  *   agent_language?: "english" | "french",
  *   user_name?: string,
  *   service_name?: string,
- *   call_purpose?: string
+ *   call_purpose?: string,
+ *   patient_id?: string
  * }
  */
 export async function POST(request: NextRequest) {
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
       user_name,
       service_name,
       call_purpose,
+      patient_id,
     } = body;
 
     if (!phone_number) {
@@ -68,9 +70,15 @@ export async function POST(request: NextRequest) {
     // Per Retell best practices: if empty, AI will ask for the info during the call
     const dynamicVariables: Record<string, string> = {};
     
+    // CRITICAL: Always include patient_id if provided for booking association
+    if (patient_id) {
+      dynamicVariables.patient_id = patient_id;
+    }
+    
     // Only set user_name if provided and not empty
     if (user_name && user_name.trim()) {
       dynamicVariables.user_name = user_name.trim();
+      dynamicVariables.first_name = user_name.trim().split(' ')[0]; // Also set first_name
     }
     // If not provided, AI will ask "May I know who I'm speaking with?"
     
@@ -79,6 +87,9 @@ export async function POST(request: NextRequest) {
       dynamicVariables.service_name = service_name.trim();
     }
     // If not provided, AI will ask "Which treatment or service were you interested in?"
+    
+    // Include phone for webhook reference
+    dynamicVariables.phone = normalizedPhone;
     
     // Always include call_purpose for context
     dynamicVariables.call_purpose = call_purpose || "follow-up on inquiry";
@@ -91,7 +102,9 @@ export async function POST(request: NextRequest) {
       webhook_url: RETELL_WEBHOOK_URL,
       metadata: {
         source: "test",
+        patient_id: patient_id || null,
         patient_phone: normalizedPhone,
+        patient_name: user_name || null,
         triggered_at: new Date().toISOString(),
         user_name_provided: !!user_name,
         service_name_provided: !!service_name,
