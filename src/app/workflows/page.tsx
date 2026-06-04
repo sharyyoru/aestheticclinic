@@ -1144,7 +1144,7 @@ function WorkflowEnrollmentsModal({
                     <th className="pb-3 font-medium text-slate-700">Service</th>
                     <th className="pb-3 font-medium text-slate-700">Enrolled</th>
                     <th className="pb-3 font-medium text-slate-700">Status</th>
-                    <th className="pb-3 font-medium text-slate-700">Steps Completed</th>
+                    <th className="pb-3 font-medium text-slate-700">Steps</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1196,21 +1196,24 @@ function WorkflowEnrollmentsModal({
                       <td className="py-3">
                         <div className="flex flex-wrap gap-1.5">
                           {(() => {
-                            const completedSteps = enrollment.steps.filter((s) => s.status === "completed");
-                            return completedSteps.length === 0 ? (
-                              <span className="text-slate-400 text-xs">No steps completed</span>
-                            ) : (
-                              completedSteps.map((step) => (
-                                <span
-                                  key={step.id}
-                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${getStepStatusBadge(step.status)}`}
-                                  title={step.result ? JSON.stringify(step.result) : ""}
-                                >
-                                  <span>{getActionIcon(step.step_action)}</span>
-                                  {step.step_action?.replace("_", " ")} ✓
-                                </span>
-                              ))
-                            );
+                            const allSteps = enrollment.steps;
+                            if (allSteps.length === 0) {
+                              return <span className="text-slate-400 text-xs">No steps recorded</span>;
+                            }
+                            return allSteps.map((step) => (
+                              <span
+                                key={step.id}
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${getStepStatusBadge(step.status)}`}
+                                title={step.error_message || (step.result ? JSON.stringify(step.result) : "")}
+                              >
+                                <span>{getActionIcon(step.step_action)}</span>
+                                {step.step_action?.replace("_", " ")}
+                                {step.status === "completed" && " ✓"}
+                                {step.status === "scheduled" && " ⏱"}
+                                {step.status === "skipped" && " ⊘"}
+                                {step.status === "failed" && " ✗"}
+                              </span>
+                            ));
                           })()}
                         </div>
                       </td>
