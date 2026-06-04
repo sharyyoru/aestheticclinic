@@ -3263,7 +3263,7 @@ export default function PatientActivityCard({
           </div>
         )}
         {activeTab === "emails" && (
-          <div className="flex flex-col h-[calc(100vh-10rem)] min-h-[400px] -mx-4 -mb-4 sm:-mx-6 sm:-mb-6">
+          <div className="flex flex-col h-[calc(100vh-10rem)] min-h-[400px] rounded-lg border border-slate-200 overflow-hidden">
             {/* Toolbar */}
             <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-slate-200 bg-slate-50/50">
               <div className="flex items-center gap-2">
