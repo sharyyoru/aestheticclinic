@@ -3557,9 +3557,11 @@ export default function PatientActivityCard({
                       </div>
 
                       {/* Detail body - scrollable */}
-                      <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent hover:scrollbar-thumb-slate-300">
-                        <div className="prose prose-xs max-w-none text-slate-800 [&_*]:text-[11px]">
+                      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent hover:scrollbar-thumb-slate-300">
+                        <div className="prose prose-xs max-w-none text-slate-800 [&_*]:text-[11px] overflow-hidden">
                           <div
+                            className="[&_table]:!w-full [&_table]:!max-w-full [&_table]:!table-fixed [&_td]:!break-words [&_img]:!max-w-full [&_img]:!h-auto [&>div]:!max-w-full"
+                            style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
                             dangerouslySetInnerHTML={{
                               __html: (() => {
                                 const decodeHtmlEntities = (html: string) => {
@@ -3572,9 +3574,14 @@ export default function PatientActivityCard({
                                     .replace(/&#39;/g, "'");
                                 };
                                 const decodedBody = decodeHtmlEntities(viewEmail.body || "");
+                                // Strip fixed-width styles from Unlayer email templates
+                                const cleanedBody = decodedBody
+                                  .replace(/width:\s*\d+px/gi, 'width: 100%')
+                                  .replace(/max-width:\s*\d+px/gi, 'max-width: 100%')
+                                  .replace(/min-width:\s*\d+px/gi, 'min-width: 0');
                                 return viewEmail.direction === "inbound"
-                                  ? stripEmailSignature(decodedBody, true)
-                                  : decodedBody;
+                                  ? stripEmailSignature(cleanedBody, true)
+                                  : cleanedBody;
                               })(),
                             }}
                           />
