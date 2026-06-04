@@ -196,9 +196,23 @@ function getLocationsForService(serviceName: string): string[] {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, location, doctor_slug, days = 14 } = body;
+    
+    // Extract dynamic variables if provided (from Retell call context)
+    const dynVars = body.retell_llm_dynamic_variables || body.dynamic_variables || {};
+    
+    // Determine action - default to get_next_available if no action specified
+    // This handles cases where Retell AI calls with empty args
+    let action = body.action;
+    if (!action) {
+      // If user asked about availability, default to finding next slot
+      action = "get_next_available";
+      console.log("[check-availability] No action provided, defaulting to get_next_available");
+    }
+    
+    const { location, doctor_slug, days = 14 } = body;
     // Default to "consultation" if no service specified - this shows ALL doctors
-    const service_name = body.service_name || "consultation";
+    // Also check dynamic variables for service context
+    const service_name = body.service_name || dynVars.service_name || "consultation";
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
