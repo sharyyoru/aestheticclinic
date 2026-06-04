@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import ProvidersBillingSettingsTab from "@/components/ProvidersBillingSettingsTab";
+import WhatsAppTemplatesTab from "@/components/WhatsAppTemplatesTab";
 
 const TABS = [
   { id: "external-labs", label: "External Labs" },
@@ -9,6 +10,7 @@ const TABS = [
   { id: "doctor-scheduling", label: "Doctor Scheduling" },
   { id: "blocked-dates", label: "Blocked Dates" },
   { id: "medidata", label: "MediData Connection" },
+  { id: "whatsapp-templates", label: "WhatsApp Templates" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -71,6 +73,7 @@ export default function SettingsPage() {
         {activeTab === "doctor-scheduling" && <DoctorSchedulingTab />}
         {activeTab === "blocked-dates" && <BlockedDatesTab />}
         {activeTab === "medidata" && <MediDataConnectionTab />}
+        {activeTab === "whatsapp-templates" && <WhatsAppTemplatesTab />}
       </div>
     </div>
   );
