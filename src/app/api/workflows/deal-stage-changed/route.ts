@@ -442,7 +442,12 @@ export async function POST(request: Request) {
 
       // Check for new builder format (config.nodes)
       const workflowConfig = workflow.config as { nodes?: any[] } | null;
-      console.log(`[Workflow Debug] Config for ${workflow.id}:`, JSON.stringify(workflowConfig));
+      console.log(`[Workflow Debug] Workflow ${workflow.id} (${workflow.name})`);
+      console.log(`[Workflow Debug] Config keys:`, workflowConfig ? Object.keys(workflowConfig) : 'null');
+      console.log(`[Workflow Debug] Has nodes:`, workflowConfig?.nodes ? `Yes (${workflowConfig.nodes.length})` : 'No');
+      if (workflowConfig?.nodes) {
+        console.log(`[Workflow Debug] Node types:`, workflowConfig.nodes.map((n: any) => `${n.type}:${n.data?.actionType || n.data?.triggerType || 'N/A'}`));
+      }
       
       if (workflowConfig?.nodes && Array.isArray(workflowConfig.nodes)) {
         console.log(`[Workflow Debug] Found ${workflowConfig.nodes.length} nodes in workflow config`);
@@ -776,7 +781,18 @@ export async function POST(request: Request) {
           }
 
           if (!recipientEmail) {
-            console.log("No valid recipient email, skipping email action");
+            console.log(`[Workflow Email] No valid recipient email for patient ${safePatient.id}, skipping email action`);
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "send_email",
+                step_config: config,
+                status: "skipped",
+                executed_at: new Date().toISOString(),
+                error_message: "No valid recipient email address",
+              });
+            }
             continue;
           }
 
