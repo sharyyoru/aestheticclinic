@@ -267,29 +267,28 @@ export async function POST(request: Request) {
       // Check if this is a deal creation (no fromStageId means new deal)
       const isDealCreation = !fromStageId;
       
-      // If workflow is configured to trigger on creation and this is a new deal
-      if (config.trigger_on_creation && isDealCreation) {
+      // Default trigger_on_creation to true if not explicitly set to false
+      const shouldTriggerOnCreation = config.trigger_on_creation !== false;
+      
+      console.log(`[Workflow Match] Workflow ${workflow.id} (${workflow.name}): isDealCreation=${isDealCreation}, shouldTriggerOnCreation=${shouldTriggerOnCreation}, config.to_stage_id=${config.to_stage_id}, toStageId=${toStageId}`);
+      
+      // If this is a new deal creation
+      if (isDealCreation) {
+        // Check if workflow should trigger on creation
+        if (!shouldTriggerOnCreation) {
+          return false;
+        }
         // Only need to match the to_stage_id (the initial stage)
         if (config.to_stage_id && config.to_stage_id !== toStageId) {
           return false;
         }
-      } else if (!isDealCreation) {
+      } else {
         // Normal stage change - check from and to stages
         if (config.to_stage_id && config.to_stage_id !== toStageId) {
           return false;
         }
 
         if (config.from_stage_id && config.from_stage_id !== fromStageId) {
-          return false;
-        }
-      } else {
-        // Deal creation but workflow doesn't have trigger_on_creation enabled
-        // Still trigger if to_stage matches and no from_stage is configured
-        if (config.to_stage_id && config.to_stage_id !== toStageId) {
-          return false;
-        }
-        // If workflow expects a from_stage but this is a creation, don't match
-        if (config.from_stage_id) {
           return false;
         }
       }

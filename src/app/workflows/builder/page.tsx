@@ -563,18 +563,29 @@ export default function WorkflowBuilderPage() {
           </div>
 
           {data.triggerType === "deal_stage_changed" && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">When deal moves to stage</label>
-              <select
-                value={(data.config as { to_stage_id?: string }).to_stage_id || ""}
-                onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, to_stage_id: e.target.value } })}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-              >
-                <option value="">Select stage...</option>
-                {stages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>{stage.name}</option>
-                ))}
-              </select>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">When deal moves to stage</label>
+                <select
+                  value={(data.config as { to_stage_id?: string }).to_stage_id || ""}
+                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, to_stage_id: e.target.value } })}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="">Select stage...</option>
+                  {stages.map((stage) => (
+                    <option key={stage.id} value={stage.id}>{stage.name}</option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={(data.config as { trigger_on_creation?: boolean }).trigger_on_creation ?? true}
+                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, trigger_on_creation: e.target.checked } })}
+                  className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                Also trigger when deal is created in this stage
+              </label>
             </div>
           )}
         </div>
