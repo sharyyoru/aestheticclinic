@@ -156,14 +156,38 @@ export async function POST(request: NextRequest) {
 /**
  * GET /api/workflows/test-retell-call
  * 
- * Returns test configuration and usage info
+ * Returns test configuration and agent version info
  */
 export async function GET() {
+  // Fetch agent info to get current version
+  let agentInfo = null;
+  if (RETELL_API_KEY) {
+    try {
+      const agentResponse = await fetch(`https://api.retellai.com/v2/get-agent/${RETELL_AGENTS.english}`, {
+        headers: {
+          "Authorization": `Bearer ${RETELL_API_KEY}`,
+        },
+      });
+      if (agentResponse.ok) {
+        const data = await agentResponse.json();
+        agentInfo = {
+          agent_id: data.agent_id,
+          agent_name: data.agent_name,
+          version: data.version,
+          last_modification_timestamp: data.last_modification_timestamp,
+        };
+      }
+    } catch (e) {
+      console.error("[Test Retell] Failed to fetch agent info:", e);
+    }
+  }
+
   return NextResponse.json({
     configured: !!RETELL_API_KEY,
     from_number: RETELL_FROM_NUMBER || "+41799029555",
     webhook_url: RETELL_WEBHOOK_URL,
     agents: RETELL_AGENTS,
+    agent_info: agentInfo,
     usage: {
       method: "POST",
       body: {

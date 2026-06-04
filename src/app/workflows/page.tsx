@@ -71,6 +71,7 @@ export default function WorkflowsPage() {
   const [testCallPatientId, setTestCallPatientId] = useState("");
   const [testCallLoading, setTestCallLoading] = useState(false);
   const [testCallResult, setTestCallResult] = useState<{ success: boolean; message: string; call_id?: string } | null>(null);
+  const [agentInfo, setAgentInfo] = useState<{ agent_name?: string; version?: number } | null>(null);
   
   // Filters
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
@@ -341,13 +342,23 @@ export default function WorkflowsPage() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => {
+              onClick={async () => {
                 setShowTestCallModal(true);
                 setTestCallResult(null);
                 setTestCallPhone("");
                 setTestCallUserName("");
                 setTestCallServiceName("");
                 setTestCallPatientId("");
+                // Fetch agent info
+                try {
+                  const res = await fetch("/api/workflows/test-retell-call");
+                  const data = await res.json();
+                  if (data.agent_info) {
+                    setAgentInfo(data.agent_info);
+                  }
+                } catch (e) {
+                  console.error("Failed to fetch agent info:", e);
+                }
               }}
               className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
             >
@@ -630,8 +641,13 @@ export default function WorkflowsPage() {
                   </svg>
                 </button>
               </div>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-slate-500 flex items-center gap-2">
                 Test the Retell AI outbound call functionality
+                {agentInfo?.version && (
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    Agent V{agentInfo.version}
+                  </span>
+                )}
               </p>
             </div>
 
