@@ -882,7 +882,7 @@ export async function POST(request: Request) {
             // Log step - mark as "scheduled" for future emails, "completed" for immediate sends
             const stepStatus = isFuture ? "scheduled" : "completed";
             if (enrollmentId) {
-              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+              const { error: stepInsertError } = await supabaseAdmin.from("workflow_enrollment_steps").insert({
                 enrollment_id: enrollmentId,
                 step_type: "action",
                 step_action: "send_email",
@@ -896,6 +896,13 @@ export async function POST(request: Request) {
                   scheduled_for: isFuture ? effectiveDate.toISOString() : null,
                 },
               });
+              if (stepInsertError) {
+                console.error(`[Workflow] Failed to insert email step for enrollment ${enrollmentId}:`, stepInsertError);
+              } else {
+                console.log(`[Workflow] Logged email step for enrollment ${enrollmentId}, status: ${stepStatus}`);
+              }
+            } else {
+              console.warn(`[Workflow] No enrollmentId, cannot log email step`);
             }
 
             if (!mailgunApiKey || !mailgunDomain) {
