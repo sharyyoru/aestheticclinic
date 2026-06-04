@@ -157,6 +157,17 @@ export async function POST(request: Request) {
       );
     }
 
+    // Fetch the patient's next upcoming appointment (for template variable resolution)
+    const { data: upcomingAppts } = await supabaseAdmin
+      .from("appointments")
+      .select("start_time, end_time, reason, location, status")
+      .eq("patient_id", patientId)
+      .gte("start_time", new Date().toISOString())
+      .order("start_time", { ascending: true })
+      .limit(1);
+
+    const nextAppointment = upcomingAppts?.[0] ?? null;
+
     const safeDeal = deal as {
       id: string;
       title: string | null;
@@ -391,6 +402,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, workflows: 0, actionsRun: 0, message: "No workflows matched conditions" });
     }
 
+    // Helper: format appointment timestamps for template variables
+    function fmtDate(iso: string): string {
+      return new Date(iso).toLocaleDateString("en-GB", {
+        weekday: "short", day: "numeric", month: "short", year: "numeric",
+      });
+    }
+    function fmtTime(iso: string): string {
+      return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    }
+
     const templateContext = {
       patient: {
         id: safePatient.id,
@@ -407,6 +428,18 @@ export async function POST(request: Request) {
       },
       from_stage: fromStage,
       to_stage: toStage,
+      appointment: nextAppointment
+        ? {
+            date:      fmtDate(nextAppointment.start_time),
+            time:      fmtTime(nextAppointment.start_time),
+            date_time: `${fmtDate(nextAppointment.start_time)} at ${fmtTime(nextAppointment.start_time)}`,
+            reason:    nextAppointment.reason ?? "",
+            location:  nextAppointment.location ?? "",
+            status:    nextAppointment.status ?? "",
+          }
+        : {
+            date: "", time: "", date_time: "", reason: "", location: "", status: "",
+          },
     };
 
     let actionsRun = 0;
@@ -1105,18 +1138,25 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // ── Handle send_whatsapp action type — enqueue via whatsapp_queue (sent by deal owner's WA session)
+        // ── Handle send_whatsapp action type — send via Twilio WhatsApp API
         if (action.action_type === "send_whatsapp") {
           const config = (action.config || {}) as {
+            // New template-based config
+            template_id?: string;
+            template_sid?: string;
+            template_name?: string;
+            variable_mappings?: Record<string, { type: "field" | "static"; value: string }>;
+            // Legacy free-form config (preserved for backwards compatibility)
             message_template?: string;
+            // Scheduling
             send_mode?: "immediate" | "delay" | "recurring";
             delay_hours?: number | null;
             recurring_days?: number | null;
             recurring_times?: number | null;
           };
 
-          const messageTemplate = config.message_template || 
-            "Hi {{patient.first_name}}, we wanted to follow up on your inquiry with {{clinic_name}}. Please let us know if you have any questions.";
+          // Detect which path: new template config vs. legacy free-form
+          const isTemplatePath = !!config.template_sid;
 
           // Get patient phone number
           const patientPhone = safePatient.phone;
@@ -1153,24 +1193,6 @@ export async function POST(request: Request) {
             continue;
           }
 
-          // Determine the sender: use deal owner's WhatsApp session
-          const senderUserId = deal.owner_id;
-          if (!senderUserId) {
-            console.log("No deal owner assigned, skipping WhatsApp action");
-            if (enrollmentId) {
-              await supabaseAdmin.from("workflow_enrollment_steps").insert({
-                enrollment_id: enrollmentId,
-                step_type: "action",
-                step_action: "send_whatsapp",
-                step_config: config,
-                status: "skipped",
-                executed_at: new Date().toISOString(),
-                error_message: "No deal owner assigned — cannot determine WhatsApp sender",
-              });
-            }
-            continue;
-          }
-
           const now = new Date();
           const sendMode: "immediate" | "delay" | "recurring" =
             config.send_mode === "delay" || config.send_mode === "recurring"
@@ -1190,26 +1212,116 @@ export async function POST(request: Request) {
               ? Math.min(config.recurring_times, 30)
               : null;
 
-          async function enqueueWhatsAppMessage(scheduledAt: Date | null) {
-            const messageBody = renderTemplate(messageTemplate, templateContext);
-            const effectiveDate = scheduledAt ?? now;
+          // Build the resolved field lookup for variable_mappings
+          const fieldLookup: Record<string, string> = {
+            "patient.first_name":           safePatient.first_name ?? "",
+            "patient.last_name":            safePatient.last_name ?? "",
+            "patient.first_name_last_name": `${safePatient.first_name ?? ""} ${safePatient.last_name ?? ""}`.trim(),
+            "patient.phone":                safePatient.phone ?? "",
+            "patient.email":                safePatient.email ?? "",
+            "deal.title":                   safeDeal.title ?? "",
+            "deal.pipeline":                safeDeal.pipeline ?? "",
+            "deal.notes":                   safeDeal.notes ?? "",
+            "from_stage":                   (typeof fromStage === "object" ? fromStage?.name : fromStage) ?? "",
+            "to_stage":                     (typeof toStage === "object" ? toStage?.name : toStage) ?? "",
+            "appointment.date":             templateContext.appointment.date,
+            "appointment.time":             templateContext.appointment.time,
+            "appointment.date_time":        templateContext.appointment.date_time,
+            "appointment.reason":           templateContext.appointment.reason,
+            "appointment.location":         templateContext.appointment.location,
+          };
 
-            const { error: insertError } = await supabaseAdmin
-              .from("whatsapp_queue")
-              .insert({
-                sender_user_id: senderUserId,
-                to_phone: patientPhone,
-                message_body: messageBody,
-                patient_id: safePatient.id,
-                deal_id: safeDeal.id,
-                workflow_id: workflow.id,
-                enrollment_id: enrollmentId || null,
-                status: "pending",
-                scheduled_at: effectiveDate.toISOString(),
+          async function sendWhatsAppViaTwilio(scheduledAt: Date | null) {
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+            if (!appUrl) {
+              console.error("NEXT_PUBLIC_APP_URL not set, cannot call /api/whatsapp/send internally");
+              return;
+            }
+
+            let sendPayload: Record<string, unknown>;
+
+            if (isTemplatePath) {
+              // New path: resolve variable_mappings → contentVariables
+              const contentVariables: Record<string, string> = {};
+              for (const [slot, mapping] of Object.entries(config.variable_mappings ?? {})) {
+                contentVariables[slot] = mapping.type === "static"
+                  ? mapping.value
+                  : (fieldLookup[mapping.value] ?? "");
+              }
+              sendPayload = {
+                patientId: safePatient.id,
+                to: patientPhone,
+                contentSid: config.template_sid,
+                contentVariables,
+                templateId: config.template_id ?? null,
+                scheduledAt: scheduledAt?.toISOString() ?? null,
+                _skipWindowCheck: true, // templates bypass the window check
+              };
+            } else {
+              // Legacy path: render free-form template string
+              const legacyTemplate = config.message_template ||
+                "Hi {{patient.first_name}}, we wanted to follow up on your inquiry. Please let us know if you have any questions.";
+              const messageBody = renderTemplate(legacyTemplate, templateContext);
+              sendPayload = {
+                patientId: safePatient.id,
+                to: patientPhone,
+                body: messageBody,
+                scheduledAt: scheduledAt?.toISOString() ?? null,
+                _skipWindowCheck: false, // legacy free-form respects window check
+              };
+            }
+
+            const effectiveDate = scheduledAt ?? now;
+            const isImmediate = effectiveDate.getTime() <= now.getTime();
+
+            try {
+              const res = await fetch(`${appUrl}/api/whatsapp/send`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(sendPayload),
               });
 
-            if (insertError) {
-              console.error("Failed to enqueue WhatsApp message:", insertError);
+              const result = await res.json().catch(() => ({})) as Record<string, unknown>;
+
+              if (!res.ok && !(result as any).skipped) {
+                console.error("WhatsApp send failed:", result);
+                if (enrollmentId) {
+                  await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                    enrollment_id: enrollmentId,
+                    step_type: "action",
+                    step_action: "send_whatsapp",
+                    step_config: config,
+                    status: "failed",
+                    executed_at: new Date().toISOString(),
+                    error_message: (result as any).error ?? `HTTP ${res.status}`,
+                  });
+                }
+              } else {
+                console.log(isImmediate
+                  ? `WhatsApp sent to ${patientPhone} via Twilio (${isTemplatePath ? "template" : "legacy"})`
+                  : `WhatsApp scheduled for ${patientPhone} at ${effectiveDate.toISOString()}`);
+
+                if (enrollmentId) {
+                  await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                    enrollment_id: enrollmentId,
+                    step_type: "action",
+                    step_action: "send_whatsapp",
+                    step_config: config,
+                    status: isImmediate ? "completed" : "scheduled",
+                    executed_at: new Date().toISOString(),
+                    result: {
+                      scheduled_at: effectiveDate.toISOString(),
+                      to: patientPhone,
+                      message_id: (result as any).id,
+                      path: isTemplatePath ? "template" : "legacy",
+                    },
+                  });
+                }
+                actionsRun += 1;
+              }
+            } catch (sendErr) {
+              const msg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+              console.error("Unexpected error calling /api/whatsapp/send:", msg);
               if (enrollmentId) {
                 await supabaseAdmin.from("workflow_enrollment_steps").insert({
                   enrollment_id: enrollmentId,
@@ -1218,49 +1330,31 @@ export async function POST(request: Request) {
                   step_config: config,
                   status: "failed",
                   executed_at: new Date().toISOString(),
-                  error_message: insertError.message,
+                  error_message: msg,
                 });
               }
-            } else {
-              const isImmediate = effectiveDate.getTime() <= now.getTime();
-              console.log(isImmediate
-                ? `Enqueued WhatsApp message to ${patientPhone} for immediate send via ${senderUserId}`
-                : `Enqueued WhatsApp message to ${patientPhone} scheduled at ${effectiveDate.toISOString()} via ${senderUserId}`);
-
-              if (enrollmentId) {
-                await supabaseAdmin.from("workflow_enrollment_steps").insert({
-                  enrollment_id: enrollmentId,
-                  step_type: "action",
-                  step_action: "send_whatsapp",
-                  step_config: config,
-                  status: isImmediate ? "completed" : "scheduled",
-                  executed_at: new Date().toISOString(),
-                  result: { scheduled_at: effectiveDate.toISOString(), to: patientPhone, sender: senderUserId },
-                });
-              }
-              actionsRun += 1;
             }
           }
 
           // Apply cumulative delay from delay steps PLUS any action-specific delay
           const baseCumulativeMs = cumulativeDelayMinutes * 60 * 1000;
-          
+
           if (sendMode === "recurring" && recurringEveryDays && recurringTimes) {
             const intervalMs = recurringEveryDays * 24 * 60 * 60 * 1000;
             for (let i = 0; i < recurringTimes; i += 1) {
               const scheduledAt = new Date(now.getTime() + baseCumulativeMs + i * intervalMs);
               // eslint-disable-next-line no-await-in-loop
-              await enqueueWhatsAppMessage(scheduledAt);
+              await sendWhatsAppViaTwilio(scheduledAt);
             }
           } else if (sendMode === "delay" && delayHours) {
             const scheduledAt = new Date(now.getTime() + baseCumulativeMs + delayHours * 60 * 60 * 1000);
-            await enqueueWhatsAppMessage(scheduledAt);
+            await sendWhatsAppViaTwilio(scheduledAt);
           } else if (cumulativeDelayMinutes > 0) {
             const scheduledAt = new Date(now.getTime() + baseCumulativeMs);
             console.log(`Applying cumulative delay of ${cumulativeDelayMinutes} minutes to WhatsApp, scheduled at: ${scheduledAt.toISOString()}`);
-            await enqueueWhatsAppMessage(scheduledAt);
+            await sendWhatsAppViaTwilio(scheduledAt);
           } else {
-            await enqueueWhatsAppMessage(null);
+            await sendWhatsAppViaTwilio(null);
           }
           continue;
         }

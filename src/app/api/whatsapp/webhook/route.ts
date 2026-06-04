@@ -82,15 +82,21 @@ export async function POST(request: NextRequest) {
     }
 
     if (patientId) {
+      const now = new Date();
+      const windowExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
       const { error: convError } = await supabaseAdmin
         .from("whatsapp_conversations")
         .upsert(
           {
             patient_id: patientId,
             phone_number: cleanFrom,
-            last_message_at: new Date().toISOString(),
+            last_message_at: now.toISOString(),
             last_message_preview: body?.substring(0, 100) || "",
-            updated_at: new Date().toISOString(),
+            // 24h window tracking
+            last_inbound_at: now.toISOString(),
+            window_expires_at: windowExpiresAt,
+            updated_at: now.toISOString(),
           },
           {
             onConflict: "patient_id,phone_number",
