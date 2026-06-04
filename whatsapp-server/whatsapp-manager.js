@@ -42,7 +42,7 @@ function getWhatsAppClient(userId) {
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: userId,
-      dataPath: process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions')
+      dataPath: process.env.WA_SESSION_PATH || '/data/whatsapp-sessions'
     }),
     puppeteer: {
       headless: true,
@@ -229,7 +229,7 @@ const initializingUsers = new Set();
  * in the profile dir. The new container's Chromium refuses to start with "profile in use" error.
  */
 function cleanStaleLockFiles(userId) {
-  const sessionBasePath = process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions');
+  const sessionBasePath = process.env.WA_SESSION_PATH || '/data/whatsapp-sessions';
   const sessionDir = path.join(sessionBasePath, `session-${userId}`);
 
   try {

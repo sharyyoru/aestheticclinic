@@ -294,7 +294,7 @@ async function autoReconnectSessions() {
       return;
     }
 
-    const sessionBasePath = process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions');
+    const sessionBasePath = process.env.WA_SESSION_PATH || '/data/whatsapp-sessions';
 
     console.log(`[AutoReconnect] Found ${sessions.length} session(s) to restore`);
 

@@ -3,7 +3,9 @@ const path = require('path');
 const fs = require('fs');
 
 // Initialize SQLite database
-const dbPath = process.env.DB_PATH || path.join(__dirname, 'sessions.db');
+// Default to /data/sessions.db (Railway persistent volume mount point).
+// Empty string env var is falsy, so the || fallback fires correctly.
+const dbPath = process.env.DB_PATH || '/data/sessions.db';
 // Ensure directory exists before opening DB
 const dbDir = path.dirname(dbPath);
 if (!fs.existsSync(dbDir)) {
