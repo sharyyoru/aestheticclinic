@@ -1,12 +1,348 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import EmailTemplateBuilder from "@/components/EmailTemplateBuilder";
 import UserSearchSelect from "@/components/UserSearchSelect";
 import MultiUserSearchSelect from "@/components/MultiUserSearchSelect";
+
+// ─── WhatsApp template types ──────────────────────────────────────────────────
+interface WaTemplateVariable { key: string; label: string; example: string; }
+interface WaTemplate {
+  id: string;
+  name: string;
+  category: string;
+  language: string;
+  body: string;
+  variables: WaTemplateVariable[];
+  twilio_content_sid: string | null;
+  status: string;
+}
+
+// Field options available for variable mapping
+const WA_FIELD_OPTIONS = [
+  { group: "Patient",      label: "Full Name (first + last)",   value: "patient.first_name_last_name" },
+  { group: "Patient",      label: "First Name",                 value: "patient.first_name" },
+  { group: "Patient",      label: "Last Name",                  value: "patient.last_name" },
+  { group: "Patient",      label: "Phone",                      value: "patient.phone" },
+  { group: "Patient",      label: "Email",                      value: "patient.email" },
+  { group: "Deal",         label: "Deal Title",                 value: "deal.title" },
+  { group: "Deal",         label: "Pipeline",                   value: "deal.pipeline" },
+  { group: "Deal",         label: "Current Stage",              value: "to_stage" },
+  { group: "Appointment",  label: "Appointment date & time",    value: "appointment.date_time" },
+  { group: "Appointment",  label: "Appointment date only",      value: "appointment.date" },
+  { group: "Appointment",  label: "Appointment time only",      value: "appointment.time" },
+  { group: "Appointment",  label: "Appointment reason",         value: "appointment.reason" },
+  { group: "Appointment",  label: "Appointment location",       value: "appointment.location" },
+] as const;
+
+// Render body preview with {{N}} highlighted using variable labels
+function WaBodyPreview({ body, variables }: { body: string; variables: WaTemplateVariable[] }) {
+  const varMap: Record<string, string> = {};
+  for (const v of variables) varMap[v.key] = v.label || v.example || `var ${v.key}`;
+  const parts = body.split(/({{[^}]+}})/g);
+  return (
+    <span className="text-sm leading-relaxed text-slate-700">
+      {parts.map((part, i) => {
+        const match = part.match(/^{{(\d+)}}$/);
+        if (match) {
+          return (
+            <span key={i} className="inline-flex items-center rounded bg-amber-100 px-1 py-0.5 text-[11px] font-medium text-amber-800 border border-amber-200">
+              {varMap[match[1]] ?? match[1]}
+            </span>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+}
+
+// WhatsApp node config panel (replaces free-form textarea)
+function WhatsAppNodeConfig({
+  nodeId,
+  config,
+  onUpdate,
+}: {
+  nodeId: string;
+  config: Record<string, unknown>;
+  onUpdate: (newConfig: Record<string, unknown>) => void;
+}) {
+  const [templates, setTemplates]     = useState<WaTemplate[]>([]);
+  const [loadingTmpl, setLoadingTmpl] = useState(true);
+  const fetchedRef                    = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetch("/api/whatsapp/templates?status=approved")
+      .then((r) => r.json())
+      .then((d: { templates?: WaTemplate[] }) => setTemplates(d.templates ?? []))
+      .catch(() => setTemplates([]))
+      .finally(() => setLoadingTmpl(false));
+  }, []);
+
+  const isLegacy = !!(config.message_template) && !config.template_sid;
+  const selectedSid   = (config.template_sid as string | undefined) ?? "";
+  const selectedTmpl  = templates.find((t) => t.twilio_content_sid === selectedSid) ?? null;
+  const varMappings   = (config.variable_mappings as Record<string, { type: "field" | "static"; value: string }> | undefined) ?? {};
+  const sendMode      = (config.send_mode as string | undefined) ?? "immediate";
+
+  function pickTemplate(tmpl: WaTemplate) {
+    // Build default mappings: try to auto-pick field if mappable
+    const KNOWN: Record<string, string> = {
+      "patient name": "patient.first_name_last_name",
+      "first name": "patient.first_name", "last name": "patient.last_name",
+      "phone": "patient.phone", "email": "patient.email",
+      "deal": "deal.title", "pipeline": "deal.pipeline",
+      "clinic": "", // static — user fills in
+      "date": "appointment.date_time", "time": "appointment.time",
+      "appointment": "appointment.date_time", "reason": "appointment.reason",
+      "location": "appointment.location", "stage": "to_stage",
+    };
+    const defaultMappings: Record<string, { type: "field" | "static"; value: string }> = {};
+    for (const v of (tmpl.variables ?? [])) {
+      const labelLower = v.label.toLowerCase();
+      const matchKey = Object.keys(KNOWN).find((k) => labelLower.includes(k));
+      const fieldVal = matchKey ? KNOWN[matchKey] : "";
+      defaultMappings[v.key] = fieldVal
+        ? { type: "field", value: fieldVal }
+        : { type: "static", value: "" };
+    }
+    onUpdate({
+      ...config,
+      template_id:       tmpl.id,
+      template_sid:      tmpl.twilio_content_sid,
+      template_name:     tmpl.name,
+      variable_mappings: defaultMappings,
+      // keep message_template if present (legacy fallback) but don't show it
+    });
+  }
+
+  function setMapping(key: string, type: "field" | "static", value: string) {
+    onUpdate({
+      ...config,
+      variable_mappings: { ...varMappings, [key]: { type, value } },
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* ── Header info box ─────────────────────────────────────────────── */}
+      <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-1">
+        <p className="text-xs font-semibold text-green-800 uppercase tracking-wide">WhatsApp Message</p>
+        <p className="text-xs text-green-700">
+          Sent via Twilio WhatsApp Business. Templates are required for first contact and when the
+          patient&apos;s 24-hour reply window is closed.
+        </p>
+      </div>
+
+      {/* ── Legacy warning ──────────────────────────────────────────────── */}
+      {isLegacy && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+          <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z" /></svg>
+          <div className="text-[11px] text-amber-800">
+            <span className="font-semibold">Legacy free-form message detected.</span>{" "}
+            This workflow uses an old free-form text message which only works inside the
+            patient&apos;s 24-hour reply window. Select a template below to ensure reliable
+            delivery to all patients.
+          </div>
+        </div>
+      )}
+
+      {/* ── Template picker ─────────────────────────────────────────────── */}
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-slate-700">
+          Template <span className="text-red-500">*</span>
+        </label>
+        {loadingTmpl ? (
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-400">
+            <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+            Loading templates…
+          </div>
+        ) : templates.length === 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] text-amber-800">
+            No approved templates yet. Go to{" "}
+            <a href="/settings?tab=whatsapp-templates" target="_blank" className="font-semibold underline">
+              Settings → WhatsApp Templates
+            </a>{" "}
+            to sync your templates from Twilio.
+          </div>
+        ) : (
+          <select
+            value={selectedSid}
+            onChange={(e) => {
+              const tmpl = templates.find((t) => t.twilio_content_sid === e.target.value);
+              if (tmpl) pickTemplate(tmpl);
+            }}
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400/30"
+          >
+            <option value="">— select a template —</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.twilio_content_sid ?? ""}>
+                {t.name} · {t.category}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* ── Template preview ────────────────────────────────────────────── */}
+      {selectedTmpl && (
+        <div>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Preview</label>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 leading-relaxed">
+            <WaBodyPreview body={selectedTmpl.body} variables={selectedTmpl.variables ?? []} />
+          </div>
+          <p className="mt-1 text-[10px] text-slate-400">
+            {selectedTmpl.category} · {selectedTmpl.language} · {selectedTmpl.status}
+          </p>
+        </div>
+      )}
+
+      {/* ── Variable mapper ─────────────────────────────────────────────── */}
+      {selectedTmpl && (selectedTmpl.variables ?? []).length > 0 && (
+        <div>
+          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Variables</label>
+          <div className="space-y-2">
+            {(selectedTmpl.variables ?? []).map((v) => {
+              const mapping = varMappings[v.key] ?? { type: "field" as const, value: "" };
+              return (
+                <div key={v.key} className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                  {/* Slot label */}
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] font-bold text-amber-700">
+                      {v.key}
+                    </span>
+                    <span className="text-xs font-medium text-slate-700">{v.label || v.example}</span>
+                    {v.example && v.label !== v.example && (
+                      <span className="text-[10px] text-slate-400">e.g. &ldquo;{v.example}&rdquo;</span>
+                    )}
+                  </div>
+                  {/* Type toggle */}
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`wa_var_type_${nodeId}_${v.key}`}
+                        checked={mapping.type === "field"}
+                        onChange={() => setMapping(v.key, "field", mapping.type === "field" ? mapping.value : "")}
+                        className="h-3 w-3 text-green-600"
+                      />
+                      Patient / deal field
+                    </label>
+                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`wa_var_type_${nodeId}_${v.key}`}
+                        checked={mapping.type === "static"}
+                        onChange={() => setMapping(v.key, "static", mapping.type === "static" ? mapping.value : "")}
+                        className="h-3 w-3 text-green-600"
+                      />
+                      Custom text
+                    </label>
+                  </div>
+                  {/* Value input */}
+                  {mapping.type === "field" ? (
+                    <select
+                      value={mapping.value}
+                      onChange={(e) => setMapping(v.key, "field", e.target.value)}
+                      className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400/30"
+                    >
+                      <option value="">— select field —</option>
+                      {Object.entries(
+                        WA_FIELD_OPTIONS.reduce<Record<string, typeof WA_FIELD_OPTIONS[number][]>>((acc, opt) => {
+                          (acc[opt.group] = acc[opt.group] ?? []).push(opt);
+                          return acc;
+                        }, {})
+                      ).map(([group, opts]) => (
+                        <optgroup key={group} label={group}>
+                          {opts.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={mapping.value}
+                      onChange={(e) => setMapping(v.key, "static", e.target.value)}
+                      placeholder={`Enter text for "${v.label || v.example}"…`}
+                      className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400/30"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Sending Behaviour (unchanged) ───────────────────────────────── */}
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+        <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wide">Sending Behaviour</label>
+        <div className="flex flex-wrap gap-4">
+          {(["immediate", "delay", "recurring"] as const).map((mode) => (
+            <label key={mode} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`whatsapp_send_mode_${nodeId}`}
+                checked={sendMode === mode || (mode === "immediate" && sendMode !== "delay" && sendMode !== "recurring")}
+                onChange={() => onUpdate({ ...config, send_mode: mode })}
+                className="h-4 w-4 text-green-600 border-slate-300"
+              />
+              <span className="text-sm text-slate-700 capitalize">{mode === "immediate" ? "Send immediately" : mode}</span>
+            </label>
+          ))}
+        </div>
+
+        {sendMode === "delay" && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-slate-600">Wait</span>
+            <input
+              type="number"
+              min="1"
+              value={(config.delay_hours as number | undefined) ?? 24}
+              onChange={(e) => onUpdate({ ...config, delay_hours: parseInt(e.target.value) || 24 })}
+              className="w-20 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
+            />
+            <span className="text-slate-600">hours after trigger</span>
+          </div>
+        )}
+
+        {sendMode === "recurring" && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-slate-600">Every</span>
+            <input
+              type="number"
+              min="1"
+              value={(config.recurring_days as number | undefined) ?? 1}
+              onChange={(e) => onUpdate({ ...config, recurring_days: parseInt(e.target.value) || 1 })}
+              className="w-16 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
+            />
+            <span className="text-slate-600">days,</span>
+            <input
+              type="number"
+              min="1"
+              max="30"
+              value={(config.recurring_times as number | undefined) ?? 3}
+              onChange={(e) => onUpdate({ ...config, recurring_times: Math.min(parseInt(e.target.value) || 3, 30) })}
+              className="w-16 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
+            />
+            <span className="text-slate-600">times (max 30)</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Types
 type TriggerType = 
@@ -93,7 +429,7 @@ const TRIGGER_OPTIONS: { value: TriggerType; label: string; description: string;
 // Action definitions
 const ACTION_OPTIONS: { value: ActionType; label: string; description: string; icon: string; color: string }[] = [
   { value: "send_email", label: "Send Email", description: "Send an email to patient or staff", icon: "📧", color: "emerald" },
-  { value: "send_whatsapp", label: "Send WhatsApp", description: "Send a WhatsApp message via deal owner's session", icon: "💬", color: "green" },
+  { value: "send_whatsapp", label: "Send WhatsApp", description: "Send a WhatsApp template via Twilio to the patient", icon: "💬", color: "green" },
   { value: "send_notification", label: "Send Notification", description: "Send in-app notification to user", icon: "🔔", color: "blue" },
   { value: "create_task", label: "Create Task", description: "Create a new task for a user", icon: "📋", color: "purple" },
   { value: "update_task", label: "Update Task", description: "Update an existing task", icon: "✏️", color: "purple" },
@@ -463,7 +799,19 @@ export default function WorkflowBuilderPage() {
       badgeColor = "bg-emerald-200 text-emerald-800";
       icon = actionDef?.icon || "📧";
       title = actionDef?.label || "Action";
-      description = actionDef?.description || "";
+      // For WhatsApp: show selected template name or legacy hint
+      if (data.actionType === "send_whatsapp") {
+        const cfg = data.config as Record<string, unknown>;
+        if (cfg.template_name) {
+          description = `Template: ${cfg.template_name as string}`;
+        } else if (cfg.message_template) {
+          description = "Legacy free-form message (upgrade to template)";
+        } else {
+          description = "No template selected yet";
+        }
+      } else {
+        description = actionDef?.description || "";
+      }
     } else if (isCondition) {
       bgColor = "bg-gradient-to-r from-purple-50 to-pink-50";
       borderColor = "border-purple-200";
@@ -805,133 +1153,11 @@ export default function WorkflowBuilderPage() {
           )}
 
           {data.actionType === "send_whatsapp" && (
-            <>
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-3">
-                <label className="block text-xs font-semibold text-green-800 uppercase tracking-wide">WhatsApp Message</label>
-                <p className="text-xs text-green-700">Messages will be sent via the deal owner&apos;s WhatsApp session to the patient&apos;s phone number.</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Message Template</label>
-                <textarea
-                  id={`wa_msg_${selectedNode.id}`}
-                  value={(data.config as { message_template?: string }).message_template || ""}
-                  onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, message_template: e.target.value } })}
-                  placeholder="Hi {{patient.first_name}}, we wanted to follow up on your inquiry..."
-                  rows={4}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                />
-                <p className="mt-1.5 mb-1 text-[10px] font-medium text-slate-500">Click to insert variable:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { label: "First Name", value: "{{patient.first_name}}" },
-                    { label: "Last Name", value: "{{patient.last_name}}" },
-                    { label: "Phone", value: "{{patient.phone}}" },
-                    { label: "Email", value: "{{patient.email}}" },
-                    { label: "Deal Title", value: "{{deal.title}}" },
-                    { label: "Deal Notes", value: "{{deal.notes}}" },
-                    { label: "Pipeline", value: "{{deal.pipeline}}" },
-                    { label: "From Stage", value: "{{from_stage}}" },
-                    { label: "To Stage", value: "{{to_stage}}" },
-                  ].map((v) => (
-                    <button
-                      key={v.value}
-                      type="button"
-                      onClick={() => {
-                        const el = document.getElementById(`wa_msg_${selectedNode.id}`) as HTMLTextAreaElement | null;
-                        const current = (data.config as { message_template?: string }).message_template || "";
-                        if (el) {
-                          const start = el.selectionStart ?? current.length;
-                          const end = el.selectionEnd ?? current.length;
-                          const updated = current.slice(0, start) + v.value + current.slice(end);
-                          updateNodeData(selectedNode.id, { config: { ...data.config, message_template: updated } });
-                          setTimeout(() => { el.focus(); el.setSelectionRange(start + v.value.length, start + v.value.length); }, 0);
-                        } else {
-                          updateNodeData(selectedNode.id, { config: { ...data.config, message_template: current + v.value } });
-                        }
-                      }}
-                      className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-[10px] font-medium text-green-700 hover:bg-green-100 hover:border-green-300 transition-colors"
-                    >
-                      {v.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Sending Behavior */}
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wide">Sending Behavior</label>
-                <div className="flex flex-wrap gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name={`whatsapp_send_mode_${selectedNode.id}`}
-                      checked={(data.config as { send_mode?: string }).send_mode !== "delay" && (data.config as { send_mode?: string }).send_mode !== "recurring"}
-                      onChange={() => updateNodeData(selectedNode.id, { config: { ...data.config, send_mode: "immediate" } })}
-                      className="h-4 w-4 text-green-600 border-slate-300"
-                    />
-                    <span className="text-sm text-slate-700">Send immediately</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name={`whatsapp_send_mode_${selectedNode.id}`}
-                      checked={(data.config as { send_mode?: string }).send_mode === "delay"}
-                      onChange={() => updateNodeData(selectedNode.id, { config: { ...data.config, send_mode: "delay" } })}
-                      className="h-4 w-4 text-green-600 border-slate-300"
-                    />
-                    <span className="text-sm text-slate-700">Delay</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name={`whatsapp_send_mode_${selectedNode.id}`}
-                      checked={(data.config as { send_mode?: string }).send_mode === "recurring"}
-                      onChange={() => updateNodeData(selectedNode.id, { config: { ...data.config, send_mode: "recurring" } })}
-                      className="h-4 w-4 text-green-600 border-slate-300"
-                    />
-                    <span className="text-sm text-slate-700">Recurring</span>
-                  </label>
-                </div>
-
-                {(data.config as { send_mode?: string }).send_mode === "delay" && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-slate-600">Wait</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={(data.config as { delay_hours?: number }).delay_hours || 24}
-                      onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, delay_hours: parseInt(e.target.value) || 24 } })}
-                      className="w-20 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
-                    />
-                    <span className="text-slate-600">hours after trigger</span>
-                  </div>
-                )}
-
-                {(data.config as { send_mode?: string }).send_mode === "recurring" && (
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="text-slate-600">Every</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={(data.config as { recurring_days?: number }).recurring_days || 1}
-                      onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, recurring_days: parseInt(e.target.value) || 1 } })}
-                      className="w-16 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
-                    />
-                    <span className="text-slate-600">days,</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="30"
-                      value={(data.config as { recurring_times?: number }).recurring_times || 3}
-                      onChange={(e) => updateNodeData(selectedNode.id, { config: { ...data.config, recurring_times: Math.min(parseInt(e.target.value) || 3, 30) } })}
-                      className="w-16 rounded border border-slate-200 px-2 py-1 text-sm text-slate-900"
-                    />
-                    <span className="text-slate-600">times (max 30)</span>
-                  </div>
-                )}
-              </div>
-            </>
+            <WhatsAppNodeConfig
+              nodeId={selectedNode.id}
+              config={data.config}
+              onUpdate={(newConfig) => updateNodeData(selectedNode.id, { config: newConfig })}
+            />
           )}
 
           {data.actionType === "send_notification" && (
