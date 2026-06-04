@@ -971,12 +971,18 @@ function WorkflowEnrollmentsModal({
     switch (action) {
       case "send_email":
         return "📧";
+      case "send_whatsapp":
+        return "💬";
       case "create_task":
         return "📋";
       case "send_notification":
         return "🔔";
       case "update_deal":
         return "📈";
+      case "trigger_retell_call":
+        return "📞";
+      case "delay":
+        return "⏰";
       default:
         return "⚡";
     }
