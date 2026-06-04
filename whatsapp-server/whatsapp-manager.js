@@ -357,7 +357,9 @@ async function disconnectWhatsApp(userId) {
   console.log(`Disconnecting WhatsApp for user: ${userId}`);
   
   try {
-    await client.logout();
+    // Use destroy() NOT logout() — logout() deletes the LocalAuth session files from
+    // disk which forces a full QR re-scan on next connect. destroy() just closes
+    // the browser while keeping the saved session intact.
     await client.destroy();
     clients.delete(userId);
     

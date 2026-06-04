@@ -256,6 +256,25 @@ server.listen(PORT, () => {
 ╚════════════════════════════════════════════════════════╝
   `);
 
+  // Diagnose volume mounts so we can tell from logs whether persistence is working
+  const waSessionPath = process.env.WA_SESSION_PATH || path.join(__dirname, 'whatsapp-sessions');
+  const dbPath = process.env.DB_PATH || path.join(__dirname, 'sessions.db');
+  try {
+    const waStats = fs.statSync(waSessionPath);
+    const sessionFiles = fs.readdirSync(waSessionPath);
+    console.log(`[Volume] WA_SESSION_PATH: ${waSessionPath} (exists, ${sessionFiles.length} session(s) found)`);
+    sessionFiles.forEach(f => console.log(`[Volume]   - ${f}`));
+  } catch {
+    console.warn(`[Volume] WA_SESSION_PATH: ${waSessionPath} — MISSING (sessions will NOT persist across restarts!)`);
+    console.warn(`[Volume]   Make sure your Railway volume is mounted at: ${path.dirname(waSessionPath)}`);
+  }
+  try {
+    fs.statSync(dbPath);
+    console.log(`[Volume] DB_PATH: ${dbPath} (exists — SQLite state will persist)`);
+  } catch {
+    console.warn(`[Volume] DB_PATH: ${dbPath} — will be created fresh (no prior session state)`);
+  }
+
   // Start queue processor after server is listening
   startQueueProcessor();
 
