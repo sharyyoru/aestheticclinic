@@ -865,7 +865,14 @@ function WorkflowEnrollmentsModal({
       setLoading(true);
       setError(null);
 
-      // Load enrollments with patient and deal/service data
+      // First get total count
+      const { count: totalCount } = await supabaseClient
+        .from("workflow_enrollments")
+        .select("id", { count: "exact", head: true })
+        .eq("workflow_id", workflowId);
+
+      // Load enrollments with patient and deal/service data - LIMITED to 100 per page max
+      const PAGE_SIZE = 100;
       const { data, error: fetchError } = await supabaseClient
         .from("workflow_enrollments")
         .select(`
@@ -879,7 +886,8 @@ function WorkflowEnrollmentsModal({
           deal:deals(id, title, service_id, service:services(id, name))
         `)
         .eq("workflow_id", workflowId)
-        .order("enrolled_at", { ascending: false });
+        .order("enrolled_at", { ascending: false })
+        .range(0, PAGE_SIZE - 1);
 
       if (fetchError) throw fetchError;
 
@@ -888,7 +896,7 @@ function WorkflowEnrollmentsModal({
         return;
       }
 
-      // Batch load all steps for all enrollments in ONE query
+      // Batch load steps only for the fetched enrollments (max 100)
       const enrollmentIds = data.map((e) => e.id);
       const { data: allSteps } = await supabaseClient
         .from("workflow_enrollment_steps")
