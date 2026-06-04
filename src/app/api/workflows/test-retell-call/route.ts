@@ -163,7 +163,7 @@ export async function GET() {
   let agentInfo = null;
   if (RETELL_API_KEY) {
     try {
-      const agentResponse = await fetch(`https://api.retellai.com/v2/get-agent/${RETELL_AGENTS.english}`, {
+      const agentResponse = await fetch(`https://api.retellai.com/get-agent/${RETELL_AGENTS.english}`, {
         headers: {
           "Authorization": `Bearer ${RETELL_API_KEY}`,
         },
