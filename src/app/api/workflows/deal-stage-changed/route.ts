@@ -11,7 +11,8 @@ const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
   : "https://aestheticclinic.vercel.app/api/retell/webhook";
 
 // Sales team users for round-robin assignment
-const SALES_TEAM_NAMES = ["Charline", "Elite", "Audrey", "Bubuque", "Victoria"];
+// Victoria removed on 2026-06-05
+const SALES_TEAM_NAMES = ["Charline", "Elite", "Audrey", "Bubuque"];
 
 const mailgunApiKey = process.env.MAILGUN_API_KEY;
 const mailgunDomain = process.env.MAILGUN_DOMAIN;

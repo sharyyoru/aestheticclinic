@@ -832,27 +832,33 @@ export default function AgentsPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {log.dynamic_variables ? (
-                            <div className="text-xs text-slate-600 max-w-[200px]">
-                              {(log.dynamic_variables as Record<string, unknown>).patient_id ? (
-                                <div><span className="text-slate-400">patient_id:</span> {String((log.dynamic_variables as Record<string, unknown>).patient_id).slice(0, 8)}...</div>
-                              ) : null}
-                              {(log.dynamic_variables as Record<string, unknown>).first_name ? (
-                                <div><span className="text-slate-400">name:</span> {String((log.dynamic_variables as Record<string, unknown>).first_name)}</div>
-                              ) : null}
-                              {!(log.dynamic_variables as Record<string, unknown>).patient_id && !(log.dynamic_variables as Record<string, unknown>).first_name && (
-                                <span className="text-amber-600 flex items-center gap-1">
-                                  <AlertCircle className="h-3 w-3" />
-                                  No patient data
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-amber-600 flex items-center gap-1">
-                              <AlertCircle className="h-3 w-3" />
-                              None
-                            </span>
-                          )}
+                          {(() => {
+                            const dynVars = (log.dynamic_variables || {}) as Record<string, unknown>;
+                            const meta = (log.metadata || {}) as Record<string, unknown>;
+                            const patientId = log.patient_id || dynVars.patient_id || meta.patient_id;
+                            const patientName = dynVars.user_name || dynVars.first_name || meta.patient_name;
+                            
+                            if (patientId || patientName) {
+                              return (
+                                <div className="text-xs text-slate-600 max-w-[200px]">
+                                  {patientName && (
+                                    <div><span className="text-slate-400">name:</span> {String(patientName)}</div>
+                                  )}
+                                  {patientId && (
+                                    <a href={`/patients/${patientId}`} className="text-violet-600 hover:underline">
+                                      <span className="text-slate-400">id:</span> {String(patientId).slice(0, 8)}...
+                                    </a>
+                                  )}
+                                </div>
+                              );
+                            }
+                            return (
+                              <span className="text-xs text-amber-600 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                No patient data
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3">
                           {log.args ? (

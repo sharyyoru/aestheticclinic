@@ -7,7 +7,8 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 // Sales team users who should be assigned tasks for new leads (round-robin)
-const SALES_TEAM_NAMES = ["Charline", "Elite", "Audrey", "Bubuque", "Victoria"];
+// Victoria removed on 2026-06-05
+const SALES_TEAM_NAMES = ["Charline", "Elite", "Audrey", "Bubuque"];
 
 export async function POST(request: Request) {
   try {
