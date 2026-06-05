@@ -841,12 +841,16 @@ export default function AgentsPage() {
                             if (patientId || patientName) {
                               return (
                                 <div className="text-xs text-slate-600 max-w-[200px]">
-                                  {patientName && (
-                                    <div><span className="text-slate-400">name:</span> {patientName}</div>
-                                  )}
-                                  {patientId && (
+                                  {patientName && patientId ? (
                                     <a href={`/patients/${patientId}`} className="text-violet-600 hover:underline">
-                                      <span className="text-slate-400">id:</span> {patientId.slice(0, 8)}...
+                                      <span className="text-slate-400">name:</span> {patientName}
+                                    </a>
+                                  ) : patientName ? (
+                                    <div><span className="text-slate-400">name:</span> {patientName}</div>
+                                  ) : null}
+                                  {patientId && !patientName && (
+                                    <a href={`/patients/${patientId}`} className="text-violet-600 hover:underline">
+                                      {patientId.slice(0, 8)}...
                                     </a>
                                   )}
                                 </div>
