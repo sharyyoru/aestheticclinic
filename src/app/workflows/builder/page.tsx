@@ -442,7 +442,9 @@ type ConditionNodeData = {
 type DelayNodeData = {
   delayType: "minutes" | "hours" | "days" | "until_time";
   delayValue: number;
-  delayTime?: string;
+  delayTime?: string; // HH:mm format for until_time
+  delayDays?: number; // Days offset for until_time (0 = same day, 1 = next day, etc.)
+  timezone?: string;  // Timezone for until_time (default: Europe/Zurich)
 };
 
 type DealStage = {
@@ -870,7 +872,12 @@ export default function WorkflowBuilderPage() {
       icon = "⏰";
       title = "Delay";
       const data = node.data as DelayNodeData;
-      description = `Wait ${data.delayValue} ${data.delayType}`;
+      if (data.delayType === "until_time") {
+        const dayLabel = data.delayDays === 0 ? "same day" : data.delayDays === 1 ? "next day" : `${data.delayDays} days later`;
+        description = `Until ${data.delayTime || "20:00"} ${dayLabel}`;
+      } else {
+        description = `Wait ${data.delayValue} ${data.delayType}`;
+      }
     }
 
     return (
@@ -1548,22 +1555,70 @@ export default function WorkflowBuilderPage() {
               <option value="minutes">Minutes</option>
               <option value="hours">Hours</option>
               <option value="days">Days</option>
+              <option value="until_time">Until Specific Time</option>
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Wait for</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="1"
-                value={data.delayValue}
-                onChange={(e) => updateNodeData(selectedNode.id, { delayValue: parseInt(e.target.value) || 1 })}
-                className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-              />
-              <span className="text-sm text-slate-600">{data.delayType}</span>
+          {data.delayType !== "until_time" ? (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Wait for</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={data.delayValue}
+                  onChange={(e) => updateNodeData(selectedNode.id, { delayValue: parseInt(e.target.value) || 1 })}
+                  className="w-24 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                />
+                <span className="text-sm text-slate-600">{data.delayType}</span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Day</label>
+                <select
+                  value={data.delayDays ?? 1}
+                  onChange={(e) => updateNodeData(selectedNode.id, { delayDays: parseInt(e.target.value) })}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value={0}>Same day</option>
+                  <option value={1}>Next day (+1)</option>
+                  <option value={2}>In 2 days</option>
+                  <option value={3}>In 3 days</option>
+                  <option value={7}>In 1 week</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Time (Swiss timezone)</label>
+                <select
+                  value={data.delayTime || "20:00"}
+                  onChange={(e) => updateNodeData(selectedNode.id, { delayTime: e.target.value, timezone: "Europe/Zurich" })}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                >
+                  <option value="08:00">08:00 (8 AM)</option>
+                  <option value="09:00">09:00 (9 AM)</option>
+                  <option value="10:00">10:00 (10 AM)</option>
+                  <option value="11:00">11:00 (11 AM)</option>
+                  <option value="12:00">12:00 (12 PM)</option>
+                  <option value="13:00">13:00 (1 PM)</option>
+                  <option value="14:00">14:00 (2 PM)</option>
+                  <option value="15:00">15:00 (3 PM)</option>
+                  <option value="16:00">16:00 (4 PM)</option>
+                  <option value="17:00">17:00 (5 PM)</option>
+                  <option value="18:00">18:00 (6 PM)</option>
+                  <option value="19:00">19:00 (7 PM)</option>
+                  <option value="20:00">20:00 (8 PM)</option>
+                  <option value="21:00">21:00 (9 PM)</option>
+                </select>
+              </div>
+
+              <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
+                <strong>Example:</strong> If a lead is created at 2pm on Monday and you select "Next day" + "20:00", the next action will trigger at 8pm Tuesday (Swiss time).
+              </div>
+            </>
+          )}
         </div>
       );
     }

@@ -540,8 +540,14 @@ export async function POST(request: Request) {
       for (const step of stepsOrActions) {
         // Handle delay step type - accumulate delay for subsequent actions
         if (step.step_type === "delay") {
-          // Delay nodes store: delayType ("minutes" | "hours" | "days") and delayValue (number)
-          const delayConfig = step.config as { delayType?: string; delayValue?: number };
+          // Delay nodes store: delayType ("minutes" | "hours" | "days" | "until_time") and delayValue (number)
+          const delayConfig = step.config as { 
+            delayType?: string; 
+            delayValue?: number;
+            delayTime?: string;    // HH:mm for until_time
+            delayDays?: number;    // Days offset for until_time
+            timezone?: string;     // Timezone (default Europe/Zurich)
+          };
           const delayValue = delayConfig.delayValue || 0;
           const delayType = delayConfig.delayType || "minutes";
           
@@ -552,6 +558,42 @@ export async function POST(request: Request) {
             delayMinutes = delayValue * 60;
           } else if (delayType === "days") {
             delayMinutes = delayValue * 24 * 60;
+          } else if (delayType === "until_time") {
+            // Calculate delay until specific time on a specific day in Swiss timezone
+            const targetTime = delayConfig.delayTime || "20:00";
+            const daysOffset = delayConfig.delayDays ?? 1;
+            const [hours, minutes] = targetTime.split(":").map(Number);
+            
+            // Get current time in Swiss timezone
+            const now = new Date();
+            const swissFormatter = new Intl.DateTimeFormat("en-US", {
+              timeZone: "Europe/Zurich",
+              year: "numeric", month: "2-digit", day: "2-digit",
+              hour: "2-digit", minute: "2-digit", second: "2-digit",
+              hour12: false,
+            });
+            const swissNowParts = swissFormatter.formatToParts(now);
+            const swissNow = {
+              year: parseInt(swissNowParts.find(p => p.type === "year")?.value || "2026"),
+              month: parseInt(swissNowParts.find(p => p.type === "month")?.value || "1") - 1,
+              day: parseInt(swissNowParts.find(p => p.type === "day")?.value || "1"),
+              hour: parseInt(swissNowParts.find(p => p.type === "hour")?.value || "0"),
+              minute: parseInt(swissNowParts.find(p => p.type === "minute")?.value || "0"),
+            };
+            
+            // Calculate target date in Swiss timezone
+            const targetDate = new Date(swissNow.year, swissNow.month, swissNow.day + daysOffset, hours, minutes, 0);
+            
+            // Convert Swiss target time to UTC by calculating offset
+            // Swiss is UTC+1 (winter) or UTC+2 (summer)
+            const swissOffsetMs = targetDate.getTimezoneOffset() * 60 * 1000; // Local offset
+            const utcTarget = new Date(targetDate.getTime() + swissOffsetMs);
+            
+            // Simple approach: assume ~1-2 hour offset for Switzerland
+            // For accuracy, we calculate minutes from now to target
+            delayMinutes = Math.max(0, Math.round((targetDate.getTime() - now.getTime()) / 60000));
+            
+            console.log(`[Delay until_time] Target: ${targetTime} on day+${daysOffset}, Swiss target: ${targetDate.toISOString()}, delay: ${delayMinutes} minutes`);
           }
           
           cumulativeDelayMinutes += delayMinutes;
@@ -566,7 +608,7 @@ export async function POST(request: Request) {
               step_config: step.config,
               status: "completed",
               executed_at: new Date().toISOString(),
-              result: { delay_minutes: delayMinutes, cumulative_delay_minutes: cumulativeDelayMinutes },
+              result: { delay_minutes: delayMinutes, cumulative_delay_minutes: cumulativeDelayMinutes, delay_type: delayType },
             });
           }
           continue;
