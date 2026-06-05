@@ -873,7 +873,8 @@ export default function WorkflowBuilderPage() {
       title = "Delay";
       const data = node.data as DelayNodeData;
       if (data.delayType === "until_time") {
-        const dayLabel = data.delayDays === 0 ? "same day" : data.delayDays === 1 ? "next day" : `${data.delayDays} days later`;
+        const days = data.delayDays ?? 1;
+        const dayLabel = days === 0 ? "same day" : days === 1 ? "next day" : `${days} days later`;
         description = `Until ${data.delayTime || "20:00"} ${dayLabel}`;
       } else {
         description = `Wait ${data.delayValue} ${data.delayType}`;
