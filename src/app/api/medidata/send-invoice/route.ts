@@ -317,6 +317,32 @@ export async function POST(request: NextRequest) {
       // Include all line items (TMA gesture codes are kept as reference lines with amount=0)
       const billableLineItems = dbLineItems;
 
+      // ── TARDOC tax-point backfill ─────────────────────────────────────────
+      // Some TARDOC line items were stored with tp_al=0/tp_tl=0 (the columns
+      // were not populated when the line item was created). Sumex requires the
+      // raw AL/TL tax-point counts (tp_mt/tp_tt) — it rejects dUnitMT = 0 or
+      // the CHF total.  Look up missing values from tardoc_group_items.
+      const tardocCodesNeedingLookup = billableLineItems
+        .filter((it: any) => it.tariff_code === 7 && (!(it.tp_al > 0) || !(it.tp_tl > 0)))
+        .map((it: any) => it.code as string)
+        .filter(Boolean);
+
+      const tardocCatalogMap: Record<string, { tp_mt: number; tp_tt: number }> = {};
+      if (tardocCodesNeedingLookup.length > 0) {
+        const uniqueCodes = [...new Set(tardocCodesNeedingLookup)];
+        const { data: catalogRows } = await supabaseAdmin
+          .from("tardoc_group_items")
+          .select("tardoc_code, tp_mt, tp_tt")
+          .in("tardoc_code", uniqueCodes);
+        for (const row of (catalogRows ?? [])) {
+          if (row.tardoc_code && !tardocCatalogMap[row.tardoc_code]) {
+            tardocCatalogMap[row.tardoc_code] = { tp_mt: row.tp_mt ?? 0, tp_tt: row.tp_tt ?? 0 };
+          }
+        }
+        console.log(`[SendInvoice] TARDOC catalog backfill: looked up ${uniqueCodes.length} codes, found ${Object.keys(tardocCatalogMap).length}:`, tardocCatalogMap);
+      }
+      // ── end backfill ──────────────────────────────────────────────────────
+
       // Map actual line items to InvoiceServiceLine for XML generation
       services = billableLineItems.map((item: any, idx: number) => {
         // Resolve tariff_type honoring `catalog_name` first so TMA gestures
@@ -327,6 +353,12 @@ export async function POST(request: NextRequest) {
         // ACF (005) with ignoreValidate=Yes: use sessionNumber=1 (simple tariff default per docs)
         const rawSession = item.session_number ?? 1;
         const sessionNumber = isAcf ? 1 : rawSession;
+
+        // For TARDOC, prefer stored tp_al/tp_tl; fall back to catalog tp_mt/tp_tt
+        const catalog = item.tariff_code === 7 ? tardocCatalogMap[item.code] : undefined;
+        const resolvedTpAl = (item.tp_al > 0) ? item.tp_al : (catalog?.tp_mt ?? 0);
+        const resolvedTpTl = (item.tp_tl > 0) ? item.tp_tl : (catalog?.tp_tt ?? 0);
+
         return {
           code: item.code || "",
           tariffType,
@@ -342,9 +374,9 @@ export async function POST(request: NextRequest) {
           sideType: item.tariff_code === 5 ? (item.side_type ?? 0) : undefined,
           sessionNumber,
           refCode: item.ref_code || undefined,
-          // Tax point fields for TARDOC
-          tpAl: item.tp_al,
-          tpTl: item.tp_tl,
+          // Tax point fields for TARDOC — use catalog-backfilled values if stored as 0
+          tpAl: resolvedTpAl,
+          tpTl: resolvedTpTl,
           tpAlValue: item.tp_al_value,
           tpTlValue: item.tp_tl_value,
         };
