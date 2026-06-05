@@ -835,18 +835,18 @@ export default function AgentsPage() {
                           {(() => {
                             const dynVars = (log.dynamic_variables || {}) as Record<string, unknown>;
                             const meta = (log.metadata || {}) as Record<string, unknown>;
-                            const patientId = log.patient_id || dynVars.patient_id || meta.patient_id;
-                            const patientName = dynVars.user_name || dynVars.first_name || meta.patient_name;
+                            const patientId = String(log.patient_id || dynVars.patient_id || meta.patient_id || "");
+                            const patientName = String(dynVars.user_name || dynVars.first_name || meta.patient_name || "");
                             
                             if (patientId || patientName) {
                               return (
                                 <div className="text-xs text-slate-600 max-w-[200px]">
                                   {patientName && (
-                                    <div><span className="text-slate-400">name:</span> {String(patientName)}</div>
+                                    <div><span className="text-slate-400">name:</span> {patientName}</div>
                                   )}
                                   {patientId && (
                                     <a href={`/patients/${patientId}`} className="text-violet-600 hover:underline">
-                                      <span className="text-slate-400">id:</span> {String(patientId).slice(0, 8)}...
+                                      <span className="text-slate-400">id:</span> {patientId.slice(0, 8)}...
                                     </a>
                                   )}
                                 </div>
