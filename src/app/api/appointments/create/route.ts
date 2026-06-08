@@ -367,10 +367,22 @@ export async function POST(request: Request) {
     // Send confirmation emails in parallel (non-blocking for faster response)
     const confirmationEmailPromises: Promise<void>[] = [];
 
-    // Send confirmation email to patient
+    // Send confirmation email to patient (with deduplication check)
     if (sendPatientEmail && patientEmail) {
       confirmationEmailPromises.push((async () => {
         try {
+          // Check if confirmation already sent
+          const { data: appointmentCheck } = await supabase
+            .from("appointments")
+            .select("confirmation_email_sent")
+            .eq("id", appointmentId)
+            .single();
+          
+          if (appointmentCheck?.confirmation_email_sent === true) {
+            console.log("⚠️ Confirmation email already sent for appointment", appointmentId, "- skipping");
+            return;
+          }
+          
           const patientEmailHtml = generatePatientEmailHtml(
             patientName,
             appointmentDateObj,
@@ -382,6 +394,13 @@ export async function POST(request: Request) {
             `Appointment Confirmed - ${formatAppointmentDate(appointmentDateObj)}`,
             patientEmailHtml
           );
+          
+          // Mark as sent to prevent duplicates
+          await supabase
+            .from("appointments")
+            .update({ confirmation_email_sent: true })
+            .eq("id", appointmentId);
+          
           console.log("Patient confirmation email sent to:", patientEmail);
         } catch (err) {
           console.error("Error sending patient email:", err);

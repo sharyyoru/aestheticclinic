@@ -595,31 +595,51 @@ export async function POST(request: Request) {
       }
     }
 
-    // Send confirmation email to patient
+    // Send confirmation email to patient (with deduplication check)
     console.log("Attempting to send confirmation emails...");
     console.log("Mailgun configured:", !!mailgunApiKey && !!mailgunDomain);
     console.log("Patient email:", email);
     console.log("Doctor email:", doctorEmail);
     
-    // Format doctor name with "Dr." title for all patient-facing emails
-    const formattedDoctorName = formatDoctorNameWithTitle(doctorName);
+    // Check if confirmation email was already sent for this appointment
+    const { data: appointmentCheck } = await supabase
+      .from("appointments")
+      .select("confirmation_email_sent")
+      .eq("id", appointment.id)
+      .single();
     
-    try {
-      const patientEmailHtml = generatePatientConfirmationEmail(
-        patientName,
-        formattedDoctorName,
-        appointmentDateObj,
-        service,
-        location || null
-      );
-      await sendEmail(
-        email,
-        `Appointment Confirmed - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
-        patientEmailHtml
-      );
-      console.log("✓ Patient confirmation email sent successfully to:", email);
-    } catch (err) {
-      console.error("✗ Error sending patient email:", err);
+    const alreadySent = appointmentCheck?.confirmation_email_sent === true;
+    
+    if (alreadySent) {
+      console.log("⚠️ Confirmation email already sent for this appointment, skipping");
+    } else {
+      // Format doctor name with "Dr." title for all patient-facing emails
+      const formattedDoctorName = formatDoctorNameWithTitle(doctorName);
+      
+      try {
+        const patientEmailHtml = generatePatientConfirmationEmail(
+          patientName,
+          formattedDoctorName,
+          appointmentDateObj,
+          service,
+          location || null
+        );
+        await sendEmail(
+          email,
+          `Appointment Confirmed - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
+          patientEmailHtml
+        );
+        
+        // Mark confirmation as sent to prevent duplicates
+        await supabase
+          .from("appointments")
+          .update({ confirmation_email_sent: true })
+          .eq("id", appointment.id);
+        
+        console.log("✓ Patient confirmation email sent successfully to:", email);
+      } catch (err) {
+        console.error("✗ Error sending patient email:", err);
+      }
     }
 
     // Send notification email to doctor (use original name for internal email)
