@@ -9,6 +9,7 @@ import {
   mapLawType as mapSumexLaw,
   mapTiersMode as mapSumexTiers,
   mapSex as mapSumexSex,
+  TiersMode,
   RoleType,
   PlaceType,
   RequestType,
@@ -320,6 +321,10 @@ export async function POST(request: NextRequest) {
         paymentRemark = `Acompte reçu / Anzahlung erhalten: ${paidAmt.toFixed(2)} CHF — Solde / Restbetrag: ${remaining.toFixed(2)} CHF`;
       }
 
+      const tiersMode1 = mapSumexTiers(invoiceData.billing_type || "TG");
+      // amountPrepaid is only allowed in Tiers Garant (TG) — error [926] if sent for TP/TS
+      const amountPrepaid1 = tiersMode1 === TiersMode.Garant ? paidAmt : 0;
+
       const sumexInput: SumexInvoiceInput = {
         language: 2,
         roleType: RoleType.Physician,
@@ -327,9 +332,9 @@ export async function POST(request: NextRequest) {
         requestType: RequestType.Invoice,
         requestSubtype: RequestSubtype.Normal,
         remark: paymentRemark || undefined,
-        tiersMode: mapSumexTiers(invoiceData.billing_type || "TG"),
+        tiersMode: tiersMode1,
         vatNumber: "",
-        amountPrepaid: paidAmt,
+        amountPrepaid: amountPrepaid1,
         invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
         invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         lawType: mapSumexLaw(invoiceData.health_insurance_law || "KVG"),
@@ -637,6 +642,10 @@ export async function POST(request: NextRequest) {
         paymentRemark2 = `Acompte reçu / Anzahlung erhalten: ${paidAmt2.toFixed(2)} CHF — Solde / Restbetrag: ${remaining2.toFixed(2)} CHF`;
       }
 
+      const tiersMode2 = mapSumexTiers("TG");
+      // amountPrepaid only allowed in TG — keep consistent even though this path is always TG
+      const amountPrepaid2 = tiersMode2 === TiersMode.Garant ? paidAmt2 : 0;
+
       const sumexInput2: SumexInvoiceInput = {
         language: 2,
         roleType: RoleType.Physician,
@@ -644,9 +653,9 @@ export async function POST(request: NextRequest) {
         requestType: RequestType.Invoice,
         requestSubtype: RequestSubtype.Normal,
         remark: paymentRemark2 || undefined,
-        tiersMode: mapSumexTiers("TG"),
+        tiersMode: tiersMode2,
         vatNumber: "",
-        amountPrepaid: paidAmt2,
+        amountPrepaid: amountPrepaid2,
         invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
         invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         lawType: mapSumexLaw(invoiceData.health_insurance_law || "VVG"),
