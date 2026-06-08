@@ -294,8 +294,7 @@ export default function InvoicesPage() {
         const latest = latestInsByInvoice[r.id];
         const st = latest?.status?.toLowerCase();
         const invoicePaid = (Number(r.paid_amount) || 0) > 0;
-        const isInsuranceInvoice = !!r.billing_type && ["TP","TG"].includes(r.billing_type.toUpperCase())
-          || (r.payment_method ?? "").toLowerCase() === "insurance";
+        const isInsuranceInvoice = (r.payment_method ?? "").toLowerCase() === "insurance";
         const isNotSubmitted = !latest && isInsuranceInvoice;
         const isRejectedUnpaid = st === "rejected" && !invoicePaid;
         switch (insuranceFilter) {
@@ -344,6 +343,7 @@ export default function InvoicesPage() {
     let total = 0, paid = 0, unpaid = 0, count = 0;
     for (const r of filtered) {
       if (r.is_complimentary) continue;
+      if (r.status === "CANCELLED") continue;
       const amt = Number(r.total_amount) || 0;
       if (amt <= 0) continue;
       count++;

@@ -505,13 +505,13 @@ export default function FinancialsPage() {
         if (dateTo && p.payment_date > dateTo) continue;
         totalPaid += p.amount;
       }
-      // totalAmount = sum of invoice amounts for filtered invoices
+      // totalAmount = sum of invoice amounts for filtered invoices (excluding cancelled)
       for (const row of filteredInvoices) {
+        if (row.status === "CANCELLED") continue;
         const amount = serviceFilters.size > 0 ? getServiceSpecificAmount(row.id) : row.amount;
         if (!Number.isFinite(amount) || amount <= 0) continue;
         invoiceCount += 1;
         if (row.is_complimentary) { totalComplimentary += amount; continue; }
-        if (row.status === "CANCELLED") continue;
         totalAmount += amount;
       }
       totalUnpaid = totalAmount - totalPaid;
@@ -525,6 +525,9 @@ export default function FinancialsPage() {
         : row.amount;
       if (!Number.isFinite(amount) || amount <= 0) continue;
 
+      // Cancelled invoices are excluded from all totals (billed, paid, outstanding)
+      if (row.status === "CANCELLED") continue;
+
       invoiceCount += 1;
 
       if (row.is_complimentary) {
@@ -536,10 +539,6 @@ export default function FinancialsPage() {
 
       // Calculate paid amount based on actual paid_amount field, not just status
       // This ensures payments are counted even if status hasn't been updated
-      if (row.status === "CANCELLED") {
-        // Cancelled - don't count in paid or unpaid
-        continue;
-      }
       
       if (row.isPaid) {
         // PAID or OVERPAID - full amount is paid

@@ -223,6 +223,10 @@ async function buildPayload(): Promise<string> {
       entry = { serviceName: key, invoiceCount: 0, quantity: 0,
                 totalRevenue: 0, paidRevenue: 0, invoiceIds: new Set() };
     }
+    // Skip cancelled invoices — they should not appear in billed or paid revenue
+    const invStatus = invoiceStatusById.get(invId) ?? "";
+    if (invStatus === "CANCELLED") continue;
+
     if (!entry.invoiceIds.has(invId)) {
       entry.invoiceIds.add(invId);
       entry.invoiceCount += 1;
@@ -230,7 +234,7 @@ async function buildPayload(): Promise<string> {
     entry.quantity += Number(item.quantity) || 1;
     const lineTotal = Number(item.total_price) || 0;
     entry.totalRevenue += lineTotal;
-    if (["PAID", "OVERPAID"].includes(invoiceStatusById.get(invId) ?? "")) {
+    if (["PAID", "OVERPAID"].includes(invStatus)) {
       entry.paidRevenue += lineTotal;
     }
     serviceMap.set(key, entry);
