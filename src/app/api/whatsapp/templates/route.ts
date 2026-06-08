@@ -33,3 +33,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
   }
 }
+
+// DELETE /api/whatsapp/templates?id=<uuid>
+// Deletes a template from the local DB only (does not touch Twilio).
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "Missing id parameter" }, { status: 400 });
+    }
+
+    const { error } = await supabaseAdmin
+      .from("whatsapp_templates")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error("Failed to delete whatsapp_template:", error);
+      return NextResponse.json({ error: "Failed to delete template" }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("Unexpected error in DELETE /api/whatsapp/templates:", err);
+    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+  }
+}
