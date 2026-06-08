@@ -359,19 +359,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send confirmation email if email provided (with deduplication check)
+    // Send confirmation email if email provided
     if (patient.email) {
-      // Check if confirmation already sent
-      const { data: appointmentCheck } = await supabase
-        .from("appointments")
-        .select("confirmation_email_sent")
-        .eq("id", apt.id)
-        .single();
-      
-      if (appointmentCheck?.confirmation_email_sent === true) {
-        console.log("[Retell Book] ⚠️ Confirmation email already sent for appointment", apt.id, "- skipping");
-      } else {
-        const emailHtml = `
+      const emailHtml = `
 <!DOCTYPE html>
 <html>
 <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -433,20 +423,11 @@ export async function POST(request: NextRequest) {
 </body>
 </html>`;
 
-        await sendEmail(
-          patient.email,
-          `✓ Appointment Confirmed - ${formatSwissDateWithWeekday(appointmentDate)} at ${locationInfo.name}`,
-          emailHtml
-        );
-        
-        // Mark as sent to prevent duplicates
-        await supabase
-          .from("appointments")
-          .update({ confirmation_email_sent: true })
-          .eq("id", apt.id);
-        
-        console.log("[Retell Book] ✓ Confirmation email sent to:", patient.email);
-      }
+      await sendEmail(
+        patient.email,
+        `✓ Appointment Confirmed - ${formatSwissDateWithWeekday(appointmentDate)} at ${locationInfo.name}`,
+        emailHtml
+      );
     }
 
     // Return success with booking details
