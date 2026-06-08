@@ -2705,6 +2705,36 @@ export default function CalendarPage() {
     const startIso = startLocal.toISOString();
     const endIso = endLocal.toISOString();
 
+    // For surgeries/operations, show confirmation with readable date
+    const isOperation = appointmentCategory?.toLowerCase().includes("chirurgie") 
+      || appointmentCategory?.toLowerCase().includes("operation")
+      || appointmentCategory?.toLowerCase().includes("surgery")
+      || draftTitle?.toLowerCase().includes("relevé")
+      || draftTitle?.toLowerCase().includes("operation");
+    
+    if (isOperation) {
+      const formattedDate = startLocal.toLocaleDateString("fr-CH", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+        timeZone: SWISS_TIMEZONE,
+      });
+      const formattedTime = startLocal.toLocaleTimeString("fr-CH", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: SWISS_TIMEZONE,
+      });
+      
+      const confirmed = window.confirm(
+        `Confirm operation date:\n\n${formattedDate} à ${formattedTime}\n\nIs this date correct?`
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+    }
+
     try {
       setSavingCreate(true);
 

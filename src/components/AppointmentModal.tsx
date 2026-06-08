@@ -162,6 +162,34 @@ export default function AppointmentModal({
 
     const appointmentDateObj = new Date(appointmentDate);
 
+    // Validate date is not invalid
+    if (Number.isNaN(appointmentDateObj.getTime())) {
+      setError("Invalid date format. Please select a valid date and time.");
+      return;
+    }
+
+    // For operations, show a confirmation with the date in readable format
+    if (appointmentType === "operation") {
+      const formattedDate = appointmentDateObj.toLocaleDateString("fr-CH", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      const formattedTime = appointmentDateObj.toLocaleTimeString("fr-CH", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      
+      const confirmed = window.confirm(
+        `Confirm operation date:\n\n${formattedDate} at ${formattedTime}\n\nPatient: ${patientName}\n\nIs this date correct?`
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+    }
+
     // Internal users can book on weekends and past dates - no restrictions
     // External users (via magic link) have restrictions handled in the public API
 
