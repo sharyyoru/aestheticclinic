@@ -52,6 +52,7 @@ type ProviderData = {
   iban: string | null;
   salutation: string | null;
   title: string | null;
+  qual_dignities: string[] | null;
 };
 
 export async function POST(request: NextRequest) {
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
     if (invoiceData.provider_id) {
       const { data: providerRow } = await supabaseAdmin
         .from("providers")
-        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, role")
+        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, role, qual_dignities")
         .eq("id", invoiceData.provider_id)
         .single();
       if (providerRow) billingEntityData = providerRow as ProviderData;
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
     if (invoiceData.doctor_user_id) {
       const { data: staffRow } = await supabaseAdmin
         .from("providers")
-        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, role")
+        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, iban, salutation, title, role, qual_dignities")
         .eq("id", invoiceData.doctor_user_id)
         .single();
       if (staffRow) staffData = staffRow as ProviderData;
@@ -402,6 +403,12 @@ export async function POST(request: NextRequest) {
         transportFrom: provGln,
         transportTo: receiverGln || insurerGln || "",
         printCopyToGuarantor: (invoiceData.billing_type === 'TP' || invoiceData.copy_to_guarantor) ? YesNo.Yes : YesNo.No,
+        qualDignities:
+          (staffData?.qual_dignities && staffData.qual_dignities.length > 0)
+            ? staffData.qual_dignities
+            : (billingEntityData?.qual_dignities && billingEntityData.qual_dignities.length > 0)
+              ? billingEntityData.qual_dignities
+              : undefined,
       };
 
       // Generate XML + PDF via Sumex1 server
@@ -713,6 +720,12 @@ export async function POST(request: NextRequest) {
         treatmentDateBegin: treatmentDate,
         treatmentDateEnd: treatmentDate,
         services: sumexServices2,
+        qualDignities:
+          (staffData?.qual_dignities && staffData.qual_dignities.length > 0)
+            ? staffData.qual_dignities
+            : (billingEntityData?.qual_dignities && billingEntityData.qual_dignities.length > 0)
+              ? billingEntityData.qual_dignities
+              : undefined,
       };
 
       try {
