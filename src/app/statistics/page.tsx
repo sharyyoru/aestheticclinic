@@ -7,6 +7,7 @@ import SentInvoicesTab from "./tabs/SentInvoicesTab";
 import PaidInvoicesTab from "./tabs/PaidInvoicesTab";
 import InvoicedServicesTab from "./tabs/InvoicedServicesTab";
 import PaidServicesTab from "./tabs/PaidServicesTab";
+import FirstConsultationsTab from "./tabs/FirstConsultationsTab";
 
 type TabKey =
   | "debiteurs"
@@ -14,6 +15,7 @@ type TabKey =
   | "paid_invoices"
   | "invoiced_services"
   | "paid_services"
+  | "first_consultations"
   | "services_apercu"
   | "non_invoiced"
   | "cash_collection"
@@ -49,6 +51,11 @@ const TABS: {
     key: "paid_services",
     label: "Paid Services",
     description: "Service lines paid in a period",
+  },
+  {
+    key: "first_consultations",
+    label: "1ères Consultations",
+    description: "Patients who had their first consultation — export to Excel",
   },
   {
     key: "services_apercu",
@@ -97,6 +104,11 @@ function startOfYear(): string {
 }
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+function sixMonthsAgo(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 6);
+  return d.toISOString().slice(0, 10);
 }
 
 export default function StatisticsPage() {
@@ -162,7 +174,14 @@ export default function StatisticsPage() {
               key={t.key}
               type="button"
               disabled={locked}
-              onClick={() => !locked && setActiveTab(t.key)}
+              onClick={() => {
+                if (locked) return;
+                setActiveTab(t.key);
+                // Auto-set last 6 months when opening the first consultations tab
+                if (t.key === "first_consultations") {
+                  setFilters((f) => ({ ...f, from: sixMonthsAgo(), to: today() }));
+                }
+              }}
               className={
                 "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors " +
                 (locked
@@ -226,6 +245,9 @@ export default function StatisticsPage() {
         )}
         {activeTab === "paid_services" && (
           <PaidServicesTab filters={filters} entities={entities} doctors={doctors} />
+        )}
+        {activeTab === "first_consultations" && (
+          <FirstConsultationsTab filters={filters} entities={entities} doctors={doctors} />
         )}
       </div>
     </div>
