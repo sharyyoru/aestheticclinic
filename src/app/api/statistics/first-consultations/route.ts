@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing 'from' or 'to'" }, { status: 400 });
     }
 
-    // Build query — match appointments titled "1ère Consultation" (case-insensitive)
+    // Match "1ère Consultation" (French) and "First Consultation" (English)
     let q = supabaseAdmin
       .from("appointments")
       .select(
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
          provider_id, providers!appointments_provider_id_fkey(id, name),
          patient_id, patients!appointments_patient_id_fkey(id, first_name, last_name, email, phone, dob)`
       )
-      .ilike("title", "%1ère%")
+      .or("title.ilike.%1ère%,title.ilike.%1ere%,title.ilike.%First Consultation%")
       .gte("start_time", `${from}T00:00:00+00:00`)
       .lte("start_time", `${to}T23:59:59+00:00`)
       .not("patient_id", "is", null)
