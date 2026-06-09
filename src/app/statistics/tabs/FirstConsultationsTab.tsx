@@ -9,9 +9,9 @@ type SubView = "by_doctor" | "by_month" | "detail";
 type Row = {
   appointment_id: string;
   date: string;
-  status: string;
-  doctor_id: string | null;
-  doctor_name: string | null;
+  real_status: string;
+  doctor_name: string;
+  description: string;
   patient_id: string;
   patient_first_name: string | null;
   patient_last_name: string | null;
@@ -175,6 +175,14 @@ function GroupTable({ rows, groupLabel }: { rows: Group[]; groupLabel: string })
 }
 
 function DetailTable({ rows }: { rows: Row[] }) {
+  const statusColor = (s: string) => {
+    const sl = s.toLowerCase();
+    if (sl === "fait" || sl === "done" || sl === "completed") return "bg-emerald-100 text-emerald-700";
+    if (sl.includes("annul") || sl.includes("cancel")) return "bg-red-100 text-red-600";
+    if (sl.includes("venu") || sl.includes("no show")) return "bg-orange-100 text-orange-700";
+    return "bg-slate-100 text-slate-600";
+  };
+
   return (
     <table className="min-w-full divide-y divide-slate-200 text-xs">
       <thead className="bg-slate-50">
@@ -187,12 +195,13 @@ function DetailTable({ rows }: { rows: Row[] }) {
           <Th>Date naissance</Th>
           <Th>Email</Th>
           <Th>Téléphone</Th>
+          <Th>Description</Th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 bg-white">
         {rows.length === 0 && (
           <tr>
-            <td colSpan={8} className="px-3 py-6 text-center text-slate-400">
+            <td colSpan={9} className="px-3 py-6 text-center text-slate-400">
               Aucune 1ère consultation pour les filtres sélectionnés.
             </td>
           </tr>
@@ -201,19 +210,8 @@ function DetailTable({ rows }: { rows: Row[] }) {
           <tr key={r.appointment_id} className="hover:bg-slate-50">
             <Td>{r.date}</Td>
             <Td>
-              <span
-                className={
-                  "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold " +
-                  (r.status === "scheduled"
-                    ? "bg-sky-100 text-sky-700"
-                    : r.status === "completed"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : r.status === "cancelled"
-                    ? "bg-red-100 text-red-600"
-                    : "bg-slate-100 text-slate-600")
-                }
-              >
-                {r.status}
+              <span className={"inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold " + statusColor(r.real_status)}>
+                {r.real_status}
               </span>
             </Td>
             <Td>{r.doctor_name || "—"}</Td>
@@ -222,6 +220,7 @@ function DetailTable({ rows }: { rows: Row[] }) {
             <Td>{r.patient_dob ? r.patient_dob.slice(0, 10) : "—"}</Td>
             <Td>{r.patient_email || "—"}</Td>
             <Td>{r.patient_phone || "—"}</Td>
+            <Td className="max-w-[200px] truncate text-slate-500">{r.description || "—"}</Td>
           </tr>
         ))}
       </tbody>
