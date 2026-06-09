@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { formatSwissYmd } from "@/lib/swissTimezone";
 import {
   buildStatisticsWorkbook,
   fmtDate,
@@ -9,11 +10,28 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/** Parse "[Doctor: Xavier Tenorio]" → "Xavier Tenorio" */
-function parseReasonField(reason: string | null, field: string): string {
+const SWISS_TZ = "Europe/Zurich";
+
+function parseField(reason: string | null, field: string): string {
   if (!reason) return "";
+  if (field === "Description") {
+    const m = reason.match(/\[Description:\s*([\s\S]*?)\]\s*$/);
+    return m ? m[1].trim() : "";
+  }
   const m = reason.match(new RegExp(`\\[${field}:\\s*([^\\]]+)\\]`));
   return m ? m[1].trim() : "";
+}
+
+function swissDateToUtcRange(dateStr: string): { start: string; end: string } {
+  const probe = new Date(`${dateStr}T12:00:00Z`);
+  const swissNoon = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SWISS_TZ, hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(probe);
+  const offsetHours = parseInt(swissNoon.split(":")[0], 10) - 12;
+  const startUtc = new Date(`${dateStr}T00:00:00Z`);
+  startUtc.setUTCHours(startUtc.getUTCHours() - offsetHours);
+  const endUtc = new Date(startUtc.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return { start: startUtc.toISOString(), end: endUtc.toISOString() };
 }
 
 export async function GET(req: NextRequest) {
@@ -27,8 +45,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing 'from' or 'to'" }, { status: 400 });
     }
 
-    // Category is stored in the reason column as "[Category: 1ère consultation]"
-    // provider_id is always null for migrated appointments — doctor name is in reason text
+    const fromUtc = swissDateToUtcRange(from).start;
+    const toUtc = swissDateToUtcRange(to).end;
+
     const { data, error } = await supabaseAdmin
       .from("appointments")
       .select(
@@ -36,8 +55,8 @@ export async function GET(req: NextRequest) {
          patient_id, patients!appointments_patient_id_fkey(id, first_name, last_name, email, phone, dob)`
       )
       .ilike("reason", "%[Category: 1ère consultation]%")
-      .gte("start_time", `${from}T00:00:00+00:00`)
-      .lte("start_time", `${to}T23:59:59+00:00`)
+      .gte("start_time", fromUtc)
+      .lte("start_time", toUtc)
       .not("patient_id", "is", null)
       .order("start_time", { ascending: true });
 
@@ -46,13 +65,14 @@ export async function GET(req: NextRequest) {
     const rows = (data || [])
       .map((a: any) => {
         const reason = a.reason as string | null;
-        const doctorName = parseReasonField(reason, "Doctor");
-        const realStatus = parseReasonField(reason, "Status") || "—";
-        const description = parseReasonField(reason, "Description");
+        const doctorName = parseField(reason, "Doctor");
+        const realStatus = parseField(reason, "Status");
+        const description = parseField(reason, "Description");
+        const swissDate = formatSwissYmd(a.start_time as string);
         return {
           appointment_id: a.id as string,
-          date: (a.start_time as string).slice(0, 10),
-          real_status: realStatus,
+          date: swissDate,
+          real_status: realStatus || "",
           doctor_name: doctorName || "Unknown",
           description,
           patient_id: a.patient_id as string,
@@ -79,7 +99,7 @@ export async function GET(req: NextRequest) {
     ];
 
     const dataRows: ExcelCell[][] = rows.map((r) => [
-      fmtDate(r.date),
+      r.date, // already YYYY-MM-DD in Swiss time
       r.real_status,
       r.doctor_name,
       r.patient_id,

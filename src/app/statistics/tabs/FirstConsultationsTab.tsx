@@ -177,9 +177,12 @@ function GroupTable({ rows, groupLabel }: { rows: Group[]; groupLabel: string })
 function DetailTable({ rows }: { rows: Row[] }) {
   const statusColor = (s: string) => {
     const sl = s.toLowerCase();
-    if (sl === "fait" || sl === "done" || sl === "completed") return "bg-emerald-100 text-emerald-700";
-    if (sl.includes("annul") || sl.includes("cancel")) return "bg-red-100 text-red-600";
-    if (sl.includes("venu") || sl.includes("no show")) return "bg-orange-100 text-orange-700";
+    if (sl === "fait") return "bg-emerald-100 text-emerald-700";
+    if (sl.includes("annul")) return "bg-red-100 text-red-600";
+    if (sl.includes("venu")) return "bg-orange-100 text-orange-700"; // N'est pas venu
+    if (sl.includes("déplacé") || sl.includes("deplace")) return "bg-yellow-100 text-yellow-700";
+    if (sl.includes("attente") || sl.includes("retard")) return "bg-sky-100 text-sky-700";
+    if (sl === "") return "bg-slate-100 text-slate-400";
     return "bg-slate-100 text-slate-600";
   };
 
@@ -211,7 +214,7 @@ function DetailTable({ rows }: { rows: Row[] }) {
             <Td>{r.date}</Td>
             <Td>
               <span className={"inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold " + statusColor(r.real_status)}>
-                {r.real_status}
+                {r.real_status || "—"}
               </span>
             </Td>
             <Td>{r.doctor_name || "—"}</Td>
