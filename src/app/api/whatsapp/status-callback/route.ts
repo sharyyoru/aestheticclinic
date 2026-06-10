@@ -35,8 +35,26 @@ export async function POST(request: NextRequest) {
     }
 
     if (messagStatus === "failed" || messagStatus === "undelivered") {
-      const parts = [errorCode, errorMessage].filter(Boolean);
-      updates.error_message = parts.length > 0 ? parts.join(": ") : "Delivery failed";
+      if (errorCode) {
+        updates.error_code = errorCode;
+      }
+      if (errorMessage) {
+        updates.error_message = errorMessage;
+      } else if (errorCode) {
+        // Map common Twilio error codes to human-readable messages
+        const errorMessages: Record<string, string> = {
+          "21610": "Recipient has opted out of receiving messages",
+          "21614": "Invalid WhatsApp number format",
+          "21408": "Permission denied - user hasn't messaged in 24 hours",
+          "63016": "Template not approved for WhatsApp",
+          "63003": "Outside the allowed messaging window",
+          "63001": "Phone number not registered on WhatsApp",
+          "63007": "Rate limit exceeded",
+        };
+        updates.error_message = errorMessages[errorCode] || `Error code: ${errorCode}`;
+      } else {
+        updates.error_message = "Delivery failed - unknown reason";
+      }
     }
 
     const { error } = await supabaseAdmin

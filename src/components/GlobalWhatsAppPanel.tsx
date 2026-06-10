@@ -125,6 +125,20 @@ export default function GlobalWhatsAppPanel({ open, onClose, onStatusChange }: G
 
   // Sent messages tab state
   const [loadingSent, setLoadingSent]             = useState(false);
+  const [sentMessages, setSentMessages]           = useState<{
+    id: string;
+    patient_id: string | null;
+    to_number: string;
+    body: string;
+    status: string;
+    sent_at: string | null;
+    created_at: string;
+    delivered_at: string | null;
+    read_at: string | null;
+    error_message: string | null;
+    is_template: boolean;
+    patient: { id: string; first_name: string | null; last_name: string | null } | null;
+  }[]>([]);
 
   const messagesEndRef   = useRef<HTMLDivElement>(null);
   const pollIntervalRef  = useRef<NodeJS.Timeout | null>(null);
@@ -157,8 +171,16 @@ export default function GlobalWhatsAppPanel({ open, onClose, onStatusChange }: G
   // ── Load sent messages tab ──────────────────────────────────────────────────
   const loadSentMessages = useCallback(async () => {
     setLoadingSent(true);
-    // Conversations list is already loaded; sent messages are surfaced per-conversation
-    setLoadingSent(false);
+    try {
+      const res = await fetch("/api/whatsapp/sent-messages?limit=100");
+      if (!res.ok) throw new Error("Failed to load sent messages");
+      const data = await res.json();
+      setSentMessages(data.messages ?? []);
+    } catch (err) {
+      console.error("Error loading sent messages:", err);
+    } finally {
+      setLoadingSent(false);
+    }
   }, []);
 
   // ── Open / close lifecycle ──────────────────────────────────────────────────
@@ -172,6 +194,13 @@ export default function GlobalWhatsAppPanel({ open, onClose, onStatusChange }: G
       if (msgPollRef.current) clearInterval(msgPollRef.current);
     };
   }, [open, loadConversations]);
+
+  // ── Load sent messages when tab changes ──────────────────────────────────────
+  useEffect(() => {
+    if (open && activeTab === "sent") {
+      void loadSentMessages();
+    }
+  }, [open, activeTab, loadSentMessages]);
 
   // ── Filter conversations by search ─────────────────────────────────────────
   useEffect(() => {
@@ -458,16 +487,85 @@ export default function GlobalWhatsAppPanel({ open, onClose, onStatusChange }: G
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-5 w-5 animate-spin text-green-600" />
               </div>
-            ) : (
+            ) : sentMessages.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-slate-400">
                 <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                 </svg>
-                <p className="text-sm font-medium text-slate-600">Sent Messages</p>
+                <p className="text-sm font-medium text-slate-600">No Sent Messages</p>
                 <p className="text-xs text-center text-slate-400 max-w-[220px]">
-                  Outbound messages sent from workflows appear as conversations once the patient replies.
-                  All sent messages are visible inside each patient&apos;s conversation above.
+                  WhatsApp messages sent via workflows will appear here with their delivery status.
                 </p>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                {sentMessages.map((msg) => {
+                  const patientName = msg.patient
+                    ? `${msg.patient.first_name || ""} ${msg.patient.last_name || ""}`.trim() || "Unknown"
+                    : msg.to_number;
+                  
+                  const statusColors: Record<string, string> = {
+                    sent: "bg-blue-100 text-blue-700",
+                    queued: "bg-slate-100 text-slate-600",
+                    delivered: "bg-green-100 text-green-700",
+                    read: "bg-emerald-100 text-emerald-700",
+                    failed: "bg-red-100 text-red-700",
+                    undelivered: "bg-orange-100 text-orange-700",
+                  };
+                  
+                  const statusLabels: Record<string, string> = {
+                    sent: "Sent",
+                    queued: "Queued",
+                    delivered: "Delivered",
+                    read: "Read",
+                    failed: "Failed",
+                    undelivered: "Undelivered",
+                  };
+                  
+                  return (
+                    <div key={msg.id} className="px-4 py-3 hover:bg-slate-50">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-slate-900 truncate">{patientName}</span>
+                            {msg.is_template && (
+                              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[9px] font-medium rounded">
+                                Template
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 truncate mt-0.5">{msg.to_number}</p>
+                          <p className="text-xs text-slate-600 mt-1 line-clamp-2">{msg.body}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColors[msg.status] || "bg-slate-100 text-slate-600"}`}>
+                            {statusLabels[msg.status] || msg.status}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {formatChatTime(msg.sent_at || msg.created_at)}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Error message for failed/undelivered */}
+                      {msg.error_message && (
+                        <div className="mt-2 px-2 py-1.5 bg-red-50 border border-red-100 rounded text-[10px] text-red-700">
+                          <span className="font-medium">Error:</span> {msg.error_message}
+                        </div>
+                      )}
+                      {/* Delivery info */}
+                      {(msg.delivered_at || msg.read_at) && (
+                        <div className="mt-1.5 flex gap-3 text-[10px] text-slate-400">
+                          {msg.delivered_at && (
+                            <span>✓ Delivered {formatChatTime(msg.delivered_at)}</span>
+                          )}
+                          {msg.read_at && (
+                            <span>✓✓ Read {formatChatTime(msg.read_at)}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

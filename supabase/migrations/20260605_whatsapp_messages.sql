@@ -11,7 +11,12 @@ ALTER TABLE whatsapp_messages
   ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS read_by UUID REFERENCES users(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS metadata JSONB;
+  ADD COLUMN IF NOT EXISTS metadata JSONB,
+  ADD COLUMN IF NOT EXISTS error_message TEXT,
+  ADD COLUMN IF NOT EXISTS error_code TEXT,
+  ADD COLUMN IF NOT EXISTS template_id UUID,
+  ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS message_sid TEXT;
 
 -- Add indexes
 CREATE INDEX IF NOT EXISTS idx_wa_messages_direction ON whatsapp_messages(direction);
