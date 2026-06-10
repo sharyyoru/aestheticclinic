@@ -113,6 +113,35 @@ const LIPOSUCTION_AREAS = ["Tummy", "Flancs", "Back", "Arms", "Thighs", "Legs", 
 const FACE_PRIORITY_AREAS = ["Wrinkles", "Eyebags", "Nasolabial Fold", "Jaw Line", "Neck"];
 const BREAST_PROCEDURE_TYPES = ["Breast Augmentation", "Breast Reduction", "Breast Lift", "Breast Reconstruction", "Breast Exchange"];
 
+// Additional form options
+const FACE_EFFECTS = [
+  "Looking less saggy", "Less angry", "Less tired", "More attractive", 
+  "More feminine", "Masculine", "More young"
+];
+const FACE_BUDGET_OPTIONS = ["$ 500", "$ 1,000", "$ 2,000", "$ 2,000 +"];
+const BREAST_SURGERY_TYPES = [
+  "Augmentation", "Reduction", "Lift", "Benign Tumor Removal", 
+  "Malignant Tumor Removal", "Reconstruction", "Malformation", "Other"
+];
+const AUGMENTATION_OPTIONS = ["Implant", "Fat Transplantation", "I don't know"];
+const CUP_SIZES = ["SIZE A", "SIZE B", "SIZE C", "SIZE D", "SIZE E", "SIZE F", "SIZE G"];
+const AREA_MEASUREMENTS: Record<string, string[]> = {
+  "Tummy": ["Upper Tummy", "Lower Tummy"],
+  "Flancs": ["Left Lumbar Area", "Right Lumbar Area"],
+  "Back": ["Upper Back", "Lower Back"],
+  "Arms": ["Left Arm", "Right Arm"],
+  "Thighs": ["Left Thigh", "Right Thigh"],
+  "Legs": ["Left Leg", "Right Leg"],
+  "Breast": ["Left Breast", "Right Breast"],
+  "Chin": ["Chin Area"],
+  "Other": ["Other Area"]
+};
+const CONSULTATION_TYPES = [
+  { id: "liposuction", label: "Liposuction / Body", icon: "🏃", color: "rose" },
+  { id: "face", label: "Face", icon: "👤", color: "sky" },
+  { id: "breast", label: "Breast", icon: "💜", color: "purple" },
+];
+
 const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
   fr: "French",
@@ -195,6 +224,34 @@ export default function PatientIntakeDataCard({
   const [editInsurance, setEditInsurance] = useState<PatientInsurance | null>(null);
   const [editHealthBackground, setEditHealthBackground] = useState<HealthBackground | null>(null);
   const [editTreatmentAreas, setEditTreatmentAreas] = useState<{liposuction: string[], face: string[], breast: string[]}>({ liposuction: [], face: [], breast: [] });
+  const [activeConsultationType, setActiveConsultationType] = useState<string | null>(null);
+  
+  // Liposuction form state
+  const [lipoMeasurements, setLipoMeasurements] = useState<Record<string, string>>({});
+  
+  // Face form state
+  const [faceHadTreatments, setFaceHadTreatments] = useState<"yes" | "no" | null>(null);
+  const [faceTreatmentKind, setFaceTreatmentKind] = useState("");
+  const [faceTreatmentWhen, setFaceTreatmentWhen] = useState("");
+  const [faceEffects, setFaceEffects] = useState<string[]>([]);
+  const [faceBudget, setFaceBudget] = useState("");
+  
+  // Breast form state
+  const [breastHadSurgery, setBreastHadSurgery] = useState<"yes" | "no" | null>(null);
+  const [breastSurgeryTypes, setBreastSurgeryTypes] = useState<string[]>([]);
+  const [breastHadBreastfeed, setBreastHadBreastfeed] = useState<"yes" | "no" | null>(null);
+  const [breastfeedHowLong, setBreastfeedHowLong] = useState("");
+  const [breastHadConditions, setBreastHadConditions] = useState<"yes" | "no" | null>(null);
+  const [breastConditionsDetails, setBreastConditionsDetails] = useState("");
+  const [breastHadUltrasound, setBreastHadUltrasound] = useState<"yes" | "no" | null>(null);
+  const [breastUltrasoundHowLong, setBreastUltrasoundHowLong] = useState("");
+  const [breastUltrasoundWhy, setBreastUltrasoundWhy] = useState("");
+  const [breastHadPreviousConsult, setBreastHadPreviousConsult] = useState<"yes" | "no" | null>(null);
+  const [breastAugmentationOption, setBreastAugmentationOption] = useState("");
+  const [breastDesiredCupSize, setBreastDesiredCupSize] = useState("");
+  const [breastReductionComments, setBreastReductionComments] = useState("");
+  const [breastLiftComments, setBreastLiftComments] = useState("");
+  const [breastMeasurements, setBreastMeasurements] = useState<Record<string, string>>({});
 
   const loadIntakeData = useCallback(async () => {
     setLoading(true);
@@ -510,13 +567,14 @@ export default function PatientIntakeDataCard({
   const saveTreatmentAreas = async (data: {liposuction: string[], face: string[], breast: string[]}) => {
     setSaving(true);
     try {
-      // Save liposuction areas if any
-      if (data.liposuction.length > 0) {
+      // Save liposuction data if any areas selected
+      if (data.liposuction.length > 0 || Object.keys(lipoMeasurements).length > 0) {
         const existingLipo = consultationData.find(c => c.consultation_type === "liposuction");
         const lipoData = {
           patient_id: patientId,
           consultation_type: "liposuction",
           selected_areas: data.liposuction,
+          measurements: lipoMeasurements,
           upload_mode: "later",
         };
         if (existingLipo) {
@@ -526,40 +584,65 @@ export default function PatientIntakeDataCard({
         }
       }
 
-      // Save face areas if any
-      if (data.face.length > 0) {
+      // Save face data if any areas or effects selected
+      if (data.face.length > 0 || faceEffects.length > 0 || faceHadTreatments || faceBudget) {
         const existingFace = consultationData.find(c => c.consultation_type === "face");
-        const faceData = {
+        const faceDataPayload = {
           patient_id: patientId,
           consultation_type: "face",
-          face_data: { priority_areas: data.face, effects: [] },
+          face_data: { 
+            priority_areas: data.face, 
+            effects: faceEffects,
+            had_treatments: faceHadTreatments,
+            treatment_kind: faceTreatmentKind,
+            treatment_when: faceTreatmentWhen,
+            budget: faceBudget,
+          },
           upload_mode: "later",
         };
         if (existingFace) {
-          await supabaseClient.from("patient_consultation_data").update(faceData).eq("id", existingFace.id);
+          await supabaseClient.from("patient_consultation_data").update(faceDataPayload).eq("id", existingFace.id);
         } else {
-          await supabaseClient.from("patient_consultation_data").insert(faceData);
+          await supabaseClient.from("patient_consultation_data").insert(faceDataPayload);
         }
       }
 
-      // Save breast procedures if any
-      if (data.breast.length > 0) {
+      // Save breast data if any procedures selected
+      if (data.breast.length > 0 || breastHadSurgery || breastSurgeryTypes.length > 0) {
         const existingBreast = consultationData.find(c => c.consultation_type === "breast");
-        const breastData = {
+        const breastDataPayload = {
           patient_id: patientId,
           consultation_type: "breast",
-          breast_data: { procedure_types: data.breast },
+          breast_data: { 
+            procedure_types: data.breast,
+            had_surgery: breastHadSurgery,
+            surgery_types: breastSurgeryTypes,
+            had_breastfeed: breastHadBreastfeed,
+            breastfeed_how_long: breastfeedHowLong,
+            had_conditions: breastHadConditions,
+            conditions_details: breastConditionsDetails,
+            had_ultrasound: breastHadUltrasound,
+            ultrasound_how_long: breastUltrasoundHowLong,
+            ultrasound_why: breastUltrasoundWhy,
+            had_previous_consultation: breastHadPreviousConsult,
+            augmentation_option: breastAugmentationOption,
+            desired_cup_size: breastDesiredCupSize,
+            reduction_comments: breastReductionComments,
+            lift_comments: breastLiftComments,
+          },
+          measurements: breastMeasurements,
           upload_mode: "later",
         };
         if (existingBreast) {
-          await supabaseClient.from("patient_consultation_data").update(breastData).eq("id", existingBreast.id);
+          await supabaseClient.from("patient_consultation_data").update(breastDataPayload).eq("id", existingBreast.id);
         } else {
-          await supabaseClient.from("patient_consultation_data").insert(breastData);
+          await supabaseClient.from("patient_consultation_data").insert(breastDataPayload);
         }
       }
 
       await loadIntakeData();
       setEditingSection(null);
+      setActiveConsultationType(null);
     } catch (err) {
       console.error("Failed to save treatment areas:", err);
       alert(`Failed to save treatment areas: ${err instanceof Error ? err.message : String(err)}`);
@@ -757,98 +840,384 @@ export default function PatientIntakeDataCard({
               const lipoData = consultationData.find(c => c.consultation_type === "liposuction");
               const faceData = consultationData.find(c => c.consultation_type === "face");
               const breastData = consultationData.find(c => c.consultation_type === "breast");
+              
+              // Set treatment areas
               setEditTreatmentAreas({
                 liposuction: lipoData?.selected_areas || [],
                 face: ((faceData?.face_data as Record<string, unknown>)?.priority_areas as string[]) || [],
                 breast: ((breastData?.breast_data as Record<string, unknown>)?.procedure_types as string[]) || [],
               });
+              
+              // Initialize liposuction measurements
+              if (lipoData?.measurements) {
+                setLipoMeasurements(lipoData.measurements as Record<string, string>);
+              }
+              
+              // Initialize face form fields
+              if (faceData?.face_data) {
+                const fd = faceData.face_data as Record<string, unknown>;
+                setFaceHadTreatments((fd.had_treatments as "yes" | "no") || null);
+                setFaceTreatmentKind((fd.treatment_kind as string) || "");
+                setFaceTreatmentWhen((fd.treatment_when as string) || "");
+                setFaceEffects((fd.effects as string[]) || []);
+                setFaceBudget((fd.budget as string) || "");
+              }
+              
+              // Initialize breast form fields
+              if (breastData?.breast_data) {
+                const bd = breastData.breast_data as Record<string, unknown>;
+                setBreastHadSurgery((bd.had_surgery as "yes" | "no") || null);
+                setBreastSurgeryTypes((bd.surgery_types as string[]) || []);
+                setBreastHadBreastfeed((bd.had_breastfeed as "yes" | "no") || null);
+                setBreastfeedHowLong((bd.breastfeed_how_long as string) || "");
+                setBreastHadConditions((bd.had_conditions as "yes" | "no") || null);
+                setBreastConditionsDetails((bd.conditions_details as string) || "");
+                setBreastHadUltrasound((bd.had_ultrasound as "yes" | "no") || null);
+                setBreastUltrasoundHowLong((bd.ultrasound_how_long as string) || "");
+                setBreastUltrasoundWhy((bd.ultrasound_why as string) || "");
+                setBreastHadPreviousConsult((bd.had_previous_consultation as "yes" | "no") || null);
+                setBreastAugmentationOption((bd.augmentation_option as string) || "");
+                setBreastDesiredCupSize((bd.desired_cup_size as string) || "");
+                setBreastReductionComments((bd.reduction_comments as string) || "");
+                setBreastLiftComments((bd.lift_comments as string) || "");
+              }
+              if (breastData?.measurements) {
+                setBreastMeasurements(breastData.measurements as Record<string, string>);
+              }
+              
               setEditingSection("treatment_areas");
             }} />
           </div>
           
           {editingSection === "treatment_areas" ? (
             <div className="space-y-4">
-              {/* Liposuction Areas */}
+              {/* Consultation Type Selector */}
               <div>
-                <label className="text-xs font-medium text-slate-600 mb-2 block">Body Areas (Liposuction)</label>
+                <label className="text-xs font-medium text-slate-600 mb-2 block">Select Consultation Type</label>
                 <div className="flex flex-wrap gap-2">
-                  {LIPOSUCTION_AREAS.map((area) => (
+                  {CONSULTATION_TYPES.map((type) => (
                     <button
-                      key={area}
+                      key={type.id}
                       type="button"
-                      onClick={() => setEditTreatmentAreas(prev => ({
-                        ...prev,
-                        liposuction: prev.liposuction.includes(area) 
-                          ? prev.liposuction.filter(a => a !== area)
-                          : [...prev.liposuction, area]
-                      }))}
-                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
-                        editTreatmentAreas.liposuction.includes(area)
-                          ? "bg-rose-500 text-white border-rose-500"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-rose-300"
+                      onClick={() => setActiveConsultationType(activeConsultationType === type.id ? null : type.id)}
+                      className={`px-4 py-2 text-sm rounded-lg border-2 transition-all flex items-center gap-2 ${
+                        activeConsultationType === type.id
+                          ? type.color === "rose" ? "bg-rose-500 text-white border-rose-500"
+                          : type.color === "sky" ? "bg-sky-500 text-white border-sky-500"
+                          : "bg-purple-500 text-white border-purple-500"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
                       }`}
                     >
-                      {area}
+                      <span>{type.icon}</span>
+                      <span>{type.label}</span>
+                      {((type.id === "liposuction" && editTreatmentAreas.liposuction.length > 0) ||
+                        (type.id === "face" && editTreatmentAreas.face.length > 0) ||
+                        (type.id === "breast" && editTreatmentAreas.breast.length > 0)) && (
+                        <span className="w-2 h-2 bg-emerald-400 rounded-full"></span>
+                      )}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Face Areas */}
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-2 block">Face Priority Areas</label>
-                <div className="flex flex-wrap gap-2">
-                  {FACE_PRIORITY_AREAS.map((area) => (
-                    <button
-                      key={area}
-                      type="button"
-                      onClick={() => setEditTreatmentAreas(prev => ({
-                        ...prev,
-                        face: prev.face.includes(area) 
-                          ? prev.face.filter(a => a !== area)
-                          : [...prev.face, area]
-                      }))}
-                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
-                        editTreatmentAreas.face.includes(area)
-                          ? "bg-sky-500 text-white border-sky-500"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-sky-300"
-                      }`}
-                    >
-                      {area}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* LIPOSUCTION FORM */}
+              {activeConsultationType === "liposuction" && (
+                <div className="border-l-4 border-rose-400 pl-4 space-y-4 bg-rose-50/30 py-3 rounded-r-lg">
+                  <h5 className="font-medium text-slate-800 flex items-center gap-2">🏃 Liposuction / Body Consultation</h5>
+                  
+                  {/* Area Selection */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 mb-2 block">Select Treatment Areas</label>
+                    <div className="flex flex-wrap gap-2">
+                      {LIPOSUCTION_AREAS.map((area) => (
+                        <button
+                          key={area}
+                          type="button"
+                          onClick={() => setEditTreatmentAreas(prev => ({
+                            ...prev,
+                            liposuction: prev.liposuction.includes(area) 
+                              ? prev.liposuction.filter(a => a !== area)
+                              : [...prev.liposuction, area]
+                          }))}
+                          className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                            editTreatmentAreas.liposuction.includes(area)
+                              ? "bg-rose-500 text-white border-rose-500"
+                              : "bg-white text-slate-600 border-slate-200 hover:border-rose-300"
+                          }`}
+                        >
+                          {area}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Breast Procedures */}
-              <div>
-                <label className="text-xs font-medium text-slate-600 mb-2 block">Breast Procedures</label>
-                <div className="flex flex-wrap gap-2">
-                  {BREAST_PROCEDURE_TYPES.map((proc) => (
-                    <button
-                      key={proc}
-                      type="button"
-                      onClick={() => setEditTreatmentAreas(prev => ({
-                        ...prev,
-                        breast: prev.breast.includes(proc) 
-                          ? prev.breast.filter(p => p !== proc)
-                          : [...prev.breast, proc]
-                      }))}
-                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
-                        editTreatmentAreas.breast.includes(proc)
-                          ? "bg-purple-500 text-white border-purple-500"
-                          : "bg-white text-slate-600 border-slate-200 hover:border-purple-300"
-                      }`}
-                    >
-                      {proc}
-                    </button>
-                  ))}
+                  {/* Measurements based on selected areas */}
+                  {editTreatmentAreas.liposuction.length > 0 && (
+                    <div>
+                      <label className="text-xs font-medium text-slate-600 mb-2 block">Measurements (cm)</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {editTreatmentAreas.liposuction.flatMap(area => 
+                          (AREA_MEASUREMENTS[area] || []).map(field => (
+                            <div key={field}>
+                              <label className="text-xs text-slate-500">{field}</label>
+                              <input
+                                type="number"
+                                value={lipoMeasurements[field] || ""}
+                                onChange={(e) => setLipoMeasurements(prev => ({...prev, [field]: e.target.value}))}
+                                className="w-full mt-1 px-2 py-1.5 border border-slate-300 rounded text-sm text-black"
+                                placeholder="cm"
+                              />
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {/* FACE FORM */}
+              {activeConsultationType === "face" && (
+                <div className="border-l-4 border-sky-400 pl-4 space-y-4 bg-sky-50/30 py-3 rounded-r-lg">
+                  <h5 className="font-medium text-slate-800 flex items-center gap-2">👤 Face Consultation</h5>
+                  
+                  {/* Previous Treatments */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 mb-2 block">Have you had facial treatments before?</label>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setFaceHadTreatments("yes")} className={`px-4 py-1.5 text-xs rounded-lg border ${faceHadTreatments === "yes" ? "bg-sky-500 text-white border-sky-500" : "bg-white border-slate-200"}`}>Yes</button>
+                      <button type="button" onClick={() => setFaceHadTreatments("no")} className={`px-4 py-1.5 text-xs rounded-lg border ${faceHadTreatments === "no" ? "bg-sky-500 text-white border-sky-500" : "bg-white border-slate-200"}`}>No</button>
+                    </div>
+                  </div>
+
+                  {faceHadTreatments === "yes" && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-slate-500">What kind of treatment?</label>
+                        <input type="text" value={faceTreatmentKind} onChange={(e) => setFaceTreatmentKind(e.target.value)} className="w-full mt-1 px-2 py-1.5 border border-slate-300 rounded text-sm text-black" placeholder="e.g., Botox, Filler" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500">When?</label>
+                        <input type="text" value={faceTreatmentWhen} onChange={(e) => setFaceTreatmentWhen(e.target.value)} className="w-full mt-1 px-2 py-1.5 border border-slate-300 rounded text-sm text-black" placeholder="e.g., 6 months ago" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Desired Effects */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 mb-2 block">Desired Effects</label>
+                    <div className="flex flex-wrap gap-2">
+                      {FACE_EFFECTS.map((effect) => (
+                        <button
+                          key={effect}
+                          type="button"
+                          onClick={() => setFaceEffects(prev => prev.includes(effect) ? prev.filter(e => e !== effect) : [...prev, effect])}
+                          className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                            faceEffects.includes(effect) ? "bg-sky-500 text-white border-sky-500" : "bg-white text-slate-600 border-slate-200 hover:border-sky-300"
+                          }`}
+                        >
+                          {effect}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Priority Areas */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 mb-2 block">Priority Areas</label>
+                    <div className="flex flex-wrap gap-2">
+                      {FACE_PRIORITY_AREAS.map((area) => (
+                        <button
+                          key={area}
+                          type="button"
+                          onClick={() => setEditTreatmentAreas(prev => ({
+                            ...prev,
+                            face: prev.face.includes(area) ? prev.face.filter(a => a !== area) : [...prev.face, area]
+                          }))}
+                          className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                            editTreatmentAreas.face.includes(area) ? "bg-sky-500 text-white border-sky-500" : "bg-white text-slate-600 border-slate-200 hover:border-sky-300"
+                          }`}
+                        >
+                          {area}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Budget */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 mb-2 block">Budget Range</label>
+                    <div className="flex flex-wrap gap-2">
+                      {FACE_BUDGET_OPTIONS.map((budget) => (
+                        <button
+                          key={budget}
+                          type="button"
+                          onClick={() => setFaceBudget(budget)}
+                          className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                            faceBudget === budget ? "bg-sky-500 text-white border-sky-500" : "bg-white text-slate-600 border-slate-200 hover:border-sky-300"
+                          }`}
+                        >
+                          {budget}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* BREAST FORM */}
+              {activeConsultationType === "breast" && (
+                <div className="border-l-4 border-purple-400 pl-4 space-y-4 bg-purple-50/30 py-3 rounded-r-lg">
+                  <h5 className="font-medium text-slate-800 flex items-center gap-2">💜 Breast Consultation</h5>
+                  
+                  {/* Procedure Types */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-600 mb-2 block">Procedure Type(s)</label>
+                    <div className="flex flex-wrap gap-2">
+                      {BREAST_PROCEDURE_TYPES.map((proc) => (
+                        <button
+                          key={proc}
+                          type="button"
+                          onClick={() => setEditTreatmentAreas(prev => ({
+                            ...prev,
+                            breast: prev.breast.includes(proc) ? prev.breast.filter(p => p !== proc) : [...prev.breast, proc]
+                          }))}
+                          className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                            editTreatmentAreas.breast.includes(proc) ? "bg-purple-500 text-white border-purple-500" : "bg-white text-slate-600 border-slate-200 hover:border-purple-300"
+                          }`}
+                        >
+                          {proc}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Augmentation specific */}
+                  {editTreatmentAreas.breast.includes("Breast Augmentation") && (
+                    <div className="bg-purple-50 p-3 rounded-lg space-y-3">
+                      <p className="text-xs font-medium text-purple-700">Augmentation Details</p>
+                      <div>
+                        <label className="text-xs text-slate-500">Preferred Method</label>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {AUGMENTATION_OPTIONS.map((opt) => (
+                            <button key={opt} type="button" onClick={() => setBreastAugmentationOption(opt)}
+                              className={`px-3 py-1 text-xs rounded border ${breastAugmentationOption === opt ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500">Desired Cup Size</label>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {CUP_SIZES.map((size) => (
+                            <button key={size} type="button" onClick={() => setBreastDesiredCupSize(size)}
+                              className={`px-3 py-1 text-xs rounded border ${breastDesiredCupSize === size ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>
+                              {size}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reduction specific */}
+                  {editTreatmentAreas.breast.includes("Breast Reduction") && (
+                    <div className="bg-purple-50 p-3 rounded-lg">
+                      <label className="text-xs text-slate-500">Reduction Comments</label>
+                      <textarea value={breastReductionComments} onChange={(e) => setBreastReductionComments(e.target.value)} className="w-full mt-1 px-2 py-1.5 border border-slate-300 rounded text-sm text-black" rows={2} placeholder="Any specific concerns or goals..." />
+                    </div>
+                  )}
+
+                  {/* Lift specific */}
+                  {editTreatmentAreas.breast.includes("Breast Lift") && (
+                    <div className="bg-purple-50 p-3 rounded-lg">
+                      <label className="text-xs text-slate-500">Lift Comments</label>
+                      <textarea value={breastLiftComments} onChange={(e) => setBreastLiftComments(e.target.value)} className="w-full mt-1 px-2 py-1.5 border border-slate-300 rounded text-sm text-black" rows={2} placeholder="Any specific concerns or goals..." />
+                    </div>
+                  )}
+
+                  {/* Medical History */}
+                  <div className="border-t border-purple-200 pt-3">
+                    <p className="text-xs font-medium text-slate-600 mb-3">Medical History</p>
+                    
+                    {/* Previous Breast Surgery */}
+                    <div className="mb-3">
+                      <label className="text-xs text-slate-500">Have you had breast surgery before?</label>
+                      <div className="flex gap-2 mt-1">
+                        <button type="button" onClick={() => setBreastHadSurgery("yes")} className={`px-4 py-1 text-xs rounded border ${breastHadSurgery === "yes" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>Yes</button>
+                        <button type="button" onClick={() => setBreastHadSurgery("no")} className={`px-4 py-1 text-xs rounded border ${breastHadSurgery === "no" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>No</button>
+                      </div>
+                    </div>
+
+                    {breastHadSurgery === "yes" && (
+                      <div className="mb-3 ml-3 border-l-2 border-purple-200 pl-3">
+                        <label className="text-xs text-slate-500">Type of surgery</label>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {BREAST_SURGERY_TYPES.map((type) => (
+                            <button key={type} type="button" onClick={() => setBreastSurgeryTypes(prev => prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type])}
+                              className={`px-2 py-0.5 text-xs rounded border ${breastSurgeryTypes.includes(type) ? "bg-purple-400 text-white border-purple-400" : "bg-white border-slate-200"}`}>
+                              {type}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Breastfeeding */}
+                    <div className="mb-3">
+                      <label className="text-xs text-slate-500">Have you breastfed?</label>
+                      <div className="flex gap-2 mt-1">
+                        <button type="button" onClick={() => setBreastHadBreastfeed("yes")} className={`px-4 py-1 text-xs rounded border ${breastHadBreastfeed === "yes" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>Yes</button>
+                        <button type="button" onClick={() => setBreastHadBreastfeed("no")} className={`px-4 py-1 text-xs rounded border ${breastHadBreastfeed === "no" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>No</button>
+                      </div>
+                      {breastHadBreastfeed === "yes" && (
+                        <input type="text" value={breastfeedHowLong} onChange={(e) => setBreastfeedHowLong(e.target.value)} className="mt-2 w-full px-2 py-1 border border-slate-300 rounded text-sm text-black" placeholder="For how long?" />
+                      )}
+                    </div>
+
+                    {/* Breast Conditions */}
+                    <div className="mb-3">
+                      <label className="text-xs text-slate-500">Any breast conditions (cysts, lumps, etc.)?</label>
+                      <div className="flex gap-2 mt-1">
+                        <button type="button" onClick={() => setBreastHadConditions("yes")} className={`px-4 py-1 text-xs rounded border ${breastHadConditions === "yes" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>Yes</button>
+                        <button type="button" onClick={() => setBreastHadConditions("no")} className={`px-4 py-1 text-xs rounded border ${breastHadConditions === "no" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>No</button>
+                      </div>
+                      {breastHadConditions === "yes" && (
+                        <input type="text" value={breastConditionsDetails} onChange={(e) => setBreastConditionsDetails(e.target.value)} className="mt-2 w-full px-2 py-1 border border-slate-300 rounded text-sm text-black" placeholder="Please describe..." />
+                      )}
+                    </div>
+
+                    {/* Ultrasound */}
+                    <div className="mb-3">
+                      <label className="text-xs text-slate-500">Have you had a breast ultrasound/mammogram?</label>
+                      <div className="flex gap-2 mt-1">
+                        <button type="button" onClick={() => setBreastHadUltrasound("yes")} className={`px-4 py-1 text-xs rounded border ${breastHadUltrasound === "yes" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>Yes</button>
+                        <button type="button" onClick={() => setBreastHadUltrasound("no")} className={`px-4 py-1 text-xs rounded border ${breastHadUltrasound === "no" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>No</button>
+                      </div>
+                      {breastHadUltrasound === "yes" && (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <input type="text" value={breastUltrasoundHowLong} onChange={(e) => setBreastUltrasoundHowLong(e.target.value)} className="px-2 py-1 border border-slate-300 rounded text-sm text-black" placeholder="How long ago?" />
+                          <input type="text" value={breastUltrasoundWhy} onChange={(e) => setBreastUltrasoundWhy(e.target.value)} className="px-2 py-1 border border-slate-300 rounded text-sm text-black" placeholder="Reason?" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Previous Consultation */}
+                    <div>
+                      <label className="text-xs text-slate-500">Have you had a breast consultation before?</label>
+                      <div className="flex gap-2 mt-1">
+                        <button type="button" onClick={() => setBreastHadPreviousConsult("yes")} className={`px-4 py-1 text-xs rounded border ${breastHadPreviousConsult === "yes" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>Yes</button>
+                        <button type="button" onClick={() => setBreastHadPreviousConsult("no")} className={`px-4 py-1 text-xs rounded border ${breastHadPreviousConsult === "no" ? "bg-purple-500 text-white border-purple-500" : "bg-white border-slate-200"}`}>No</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2 pt-2">
                 <button onClick={() => saveTreatmentAreas(editTreatmentAreas)} disabled={saving} className="px-4 py-2 bg-black text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
-                <button onClick={() => setEditingSection(null)} className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-lg">Cancel</button>
+                <button onClick={() => { setEditingSection(null); setActiveConsultationType(null); }} className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-lg">Cancel</button>
               </div>
             </div>
           ) : consultationData.length > 0 ? (
@@ -874,17 +1243,57 @@ export default function PatientIntakeDataCard({
                     </div>
                   )}
 
-                  {/* Breast: show procedure types */}
-                  {consultation.consultation_type === "breast" && consultation.breast_data && (
-                    <div className="mb-2">
-                      <span className="text-xs text-slate-500">Procedure Types:</span>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {((consultation.breast_data as Record<string, unknown>).procedure_types as string[] || []).map((proc: string) => (
-                          <span key={proc} className="text-xs bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full">{proc}</span>
-                        ))}
+                  {/* Breast: show procedure types and details */}
+                  {consultation.consultation_type === "breast" && consultation.breast_data && (() => {
+                    const bd = consultation.breast_data as Record<string, unknown>;
+                    const procTypes = (bd.procedure_types as string[]) || [];
+                    const augOpt = bd.augmentation_option ? String(bd.augmentation_option) : null;
+                    const cupSize = bd.desired_cup_size ? String(bd.desired_cup_size) : null;
+                    const surgTypes = (bd.surgery_types as string[]) || [];
+                    const bfLong = bd.breastfeed_how_long ? String(bd.breastfeed_how_long) : null;
+                    const condDetails = bd.conditions_details ? String(bd.conditions_details) : null;
+                    const usLong = bd.ultrasound_how_long ? String(bd.ultrasound_how_long) : null;
+                    return (
+                      <div className="space-y-2">
+                        {procTypes.length > 0 && (
+                          <div>
+                            <span className="text-xs text-slate-500">Procedure Types:</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {procTypes.map((proc: string) => (
+                                <span key={proc} className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full">{proc}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {augOpt && (
+                          <div className="text-xs text-slate-600">
+                            <span className="text-slate-500">Method:</span> {augOpt}
+                            {cupSize && ` • Cup Size: ${cupSize}`}
+                          </div>
+                        )}
+                        {bd.had_surgery === "yes" && (
+                          <div className="text-xs text-slate-600">
+                            <span className="text-slate-500">Previous Surgery:</span> {surgTypes.join(", ") || "Yes"}
+                          </div>
+                        )}
+                        {bd.had_breastfeed === "yes" && (
+                          <div className="text-xs text-slate-600">
+                            <span className="text-slate-500">Breastfed:</span> Yes{bfLong && ` (${bfLong})`}
+                          </div>
+                        )}
+                        {bd.had_conditions === "yes" && (
+                          <div className="text-xs text-slate-600">
+                            <span className="text-slate-500">Conditions:</span> {condDetails || "Yes"}
+                          </div>
+                        )}
+                        {bd.had_ultrasound === "yes" && (
+                          <div className="text-xs text-slate-600">
+                            <span className="text-slate-500">Ultrasound:</span> Yes{usLong && ` (${usLong})`}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Face: show effects and priority areas */}
                   {consultation.consultation_type === "face" && consultation.face_data && (
