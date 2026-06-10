@@ -129,6 +129,9 @@ export async function POST(request: NextRequest) {
         detectedFunction = "book_appointment";
       } else if (checkArgs.message_type !== undefined) {
         detectedFunction = "send_whatsapp";
+      } else if (checkArgs.phone_number && !checkArgs.reason && !checkArgs.from_number) {
+        // If only phone_number is provided (no callback/dropped call fields), assume WhatsApp
+        detectedFunction = "send_whatsapp";
       }
     }
 
