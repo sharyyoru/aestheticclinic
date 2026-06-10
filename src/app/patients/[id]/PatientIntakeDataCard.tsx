@@ -977,7 +977,7 @@ export default function PatientIntakeDataCard({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         
         {/* Preferences Card - Always show */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
               <svg className="w-4 h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1052,7 +1052,7 @@ export default function PatientIntakeDataCard({
         </div>
 
         {/* Treatment Areas Card - Shows consultation data */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
           <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-rose-100 flex items-center justify-center">
               <svg className="w-4 h-4 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
