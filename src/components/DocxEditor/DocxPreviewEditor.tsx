@@ -163,11 +163,30 @@ export default function DocxPreviewEditor({
     }
   };
 
-  // Prevent Enter key from creating new lines in spans
+  // Handle Enter key to create line breaks (like Word)
   const handleSpanKeyDown = (e: Event) => {
     const keyEvent = e as KeyboardEvent;
     if (keyEvent.key === 'Enter') {
       e.preventDefault();
+      
+      // Insert a line break marker that we'll convert to a new paragraph when saving
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        
+        // Create a line break element
+        const br = document.createElement('br');
+        range.insertNode(br);
+        
+        // Move cursor after the line break
+        range.setStartAfter(br);
+        range.setEndAfter(br);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        setHasChanges(true);
+      }
     }
   };
 
@@ -176,14 +195,37 @@ export default function DocxPreviewEditor({
     setHasChanges(true);
   };
 
-  // Handle paste - strip formatting and prevent structural changes
+  // Handle paste - preserve line breaks from pasted text
   const handleSpanPaste = (e: Event) => {
     e.preventDefault();
     const pasteEvent = e as ClipboardEvent;
     const text = pasteEvent.clipboardData?.getData('text/plain') || '';
-    // Remove newlines from pasted text
-    const cleanText = text.replace(/[\r\n]+/g, ' ');
-    document.execCommand('insertText', false, cleanText);
+    
+    // Insert text with line breaks preserved
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      
+      // Split by newlines and insert with <br> tags
+      const lines = text.split(/\r?\n/);
+      const fragment = document.createDocumentFragment();
+      
+      lines.forEach((line, index) => {
+        if (index > 0) {
+          fragment.appendChild(document.createElement('br'));
+        }
+        fragment.appendChild(document.createTextNode(line));
+      });
+      
+      range.insertNode(fragment);
+      
+      // Move cursor to end
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    
     setHasChanges(true);
   };
 
@@ -231,6 +273,27 @@ export default function DocxPreviewEditor({
     textNodeMapRef.current = textMap;
   };
 
+  // Extract text from a span, converting <br> tags to newline markers
+  const extractTextWithLineBreaks = (element: Element): string => {
+    let result = '';
+    const childNodes = element.childNodes;
+    
+    childNodes.forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        result += node.textContent || '';
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as Element;
+        if (el.tagName === 'BR') {
+          result += '\n'; // Use newline as paragraph break marker
+        } else {
+          result += extractTextWithLineBreaks(el);
+        }
+      }
+    });
+    
+    return result;
+  };
+
   // Collect changes by querying spans with data-docx-text-idx (set during initial render)
   const collectChangesFromDOM = (): Map<number, string> => {
     const changes = new Map<number, string>();
@@ -246,7 +309,8 @@ export default function DocxPreviewEditor({
       
       // Only process valid indices within the map range
       if (idx >= 0 && idx < mapSize) {
-        const currentText = span.textContent || '';
+        // Extract text with line breaks preserved as \n
+        const currentText = extractTextWithLineBreaks(span);
         const originalText = textNodeMapRef.current.get(idx) || '';
         
         if (currentText !== originalText) {
@@ -358,6 +422,53 @@ export default function DocxPreviewEditor({
     return newBlob;
   };
   
+  // Helper function to insert line breaks into DOCX XML for a text node
+  const insertLineBreaksIntoTextNode = (textNode: Element, newText: string, xmlDoc: Document) => {
+    const nsUri = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    
+    // Check if text contains line breaks
+    if (!newText.includes('\n')) {
+      // No line breaks - simple text replacement
+      textNode.textContent = newText;
+      return;
+    }
+    
+    // Split text by line breaks
+    const lines = newText.split('\n');
+    
+    // Get the parent run element (w:r)
+    const runElement = textNode.parentElement;
+    if (!runElement || runElement.localName !== 'r') {
+      // Fallback: just set text without line breaks
+      textNode.textContent = newText.replace(/\n/g, ' ');
+      return;
+    }
+    
+    // Set first line in the original text element
+    textNode.textContent = lines[0];
+    
+    // Insert additional lines with <w:br/> breaks
+    let insertAfter: Element = textNode;
+    for (let i = 1; i < lines.length; i++) {
+      // Create line break element <w:br/>
+      const brElement = xmlDoc.createElementNS(nsUri, 'w:br');
+      runElement.insertBefore(brElement, insertAfter.nextSibling);
+      insertAfter = brElement;
+      
+      // Create new text element for the next line
+      if (lines[i].length > 0) {
+        const newTextElement = xmlDoc.createElementNS(nsUri, 'w:t');
+        // Preserve spaces at start/end
+        if (lines[i].startsWith(' ') || lines[i].endsWith(' ')) {
+          newTextElement.setAttribute('xml:space', 'preserve');
+        }
+        newTextElement.textContent = lines[i];
+        runElement.insertBefore(newTextElement, insertAfter.nextSibling);
+        insertAfter = newTextElement;
+      }
+    }
+  };
+
   // Apply text changes to XML using content-based matching with context for empty fields
   const applyTextChangesToXml = (originalXml: string, changes: Map<number, string>): string => {
     if (changes.size === 0) {
@@ -388,10 +499,10 @@ export default function DocxPreviewEditor({
         const matchingNodes = xmlTextArray.filter(el => el.textContent === originalText);
         
         if (matchingNodes.length === 1) {
-          matchingNodes[0].textContent = newText;
+          insertLineBreaksIntoTextNode(matchingNodes[0], newText, xmlDoc);
           updatedCount++;
         } else if (matchingNodes.length > 1 && originalText.length > 3) {
-          matchingNodes[0].textContent = newText;
+          insertLineBreaksIntoTextNode(matchingNodes[0], newText, xmlDoc);
           updatedCount++;
         }
       }
@@ -422,7 +533,7 @@ export default function DocxPreviewEditor({
                 const nextEl = xmlTextArray[j];
                 const nextText = nextEl.textContent || '';
                 if (nextText.trim().length === 0) {
-                  nextEl.textContent = newText;
+                  insertLineBreaksIntoTextNode(nextEl, newText, xmlDoc);
                   updatedCount++;
                   inserted = true;
                   break;
@@ -431,7 +542,8 @@ export default function DocxPreviewEditor({
               
               // Strategy 2: If no empty slot, append to the preceding text with a space
               if (!inserted) {
-                xmlTextArray[i].textContent = precedingText + ' ' + newText;
+                const combinedText = precedingText + ' ' + newText;
+                insertLineBreaksIntoTextNode(xmlTextArray[i], combinedText, xmlDoc);
                 updatedCount++;
                 inserted = true;
               }
@@ -445,7 +557,8 @@ export default function DocxPreviewEditor({
               const xmlText = xmlTextArray[i].textContent || '';
               // Check if XML contains the end of our preceding text (for split text)
               if (xmlText.length > 3 && precedingText.includes(xmlText)) {
-                xmlTextArray[i].textContent = xmlText + ' ' + newText;
+                const combinedText = xmlText + ' ' + newText;
+                insertLineBreaksIntoTextNode(xmlTextArray[i], combinedText, xmlDoc);
                 updatedCount++;
                 inserted = true;
               }
@@ -558,10 +671,10 @@ export default function DocxPreviewEditor({
           {/* Edit mode indicator */}
           {isEditing && !isLoading && (
             <div className="mb-4 mx-auto max-w-[850px] bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 flex items-center gap-2 text-amber-800 text-sm">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span><strong>Edit Mode:</strong> Click anywhere in the document to edit text directly. Changes are saved when you click Save.</span>
+              <span><strong>Edit Mode:</strong> Click anywhere to edit text. Press <kbd className="px-1.5 py-0.5 bg-amber-100 rounded text-xs font-mono">Enter</kbd> for new lines. Changes are saved when you click Save.</span>
             </div>
           )}
           <div
