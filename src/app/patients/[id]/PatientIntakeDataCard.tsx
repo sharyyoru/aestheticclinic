@@ -295,6 +295,10 @@ export default function PatientIntakeDataCard({
   const [uploadedPhotoUrls, setUploadedPhotoUrls] = useState<Record<string, string>>({});
   const [consultationPhotos, setConsultationPhotos] = useState<Array<{id: string; path: string; position: string; consultationType: string; url?: string}>>([]);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  
+  // Full report modal state
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportConsultation, setReportConsultation] = useState<ConsultationData | null>(null);
 
   const loadIntakeData = useCallback(async () => {
     setLoading(true);
@@ -1484,6 +1488,16 @@ export default function PatientIntakeDataCard({
                     <span className="text-xs text-white bg-rose-500 px-2 py-0.5 rounded-full">
                       {consultation.upload_mode === "now" ? "Photos Uploaded" : "Photos Pending"}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => { setReportConsultation(consultation); setReportModalOpen(true); }}
+                      className="ml-auto text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 font-medium"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Full Report
+                    </button>
                   </div>
                   
                   {/* Liposuction: show selected areas */}
@@ -2174,6 +2188,420 @@ export default function PatientIntakeDataCard({
           <p className="text-sm text-slate-400 italic">No photos uploaded.</p>
         )}
       </div>
+
+      {/* Full Report Modal */}
+      {reportModalOpen && reportConsultation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  reportConsultation.consultation_type === "face" ? "bg-sky-100" :
+                  reportConsultation.consultation_type === "breast" ? "bg-purple-100" : "bg-rose-100"
+                }`}>
+                  {reportConsultation.consultation_type === "face" && <span className="text-lg">👤</span>}
+                  {reportConsultation.consultation_type === "breast" && <span className="text-lg">💜</span>}
+                  {reportConsultation.consultation_type === "liposuction" && <span className="text-lg">🏃</span>}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 capitalize">{reportConsultation.consultation_type} Consultation Report</h3>
+                  <p className="text-xs text-slate-500">Submitted on {new Date(reportConsultation.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setReportModalOpen(false); setReportConsultation(null); }}
+                className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+              {/* Status Banner */}
+              <div className={`flex items-center gap-2 px-4 py-3 rounded-lg ${
+                reportConsultation.upload_mode === "now" ? "bg-emerald-50 border border-emerald-200" : "bg-amber-50 border border-amber-200"
+              }`}>
+                <svg className={`w-5 h-5 ${reportConsultation.upload_mode === "now" ? "text-emerald-600" : "text-amber-600"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  {reportConsultation.upload_mode === "now" ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  )}
+                </svg>
+                <span className={`text-sm font-medium ${reportConsultation.upload_mode === "now" ? "text-emerald-700" : "text-amber-700"}`}>
+                  {reportConsultation.upload_mode === "now" ? "Photos have been uploaded" : "Photos pending upload"}
+                </span>
+              </div>
+
+              {/* LIPOSUCTION REPORT */}
+              {reportConsultation.consultation_type === "liposuction" && (
+                <div className="space-y-4">
+                  {/* Selected Areas */}
+                  {reportConsultation.selected_areas && reportConsultation.selected_areas.length > 0 && (
+                    <div className="bg-slate-50 rounded-xl p-4">
+                      <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                        Treatment Areas
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {reportConsultation.selected_areas.map((area: string) => (
+                          <span key={area} className="px-3 py-1.5 bg-rose-100 text-rose-700 rounded-full text-sm font-medium">{area}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Measurements */}
+                  {reportConsultation.measurements && Object.keys(reportConsultation.measurements).length > 0 && (
+                    <div className="bg-slate-50 rounded-xl p-4">
+                      <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                        Body Measurements
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {Object.entries(reportConsultation.measurements).map(([key, value]) => (
+                          <div key={key} className="flex justify-between items-center bg-white rounded-lg px-3 py-2 border border-slate-200">
+                            <span className="text-sm text-slate-600 capitalize">{key.replace(/_/g, ' ')}</span>
+                            <span className="text-sm font-semibold text-slate-900">{value} cm</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* FACE REPORT */}
+              {reportConsultation.consultation_type === "face" && reportConsultation.face_data && (() => {
+                const fd = reportConsultation.face_data as Record<string, unknown>;
+                const effects = (fd.effects as string[]) || [];
+                const priorityAreas = (fd.priority_areas as string[]) || [];
+                const budget = fd.budget ? String(fd.budget) : null;
+                const hadTreatments = fd.had_treatments as string | null;
+                const treatmentKind = fd.treatment_kind ? String(fd.treatment_kind) : null;
+                const treatmentWhen = fd.treatment_when ? String(fd.treatment_when) : null;
+                
+                return (
+                  <div className="space-y-4">
+                    {/* Treatment History */}
+                    <div className="bg-slate-50 rounded-xl p-4">
+                      <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Treatment History
+                      </h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-slate-600">Previous Facial Treatments:</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${hadTreatments === "yes" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                            {hadTreatments === "yes" ? "Yes" : "No"}
+                          </span>
+                        </div>
+                        {hadTreatments === "yes" && treatmentKind && (
+                          <p className="text-sm text-slate-700 pl-4 border-l-2 border-sky-300">Type: {treatmentKind}</p>
+                        )}
+                        {hadTreatments === "yes" && treatmentWhen && (
+                          <p className="text-sm text-slate-700 pl-4 border-l-2 border-sky-300">When: {treatmentWhen}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Desired Effects */}
+                    {effects.length > 0 && (
+                      <div className="bg-slate-50 rounded-xl p-4">
+                        <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                          </svg>
+                          Desired Effects
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {effects.map((effect: string) => (
+                            <span key={effect} className="px-3 py-1.5 bg-sky-100 text-sky-700 rounded-full text-sm font-medium">{effect}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Priority Areas */}
+                    {priorityAreas.length > 0 && (
+                      <div className="bg-slate-50 rounded-xl p-4">
+                        <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          Priority Areas
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {priorityAreas.map((area: string) => (
+                            <span key={area} className="px-3 py-1.5 bg-sky-100 text-sky-700 rounded-full text-sm font-medium">{area}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Budget */}
+                    {budget && (
+                      <div className="bg-slate-50 rounded-xl p-4">
+                        <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Budget
+                        </h4>
+                        <p className="text-lg font-semibold text-slate-900">{budget}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* BREAST REPORT */}
+              {reportConsultation.consultation_type === "breast" && reportConsultation.breast_data && (() => {
+                const bd = reportConsultation.breast_data as Record<string, unknown>;
+                const procTypes = (bd.procedure_types as string[]) || [];
+                const augOpt = bd.augmentation_option ? String(bd.augmentation_option) : null;
+                const cupSize = bd.desired_cup_size ? String(bd.desired_cup_size) : null;
+                const surgTypes = (bd.surgery_types as string[]) || [];
+                const hadSurg = bd.had_surgery ? String(bd.had_surgery) : null;
+                const hadBf = bd.had_breastfeed ? String(bd.had_breastfeed) : null;
+                const bfLong = bd.breastfeed_how_long ? String(bd.breastfeed_how_long) : null;
+                const hadCond = bd.had_conditions ? String(bd.had_conditions) : null;
+                const condDetails = bd.conditions_details ? String(bd.conditions_details) : null;
+                const hadUs = bd.had_ultrasound ? String(bd.had_ultrasound) : null;
+                const usLong = bd.ultrasound_how_long ? String(bd.ultrasound_how_long) : null;
+                const usWhy = bd.ultrasound_why ? String(bd.ultrasound_why) : null;
+                const reductionComments = bd.reduction_comments ? String(bd.reduction_comments) : null;
+                const liftComments = bd.lift_comments ? String(bd.lift_comments) : null;
+                const hadPrevConsult = bd.had_previous_consultation as string | null;
+                
+                return (
+                  <div className="space-y-4">
+                    {/* Procedure Types */}
+                    {procTypes.length > 0 && (
+                      <div className="bg-slate-50 rounded-xl p-4">
+                        <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                          </svg>
+                          Desired Procedures
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {procTypes.map((proc: string) => (
+                            <span key={proc} className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">{proc}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Augmentation Details */}
+                    {augOpt && (
+                      <div className="bg-slate-50 rounded-xl p-4">
+                        <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Augmentation Preferences
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-white rounded-lg px-3 py-2 border border-slate-200">
+                            <span className="text-xs text-slate-500">Method</span>
+                            <p className="text-sm font-semibold text-slate-900">{augOpt}</p>
+                          </div>
+                          {cupSize && (
+                            <div className="bg-white rounded-lg px-3 py-2 border border-slate-200">
+                              <span className="text-xs text-slate-500">Desired Cup Size</span>
+                              <p className="text-sm font-semibold text-slate-900">{cupSize}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Additional Notes */}
+                    {(reductionComments || liftComments) && (
+                      <div className="bg-slate-50 rounded-xl p-4">
+                        <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Additional Notes
+                        </h4>
+                        <div className="space-y-2">
+                          {reductionComments && (
+                            <div className="bg-white rounded-lg px-3 py-2 border border-slate-200">
+                              <span className="text-xs text-slate-500">Reduction Notes</span>
+                              <p className="text-sm text-slate-700 mt-1">{reductionComments}</p>
+                            </div>
+                          )}
+                          {liftComments && (
+                            <div className="bg-white rounded-lg px-3 py-2 border border-slate-200">
+                              <span className="text-xs text-slate-500">Lift Notes</span>
+                              <p className="text-sm text-slate-700 mt-1">{liftComments}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Medical History */}
+                    <div className="bg-slate-50 rounded-xl p-4">
+                      <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Medical History
+                      </h4>
+                      <div className="space-y-3">
+                        {/* Previous Surgery */}
+                        <div className="flex items-start gap-3 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                          <div className="flex-1">
+                            <span className="text-sm text-slate-600">Previous Breast Surgery</span>
+                            {hadSurg === "yes" && surgTypes.length > 0 && (
+                              <p className="text-xs text-slate-500 mt-1">Types: {surgTypes.join(", ")}</p>
+                            )}
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${hadSurg === "yes" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                            {hadSurg === "yes" ? "Yes" : hadSurg === "no" ? "No" : "N/A"}
+                          </span>
+                        </div>
+
+                        {/* Breastfed */}
+                        <div className="flex items-start gap-3 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                          <div className="flex-1">
+                            <span className="text-sm text-slate-600">Has Breastfed</span>
+                            {hadBf === "yes" && bfLong && (
+                              <p className="text-xs text-slate-500 mt-1">Duration: {bfLong}</p>
+                            )}
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${hadBf === "yes" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                            {hadBf === "yes" ? "Yes" : hadBf === "no" ? "No" : "N/A"}
+                          </span>
+                        </div>
+
+                        {/* Breast Conditions */}
+                        <div className="flex items-start gap-3 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                          <div className="flex-1">
+                            <span className="text-sm text-slate-600">Breast Conditions</span>
+                            {hadCond === "yes" && condDetails && (
+                              <p className="text-xs text-slate-500 mt-1">{condDetails}</p>
+                            )}
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${hadCond === "yes" ? "bg-amber-100 text-amber-700" : "bg-slate-200 text-slate-600"}`}>
+                            {hadCond === "yes" ? "Yes" : hadCond === "no" ? "No" : "N/A"}
+                          </span>
+                        </div>
+
+                        {/* Ultrasound/Mammogram */}
+                        <div className="flex items-start gap-3 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                          <div className="flex-1">
+                            <span className="text-sm text-slate-600">Ultrasound/Mammogram</span>
+                            {hadUs === "yes" && (usLong || usWhy) && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                {usLong && `When: ${usLong}`}
+                                {usLong && usWhy && " • "}
+                                {usWhy && `Reason: ${usWhy}`}
+                              </p>
+                            )}
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${hadUs === "yes" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                            {hadUs === "yes" ? "Yes" : hadUs === "no" ? "No" : "N/A"}
+                          </span>
+                        </div>
+
+                        {/* Previous Consultation */}
+                        <div className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-slate-200">
+                          <span className="text-sm text-slate-600 flex-1">Previous Breast Consultation</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${hadPrevConsult === "yes" ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+                            {hadPrevConsult === "yes" ? "Yes" : hadPrevConsult === "no" ? "No" : "N/A"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Measurements */}
+                    {reportConsultation.measurements && Object.keys(reportConsultation.measurements).length > 0 && (
+                      <div className="bg-slate-50 rounded-xl p-4">
+                        <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                          </svg>
+                          Breast Measurements
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          {Object.entries(reportConsultation.measurements).map(([key, value]) => (
+                            <div key={key} className="flex justify-between items-center bg-white rounded-lg px-3 py-2 border border-slate-200">
+                              <span className="text-sm text-slate-600 capitalize">{key.replace(/_/g, ' ')}</span>
+                              <span className="text-sm font-semibold text-slate-900">{value} cm</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Photos Section */}
+              {(() => {
+                const typePhotos = consultationPhotos.filter(p => p.consultationType === reportConsultation.consultation_type);
+                if (typePhotos.length === 0) return null;
+                
+                return (
+                  <div className="bg-slate-50 rounded-xl p-4">
+                    <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Uploaded Photos ({typePhotos.length})
+                    </h4>
+                    <div className="grid grid-cols-3 gap-2">
+                      {typePhotos.map((photo) => (
+                        <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-slate-200">
+                          {photo.url ? (
+                            <img src={photo.url} alt={photo.position} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-1">
+                            <p className="text-[10px] text-white capitalize truncate">{photo.position.replace(/_/g, ' ')}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => { setReportModalOpen(false); setReportConsultation(null); }}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </>
     );
   }
