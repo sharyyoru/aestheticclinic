@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Upload, Camera, Check, X } from "lucide-react";
 
 const COLLAPSE_KEY = "patientIntakeData_collapsed";
 
@@ -142,6 +142,42 @@ const CONSULTATION_TYPES = [
   { id: "breast", label: "Breast", icon: "💜", color: "purple" },
 ];
 
+// Photo positions for each consultation type
+const LIPOSUCTION_PHOTO_POSITIONS = [
+  { id: "left", label: "Left Image" },
+  { id: "front", label: "Front Image" },
+  { id: "right", label: "Right Image" },
+  { id: "back", label: "Back Image" },
+];
+
+const FACE_PHOTO_POSITIONS = [
+  { id: "left_45", label: "Left 45° Image" },
+  { id: "front", label: "Front Image" },
+  { id: "right_45", label: "Right 45° Image" },
+  { id: "right_profile", label: "Right Profile" },
+  { id: "left_profile", label: "Left Profile" },
+];
+
+const BREAST_PHOTO_POSITIONS = [
+  { id: "left", label: "Left Image" },
+  { id: "front", label: "Front Image" },
+  { id: "right", label: "Right Image" },
+  { id: "right_profile", label: "Right Profile" },
+  { id: "left_profile", label: "Left Profile" },
+];
+
+const BREAST_MEASUREMENTS_FIELDS = [
+  { id: "sternum_nipple_right", label: "Sternum to Nipple (Right)", required: true },
+  { id: "sternum_nipple_left", label: "Sternum to Nipple (Left)", required: true },
+  { id: "submammary_fold_right", label: "Submammary Fold (Right)", required: false },
+  { id: "submammary_fold_left", label: "Submammary Fold (Left)", required: false },
+  { id: "nipple_mammary_left", label: "Nipple to Mammary Base (Left)", required: false },
+  { id: "nipple_mammary_right", label: "Nipple to Mammary Base (Right)", required: false },
+  { id: "inter_nipple", label: "Inter-Nipple Distance", required: false },
+  { id: "upper_pole_right", label: "Upper Pole Pinch (Right)", required: false },
+  { id: "upper_pole_left", label: "Upper Pole Pinch (Left)", required: false },
+];
+
 const LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
   fr: "French",
@@ -252,6 +288,13 @@ export default function PatientIntakeDataCard({
   const [breastReductionComments, setBreastReductionComments] = useState("");
   const [breastLiftComments, setBreastLiftComments] = useState("");
   const [breastMeasurements, setBreastMeasurements] = useState<Record<string, string>>({});
+  
+  // Photo upload state
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [photoUploadProgress, setPhotoUploadProgress] = useState<Record<string, number>>({});
+  const [uploadedPhotoUrls, setUploadedPhotoUrls] = useState<Record<string, string>>({});
+  const [consultationPhotos, setConsultationPhotos] = useState<Array<{id: string; path: string; position: string; consultationType: string; url?: string}>>([]);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const loadIntakeData = useCallback(async () => {
     setLoading(true);
@@ -390,10 +433,47 @@ export default function PatientIntakeDataCard({
           urls[photo.id] = urlData.signedUrl;
         }
       }
-        setPhotoUrls(urls);
-      }
+      setPhotoUrls(urls);
+    }
 
-      setLoading(false);
+    // Load consultation photos from patient_document bucket
+    const consultationPhotosList: Array<{id: string; path: string; position: string; consultationType: string; url?: string}> = [];
+    const photoUrlsMap: Record<string, string> = {};
+    
+    for (const consultType of ["liposuction", "face", "breast"]) {
+      const folderPath = `${patientId}/consultation_photos/${consultType}`;
+      const { data: photoFiles } = await supabaseClient.storage
+        .from("patient_document")
+        .list(folderPath, { limit: 50 });
+      
+      if (photoFiles && photoFiles.length > 0) {
+        for (const file of photoFiles) {
+          if (file.name === ".keep") continue;
+          const fullPath = `${folderPath}/${file.name}`;
+          const position = file.name.split("_")[0]; // e.g., "front_1234.jpg" -> "front"
+          
+          const { data: urlData } = await supabaseClient.storage
+            .from("patient_document")
+            .createSignedUrl(fullPath, 3600);
+          
+          if (urlData?.signedUrl) {
+            photoUrlsMap[fullPath] = urlData.signedUrl;
+            consultationPhotosList.push({
+              id: file.id || fullPath,
+              path: fullPath,
+              position,
+              consultationType: consultType,
+              url: urlData.signedUrl,
+            });
+          }
+        }
+      }
+    }
+    
+    setConsultationPhotos(consultationPhotosList);
+    setUploadedPhotoUrls(photoUrlsMap);
+
+    setLoading(false);
   }, [patientId]);
 
   useEffect(() => {
@@ -648,6 +728,151 @@ export default function PatientIntakeDataCard({
       alert(`Failed to save treatment areas: ${err instanceof Error ? err.message : String(err)}`);
     }
     setSaving(false);
+  };
+
+  // Photo upload function
+  const handlePhotoUpload = async (consultationType: string, position: string, file: File) => {
+    if (!file) return;
+    
+    setUploadingPhotos(true);
+    const key = `${consultationType}_${position}`;
+    setPhotoUploadProgress(prev => ({ ...prev, [key]: 10 }));
+    
+    try {
+      const ext = file.name.split('.').pop() || 'jpg';
+      const fileName = `${position}_${Date.now()}.${ext}`;
+      const storagePath = `${patientId}/consultation_photos/${consultationType}/${fileName}`;
+      
+      setPhotoUploadProgress(prev => ({ ...prev, [key]: 50 }));
+      
+      const { error: uploadError } = await supabaseClient.storage
+        .from("patient_document")
+        .upload(storagePath, file, { 
+          cacheControl: '3600',
+          upsert: false 
+        });
+      
+      if (uploadError) {
+        console.error("Upload error:", uploadError);
+        setPhotoUploadProgress(prev => ({ ...prev, [key]: 0 }));
+        alert(`Failed to upload photo: ${uploadError.message}`);
+        setUploadingPhotos(false);
+        return;
+      }
+      
+      setPhotoUploadProgress(prev => ({ ...prev, [key]: 100 }));
+      
+      // Get signed URL for the uploaded photo
+      const { data: urlData } = await supabaseClient.storage
+        .from("patient_document")
+        .createSignedUrl(storagePath, 3600);
+      
+      if (urlData?.signedUrl) {
+        setUploadedPhotoUrls(prev => ({ ...prev, [storagePath]: urlData.signedUrl }));
+        setConsultationPhotos(prev => [...prev, {
+          id: storagePath,
+          path: storagePath,
+          position,
+          consultationType,
+          url: urlData.signedUrl,
+        }]);
+      }
+      
+      // Clear progress after a moment
+      setTimeout(() => {
+        setPhotoUploadProgress(prev => {
+          const newProgress = { ...prev };
+          delete newProgress[key];
+          return newProgress;
+        });
+      }, 1500);
+      
+    } catch (err) {
+      console.error("Photo upload failed:", err);
+      alert(`Failed to upload photo: ${err instanceof Error ? err.message : String(err)}`);
+      setPhotoUploadProgress(prev => ({ ...prev, [key]: 0 }));
+    } finally {
+      setUploadingPhotos(false);
+    }
+  };
+
+  // Get photos for a specific consultation type
+  const getPhotosForConsultation = (consultationType: string) => {
+    return consultationPhotos.filter(p => p.consultationType === consultationType);
+  };
+
+  // Render photo upload section for a consultation type
+  const renderPhotoUploadSection = (consultationType: string, positions: Array<{id: string; label: string}>) => {
+    const existingPhotos = getPhotosForConsultation(consultationType);
+    
+    return (
+      <div className="border-t border-slate-200 pt-4 mt-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Camera className="w-4 h-4 text-slate-500" />
+          <label className="text-xs font-medium text-slate-600">Upload Photos</label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {positions.map((pos) => {
+            const key = `${consultationType}_${pos.id}`;
+            const existingPhoto = existingPhotos.find(p => p.position === pos.id);
+            const progress = photoUploadProgress[key];
+            
+            return (
+              <div key={pos.id} className="relative">
+                <label className="text-xs text-slate-500 mb-1 block">{pos.label}</label>
+                
+                {existingPhoto?.url ? (
+                  <div className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 group">
+                    <img src={existingPhoto.url} alt={pos.label} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRefs.current[key]?.click()}
+                        className="p-2 bg-white rounded-full text-slate-700 hover:bg-slate-100"
+                      >
+                        <Upload className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="absolute top-1 right-1">
+                      <Check className="w-4 h-4 text-emerald-500 bg-white rounded-full p-0.5" />
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRefs.current[key]?.click()}
+                    disabled={uploadingPhotos}
+                    className="w-full aspect-square rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
+                  >
+                    <Upload className="w-5 h-5 text-slate-400" />
+                    <span className="text-xs text-slate-400">Upload</span>
+                  </button>
+                )}
+                
+                {progress !== undefined && progress > 0 && progress < 100 && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-sky-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+                  </div>
+                )}
+                
+                <input
+                  ref={(el) => { fileInputRefs.current[key] = el; }}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handlePhotoUpload(consultationType, pos.id, file);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   const EditButton = ({ onClick }: { onClick: () => void }) => (
@@ -973,6 +1198,9 @@ export default function PatientIntakeDataCard({
                       </div>
                     </div>
                   )}
+
+                  {/* Photo Upload */}
+                  {renderPhotoUploadSection("liposuction", LIPOSUCTION_PHOTO_POSITIONS)}
                 </div>
               )}
 
@@ -1062,6 +1290,9 @@ export default function PatientIntakeDataCard({
                       ))}
                     </div>
                   </div>
+
+                  {/* Photo Upload */}
+                  {renderPhotoUploadSection("face", FACE_PHOTO_POSITIONS)}
                 </div>
               )}
 
@@ -1212,6 +1443,30 @@ export default function PatientIntakeDataCard({
                       </div>
                     </div>
                   </div>
+
+                  {/* Breast Measurements */}
+                  <div className="border-t border-purple-200 pt-3">
+                    <p className="text-xs font-medium text-slate-600 mb-3">Breast Measurements (cm)</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {BREAST_MEASUREMENTS_FIELDS.map((m) => (
+                        <div key={m.id} className={m.id === "inter_nipple" ? "col-span-2" : ""}>
+                          <label className="text-xs text-slate-500">
+                            {m.required && <span className="text-red-500">* </span>}{m.label}
+                          </label>
+                          <input
+                            type="number"
+                            value={breastMeasurements[m.id] || ""}
+                            onChange={(e) => setBreastMeasurements(prev => ({...prev, [m.id]: e.target.value}))}
+                            className="w-full mt-1 px-2 py-1.5 border border-slate-300 rounded text-sm text-black"
+                            placeholder="cm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Photo Upload */}
+                  {renderPhotoUploadSection("breast", BREAST_PHOTO_POSITIONS)}
                 </div>
               )}
 
@@ -1773,29 +2028,74 @@ export default function PatientIntakeDataCard({
             </svg>
           </div>
           <h4 className="font-medium text-slate-900">Uploaded Photos</h4>
-          <span className="text-xs text-slate-400">({photos.length})</span>
+          <span className="text-xs text-slate-400">({photos.length + consultationPhotos.length})</span>
         </div>
-        {photos.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {photos.map((photo) => (
-              <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 group">
-                {photoUrls[photo.id] ? (
-                  <img src={photoUrls[photo.id]} alt={photo.file_name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
+        
+        {/* Consultation Photos by Type */}
+        {consultationPhotos.length > 0 && (
+          <div className="mb-4">
+            {["liposuction", "face", "breast"].map(consultType => {
+              const typePhotos = consultationPhotos.filter(p => p.consultationType === consultType);
+              if (typePhotos.length === 0) return null;
+              return (
+                <div key={consultType} className="mb-4">
+                  <p className="text-xs font-medium text-slate-600 mb-2 capitalize flex items-center gap-1">
+                    {consultType === "liposuction" && "🏃"}
+                    {consultType === "face" && "👤"}
+                    {consultType === "breast" && "💜"}
+                    {consultType} Consultation Photos
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                    {typePhotos.map((photo) => (
+                      <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 group">
+                        {photo.url ? (
+                          <img src={photo.url} alt={photo.position} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <svg className="w-6 h-6 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-1.5">
+                          <p className="text-[10px] text-white truncate capitalize">{photo.position.replace(/_/g, ' ')}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                )}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
-                  <p className="text-xs text-white truncate">{photo.file_name}</p>
-                  <p className="text-xs text-white/60">{new Date(photo.uploaded_at).toLocaleDateString()}</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        ) : (
+        )}
+
+        {/* Intake Photos */}
+        {photos.length > 0 && (
+          <div>
+            {consultationPhotos.length > 0 && <p className="text-xs font-medium text-slate-600 mb-2">Intake Photos</p>}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {photos.map((photo) => (
+                <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 group">
+                  {photoUrls[photo.id] ? (
+                    <img src={photoUrls[photo.id]} alt={photo.file_name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <svg className="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
+                    <p className="text-xs text-white truncate">{photo.file_name}</p>
+                    <p className="text-xs text-white/60">{new Date(photo.uploaded_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {photos.length === 0 && consultationPhotos.length === 0 && (
           <p className="text-sm text-slate-400 italic">No photos uploaded.</p>
         )}
       </div>
