@@ -815,7 +815,7 @@ export default function PatientIntakeDataCard({
           <Camera className="w-4 h-4 text-slate-500" />
           <label className="text-xs font-medium text-slate-600">Upload Photos</label>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-wrap gap-3">
           {positions.map((pos) => {
             const key = `${consultationType}_${pos.id}`;
             const existingPhoto = existingPhotos.find(p => p.position === pos.id);
@@ -823,10 +823,10 @@ export default function PatientIntakeDataCard({
             
             return (
               <div key={pos.id} className="relative">
-                <label className="text-xs text-slate-500 mb-1 block">{pos.label}</label>
+                <label className="text-xs text-slate-500 mb-1 block truncate">{pos.label}</label>
                 
                 {existingPhoto?.url ? (
-                  <div className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 group">
+                  <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-slate-100 group">
                     <img src={existingPhoto.url} alt={pos.label} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <button
@@ -846,7 +846,7 @@ export default function PatientIntakeDataCard({
                     type="button"
                     onClick={() => fileInputRefs.current[key]?.click()}
                     disabled={uploadingPhotos}
-                    className="w-full aspect-square rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
+                    className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
                   >
                     <Upload className="w-5 h-5 text-slate-400" />
                     <span className="text-xs text-slate-400">Upload</span>
