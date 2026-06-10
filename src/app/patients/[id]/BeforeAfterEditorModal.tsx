@@ -34,6 +34,8 @@ export default function BeforeAfterEditorModal({
   const [afterImage, setAfterImage] = useState<BeforeAfterImage | null>(null);
   const [beforeZoom, setBeforeZoom] = useState(1);
   const [afterZoom, setAfterZoom] = useState(1);
+  const [beforeRotation, setBeforeRotation] = useState(0);
+  const [afterRotation, setAfterRotation] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [exportSuccess, setExportSuccess] = useState<string | null>(null);
@@ -77,10 +79,12 @@ export default function BeforeAfterEditorModal({
       setBeforeImage(image);
       setBeforePosition({ x: 0, y: 0 }); // Reset position when new image is assigned
       setBeforeImageSize({ width: 0, height: 0 });
+      setBeforeRotation(0); // Reset rotation when new image is assigned
     } else {
       setAfterImage(image);
       setAfterPosition({ x: 0, y: 0 }); // Reset position when new image is assigned
       setAfterImageSize({ width: 0, height: 0 });
+      setAfterRotation(0); // Reset rotation when new image is assigned
     }
     setActiveSide(side);
     setLocalError(null);
@@ -268,6 +272,7 @@ export default function BeforeAfterEditorModal({
         side: "before" | "after",
         zoom: number,
         position: { x: number; y: number },
+        rotation: number,
       ) {
         const sideX = side === "before" ? 0 : sideWidth;
         const baseScale = Math.max(sideWidth / image.width, height / image.height);
@@ -276,19 +281,29 @@ export default function BeforeAfterEditorModal({
         const drawHeight = image.height * scale;
         // Apply position offset (scaled proportionally to canvas size)
         const positionScale = width / 1024; // Scale factor for position
-        const dx = sideX + sideWidth / 2 - drawWidth / 2 + (position.x * positionScale);
-        const dy = height / 2 - drawHeight / 2 + (position.y * positionScale);
+        const centerX = sideX + sideWidth / 2;
+        const centerY = height / 2;
+        const dx = centerX - drawWidth / 2 + (position.x * positionScale);
+        const dy = centerY - drawHeight / 2 + (position.y * positionScale);
 
         drawingContext.save();
         drawingContext.beginPath();
         drawingContext.rect(sideX, 0, sideWidth, height);
         drawingContext.clip();
+        
+        // Apply rotation around the center of the side panel
+        if (rotation !== 0) {
+          drawingContext.translate(centerX, centerY);
+          drawingContext.rotate((rotation * Math.PI) / 180);
+          drawingContext.translate(-centerX, -centerY);
+        }
+        
         drawingContext.drawImage(image, dx, dy, drawWidth, drawHeight);
         drawingContext.restore();
       }
 
-      drawSide(context, beforeEl, "before", beforeZoom, beforePosition);
-      drawSide(context, afterEl, "after", afterZoom, afterPosition);
+      drawSide(context, beforeEl, "before", beforeZoom, beforePosition, beforeRotation);
+      drawSide(context, afterEl, "after", afterZoom, afterPosition, afterRotation);
 
       const headerHeight = 72;
       const headerY = 24;
@@ -519,6 +534,7 @@ export default function BeforeAfterEditorModal({
                     <span>Before</span>
                     <div className="flex items-center gap-2">
                       <span className="text-slate-500">Zoom: {beforeZoom.toFixed(2)}x</span>
+                      <span className="text-slate-500">Rotate: {beforeRotation.toFixed(1)}°</span>
                       <button
                         type="button"
                         onClick={() => handleAutoCenter("before")}
@@ -529,9 +545,9 @@ export default function BeforeAfterEditorModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setBeforePosition({ x: 0, y: 0 }); setBeforeZoom(1); }}
+                        onClick={() => { setBeforePosition({ x: 0, y: 0 }); setBeforeZoom(1); setBeforeRotation(0); }}
                         className="text-[9px] text-slate-400 hover:text-slate-200"
-                        title="Reset zoom and position"
+                        title="Reset zoom, position, and rotation"
                       >
                         Reset
                       </button>
@@ -557,7 +573,7 @@ export default function BeforeAfterEditorModal({
                           onLoad={(e) => handleImageLoad("before", e)}
                           className="pointer-events-none"
                           style={{ 
-                            transform: `scale(${beforeZoom}) translate(${beforePosition.x / beforeZoom}px, ${beforePosition.y / beforeZoom}px)`,
+                            transform: `rotate(${beforeRotation}deg) scale(${beforeZoom}) translate(${beforePosition.x / beforeZoom}px, ${beforePosition.y / beforeZoom}px)`,
                             transformOrigin: 'center center',
                             maxWidth: 'none',
                             width: '100%',
@@ -599,15 +615,40 @@ export default function BeforeAfterEditorModal({
                     )}
                   </div>
                   <p className="mt-1 text-[9px] text-slate-500 text-center">Drag to pan the camera focus</p>
-                  <input
-                    type="range"
-                    min={0.8}
-                    max={2.5}
-                    step={0.05}
-                    value={beforeZoom}
-                    onChange={(event) => setBeforeZoom(Number(event.target.value))}
-                    className="mt-1 h-1 w-full cursor-pointer rounded-full bg-slate-700"
-                  />
+                  {/* Zoom slider */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[9px] text-slate-500 w-10">Zoom</span>
+                    <input
+                      type="range"
+                      min={0.8}
+                      max={2.5}
+                      step={0.05}
+                      value={beforeZoom}
+                      onChange={(event) => setBeforeZoom(Number(event.target.value))}
+                      className="h-1 flex-1 cursor-pointer rounded-full bg-slate-700 accent-sky-500"
+                    />
+                  </div>
+                  {/* Rotation slider */}
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-[9px] text-slate-500 w-10">Rotate</span>
+                    <input
+                      type="range"
+                      min={-45}
+                      max={45}
+                      step={0.1}
+                      value={beforeRotation}
+                      onChange={(event) => setBeforeRotation(Number(event.target.value))}
+                      className="h-1 flex-1 cursor-pointer rounded-full bg-slate-700 accent-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setBeforeRotation(0)}
+                      className="text-[8px] text-slate-400 hover:text-slate-200 px-1"
+                      title="Reset rotation to 0°"
+                    >
+                      0°
+                    </button>
+                  </div>
                 </div>
 
                 <div
@@ -619,6 +660,7 @@ export default function BeforeAfterEditorModal({
                     <span>After</span>
                     <div className="flex items-center gap-2">
                       <span className="text-slate-500">Zoom: {afterZoom.toFixed(2)}x</span>
+                      <span className="text-slate-500">Rotate: {afterRotation.toFixed(1)}°</span>
                       <button
                         type="button"
                         onClick={() => handleAutoCenter("after")}
@@ -629,9 +671,9 @@ export default function BeforeAfterEditorModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setAfterPosition({ x: 0, y: 0 }); setAfterZoom(1); }}
+                        onClick={() => { setAfterPosition({ x: 0, y: 0 }); setAfterZoom(1); setAfterRotation(0); }}
                         className="text-[9px] text-slate-400 hover:text-slate-200"
-                        title="Reset zoom and position"
+                        title="Reset zoom, position, and rotation"
                       >
                         Reset
                       </button>
@@ -657,7 +699,7 @@ export default function BeforeAfterEditorModal({
                           onLoad={(e) => handleImageLoad("after", e)}
                           className="pointer-events-none"
                           style={{ 
-                            transform: `scale(${afterZoom}) translate(${afterPosition.x / afterZoom}px, ${afterPosition.y / afterZoom}px)`,
+                            transform: `rotate(${afterRotation}deg) scale(${afterZoom}) translate(${afterPosition.x / afterZoom}px, ${afterPosition.y / afterZoom}px)`,
                             transformOrigin: 'center center',
                             maxWidth: 'none',
                             width: '100%',
@@ -699,15 +741,40 @@ export default function BeforeAfterEditorModal({
                     )}
                   </div>
                   <p className="mt-1 text-[9px] text-slate-500 text-center">Drag to pan the camera focus</p>
-                  <input
-                    type="range"
-                    min={0.8}
-                    max={2.5}
-                    step={0.05}
-                    value={afterZoom}
-                    onChange={(event) => setAfterZoom(Number(event.target.value))}
-                    className="mt-1 h-1 w-full cursor-pointer rounded-full bg-slate-700"
-                  />
+                  {/* Zoom slider */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[9px] text-slate-500 w-10">Zoom</span>
+                    <input
+                      type="range"
+                      min={0.8}
+                      max={2.5}
+                      step={0.05}
+                      value={afterZoom}
+                      onChange={(event) => setAfterZoom(Number(event.target.value))}
+                      className="h-1 flex-1 cursor-pointer rounded-full bg-slate-700 accent-sky-500"
+                    />
+                  </div>
+                  {/* Rotation slider */}
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-[9px] text-slate-500 w-10">Rotate</span>
+                    <input
+                      type="range"
+                      min={-45}
+                      max={45}
+                      step={0.1}
+                      value={afterRotation}
+                      onChange={(event) => setAfterRotation(Number(event.target.value))}
+                      className="h-1 flex-1 cursor-pointer rounded-full bg-slate-700 accent-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAfterRotation(0)}
+                      className="text-[8px] text-slate-400 hover:text-slate-200 px-1"
+                      title="Reset rotation to 0°"
+                    >
+                      0°
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
