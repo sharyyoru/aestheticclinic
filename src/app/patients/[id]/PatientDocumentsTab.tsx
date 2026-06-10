@@ -296,8 +296,14 @@ export default function PatientDocumentsTab({
           continue;
         }
 
-        if (raw.name.includes("/")) {
-          const [folderName] = raw.name.split("/");
+        // Detect folder: either has "/" in name OR has null id (Supabase folder placeholder)
+        const isFolder = raw.name.includes("/") || (raw as any).id === null;
+        
+        if (isFolder) {
+          // Extract folder name (remove trailing / if present)
+          const folderName = raw.name.includes("/") 
+            ? raw.name.split("/")[0] 
+            : raw.name;
 
           if (!folderName) continue;
 
