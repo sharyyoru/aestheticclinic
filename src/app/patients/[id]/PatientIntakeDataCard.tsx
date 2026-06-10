@@ -826,7 +826,7 @@ export default function PatientIntakeDataCard({
                 <label className="text-xs text-slate-500 mb-1 block">{pos.label}</label>
                 
                 {existingPhoto?.url ? (
-                  <div className="relative h-24 rounded-lg overflow-hidden bg-slate-100 group">
+                  <div className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 group">
                     <img src={existingPhoto.url} alt={pos.label} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <button
@@ -846,7 +846,7 @@ export default function PatientIntakeDataCard({
                     type="button"
                     onClick={() => fileInputRefs.current[key]?.click()}
                     disabled={uploadingPhotos}
-                    className="w-full h-24 rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
+                    className="w-full aspect-square rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50 flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50"
                   >
                     <Upload className="w-5 h-5 text-slate-400" />
                     <span className="text-xs text-slate-400">Upload</span>
@@ -2109,7 +2109,7 @@ export default function PatientIntakeDataCard({
       </div>
 
       {/* Photos Section - Always show */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm mt-4">
         <div className="flex items-center gap-2 mb-3">
           <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
             <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2136,7 +2136,7 @@ export default function PatientIntakeDataCard({
                   </p>
                   <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
                     {typePhotos.map((photo) => (
-                      <div key={photo.id} className="relative h-20 rounded-lg overflow-hidden bg-slate-100 group">
+                      <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 group">
                         {photo.url ? (
                           <img src={photo.url} alt={photo.position} className="w-full h-full object-cover" />
                         ) : (
@@ -2162,9 +2162,9 @@ export default function PatientIntakeDataCard({
         {photos.length > 0 && (
           <div>
             {consultationPhotos.length > 0 && <p className="text-xs font-medium text-slate-600 mb-2">Intake Photos</p>}
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
               {photos.map((photo) => (
-                <div key={photo.id} className="relative h-20 rounded-lg overflow-hidden bg-slate-100 group">
+                <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 group">
                   {photoUrls[photo.id] ? (
                     <img src={photoUrls[photo.id]} alt={photo.file_name} className="w-full h-full object-cover" />
                   ) : (
