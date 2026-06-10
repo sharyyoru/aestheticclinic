@@ -1498,7 +1498,7 @@ export default function PatientIntakeDataCard({
                     </div>
                   )}
 
-                  {/* Breast: show procedure types and details */}
+                  {/* Breast: show ALL procedure types and details */}
                   {consultation.consultation_type === "breast" && consultation.breast_data && (() => {
                     const bd = consultation.breast_data as Record<string, unknown>;
                     const procTypes = (bd.procedure_types as string[]) || [];
@@ -1508,8 +1508,14 @@ export default function PatientIntakeDataCard({
                     const bfLong = bd.breastfeed_how_long ? String(bd.breastfeed_how_long) : null;
                     const condDetails = bd.conditions_details ? String(bd.conditions_details) : null;
                     const usLong = bd.ultrasound_how_long ? String(bd.ultrasound_how_long) : null;
+                    const usWhy = bd.ultrasound_why ? String(bd.ultrasound_why) : null;
+                    const reductionComments = bd.reduction_comments ? String(bd.reduction_comments) : null;
+                    const liftComments = bd.lift_comments ? String(bd.lift_comments) : null;
+                    const hadPrevConsult = bd.had_previous_consultation as string | null;
+                    
                     return (
                       <div className="space-y-2">
+                        {/* Procedure Types */}
                         {procTypes.length > 0 && (
                           <div>
                             <span className="text-xs text-slate-500">Procedure Types:</span>
@@ -1520,80 +1526,149 @@ export default function PatientIntakeDataCard({
                             </div>
                           </div>
                         )}
+                        
+                        {/* Augmentation Details */}
                         {augOpt && (
                           <div className="text-xs text-slate-600">
-                            <span className="text-slate-500">Method:</span> {augOpt}
-                            {cupSize && ` • Cup Size: ${cupSize}`}
+                            <span className="text-slate-500">Augmentation Method:</span> {augOpt}
+                            {cupSize && <> • <span className="text-slate-500">Desired Cup Size:</span> {cupSize}</>}
                           </div>
                         )}
-                        {bd.had_surgery === "yes" && (
+                        
+                        {/* Reduction Comments */}
+                        {reductionComments && (
                           <div className="text-xs text-slate-600">
-                            <span className="text-slate-500">Previous Surgery:</span> {surgTypes.join(", ") || "Yes"}
+                            <span className="text-slate-500">Reduction Notes:</span> {reductionComments}
                           </div>
                         )}
-                        {bd.had_breastfeed === "yes" && (
+                        
+                        {/* Lift Comments */}
+                        {liftComments && (
                           <div className="text-xs text-slate-600">
-                            <span className="text-slate-500">Breastfed:</span> Yes{bfLong && ` (${bfLong})`}
+                            <span className="text-slate-500">Lift Notes:</span> {liftComments}
                           </div>
                         )}
-                        {bd.had_conditions === "yes" && (
+                        
+                        {/* Medical History Section */}
+                        {(() => {
+                          const hadSurg = bd.had_surgery ? String(bd.had_surgery) : null;
+                          const hadBf = bd.had_breastfeed ? String(bd.had_breastfeed) : null;
+                          const hadCond = bd.had_conditions ? String(bd.had_conditions) : null;
+                          const hadUs = bd.had_ultrasound ? String(bd.had_ultrasound) : null;
+                          
+                          if (!hadSurg && !hadBf && !hadCond && !hadUs && !hadPrevConsult) return null;
+                          
+                          return (
+                            <div className="mt-2 pt-2 border-t border-purple-100">
+                              <span className="text-xs font-medium text-slate-600 block mb-1">Medical History</span>
+                              
+                              {hadSurg && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="text-slate-500">Previous Breast Surgery:</span> {hadSurg === "yes" ? "Yes" : "No"}
+                                  {hadSurg === "yes" && surgTypes.length > 0 && ` (${surgTypes.join(", ")})`}
+                                </div>
+                              )}
+                              
+                              {hadBf && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="text-slate-500">Breastfed:</span> {hadBf === "yes" ? "Yes" : "No"}
+                                  {hadBf === "yes" && bfLong && ` (${bfLong})`}
+                                </div>
+                              )}
+                              
+                              {hadCond && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="text-slate-500">Breast Conditions:</span> {hadCond === "yes" ? "Yes" : "No"}
+                                  {hadCond === "yes" && condDetails && ` - ${condDetails}`}
+                                </div>
+                              )}
+                              
+                              {hadUs && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="text-slate-500">Ultrasound/Mammogram:</span> {hadUs === "yes" ? "Yes" : "No"}
+                                  {hadUs === "yes" && usLong && ` (${usLong})`}
+                                  {hadUs === "yes" && usWhy && ` - ${usWhy}`}
+                                </div>
+                              )}
+                              
+                              {hadPrevConsult && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="text-slate-500">Previous Consultation:</span> {hadPrevConsult === "yes" ? "Yes" : "No"}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Face: show ALL face data */}
+                  {consultation.consultation_type === "face" && consultation.face_data && (() => {
+                    const fd = consultation.face_data as Record<string, unknown>;
+                    const effects = (fd.effects as string[]) || [];
+                    const priorityAreas = (fd.priority_areas as string[]) || [];
+                    const budget = fd.budget ? String(fd.budget) : null;
+                    const hadTreatments = fd.had_treatments as string | null;
+                    const treatmentKind = fd.treatment_kind ? String(fd.treatment_kind) : null;
+                    const treatmentWhen = fd.treatment_when ? String(fd.treatment_when) : null;
+                    
+                    return (
+                      <div className="space-y-2">
+                        {/* Previous Treatments */}
+                        {hadTreatments && (
                           <div className="text-xs text-slate-600">
-                            <span className="text-slate-500">Conditions:</span> {condDetails || "Yes"}
+                            <span className="text-slate-500">Previous Facial Treatments:</span> {hadTreatments === "yes" ? "Yes" : "No"}
+                            {hadTreatments === "yes" && treatmentKind && ` - ${treatmentKind}`}
+                            {hadTreatments === "yes" && treatmentWhen && ` (${treatmentWhen})`}
                           </div>
                         )}
-                        {bd.had_ultrasound === "yes" && (
+                        
+                        {/* Desired Effects */}
+                        {effects.length > 0 && (
+                          <div>
+                            <span className="text-xs text-slate-500">Desired Effects:</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {effects.map((effect: string) => (
+                                <span key={effect} className="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">{effect}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Priority Areas */}
+                        {priorityAreas.length > 0 && (
+                          <div>
+                            <span className="text-xs text-slate-500">Priority Areas:</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {priorityAreas.map((area: string) => (
+                                <span key={area} className="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">{area}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Budget */}
+                        {budget && (
                           <div className="text-xs text-slate-600">
-                            <span className="text-slate-500">Ultrasound:</span> Yes{usLong && ` (${usLong})`}
+                            <span className="text-slate-500">Budget:</span> {budget}
                           </div>
                         )}
                       </div>
                     );
                   })()}
 
-                  {/* Face: show effects and priority areas */}
-                  {consultation.consultation_type === "face" && consultation.face_data && (
-                    <div className="space-y-2">
-                      {((consultation.face_data as Record<string, unknown>).effects as string[] || []).length > 0 && (
-                        <div>
-                          <span className="text-xs text-slate-500">Desired Effects:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {((consultation.face_data as Record<string, unknown>).effects as string[]).map((effect: string) => (
-                              <span key={effect} className="text-xs bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full">{effect}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {((consultation.face_data as Record<string, unknown>).priority_areas as string[] || []).length > 0 && (
-                        <div>
-                          <span className="text-xs text-slate-500">Priority Areas:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {((consultation.face_data as Record<string, unknown>).priority_areas as string[]).map((area: string) => (
-                              <span key={area} className="text-xs bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">{area}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {typeof (consultation.face_data as Record<string, unknown>).budget === 'string' && (
-                        <div className="text-xs text-slate-600">
-                          <span className="text-slate-500">Budget:</span> {(consultation.face_data as Record<string, string>).budget}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Measurements if available */}
+                  {/* Measurements - show ALL */}
                   {consultation.measurements && Object.keys(consultation.measurements).length > 0 && (
                     <div className="mt-2 pt-2 border-t border-slate-100">
-                      <span className="text-xs text-slate-500">Measurements:</span>
-                      <div className="grid grid-cols-2 gap-1 mt-1 text-xs">
-                        {Object.entries(consultation.measurements).slice(0, 4).map(([key, value]) => (
-                          <div key={key} className="text-slate-600">
-                            <span className="capitalize">{key.replace(/_/g, ' ')}:</span> {value}cm
+                      <span className="text-xs text-slate-500 font-medium">Measurements:</span>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1 text-xs">
+                        {Object.entries(consultation.measurements).map(([key, value]) => (
+                          <div key={key} className="text-slate-600 flex justify-between">
+                            <span className="capitalize text-slate-500">{key.replace(/_/g, ' ')}:</span>
+                            <span className="font-medium">{value}cm</span>
                           </div>
                         ))}
-                        {Object.keys(consultation.measurements).length > 4 && (
-                          <div className="text-slate-400">+{Object.keys(consultation.measurements).length - 4} more</div>
-                        )}
                       </div>
                     </div>
                   )}
