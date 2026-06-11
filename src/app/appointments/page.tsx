@@ -1923,7 +1923,7 @@ export default function CalendarPage() {
         
         // Check location-based calendars first - filter by appointment.location
         if (selectedLocationCalendars.length > 0) {
-          const matchesByLocation = selectedLocationNames.some((locName) => {
+          const matchesByLocation = appointmentLocation.length > 0 && selectedLocationNames.some((locName) => {
             // Match appointment location to selected location calendar
             // e.g., "Gstaad" calendar should match appointments with location containing "gstaad"
             return appointmentLocation.includes(locName) || locName.includes(appointmentLocation);
@@ -1959,7 +1959,7 @@ export default function CalendarPage() {
         if (activeTabCalendar) {
           if (activeTabIsLocation) {
             // Location tab: filter by appointment location
-            const matchesActiveLocation = activeTabDoctorName && 
+            const matchesActiveLocation = activeTabDoctorName && appointmentLocation.length > 0 &&
               (appointmentLocation.includes(activeTabDoctorName) || activeTabDoctorName.includes(appointmentLocation));
             if (!matchesActiveLocation) return;
           } else {
