@@ -3109,7 +3109,8 @@ export default function CalendarPage() {
       const originalEndTime = editingAppointment.end_time ? new Date(editingAppointment.end_time).getTime() : null;
       const newStartTime = new Date(updated.start_time).getTime();
       const newEndTime = updated.end_time ? new Date(updated.end_time).getTime() : null;
-      const dateTimeChanged = originalStartTime !== newStartTime || originalEndTime !== newEndTime;
+      const startTimeChanged = originalStartTime !== newStartTime;
+      const dateTimeChanged = startTimeChanged || originalEndTime !== newEndTime;
       const statusChanged = editingAppointment.status !== updated.status;
       const locationChanged = (editingAppointment.location || "") !== (updated.location || "");
       const wasCancelled = updated.status === "cancelled" && editingAppointment.status !== "cancelled";
@@ -3120,11 +3121,13 @@ export default function CalendarPage() {
       if (wasCancelled) {
         // Send cancellation email
         void sendAppointmentCancellationEmail(updated);
-      } else if (dateTimeChanged && updated.status !== "cancelled") {
+      } else if (startTimeChanged && updated.status !== "cancelled") {
         // Send rescheduling email with new date/time
+        // Only when the appointment START changes - duration-only (end_time) changes
+        // must NOT notify the patient per clinic policy
         void sendAppointmentRescheduledEmail(updated, editingAppointment);
       }
-      // Note: No "updated" email sent for other changes (location, notes, etc.) per clinic policy
+      // Note: No "updated" email sent for other changes (duration, location, notes, etc.) per clinic policy
 
       // Log the change to appointment_history
       if (dateTimeChanged || statusChanged || locationChanged) {
@@ -3133,7 +3136,7 @@ export default function CalendarPage() {
         
         const changeType = updated.status === "cancelled" 
           ? "cancelled" 
-          : dateTimeChanged 
+          : startTimeChanged 
             ? "rescheduled" 
             : "updated";
         
