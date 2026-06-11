@@ -16,6 +16,7 @@
       "**/*"
     ],
     "plugins": [
+      "./plugins/withFmtFix.js",
       [
         "expo-build-properties",
         {
@@ -29,7 +30,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ch.aliicemedical.crm",
-      "buildNumber": "8",
+      "buildNumber": "9",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
