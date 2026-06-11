@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 // Public routes that don't require authentication (or handle their own auth)
-const PUBLIC_ROUTES = ["/login", "/book-appointment", "/intake", "/invoice", "/form", "/embed", "/consultations", "/onboarding", "/aliicechat", "/aliicechatembed", "/appx", "/pricing", "/pricingaliice", "/prodapp"];
+const PUBLIC_ROUTES = ["/login", "/book-appointment", "/intake", "/invoice", "/form", "/embed", "/consultations", "/onboarding", "/aliicechat", "/aliicechatembed", "/appx", "/pricing", "/pricingaliice", "/prodapp", "/patientapp"];
 
 function isPublicRoute(pathname: string): boolean {
   return PUBLIC_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"));
