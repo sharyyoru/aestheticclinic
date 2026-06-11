@@ -15,7 +15,11 @@
     },
     "production": {
       "ios": {
-        "distribution": "store"
+        "distribution": "store",
+        "image": "macos-sequoia-15.4-xcode-16.3",
+        "cache": {
+          "disabled": true
+        }
       },
       "android": {
         "buildType": "apk"
