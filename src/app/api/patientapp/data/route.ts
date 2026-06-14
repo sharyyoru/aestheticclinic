@@ -39,6 +39,96 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * Update the authenticated patient's editable contact details.
+ * Only first_name, last_name, email, and phone may be changed by the patient.
+ * The patient ID always comes from the verified session token.
+ */
+export async function PATCH(request: Request) {
+  const session = getPatientSession(request);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const patientId = session.patientId;
+
+  let body: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+  };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const updates: Record<string, string | null> = {};
+
+  if (body.first_name !== undefined) {
+    const v = body.first_name.trim();
+    if (!v) return NextResponse.json({ error: "First name cannot be empty" }, { status: 400 });
+    updates.first_name = v;
+  }
+  if (body.last_name !== undefined) {
+    const v = body.last_name.trim();
+    if (!v) return NextResponse.json({ error: "Last name cannot be empty" }, { status: 400 });
+    updates.last_name = v;
+  }
+  if (body.email !== undefined) {
+    const v = body.email.trim().toLowerCase();
+    if (!v || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+      return NextResponse.json({ error: "Please enter a valid email address" }, { status: 400 });
+    }
+    updates.email = v;
+  }
+  if (body.phone !== undefined) {
+    const v = body.phone.trim();
+    updates.phone = v || null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No changes provided" }, { status: 400 });
+  }
+
+  try {
+    // If the email is changing, ensure it is not already used by another patient.
+    if (updates.email) {
+      const { data: existing } = await supabaseAdmin
+        .from("patients")
+        .select("id")
+        .ilike("email", updates.email)
+        .neq("id", patientId)
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json(
+          { error: "This email is already in use. Please contact the clinic." },
+          { status: 409 },
+        );
+      }
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("patients")
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq("id", patientId)
+      .select("id, first_name, last_name, email, phone, avatar_url")
+      .single();
+
+    if (error) {
+      console.error("patientapp profile update error:", error);
+      return NextResponse.json({ error: "Failed to save changes" }, { status: 500 });
+    }
+
+    return NextResponse.json({ patient: data });
+  } catch (error) {
+    console.error("patientapp PATCH error:", error);
+    return NextResponse.json({ error: "Failed to save changes" }, { status: 500 });
+  }
+}
+
 async function getOverview(patientId: string) {
   const nowIso = new Date().toISOString();
 

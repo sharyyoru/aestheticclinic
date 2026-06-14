@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useProdApp } from "./ProdAppContext";
 
 // Routes that should be completely standalone (no sidebar, header, or shell)
-const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/pricingaliice", "/appx", "/prodapp", "/aliicestory"];
+const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/pricingaliice", "/appx", "/prodapp", "/patientapp", "/aliicestory"];
 
 // Routes that should have transparent/minimal background (for iframe embedding)
 const TRANSPARENT_ROUTES = ["/embed", "/aliicechat/embed", "/aliicechatembed"];

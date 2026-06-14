@@ -18,6 +18,9 @@ import {
   ChevronDown,
   Loader2,
   ShieldCheck,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 
 type TabId = "home" | "appointments" | "records" | "photos" | "profile";
@@ -128,6 +131,12 @@ export default function PatientAppPage() {
   const [expandedConsultation, setExpandedConsultation] = useState<string | null>(null);
   const [apptView, setApptView] = useState<"upcoming" | "past">("upcoming");
 
+  // Profile editing
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ first_name: "", last_name: "", email: "", phone: "" });
+
   // Auth check on mount
   useEffect(() => {
     const token = getToken();
@@ -182,6 +191,52 @@ export default function PatientAppPage() {
     localStorage.removeItem("patientapp_token");
     localStorage.removeItem("patientapp_patient");
     window.location.href = "/patientapp/login";
+  }
+
+  function startEditProfile() {
+    setProfileError(null);
+    setEditForm({
+      first_name: profile?.patient?.first_name || "",
+      last_name: profile?.patient?.last_name || "",
+      email: profile?.patient?.email || "",
+      phone: profile?.patient?.phone || "",
+    });
+    setEditingProfile(true);
+  }
+
+  async function handleSaveProfile() {
+    setSavingProfile(true);
+    setProfileError(null);
+    try {
+      const token = getToken();
+      const res = await fetch("/api/patientapp/data", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(editForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save changes");
+
+      // Update local state + cached patient info
+      setProfile((prev: any) => ({ ...prev, patient: { ...prev.patient, ...data.patient } }));
+      setPatient((prev) => (prev ? { ...prev, ...data.patient } : prev));
+      const cached = localStorage.getItem("patientapp_patient");
+      if (cached) {
+        try {
+          localStorage.setItem(
+            "patientapp_patient",
+            JSON.stringify({ ...JSON.parse(cached), ...data.patient }),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      setEditingProfile(false);
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Failed to save changes");
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   const firstName = patient?.first_name || "there";
@@ -474,17 +529,95 @@ export default function PatientAppPage() {
                   </div>
                 </div>
 
+                {/* Contact details (editable) */}
                 <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
-                    <InfoRow label="Phone" value={profile.patient?.phone} />
-                    <InfoRow label="Date of birth" value={profile.patient?.dob ? formatDate(profile.patient.dob) : null} />
-                    <InfoRow label="Gender" value={profile.patient?.gender} />
-                    <InfoRow label="Nationality" value={profile.patient?.nationality} />
-                    <InfoRow label="Address" value={profile.patient?.street_address} />
-                    <InfoRow label="City" value={[profile.patient?.postal_code, profile.patient?.town].filter(Boolean).join(" ")} />
-                    <InfoRow label="Preferred clinic" value={profile.patient?.clinic_preference} />
-                    <InfoRow label="Language" value={profile.patient?.language_preference} />
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="font-semibold text-slate-900 text-sm">Contact Details</h2>
+                    {!editingProfile && (
+                      <button
+                        onClick={startEditProfile}
+                        className="flex items-center gap-1.5 text-sky-600 text-sm font-medium px-2 py-1 -mr-2 rounded-lg active:bg-sky-50"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </button>
+                    )}
                   </div>
+
+                  {editingProfile ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <EditField
+                          label="First name"
+                          value={editForm.first_name}
+                          onChange={(v) => setEditForm((f) => ({ ...f, first_name: v }))}
+                          autoCapitalize="words"
+                        />
+                        <EditField
+                          label="Last name"
+                          value={editForm.last_name}
+                          onChange={(v) => setEditForm((f) => ({ ...f, last_name: v }))}
+                          autoCapitalize="words"
+                        />
+                      </div>
+                      <EditField
+                        label="Email"
+                        value={editForm.email}
+                        onChange={(v) => setEditForm((f) => ({ ...f, email: v }))}
+                        type="email"
+                        autoCapitalize="none"
+                      />
+                      <EditField
+                        label="Mobile phone"
+                        value={editForm.phone}
+                        onChange={(v) => setEditForm((f) => ({ ...f, phone: v }))}
+                        type="tel"
+                      />
+
+                      {profileError && (
+                        <div className="p-2.5 bg-red-50 border border-red-100 rounded-xl">
+                          <p className="text-xs text-red-600">{profileError}</p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => {
+                            setEditingProfile(false);
+                            setProfileError(null);
+                          }}
+                          disabled={savingProfile}
+                          className="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                        >
+                          <X className="w-4 h-4" /> Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveProfile}
+                          disabled={savingProfile}
+                          className="flex-1 py-2.5 bg-sky-500 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-sky-500/25 disabled:opacity-50"
+                        >
+                          {savingProfile ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Check className="w-4 h-4" /> Save
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+                      <InfoRow label="Phone" value={profile.patient?.phone} />
+                      <InfoRow label="Email" value={profile.patient?.email} />
+                      <InfoRow label="Date of birth" value={profile.patient?.dob ? formatDate(profile.patient.dob) : null} />
+                      <InfoRow label="Gender" value={profile.patient?.gender} />
+                      <InfoRow label="Nationality" value={profile.patient?.nationality} />
+                      <InfoRow label="Address" value={profile.patient?.street_address} />
+                      <InfoRow label="City" value={[profile.patient?.postal_code, profile.patient?.town].filter(Boolean).join(" ")} />
+                      <InfoRow label="Preferred clinic" value={profile.patient?.clinic_preference} />
+                      <InfoRow label="Language" value={profile.patient?.language_preference} />
+                    </div>
+                  )}
                 </div>
 
                 {profile.insurance && (
@@ -501,7 +634,7 @@ export default function PatientAppPage() {
                 )}
 
                 <p className="text-xs text-slate-400 text-center px-4">
-                  To update your details, please contact the clinic.
+                  To update other details, please contact the clinic.
                 </p>
 
                 <button
@@ -589,6 +722,34 @@ function QuickLink({ icon: Icon, label, onClick }: { icon: typeof Home; label: s
       <span className="flex-1 text-left text-sm font-medium text-slate-800">{label}</span>
       <ChevronRight className="w-4 h-4 text-slate-300" />
     </button>
+  );
+}
+
+function EditField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  autoCapitalize,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  autoCapitalize?: "none" | "words" | "sentences" | "characters";
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="block text-[11px] font-medium text-slate-500">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoCapitalize={autoCapitalize}
+        autoCorrect="off"
+        className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-base text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
+      />
+    </div>
   );
 }
 
