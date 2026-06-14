@@ -57,6 +57,11 @@ export async function PATCH(request: Request) {
     last_name?: string;
     email?: string;
     phone?: string;
+    dob?: string;
+    street_address?: string;
+    postal_code?: string;
+    town?: string;
+    country?: string;
   };
   try {
     body = await request.json();
@@ -87,6 +92,25 @@ export async function PATCH(request: Request) {
     const v = body.phone.trim();
     updates.phone = v || null;
   }
+  if (body.dob !== undefined) {
+    const v = body.dob.trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      return NextResponse.json({ error: "Please enter a valid date of birth" }, { status: 400 });
+    }
+    updates.dob = v || null;
+  }
+  if (body.street_address !== undefined) {
+    updates.street_address = body.street_address.trim() || null;
+  }
+  if (body.postal_code !== undefined) {
+    updates.postal_code = body.postal_code.trim() || null;
+  }
+  if (body.town !== undefined) {
+    updates.town = body.town.trim() || null;
+  }
+  if (body.country !== undefined) {
+    updates.country = body.country.trim() || null;
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "No changes provided" }, { status: 400 });
@@ -114,7 +138,7 @@ export async function PATCH(request: Request) {
       .from("patients")
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq("id", patientId)
-      .select("id, first_name, last_name, email, phone, avatar_url")
+      .select("id, first_name, last_name, email, phone, dob, street_address, postal_code, town, country, avatar_url")
       .single();
 
     if (error) {

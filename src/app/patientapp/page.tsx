@@ -21,9 +21,13 @@ import {
   Pencil,
   Check,
   X,
+  MessageCircle,
+  Plus,
 } from "lucide-react";
+import BookingFlow from "./BookingFlow";
+import ChatPanel from "./ChatPanel";
 
-type TabId = "home" | "appointments" | "records" | "photos" | "profile";
+type TabId = "home" | "appointments" | "records" | "photos" | "chat" | "profile";
 
 type PatientInfo = {
   id: string;
@@ -77,7 +81,7 @@ const TABS: { id: TabId; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "appointments", label: "Visits", icon: Calendar },
   { id: "records", label: "Records", icon: FolderHeart },
-  { id: "photos", label: "Photos", icon: Camera },
+  { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "profile", label: "Profile", icon: User },
 ];
 
@@ -131,11 +135,24 @@ export default function PatientAppPage() {
   const [expandedConsultation, setExpandedConsultation] = useState<string | null>(null);
   const [apptView, setApptView] = useState<"upcoming" | "past">("upcoming");
 
+  // Booking overlay
+  const [showBooking, setShowBooking] = useState(false);
+
   // Profile editing
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ first_name: "", last_name: "", email: "", phone: "" });
+  const [editForm, setEditForm] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    phone: "",
+    dob: "",
+    street_address: "",
+    postal_code: "",
+    town: "",
+    country: "",
+  });
 
   // Auth check on mount
   useEffect(() => {
@@ -156,6 +173,11 @@ export default function PatientAppPage() {
 
   // Load data for active tab
   const loadTab = useCallback(async (tab: TabId) => {
+    // Chat manages its own state/session; no data fetch needed.
+    if (tab === "chat") {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -200,6 +222,11 @@ export default function PatientAppPage() {
       last_name: profile?.patient?.last_name || "",
       email: profile?.patient?.email || "",
       phone: profile?.patient?.phone || "",
+      dob: profile?.patient?.dob ? String(profile.patient.dob).slice(0, 10) : "",
+      street_address: profile?.patient?.street_address || "",
+      postal_code: profile?.patient?.postal_code || "",
+      town: profile?.patient?.town || "",
+      country: profile?.patient?.country || "",
     });
     setEditingProfile(true);
   }
@@ -257,8 +284,10 @@ export default function PatientAppPage() {
       </header>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto overscroll-contain">
-        {loading ? (
+      <main className={`flex-1 min-h-0 ${activeTab === "chat" ? "flex flex-col" : "overflow-y-auto overscroll-contain"}`}>
+        {activeTab === "chat" ? (
+          <ChatPanel />
+        ) : loading ? (
           <div className="flex items-center justify-center h-64">
             <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
           </div>
@@ -294,6 +323,15 @@ export default function PatientAppPage() {
                   </div>
                 </div>
 
+                {/* Book appointment CTA */}
+                <button
+                  onClick={() => setShowBooking(true)}
+                  className="w-full py-3.5 bg-sky-500 text-white rounded-2xl font-semibold flex items-center justify-center gap-2 shadow-lg shadow-sky-500/25 active:bg-sky-600"
+                >
+                  <Plus className="w-5 h-5" />
+                  Book an Appointment
+                </button>
+
                 {/* Next appointments */}
                 <section>
                   <div className="flex items-center justify-between mb-3">
@@ -328,7 +366,15 @@ export default function PatientAppPage() {
             {/* ─── APPOINTMENTS ─── */}
             {activeTab === "appointments" && appointments && (
               <div className="p-5 space-y-4">
-                <h1 className="text-xl font-bold text-slate-900">My Appointments</h1>
+                <div className="flex items-center justify-between">
+                  <h1 className="text-xl font-bold text-slate-900">My Appointments</h1>
+                  <button
+                    onClick={() => setShowBooking(true)}
+                    className="flex items-center gap-1.5 bg-sky-500 text-white text-sm font-semibold px-3 py-2 rounded-xl active:bg-sky-600"
+                  >
+                    <Plus className="w-4 h-4" /> Book
+                  </button>
+                </div>
                 <div className="flex bg-slate-100 rounded-xl p-1">
                   {(["upcoming", "past"] as const).map((view) => (
                     <button
@@ -572,6 +618,37 @@ export default function PatientAppPage() {
                         onChange={(v) => setEditForm((f) => ({ ...f, phone: v }))}
                         type="tel"
                       />
+                      <EditField
+                        label="Date of birth"
+                        value={editForm.dob}
+                        onChange={(v) => setEditForm((f) => ({ ...f, dob: v }))}
+                        type="date"
+                      />
+                      <EditField
+                        label="Street address"
+                        value={editForm.street_address}
+                        onChange={(v) => setEditForm((f) => ({ ...f, street_address: v }))}
+                        autoCapitalize="words"
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <EditField
+                          label="Postal code"
+                          value={editForm.postal_code}
+                          onChange={(v) => setEditForm((f) => ({ ...f, postal_code: v }))}
+                        />
+                        <EditField
+                          label="Town / City"
+                          value={editForm.town}
+                          onChange={(v) => setEditForm((f) => ({ ...f, town: v }))}
+                          autoCapitalize="words"
+                        />
+                      </div>
+                      <EditField
+                        label="Country"
+                        value={editForm.country}
+                        onChange={(v) => setEditForm((f) => ({ ...f, country: v }))}
+                        autoCapitalize="words"
+                      />
 
                       {profileError && (
                         <div className="p-2.5 bg-red-50 border border-red-100 rounded-xl">
@@ -672,6 +749,24 @@ export default function PatientAppPage() {
           })}
         </div>
       </nav>
+
+      {/* Booking overlay */}
+      {showBooking && (
+        <BookingFlow
+          patient={{
+            first_name: profile?.patient?.first_name ?? patient?.first_name ?? null,
+            last_name: profile?.patient?.last_name ?? patient?.last_name ?? null,
+            email: profile?.patient?.email ?? patient?.email ?? null,
+            phone: profile?.patient?.phone ?? null,
+          }}
+          onClose={() => setShowBooking(false)}
+          onBooked={() => {
+            // Refresh appointment data after a successful booking
+            if (activeTab === "appointments") loadTab("appointments");
+            if (activeTab === "home") loadTab("home");
+          }}
+        />
+      )}
     </div>
   );
 }
