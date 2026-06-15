@@ -468,6 +468,27 @@ export default function PatientRendezvousTab({
 
       const updated = data as unknown as Appointment;
 
+      // Defense-in-depth: if the appointment was cancelled or its start time
+      // changed (rescheduled), retire any pending reminder/confirmation emails
+      // so the old date/time can never be sent.
+      const wasCancelled =
+        updated.status === "cancelled" && editingAppointment.status !== "cancelled";
+      const startTimeChanged =
+        new Date(editingAppointment.start_time).getTime() !==
+        new Date(updated.start_time).getTime();
+      if (wasCancelled || (startTimeChanged && updated.status !== "cancelled")) {
+        void fetch("/api/appointments/cancel-reminders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            appointmentId: updated.id,
+            reason: wasCancelled ? "cancelled" : "rescheduled",
+          }),
+        }).catch((err) =>
+          console.error("[PatientRendezvousTab] Failed to retire reminders:", err),
+        );
+      }
+
       setAppointments((prev) => {
         if (updated.status === "cancelled") {
           return prev.filter((appt) => appt.id !== updated.id);

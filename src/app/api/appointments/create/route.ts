@@ -440,7 +440,12 @@ export async function POST(request: Request) {
                   location || null
                 );
 
-                // Always store in scheduled_emails table for cron job backup
+                // Store in scheduled_emails as pending. The send-scheduled-emails
+                // cron is the single sender and validates the appointment is
+                // still active (not cancelled/rescheduled/past) before sending.
+                // We do NOT use Mailgun's scheduled delivery (o:deliverytime)
+                // because such a message cannot be recalled if the appointment
+                // is later cancelled or rescheduled.
                 await supabase.from("scheduled_emails").insert({
                   patient_id: patientId,
                   appointment_id: appointmentId,
@@ -452,23 +457,7 @@ export async function POST(request: Request) {
                   status: "pending",
                 });
 
-                // Try to send via Mailgun (will skip if beyond 24-hour limit)
-                const result = await sendEmail(
-                  patientEmail,
-                  `Reminder: Appointment Tomorrow - ${formatAppointmentDate(appointmentDateObj)}`,
-                  patientReminderHtml,
-                  reminderDate
-                );
-                
-                // If Mailgun sent/scheduled it, mark as sent in DB
-                if (result.sent) {
-                  await supabase.from("scheduled_emails")
-                    .update({ status: "sent" })
-                    .eq("appointment_id", appointmentId)
-                    .eq("recipient_type", "patient");
-                }
-                
-                console.log("Patient reminder scheduled for:", reminderDate.toISOString(), result);
+                console.log("Patient reminder queued (cron-validated) for:", reminderDate.toISOString());
               } catch (err) {
                 console.error("Error scheduling patient reminder:", err);
                 // Don't throw - this is a non-critical operation
@@ -488,7 +477,12 @@ export async function POST(request: Request) {
                   location || null
                 );
 
-                // Always store in scheduled_emails table for cron job backup
+                // Store in scheduled_emails as pending. The send-scheduled-emails
+                // cron is the single sender and validates the appointment is
+                // still active (not cancelled/rescheduled/past) before sending.
+                // We do NOT use Mailgun's scheduled delivery (o:deliverytime)
+                // because such a message cannot be recalled if the appointment
+                // is later cancelled or rescheduled.
                 await supabase.from("scheduled_emails").insert({
                   patient_id: patientId,
                   appointment_id: appointmentId,
@@ -500,23 +494,7 @@ export async function POST(request: Request) {
                   status: "pending",
                 });
 
-                // Try to send via Mailgun (will skip if beyond 24-hour limit)
-                const result = await sendEmail(
-                  assignedUserEmail,
-                  `Reminder: Appointment with ${patientName} Tomorrow`,
-                  providerReminderHtml,
-                  reminderDate
-                );
-                
-                // If Mailgun sent/scheduled it, mark as sent in DB
-                if (result.sent) {
-                  await supabase.from("scheduled_emails")
-                    .update({ status: "sent" })
-                    .eq("appointment_id", appointmentId)
-                    .eq("recipient_type", "provider");
-                }
-                
-                console.log("Provider reminder scheduled for:", reminderDate.toISOString(), result);
+                console.log("Provider reminder queued (cron-validated) for:", reminderDate.toISOString());
               } catch (err) {
                 console.error("Error scheduling provider reminder:", err);
                 // Don't throw - this is a non-critical operation

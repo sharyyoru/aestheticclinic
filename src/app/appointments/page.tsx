@@ -986,6 +986,24 @@ async function sendAppointmentRescheduledEmail(
   return { success: true };
 }
 
+// Defense-in-depth: immediately retire any pending reminder/confirmation
+// emails for an appointment when it is cancelled or rescheduled, so a stale
+// message can never be sent before the next cron run validates it.
+async function cancelScheduledReminders(
+  appointmentId: string,
+  reason: "cancelled" | "rescheduled",
+): Promise<void> {
+  try {
+    await fetch("/api/appointments/cancel-reminders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appointmentId, reason }),
+    });
+  } catch (err) {
+    console.error("[cancelScheduledReminders] Failed to retire reminders:", err);
+  }
+}
+
 async function sendAppointmentCancellationEmail(
   appointment: CalendarAppointment,
 ): Promise<{ success: boolean; error?: string }> {
@@ -3121,11 +3139,17 @@ export default function CalendarPage() {
       if (wasCancelled) {
         // Send cancellation email
         void sendAppointmentCancellationEmail(updated);
+        // Defense-in-depth: retire any pending reminder/confirmation emails
+        void cancelScheduledReminders(updated.id, "cancelled");
       } else if (startTimeChanged && updated.status !== "cancelled") {
         // Send rescheduling email with new date/time
         // Only when the appointment START changes - duration-only (end_time) changes
         // must NOT notify the patient per clinic policy
         void sendAppointmentRescheduledEmail(updated, editingAppointment);
+        // Defense-in-depth: retire the now-stale pending reminder emails so
+        // the old date/time can never be sent. The day-before reminder cron
+        // will issue a fresh reminder using the live appointment data.
+        void cancelScheduledReminders(updated.id, "rescheduled");
       }
       // Note: No "updated" email sent for other changes (duration, location, notes, etc.) per clinic policy
 

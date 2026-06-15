@@ -661,7 +661,14 @@ export async function POST(request: Request) {
             location || null
           );
 
-          // Store in scheduled_emails table for cron job backup
+          // Store in scheduled_emails as pending. The send-scheduled-emails
+          // cron is the single sender and validates the appointment is still
+          // active (not cancelled/rescheduled/past) right before sending.
+          //
+          // We intentionally do NOT hand the reminder to Mailgun's scheduled
+          // delivery (o:deliverytime) here: a Mailgun-scheduled message cannot
+          // be recalled, so it would still be delivered even if the
+          // appointment is later cancelled or rescheduled.
           await supabase.from("scheduled_emails").insert({
             patient_id: patientId,
             appointment_id: appointment.id,
@@ -673,23 +680,7 @@ export async function POST(request: Request) {
             status: "pending",
           });
 
-          // Try to send via Mailgun (will skip if beyond 24-hour limit)
-          const result = await sendEmail(
-            email,
-            `Reminder: Your Appointment Tomorrow - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
-            reminderHtml,
-            reminderDate
-          );
-          
-          // If Mailgun sent/scheduled it, mark as sent in DB
-          if (result.sent) {
-            await supabase.from("scheduled_emails")
-              .update({ status: "sent" })
-              .eq("appointment_id", appointment.id)
-              .eq("recipient_type", "patient");
-          }
-          
-          console.log("✓ Patient reminder scheduled for:", reminderDate.toISOString(), result);
+          console.log("✓ Patient reminder queued (cron-validated) for:", reminderDate.toISOString());
         } catch (err) {
           console.error("✗ Error scheduling patient reminder:", err);
         }
