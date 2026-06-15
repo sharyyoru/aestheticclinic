@@ -85,13 +85,122 @@ export async function GET(request: Request) {
 
     console.log(`Processing ${pendingEmails.length} scheduled emails`);
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Validate against the LIVE appointment before sending.
+    // Prevents sending reminders/confirmations for appointments that were
+    // cancelled, deleted, already happened, or rescheduled (stale body).
+    // ─────────────────────────────────────────────────────────────────────
+    const appointmentIds = Array.from(
+      new Set(
+        pendingEmails
+          .map((e) => e.appointment_id)
+          .filter((id): id is string => !!id),
+      ),
+    );
+
+    const appointmentMap = new Map<
+      string,
+      { id: string; status: string | null; start_time: string | null }
+    >();
+
+    if (appointmentIds.length > 0) {
+      const { data: appts, error: apptError } = await supabase
+        .from("appointments")
+        .select("id, status, start_time")
+        .in("id", appointmentIds);
+
+      if (apptError) {
+        console.error("Error fetching appointments for validation:", apptError);
+      } else {
+        for (const appt of appts || []) {
+          appointmentMap.set(appt.id, appt);
+        }
+      }
+    }
+
+    const nowMs = Date.now();
+    // How far the live start_time may drift from what the reminder assumed
+    // (reminders are scheduled for start_time - 24h). Tolerates DST shifts;
+    // anything larger means the appointment was rescheduled => stale email.
+    const RESCHEDULE_TOLERANCE_MS = 90 * 60 * 1000;
+
+    const emailsToSend: typeof pendingEmails = [];
+    const staleEmails: { id: string; reason: string }[] = [];
+
+    for (const email of pendingEmails) {
+      // Emails not tied to an appointment (generic) are always sent.
+      if (!email.appointment_id) {
+        emailsToSend.push(email);
+        continue;
+      }
+
+      const appt = appointmentMap.get(email.appointment_id);
+
+      if (!appt) {
+        staleEmails.push({ id: email.id, reason: "appointment_deleted" });
+        continue;
+      }
+      if (appt.status === "cancelled") {
+        staleEmails.push({ id: email.id, reason: "appointment_cancelled" });
+        continue;
+      }
+      if (appt.start_time) {
+        const startMs = new Date(appt.start_time).getTime();
+        // Appointment already in the past — reminder no longer relevant.
+        if (startMs < nowMs) {
+          staleEmails.push({ id: email.id, reason: "appointment_past" });
+          continue;
+        }
+        // Detect reschedule: the reminder was scheduled for start_time - 24h.
+        // If the live start_time no longer lines up, the stored body is stale.
+        if (email.scheduled_for) {
+          const expectedStartMs = new Date(email.scheduled_for).getTime() + 24 * 60 * 60 * 1000;
+          if (Math.abs(startMs - expectedStartMs) > RESCHEDULE_TOLERANCE_MS) {
+            staleEmails.push({ id: email.id, reason: "appointment_rescheduled" });
+            continue;
+          }
+        }
+      }
+
+      emailsToSend.push(email);
+    }
+
+    // Retire stale emails so they are never sent or retried.
+    // Use the known-valid "failed" status (the column may have a CHECK
+    // constraint) and record the reason in the error column.
+    if (staleEmails.length > 0) {
+      console.log(
+        `Skipping ${staleEmails.length} stale scheduled emails:`,
+        staleEmails.map((s) => `${s.id}=${s.reason}`).join(", "),
+      );
+      await Promise.allSettled(
+        staleEmails.map((s) =>
+          supabase
+            .from("scheduled_emails")
+            .update({
+              status: "failed",
+              error: `Skipped (not sent): ${s.reason}`,
+            })
+            .eq("id", s.id),
+        ),
+      );
+    }
+
+    if (emailsToSend.length === 0) {
+      return NextResponse.json({
+        message: "No valid emails to send",
+        sent: 0,
+        skipped: staleEmails.length,
+      });
+    }
+
     let sentCount = 0;
     let failedCount = 0;
 
     // Process emails in parallel (batch of 10 at a time)
     const batchSize = 10;
-    for (let i = 0; i < pendingEmails.length; i += batchSize) {
-      const batch = pendingEmails.slice(i, i + batchSize);
+    for (let i = 0; i < emailsToSend.length; i += batchSize) {
+      const batch = emailsToSend.slice(i, i + batchSize);
       
       const results = await Promise.allSettled(
         batch.map(async (email) => {
@@ -131,6 +240,7 @@ export async function GET(request: Request) {
       message: "Scheduled emails processed",
       sent: sentCount,
       failed: failedCount,
+      skipped: staleEmails.length,
       total: pendingEmails.length,
     });
   } catch (error) {
