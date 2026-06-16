@@ -304,17 +304,44 @@ export default function EmailTemplateBuilder({
 
   // Called when editor iframe is created but before it's fully loaded
   function onEditorLoad(unlayer: any) {
-    console.log("Unlayer onLoad - registering selectImage callback", unlayer);
-    
-    // Register custom image selection callback
+    // Register custom image selection callback (used by the "Browse" button)
     unlayer.registerCallback(
       "selectImage",
       function (data: any, done: (data: { url: string }) => void) {
-        console.log("selectImage callback triggered!", data);
-        // Store the done callback and open the gallery
         imageSelectDoneRef.current = done;
         setShowImageGallery(true);
         loadGalleryImages();
+      }
+    );
+
+    // Register custom image upload callback — handles the native drag-and-drop /
+    // file picker in Unlayer's image property panel on the right side.
+    unlayer.registerCallback(
+      "image",
+      async function (file: { accepted: File[]; attachments: File[] }, done: (data: { progress: number; url?: string }) => void) {
+        const f = file.accepted?.[0] || file.attachments?.[0];
+        if (!f) {
+          done({ progress: 100, url: "" });
+          return;
+        }
+        try {
+          done({ progress: 1 });
+          const fileExt = f.name.split(".").pop()?.toLowerCase() || "png";
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+          const { error: uploadError } = await supabaseClient.storage
+            .from("emailgallery")
+            .upload(fileName, f, { contentType: f.type });
+          if (uploadError) throw uploadError;
+          const { data: urlData } = supabaseClient.storage
+            .from("emailgallery")
+            .getPublicUrl(fileName);
+          done({ progress: 100, url: urlData.publicUrl });
+          // Refresh sidebar gallery in background
+          loadGalleryImages();
+        } catch (err) {
+          console.error("Unlayer image upload failed:", err);
+          done({ progress: 100, url: "" });
+        }
       }
     );
   }
