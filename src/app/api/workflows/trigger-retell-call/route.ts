@@ -6,11 +6,12 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 // Retell API configuration
 const RETELL_API_KEY = process.env.RETELL_API_KEY;
-const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID;
 const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER;
 
 // Main agent for outbound calls: the language-switcher ("Outbound Flow")
 // agent that routes the patient to the English or French branch itself.
+// This is ALWAYS used for outbound calls — no env override, no per-call
+// override — so we can never accidentally fall back to an old agent.
 const MAIN_AGENT_ID = "agent_023fdedfe7faf0fae56e51b65c";
 const RETELL_AGENTS = {
   english: MAIN_AGENT_ID,
@@ -44,20 +45,14 @@ export async function POST(request: NextRequest) {
     const {
       patient_id,
       phone_number,
-      agent_id,
-      agent_language,
       dynamic_variables,
       metadata,
     } = body;
 
-    // Resolve agent ID from language if not explicitly provided
-    let resolvedAgentId = agent_id;
-    if (!resolvedAgentId && agent_language) {
-      resolvedAgentId = RETELL_AGENTS[agent_language as keyof typeof RETELL_AGENTS];
-    }
-    if (!resolvedAgentId) {
-      resolvedAgentId = RETELL_AGENT_ID || RETELL_AGENTS.english;
-    }
+    // Always use the main language-switcher agent for outbound calls.
+    // Any agent_id passed in the request body is intentionally ignored so the
+    // new agent is always forced.
+    const resolvedAgentId = MAIN_AGENT_ID;
 
     // Validate required fields
     if (!phone_number) {
@@ -193,7 +188,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     configured: !!RETELL_API_KEY,
-    default_agent_id: RETELL_AGENT_ID || null,
+    default_agent_id: MAIN_AGENT_ID,
     from_number: RETELL_FROM_NUMBER || null,
     available_agents: {
       english: RETELL_AGENTS.english,
@@ -207,10 +202,9 @@ export async function GET() {
       body: {
         patient_id: "string (optional) - Patient ID from database",
         phone_number: "string (required) - Phone number to call",
-        agent_id: "string (optional) - Override default agent ID",
-        agent_language: "string (optional) - 'english' or 'french' - selects pre-configured agent",
         dynamic_variables: "object (optional) - Variables for AI conversation",
         metadata: "object (optional) - Additional metadata for tracking",
+        note: "The outbound agent is always the main language-switcher agent; agent_id/agent_language are ignored.",
       },
     },
   });
