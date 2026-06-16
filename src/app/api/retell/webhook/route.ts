@@ -5,6 +5,16 @@ export const runtime = "nodejs";
 
 const BOOKING_URL = "https://aestheticclinic.vercel.app/book-appointment";
 
+// Retell agent IDs. Used to detect the call language so the French agent
+// sends French SMS/WhatsApp content (the webhook itself is agent-agnostic).
+const FRENCH_AGENT_ID = "agent_16738cdb79c26e811fc1cffcc6";
+
+// Twilio WhatsApp booking-link templates. The French agent uses a French
+// template if one has been approved and configured via env; otherwise it
+// falls back to the English template so the function still works today.
+const WHATSAPP_TEMPLATE_EN = "HXdff188b222fe82c18233b2422dd04792";
+const WHATSAPP_TEMPLATE_FR = process.env.RETELL_WHATSAPP_TEMPLATE_FR || WHATSAPP_TEMPLATE_EN;
+
 // Helper to log Retell requests to database
 async function logRetellRequest(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -140,6 +150,19 @@ export async function POST(request: NextRequest) {
 
       console.log(`[Retell Webhook] Function call: ${funcName}`, args);
 
+      // Detect the call language so French calls send French messaging.
+      // Priority: explicit `language` arg from the agent (most reliable for the
+      // language-switcher agent), then call metadata, then the agent ID.
+      const callAgentId = (call?.agent_id || (body as Record<string, unknown>).agent_id) as
+        | string
+        | undefined;
+      const argLanguage =
+        typeof args.language === "string" ? args.language.toLowerCase() : "";
+      const isFrench =
+        argLanguage.startsWith("fr") ||
+        metadata?.agent_language === "french" ||
+        callAgentId === FRENCH_AGENT_ID;
+
       // ── Handle send_sms function
       if (funcName === "send_sms") {
         const { phone_number, message_type } = args;
@@ -152,22 +175,31 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             success: false,
             error: "No phone number provided for SMS",
-            result: "I apologize, but I couldn't send the SMS because I don't have your phone number.",
+            result: isFrench
+              ? "Je suis désolée, je n'ai pas pu envoyer le SMS car je n'ai pas votre numéro de téléphone."
+              : "I apologize, but I couldn't send the SMS because I don't have your phone number.",
           });
         }
 
         // Build the SMS message based on type
         let smsBody = "";
-        const patientName = retell_llm_dynamic_variables?.user_name || metadata?.patient_name || "there";
+        const patientName = retell_llm_dynamic_variables?.user_name || metadata?.patient_name || (isFrench ? "" : "there");
+        const greetingName = patientName ? ` ${patientName}` : "";
         
         if (message_type === "booking_link" || !message_type) {
-          smsBody = `Hi ${patientName}! Here's your booking link for Aesthetics Clinic: ${BOOKING_URL}\n\nYour first consultation is complimentary. We look forward to seeing you!`;
+          smsBody = isFrench
+            ? `Bonjour${greetingName} ! Voici votre lien de réservation pour la Clinique Esthétique : ${BOOKING_URL}\n\nVotre première consultation est offerte. Au plaisir de vous voir !`
+            : `Hi${greetingName || " there"}! Here's your booking link for Aesthetics Clinic: ${BOOKING_URL}\n\nYour first consultation is complimentary. We look forward to seeing you!`;
         } else if (message_type === "contact_info") {
-          smsBody = `Aesthetics Clinic Contact:\n📞 +41 22 732 22 23\n📧 info@aesthetics-ge.ch\n📍 Rue du Rhône 17, 1204 Geneva`;
+          smsBody = isFrench
+            ? `Coordonnées de la Clinique Esthétique :\n📞 +41 22 732 22 23\n📧 info@aesthetics-ge.ch\n📍 Rue du Rhône 17, 1204 Genève`
+            : `Aesthetics Clinic Contact:\n📞 +41 22 732 22 23\n📧 info@aesthetics-ge.ch\n📍 Rue du Rhône 17, 1204 Geneva`;
         } else if (message_type === "custom" && args.custom_message) {
           smsBody = String(args.custom_message);
         } else {
-          smsBody = `Hi ${patientName}! Thank you for your interest in Aesthetics Clinic. Book your complimentary consultation: ${BOOKING_URL}`;
+          smsBody = isFrench
+            ? `Bonjour${greetingName} ! Merci de votre intérêt pour la Clinique Esthétique. Réservez votre consultation offerte : ${BOOKING_URL}`
+            : `Hi${greetingName || " there"}! Thank you for your interest in Aesthetics Clinic. Book your complimentary consultation: ${BOOKING_URL}`;
         }
 
         // Send SMS via our SMS endpoint
@@ -210,7 +242,9 @@ export async function POST(request: NextRequest) {
 
             return NextResponse.json({
               success: true,
-              result: "SMS sent successfully. The patient should receive the booking link shortly.",
+              result: isFrench
+                ? "SMS envoyé avec succès. Le patient devrait recevoir le lien de réservation sous peu."
+                : "SMS sent successfully. The patient should receive the booking link shortly.",
             });
           } else {
             const errorData = await smsResponse.json().catch(() => ({}));
@@ -218,7 +252,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
               success: false,
               error: "Failed to send SMS",
-              result: "I apologize, but there was an issue sending the SMS. Please try again or contact the clinic directly at 022 732 22 23.",
+              result: isFrench
+                ? "Je suis désolée, il y a eu un problème lors de l'envoi du SMS. Veuillez réessayer ou contacter la clinique au 022 732 22 23."
+                : "I apologize, but there was an issue sending the SMS. Please try again or contact the clinic directly at 022 732 22 23.",
             });
           }
         } catch (smsError) {
@@ -226,7 +262,9 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             success: false,
             error: smsError instanceof Error ? smsError.message : "SMS error",
-            result: "I apologize, but I couldn't send the SMS right now. Please contact the clinic directly at 022 732 22 23.",
+            result: isFrench
+              ? "Je suis désolée, je n'ai pas pu envoyer le SMS pour le moment. Veuillez contacter la clinique au 022 732 22 23."
+              : "I apologize, but I couldn't send the SMS right now. Please contact the clinic directly at 022 732 22 23.",
           });
         }
       }
@@ -239,19 +277,24 @@ export async function POST(request: NextRequest) {
         const toPhone = phone_number || metadata?.patient_phone || call?.to_number;
         const patientName = retell_llm_dynamic_variables?.first_name || 
                            metadata?.patient_first_name || 
-                           metadata?.patient_name?.split(" ")[0] || "there";
+                           metadata?.patient_name?.split(" ")[0] || 
+                           (isFrench ? "" : "there");
         
         if (!toPhone) {
           console.error("[Retell Webhook] No phone number for WhatsApp");
           return NextResponse.json({
             success: false,
             error: "No phone number provided for WhatsApp",
-            result: "I apologize, but I couldn't send the WhatsApp message because I don't have your phone number.",
+            result: isFrench
+              ? "Je suis désolée, je n'ai pas pu envoyer le message WhatsApp car je n'ai pas votre numéro de téléphone."
+              : "I apologize, but I couldn't send the WhatsApp message because I don't have your phone number.",
           });
         }
 
-        // Template SID for booking link message
-        const templateSid = "HXdff188b222fe82c18233b2422dd04792";
+        // Template SID for the booking-link message (French agent uses the
+        // French template when configured, otherwise falls back to English).
+        const templateSid = isFrench ? WHATSAPP_TEMPLATE_FR : WHATSAPP_TEMPLATE_EN;
+        const templateName = patientName || (isFrench ? "" : "there");
 
         try {
           const whatsappResponse = await fetch(new URL("/api/whatsapp/send", request.url).toString(), {
@@ -261,7 +304,7 @@ export async function POST(request: NextRequest) {
               to: toPhone,
               templateSid: templateSid,
               templateVariables: {
-                "1": patientName, // Variable for patient name in template
+                "1": templateName, // Variable for patient name in template
               },
               patientId: metadata?.patient_id,
             }),
@@ -289,7 +332,9 @@ export async function POST(request: NextRequest) {
                 // Also log to whatsapp_queue so it appears in patient's sent messages
                 await supabaseAdmin.from("whatsapp_queue").insert({
                   to_phone: toPhone,
-                  message_body: `📅 Booking link sent via AI call (Template: booking_link)\n\nHi ${patientName}, here's your booking link for Aesthetics Clinic.`,
+                  message_body: isFrench
+                    ? `📅 Lien de réservation envoyé via appel IA (Modèle : booking_link)\n\nBonjour ${patientName}, voici votre lien de réservation pour la Clinique Esthétique.`
+                    : `📅 Booking link sent via AI call (Template: booking_link)\n\nHi ${patientName}, here's your booking link for Aesthetics Clinic.`,
                   patient_id: metadata.patient_id,
                   status: "sent",
                   sent_at: new Date().toISOString(),
@@ -301,7 +346,9 @@ export async function POST(request: NextRequest) {
 
             return NextResponse.json({
               success: true,
-              result: "WhatsApp message sent successfully. The patient should receive the booking link on WhatsApp shortly.",
+              result: isFrench
+                ? "Message WhatsApp envoyé avec succès. Le patient devrait recevoir le lien de réservation sur WhatsApp sous peu."
+                : "WhatsApp message sent successfully. The patient should receive the booking link on WhatsApp shortly.",
             });
           } else {
             const errorData = await whatsappResponse.json().catch(() => ({}));
@@ -309,7 +356,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({
               success: false,
               error: "Failed to send WhatsApp",
-              result: "I apologize, but there was an issue sending the WhatsApp message. Would you like me to try SMS instead, or you can visit aestheticclinic.vercel.app to book online.",
+              result: isFrench
+                ? "Je suis désolée, il y a eu un problème lors de l'envoi du message WhatsApp. Souhaitez-vous que j'essaie par SMS, ou vous pouvez réserver en ligne sur aestheticclinic.vercel.app."
+                : "I apologize, but there was an issue sending the WhatsApp message. Would you like me to try SMS instead, or you can visit aestheticclinic.vercel.app to book online.",
             });
           }
         } catch (whatsappError) {
@@ -317,7 +366,9 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({
             success: false,
             error: whatsappError instanceof Error ? whatsappError.message : "WhatsApp error",
-            result: "I apologize, but I couldn't send the WhatsApp message right now. You can book online at aestheticclinic.vercel.app.",
+            result: isFrench
+              ? "Je suis désolée, je n'ai pas pu envoyer le message WhatsApp pour le moment. Vous pouvez réserver en ligne sur aestheticclinic.vercel.app."
+              : "I apologize, but I couldn't send the WhatsApp message right now. You can book online at aestheticclinic.vercel.app.",
           });
         }
       }

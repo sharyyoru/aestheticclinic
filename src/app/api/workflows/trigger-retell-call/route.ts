@@ -9,10 +9,12 @@ const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_AGENT_ID = process.env.RETELL_AGENT_ID;
 const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER;
 
-// Agent IDs for different languages
+// Main agent for outbound calls: the language-switcher ("Outbound Flow")
+// agent that routes the patient to the English or French branch itself.
+const MAIN_AGENT_ID = "agent_023fdedfe7faf0fae56e51b65c";
 const RETELL_AGENTS = {
-  english: "agent_c753d21834b3e1f19f8536b3dc",
-  french: "agent_16738cdb79c26e811fc1cffcc6",
+  english: MAIN_AGENT_ID,
+  french: MAIN_AGENT_ID,
 } as const;
 
 // Webhook URL for Retell to call when AI triggers functions (send_sms, etc.)

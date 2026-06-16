@@ -1417,10 +1417,13 @@ export async function POST(request: Request) {
             call_purpose?: string;
           };
 
-          // Agent IDs for English and French
+          // Main agent for outbound calls: the language-switcher ("Outbound
+          // Flow") agent that routes the patient to English or French itself,
+          // so both language keys point to it.
+          const MAIN_AGENT_ID = "agent_023fdedfe7faf0fae56e51b65c";
           const RETELL_AGENTS = {
-            english: "agent_c753d21834b3e1f19f8536b3dc",
-            french: "agent_16738cdb79c26e811fc1cffcc6",
+            english: MAIN_AGENT_ID,
+            french: MAIN_AGENT_ID,
           };
 
           const agentLanguage = config.agent_language || "english";
