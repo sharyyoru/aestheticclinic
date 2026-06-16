@@ -498,6 +498,16 @@ function getDoctorNameFromReason(reason: string | null): string | null {
   return raw || null;
 }
 
+// Returns the reason text with the free-text [Notes: ...] segment removed, for
+// use in doctor-name matching. The notes can contain the patient's own name
+// (e.g. a patient surnamed "Rodrigues"), which would otherwise be mis-matched
+// to a doctor with a similar name (Dr "Rodriguez") and make the appointment
+// appear on the wrong doctor's calendar.
+function getReasonForDoctorMatch(reason: string | null): string {
+  if (!reason) return "";
+  return reason.replace(/\[Notes:[^\]]*\]/gi, " ");
+}
+
 function formatDoctorNameWithTitle(name: string): string {
   // Add "Dr." prefix if not already present and it's a real doctor name
   if (!name || name === "your doctor") return name;
@@ -1933,7 +1943,9 @@ export default function CalendarPage() {
       if (hasAnyCalendars && selectedCalendars.length > 0) {
         const doctorFromReason = getDoctorNameFromReason(appt.reason);
         const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
-        const reasonLower = (appt.reason ?? "").toLowerCase();
+        // Match against the reason WITHOUT the [Notes: ...] free text, so a
+        // patient's name in the notes can't match a similarly-named doctor.
+        const reasonLower = getReasonForDoctorMatch(appt.reason).toLowerCase();
         const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
         const appointmentLocation = (appt.location ?? "").trim().toLowerCase();
         
@@ -1959,10 +1971,12 @@ export default function CalendarPage() {
             doctorKey.includes(selectedName) || selectedName.includes(doctorKey)
           );
           
-          // Also search the entire reason field for doctor name mentions
+          // Fallback: search the reason text (notes stripped) for the doctor
+          // name. Require ALL significant name parts so a single shared word
+          // (e.g. a patient's surname) can't cause a false match.
           const matchesByReasonText = selectedDoctorNames.some((selectedName) => {
-            const nameParts = selectedName.split(/\s+/);
-            return nameParts.some((part) => part.length > 2 && reasonLower.includes(part));
+            const nameParts = selectedName.split(/\s+/).filter((part) => part.length > 2);
+            return nameParts.length > 0 && nameParts.every((part) => reasonLower.includes(part));
           });
           
           if (matchesByProviderId || matchesByDoctorKey || matchesByReasonText) {
@@ -1985,8 +1999,8 @@ export default function CalendarPage() {
             const matchesActiveTabById = appt.provider_id && appt.provider_id === activeTabProviderId;
             const matchesActiveTabByName = activeTabDoctorName && doctorKey && 
               (doctorKey.includes(activeTabDoctorName) || activeTabDoctorName.includes(doctorKey));
-            const activeTabParts = (activeTabDoctorName ?? "").split(/\s+/);
-            const matchesActiveTabByReason = activeTabParts.some((part) => part.length > 2 && reasonLower.includes(part));
+            const activeTabParts = (activeTabDoctorName ?? "").split(/\s+/).filter((part) => part.length > 2);
+            const matchesActiveTabByReason = activeTabParts.length > 0 && activeTabParts.every((part) => reasonLower.includes(part));
             if (!matchesActiveTabById && !matchesActiveTabByName && !matchesActiveTabByReason) return;
           }
         }
@@ -4178,7 +4192,9 @@ export default function CalendarPage() {
                               ? dayAppointments.filter((appt) => {
                                   const doctorFromReason = getDoctorNameFromReason(appt.reason);
                                   const providerName = (appt.provider?.name ?? "").trim().toLowerCase();
-                                  const reasonLower = (appt.reason ?? "").toLowerCase();
+                                  // Strip the [Notes: ...] free text so a patient's
+                                  // name in the notes can't match a similar doctor name.
+                                  const reasonLower = getReasonForDoctorMatch(appt.reason).toLowerCase();
                                   const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
                                   const calName = doctorCol.name.trim().toLowerCase();
                                   
@@ -4188,9 +4204,10 @@ export default function CalendarPage() {
                                   // Match by doctor key
                                   if (doctorKey && (doctorKey.includes(calName) || calName.includes(doctorKey))) return true;
                                   
-                                  // Match by reason text
-                                  const nameParts = calName.split(/\s+/);
-                                  if (nameParts.some((part) => part.length > 2 && reasonLower.includes(part))) return true;
+                                  // Fallback: reason text must contain ALL significant
+                                  // name parts (not just one shared word).
+                                  const nameParts = calName.split(/\s+/).filter((part) => part.length > 2);
+                                  if (nameParts.length > 0 && nameParts.every((part) => reasonLower.includes(part))) return true;
                                   
                                   return false;
                                 })
