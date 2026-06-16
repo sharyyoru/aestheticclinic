@@ -33,11 +33,14 @@ export async function POST(req: NextRequest) {
   let lang: "en" | "fr" = "en";
   let sourceUrl = "";
   let sourceReferrer = "";
+  let serviceContext = "";
   try {
     const body = await req.json();
     if (body?.lang === "fr") lang = "fr";
     sourceUrl = body?.source_url || "";
     sourceReferrer = body?.source_referrer || "";
+    // Optional context about the specific service/page the visitor is asking about.
+    serviceContext = (body?.service_context || "").toString().slice(0, 500);
   } catch { /* no body is fine */ }
 
   const agentId = CHAT_AGENTS[lang];
@@ -54,6 +57,8 @@ export async function POST(req: NextRequest) {
         currency: "CHF",
         clinic_phone: "+41 22 732 22 23",
         book_url: "https://aestheticclinic.vercel.app/book-appointment/location",
+        // Background context injected for the agent (used, not read aloud).
+        service_context: serviceContext || "General enquiry",
       },
     }),
   });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, ExternalLink, CalendarPlus, Search } from "lucide-react";
+import { ArrowLeft, ExternalLink, CalendarPlus, Search, Sparkles } from "lucide-react";
 import {
   CLINIC_SERVICES,
   CLINIC_SERVICE_CATEGORIES,
@@ -11,6 +11,7 @@ import {
 type Props = {
   onClose: () => void;
   onBook?: () => void;
+  onAsk: (service: ClinicService) => void;
 };
 
 const CATEGORY_ACCENT: Record<string, string> = {
@@ -20,7 +21,7 @@ const CATEGORY_ACCENT: Record<string, string> = {
   Treatments: "bg-violet-50 text-violet-600",
 };
 
-export default function ServicesCatalog({ onClose, onBook }: Props) {
+export default function ServicesCatalog({ onClose, onBook, onAsk }: Props) {
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [query, setQuery] = useState("");
 
@@ -119,7 +120,7 @@ export default function ServicesCatalog({ onClose, onBook }: Props) {
               </div>
               <div className="space-y-3">
                 {items.map((svc) => (
-                  <ServiceCard key={`${category}-${svc.slug}`} service={svc} onBook={onBook} />
+                  <ServiceCard key={`${category}-${svc.slug}`} service={svc} onBook={onBook} onAsk={onAsk} />
                 ))}
               </div>
             </section>
@@ -131,7 +132,15 @@ export default function ServicesCatalog({ onClose, onBook }: Props) {
   );
 }
 
-function ServiceCard({ service, onBook }: { service: ClinicService; onBook?: () => void }) {
+function ServiceCard({
+  service,
+  onBook,
+  onAsk,
+}: {
+  service: ClinicService;
+  onBook?: () => void;
+  onAsk: (service: ClinicService) => void;
+}) {
   return (
     <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
       {service.image && (
@@ -152,7 +161,14 @@ function ServiceCard({ service, onBook }: { service: ClinicService; onBook?: () 
             {service.description}
           </p>
         )}
-        <div className="flex items-center gap-2 mt-3">
+        {/* Primary: contextual assistant (chat + voice call) for this service */}
+        <button
+          onClick={() => onAsk(service)}
+          className="w-full mt-3 py-2.5 bg-slate-900 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 active:bg-slate-700"
+        >
+          <Sparkles className="w-4 h-4" /> Ask Aliice about {service.name}
+        </button>
+        <div className="flex items-center gap-2 mt-2">
           {onBook && (
             <button
               onClick={onBook}

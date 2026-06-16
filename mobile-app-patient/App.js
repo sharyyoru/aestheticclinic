@@ -69,6 +69,8 @@ export default function App() {
           domStorageEnabled={true}
           mediaPlaybackRequiresUserAction={false}
           allowsInlineMediaPlayback={true}
+          mediaCapturePermissionGrantType="grant"
+          allowsProtectedMedia={true}
           allowsBackForwardNavigationGestures={true}
           cacheEnabled={true}
           startInLoadingState={true}

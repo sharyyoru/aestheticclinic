@@ -16,17 +16,25 @@ export async function POST(req: NextRequest) {
   }
 
   let lang: "en" | "fr" = "en";
+  let serviceContext = "";
   try {
     const body = await req.json();
     if (body?.lang === "fr") lang = "fr";
+    // Optional: the specific service/page the visitor is calling about.
+    serviceContext = (body?.service_context || "").toString().slice(0, 500);
   } catch { /* no body is fine */ }
 
   const agentId = VOICE_AGENTS[lang];
 
-  // First message ensures agent always starts with proper introduction
-  const firstMessage = lang === "fr"
-    ? "Merci de vous connecter avec moi. Je suis Alice, votre assistante digitale à la Clinique Esthétique. Comment puis-je vous aider aujourd'hui?"
-    : "Thank you for connecting with me. I'm Alice, your digital assistant at Aesthetics Clinic. How may I assist you today?";
+  // First message ensures agent always starts with proper introduction.
+  // When the visitor calls from a specific service page, open contextually.
+  const firstMessage = serviceContext
+    ? lang === "fr"
+      ? `Merci de vous connecter avec moi. Je suis Alice de la Clinique Esthétique. Je vois que vous vous intéressez à ${serviceContext}. Comment puis-je vous aider à ce sujet?`
+      : `Thank you for connecting with me. I'm Alice from Aesthetics Clinic. I can see you're interested in ${serviceContext}. How can I help you with that today?`
+    : lang === "fr"
+      ? "Merci de vous connecter avec moi. Je suis Alice, votre assistante digitale à la Clinique Esthétique. Comment puis-je vous aider aujourd'hui?"
+      : "Thank you for connecting with me. I'm Alice, your digital assistant at Aesthetics Clinic. How may I assist you today?";
 
   const res = await fetch("https://api.retellai.com/v2/create-web-call", {
     method: "POST",
@@ -44,10 +52,13 @@ export async function POST(req: NextRequest) {
         language: lang === "fr" ? "French" : "English",
         first_message: firstMessage,
         call_type: "online_conversation",
+        // Background context injected for the agent (used, not read aloud).
+        service_context: serviceContext || "General enquiry",
       },
       metadata: {
         conversation_type: "online_call",
         language: lang,
+        service_context: serviceContext || "",
       },
     }),
   });

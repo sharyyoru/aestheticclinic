@@ -31,6 +31,7 @@ import {
 import BookingFlow from "./BookingFlow";
 import ChatPanel from "./ChatPanel";
 import ServicesCatalog from "./ServicesCatalog";
+import type { ClinicService } from "@/data/clinicServices";
 
 type TabId = "home" | "appointments" | "invoices" | "records" | "photos" | "chat" | "profile";
 
@@ -164,6 +165,8 @@ export default function PatientAppPage() {
 
   // Services & Treatments catalog overlay
   const [showServices, setShowServices] = useState(false);
+  // Contextual "Ask Aliice" assistant scoped to a specific service
+  const [askService, setAskService] = useState<ClinicService | null>(null);
 
   const [expandedConsultation, setExpandedConsultation] = useState<string | null>(null);
   const [apptView, setApptView] = useState<"upcoming" | "past">("upcoming");
@@ -887,7 +890,25 @@ export default function PatientAppPage() {
             setShowServices(false);
             setShowBooking(true);
           }}
+          onAsk={(svc) => setAskService(svc)}
         />
+      )}
+
+      {/* Contextual "Ask Aliice" assistant (chat + voice) for a specific service */}
+      {askService && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-white">
+          <div className="bg-white" style={{ paddingTop: "env(safe-area-inset-top)" }} />
+          <div className="flex-1 min-h-0">
+            <ChatPanel
+              serviceContext={{
+                name: askService.name,
+                category: askService.categories[0],
+                url: askService.url,
+              }}
+              onClose={() => setAskService(null)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

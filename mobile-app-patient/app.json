@@ -2,7 +2,7 @@
   "expo": {
     "name": "Aliice Patient",
     "slug": "aliice-patient",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -29,9 +29,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "aliicepatientcrm001",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "Aliice uses your microphone so you can have a voice conversation with our AI assistant.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsArbitraryLoadsInWebContent": true
@@ -39,7 +40,8 @@
       }
     },
     "android": {
-      "versionCode": 2,
+      "versionCode": 3,
+      "permissions": ["RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0ea5e9"
