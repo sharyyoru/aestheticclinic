@@ -23,11 +23,16 @@ import {
   X,
   MessageCircle,
   Plus,
+  Receipt,
+  FileText,
+  CreditCard,
+  Sparkles,
 } from "lucide-react";
 import BookingFlow from "./BookingFlow";
 import ChatPanel from "./ChatPanel";
+import ServicesCatalog from "./ServicesCatalog";
 
-type TabId = "home" | "appointments" | "records" | "photos" | "chat" | "profile";
+type TabId = "home" | "appointments" | "invoices" | "records" | "photos" | "chat" | "profile";
 
 type PatientInfo = {
   id: string;
@@ -77,13 +82,37 @@ type PhotoItem = {
   uploadedAt: string | null;
 };
 
+type Invoice = {
+  id: string;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  treatment_date: string | null;
+  total_amount: number;
+  paid_amount: number;
+  outstanding: number;
+  status: string;
+  payment_method: string | null;
+  doctor: string | null;
+  pdf_url: string | null;
+  payment_link: string | null;
+};
+
 const TABS: { id: TabId; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Home", icon: Home },
   { id: "appointments", label: "Visits", icon: Calendar },
+  { id: "invoices", label: "Invoices", icon: Receipt },
   { id: "records", label: "Records", icon: FolderHeart },
   { id: "chat", label: "Chat", icon: MessageCircle },
   { id: "profile", label: "Profile", icon: User },
 ];
+
+function formatMoney(amount: number): string {
+  return new Intl.NumberFormat("de-CH", {
+    style: "currency",
+    currency: "CHF",
+    minimumFractionDigits: 2,
+  }).format(amount || 0);
+}
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -130,7 +159,11 @@ export default function PatientAppPage() {
   const [appointments, setAppointments] = useState<{ upcoming: Appointment[]; past: Appointment[] } | null>(null);
   const [records, setRecords] = useState<any>(null);
   const [photos, setPhotos] = useState<PhotoItem[] | null>(null);
+  const [invoices, setInvoices] = useState<{ invoices: Invoice[]; totalOutstanding: number } | null>(null);
   const [profile, setProfile] = useState<any>(null);
+
+  // Services & Treatments catalog overlay
+  const [showServices, setShowServices] = useState(false);
 
   const [expandedConsultation, setExpandedConsultation] = useState<string | null>(null);
   const [apptView, setApptView] = useState<"upcoming" | "past">("upcoming");
@@ -192,6 +225,8 @@ export default function PatientAppPage() {
       } else if (tab === "photos") {
         const data = await apiFetch("photos");
         setPhotos(data.photos);
+      } else if (tab === "invoices") {
+        setInvoices(await apiFetch("invoices"));
       } else if (tab === "profile") {
         setProfile(await apiFetch("profile"));
       }
@@ -332,6 +367,45 @@ export default function PatientAppPage() {
                   Book an Appointment
                 </button>
 
+                {/* Pending invoices alert */}
+                {overview.stats?.pendingInvoices > 0 && (
+                  <button
+                    onClick={() => setActiveTab("invoices")}
+                    className="w-full bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3 text-left active:bg-amber-100"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                      <Receipt className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-900">
+                        {overview.stats.pendingInvoices} pending invoice
+                        {overview.stats.pendingInvoices === 1 ? "" : "s"}
+                      </p>
+                      <p className="text-xs text-amber-700">Tap to view and pay</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-amber-400" />
+                  </button>
+                )}
+
+                {/* Explore services */}
+                <button
+                  onClick={() => setShowServices(true)}
+                  className="w-full bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-2xl p-5 text-left text-white shadow-lg shadow-violet-500/25 active:from-violet-600 active:to-fuchsia-600"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-5 h-5" />
+                        <h2 className="font-semibold">Services & Treatments</h2>
+                      </div>
+                      <p className="text-sm text-violet-100 mt-1">
+                        Discover our surgery, injections & skincare treatments
+                      </p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-violet-200 flex-shrink-0" />
+                  </div>
+                </button>
+
                 {/* Next appointments */}
                 <section>
                   <div className="flex items-center justify-between mb-3">
@@ -356,6 +430,8 @@ export default function PatientAppPage() {
 
                 {/* Quick links */}
                 <section className="space-y-2">
+                  <QuickLink icon={Receipt} label="My Invoices" onClick={() => setActiveTab("invoices")} />
+                  <QuickLink icon={Sparkles} label="Services & Treatments" onClick={() => setShowServices(true)} />
                   <QuickLink icon={FolderHeart} label="My Medical Records" onClick={() => setActiveTab("records")} />
                   <QuickLink icon={Camera} label="My Photos" onClick={() => setActiveTab("photos")} />
                   <QuickLink icon={User} label="My Profile & Insurance" onClick={() => setActiveTab("profile")} />
@@ -400,6 +476,41 @@ export default function PatientAppPage() {
                     <p className="text-sm text-slate-500">No {apptView} appointments</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ─── INVOICES ─── */}
+            {activeTab === "invoices" && invoices && (
+              <div className="p-5 space-y-4">
+                <h1 className="text-xl font-bold text-slate-900">My Invoices</h1>
+
+                {invoices.totalOutstanding > 0 && (
+                  <div className="bg-gradient-to-br from-sky-500 to-sky-600 rounded-2xl p-5 text-white shadow-lg shadow-sky-500/25">
+                    <p className="text-sky-100 text-sm">Total outstanding</p>
+                    <p className="text-3xl font-bold mt-1">{formatMoney(invoices.totalOutstanding)}</p>
+                    <p className="text-sky-100 text-xs mt-1">
+                      {invoices.invoices.length} pending invoice{invoices.invoices.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                )}
+
+                {invoices.invoices.length ? (
+                  <div className="space-y-3">
+                    {invoices.invoices.map((inv) => (
+                      <InvoiceCard key={inv.id} invoice={inv} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl p-8 text-center border border-slate-100">
+                    <Receipt className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">No pending invoices</p>
+                    <p className="text-xs text-slate-400 mt-1">You&apos;re all settled. Thank you!</p>
+                  </div>
+                )}
+
+                <p className="text-xs text-slate-400 text-center px-4">
+                  For questions about a bill, please contact the clinic.
+                </p>
               </div>
             )}
 
@@ -738,12 +849,12 @@ export default function PatientAppPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-colors ${
+                className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl transition-colors ${
                   isActive ? "text-sky-600" : "text-slate-400"
                 }`}
               >
                 <Icon className={`w-6 h-6 ${isActive ? "stroke-[2.5]" : "stroke-[1.5]"}`} />
-                <span className={`text-xs ${isActive ? "font-semibold" : "font-medium"}`}>{tab.label}</span>
+                <span className={`text-[11px] ${isActive ? "font-semibold" : "font-medium"}`}>{tab.label}</span>
               </button>
             );
           })}
@@ -766,6 +877,80 @@ export default function PatientAppPage() {
             if (activeTab === "home") loadTab("home");
           }}
         />
+      )}
+
+      {/* Services & Treatments catalog overlay */}
+      {showServices && (
+        <ServicesCatalog
+          onClose={() => setShowServices(false)}
+          onBook={() => {
+            setShowServices(false);
+            setShowBooking(true);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function InvoiceCard({ invoice }: { invoice: Invoice }) {
+  const isPartial = invoice.status === "PARTIAL_PAID";
+  return (
+    <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900 text-sm truncate">
+            {invoice.invoice_number || "Invoice"}
+          </p>
+          <div className="flex items-center gap-1.5 mt-1 text-xs text-slate-500">
+            <Clock className="w-3.5 h-3.5" />
+            {formatDate(invoice.treatment_date || invoice.invoice_date)}
+          </div>
+          {invoice.doctor && <p className="text-xs text-slate-500 mt-0.5">Dr. {invoice.doctor}</p>}
+        </div>
+        <span
+          className={`px-2 py-0.5 rounded-full text-[11px] font-medium flex-shrink-0 ${
+            isPartial ? "bg-sky-50 text-sky-600" : "bg-amber-50 text-amber-600"
+          }`}
+        >
+          {isPartial ? "Partially paid" : "Pending"}
+        </span>
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <p className="text-[11px] text-slate-400">Total</p>
+          <p className="text-slate-800 font-medium">{formatMoney(invoice.total_amount)}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[11px] text-slate-400">Outstanding</p>
+          <p className="text-slate-900 font-bold">{formatMoney(invoice.outstanding)}</p>
+        </div>
+      </div>
+
+      {(invoice.payment_link || invoice.pdf_url) && (
+        <div className="flex items-center gap-2 mt-3">
+          {invoice.payment_link && (
+            <a
+              href={invoice.payment_link}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 py-2.5 bg-sky-500 text-white rounded-xl font-semibold text-sm flex items-center justify-center gap-1.5 active:bg-sky-600"
+            >
+              <CreditCard className="w-4 h-4" /> Pay now
+            </a>
+          )}
+          {invoice.pdf_url && (
+            <a
+              href={invoice.pdf_url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-medium text-sm flex items-center justify-center gap-1.5 active:bg-slate-200"
+            >
+              <FileText className="w-4 h-4" /> View PDF
+            </a>
+          )}
+        </div>
       )}
     </div>
   );

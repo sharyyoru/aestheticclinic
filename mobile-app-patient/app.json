@@ -2,7 +2,7 @@
   "expo": {
     "name": "Aliice Patient",
     "slug": "aliice-patient",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -28,8 +28,8 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ch.aliicemedical.patient",
-      "buildNumber": "1",
+      "bundleIdentifier": "aliicepatientcrm001",
+      "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
@@ -39,12 +39,18 @@
       }
     },
     "android": {
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0ea5e9"
       },
       "package": "ch.aliice.patient"
     },
-    "owner": "sharyyoru"
+    "owner": "sharyyoru",
+    "extra": {
+      "eas": {
+        "projectId": "f16f6cfe-b8c1-46ab-aea4-805dd2dffcab"
+      }
+    }
   }
 }

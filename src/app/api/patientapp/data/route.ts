@@ -28,6 +28,8 @@ export async function GET(request: Request) {
         return NextResponse.json(await getRecords(patientId));
       case "photos":
         return NextResponse.json(await getPhotos(patientId));
+      case "invoices":
+        return NextResponse.json(await getInvoices(patientId));
       case "profile":
         return NextResponse.json(await getProfile(patientId));
       default:
@@ -156,32 +158,40 @@ export async function PATCH(request: Request) {
 async function getOverview(patientId: string) {
   const nowIso = new Date().toISOString();
 
-  const [patientRes, upcomingRes, prescriptionsCountRes, consultationsCountRes] = await Promise.all([
-    supabaseAdmin
-      .from("patients")
-      .select("id, first_name, last_name, email, avatar_url")
-      .eq("id", patientId)
-      .single(),
-    supabaseAdmin
-      .from("appointments")
-      .select("id, start_time, end_time, status, reason, location")
-      .eq("patient_id", patientId)
-      .gte("start_time", nowIso)
-      .neq("status", "cancelled")
-      .order("start_time", { ascending: true })
-      .limit(3),
-    supabaseAdmin
-      .from("patient_prescriptions")
-      .select("journal_entry_id", { count: "exact", head: true })
-      .eq("patient_id", patientId)
-      .eq("active", true),
-    supabaseAdmin
-      .from("consultations")
-      .select("id", { count: "exact", head: true })
-      .eq("patient_id", patientId)
-      .eq("is_archived", false)
-      .neq("record_type", "invoice"),
-  ]);
+  const [patientRes, upcomingRes, prescriptionsCountRes, consultationsCountRes, pendingInvoicesRes] =
+    await Promise.all([
+      supabaseAdmin
+        .from("patients")
+        .select("id, first_name, last_name, email, avatar_url")
+        .eq("id", patientId)
+        .single(),
+      supabaseAdmin
+        .from("appointments")
+        .select("id, start_time, end_time, status, reason, location")
+        .eq("patient_id", patientId)
+        .gte("start_time", nowIso)
+        .neq("status", "cancelled")
+        .order("start_time", { ascending: true })
+        .limit(3),
+      supabaseAdmin
+        .from("patient_prescriptions")
+        .select("journal_entry_id", { count: "exact", head: true })
+        .eq("patient_id", patientId)
+        .eq("active", true),
+      supabaseAdmin
+        .from("consultations")
+        .select("id", { count: "exact", head: true })
+        .eq("patient_id", patientId)
+        .eq("is_archived", false)
+        .neq("record_type", "invoice"),
+      supabaseAdmin
+        .from("invoices")
+        .select("id", { count: "exact", head: true })
+        .eq("patient_id", patientId)
+        .eq("is_archived", false)
+        .is("parent_invoice_id", null)
+        .in("status", ["OPEN", "PARTIAL_PAID"]),
+    ]);
 
   return {
     patient: patientRes.data,
@@ -189,6 +199,7 @@ async function getOverview(patientId: string) {
     stats: {
       prescriptions: prescriptionsCountRes.count || 0,
       consultations: consultationsCountRes.count || 0,
+      pendingInvoices: pendingInvoicesRes.count || 0,
     },
   };
 }
@@ -351,6 +362,63 @@ async function getPhotos(patientId: string) {
   }
 
   return { photos };
+}
+
+/**
+ * Pending (outstanding) invoices for the authenticated patient.
+ * "Pending" = OPEN or PARTIAL_PAID, not archived, not complimentary, and not an
+ * installment sub-invoice (parent_invoice_id null). The invoice-pdfs bucket is
+ * public, so we expose a direct public URL to the generated PDF.
+ */
+async function getInvoices(patientId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("invoices")
+    .select(
+      "id, invoice_number, invoice_date, treatment_date, total_amount, paid_amount, status, payment_method, doctor_name, provider_name, is_complimentary, pdf_path, payrexx_payment_link",
+    )
+    .eq("patient_id", patientId)
+    .eq("is_archived", false)
+    .is("parent_invoice_id", null)
+    .in("status", ["OPEN", "PARTIAL_PAID"])
+    .order("invoice_date", { ascending: false });
+
+  if (error) {
+    console.error("patientapp invoices error:", error);
+    return { invoices: [], totalOutstanding: 0 };
+  }
+
+  let totalOutstanding = 0;
+  const invoices = (data || [])
+    .filter((inv) => !inv.is_complimentary && Number(inv.total_amount) > 0)
+    .map((inv) => {
+      const total = Number(inv.total_amount) || 0;
+      const paid = Number(inv.paid_amount) || 0;
+      const outstanding = Math.max(0, total - paid);
+      totalOutstanding += outstanding;
+
+      let pdfUrl: string | null = null;
+      if (inv.pdf_path) {
+        const { data: pub } = supabaseAdmin.storage.from("invoice-pdfs").getPublicUrl(inv.pdf_path);
+        pdfUrl = pub?.publicUrl ?? null;
+      }
+
+      return {
+        id: inv.id,
+        invoice_number: inv.invoice_number,
+        invoice_date: inv.invoice_date,
+        treatment_date: inv.treatment_date,
+        total_amount: total,
+        paid_amount: paid,
+        outstanding,
+        status: inv.status,
+        payment_method: inv.payment_method,
+        doctor: inv.provider_name || inv.doctor_name || null,
+        pdf_url: pdfUrl,
+        payment_link: inv.payrexx_payment_link || null,
+      };
+    });
+
+  return { invoices, totalOutstanding };
 }
 
 async function getProfile(patientId: string) {
