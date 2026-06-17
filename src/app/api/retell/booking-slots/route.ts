@@ -152,10 +152,10 @@ export async function GET(request: NextRequest) {
 
       // Skip Sundays (0) and outside working hours (9-18)
       if (dayOfWeek !== 0 && hour >= 9 && hour < 18) {
-        // A booking at this slot would be 1 hour long
-        const proposedEnd = new Date(currentSlot.getTime() + 60 * 60 * 1000);
+        // A first-consultation booking at this slot is 30 minutes long
+        const proposedEnd = new Date(currentSlot.getTime() + 30 * 60 * 1000);
         
-        // Count appointments that OVERLAP with a 1-hour booking at this slot
+        // Count appointments that OVERLAP with a 30-minute booking at this slot
         // Overlap: existing starts before proposed ends AND existing ends after proposed starts
         const overlappingAppointments = filteredAppointments.filter((apt) => {
           const aptStart = new Date(apt.start_time);

@@ -298,8 +298,8 @@ export async function POST(request: NextRequest) {
     const locationInfo = LOCATION_DETAILS[locationId] || LOCATION_DETAILS.rhone;
     const fullLocation = `${locationInfo.name} - ${locationInfo.address}, ${locationInfo.city}`;
 
-    // Create the appointment
-    const endTime = new Date(appointmentDate.getTime() + 60 * 60 * 1000); // 1 hour duration
+    // Create the appointment (first consultations are 30 minutes)
+    const endTime = new Date(appointmentDate.getTime() + 30 * 60 * 1000); // 30 min duration
     const reason = `${service.name}${appointment.notes ? ` - ${appointment.notes}` : ""} [Doctor: ${doctorName}] [Location: ${locationInfo.name}] [Retell AI Booking] [Call: ${effectiveCallId}]`;
 
     // Build appointment insert data - don't include source if column doesn't exist
