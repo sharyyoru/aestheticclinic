@@ -113,11 +113,11 @@ export async function GET(request: NextRequest) {
       currentSlot = new Date(currentSlot.getTime() + 30 * 60 * 1000);
     }
     
-    // For each 30-minute slot, count appointments that OVERLAP with a 1-hour appointment starting at that slot
+    // For each 30-minute slot, count appointments that OVERLAP with a 30-minute appointment starting at that slot
     // Overlap condition: existing.start < proposed.end AND existing.end > proposed.start
     allSlots.forEach((slotStart) => {
-      // A booking at this slot would be 1 hour long
-      const proposedEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
+      // Online bookings are 30-minute first consultations
+      const proposedEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
       
       const overlappingAppointments = filteredAppointments.filter((apt) => {
         const aptStart = new Date(apt.start_time);

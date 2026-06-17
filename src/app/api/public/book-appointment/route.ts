@@ -40,6 +40,9 @@ function parseBookingAppointmentDate(value: string): Date {
 // Mailgun only allows scheduling emails up to 24 hours in advance
 const MAILGUN_MAX_SCHEDULE_HOURS = 24;
 
+// Online bookings are first consultations, which are 30 minutes long.
+const ONLINE_CONSULTATION_DURATION_MS = 30 * 60 * 1000;
+
 async function sendEmail(
   to: string,
   subject: string,
@@ -403,7 +406,7 @@ export async function POST(request: Request) {
     // NEW: Check for any OVERLAPPING appointments, not just appointments starting in this slot
     // This prevents double-booking when existing appointments overlap with the requested time
     const requestedStart = new Date(appointmentDateObj);
-    const requestedEnd = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000); // 1 hour appointment
+    const requestedEnd = new Date(appointmentDateObj.getTime() + ONLINE_CONSULTATION_DURATION_MS); // 30 min consultation
 
     console.log(`[Booking] Checking availability for ${doctorName} (${doctorSlug}) at ${requestedStart.toISOString()}`);
     console.log(`[Booking] Requested slot: ${requestedStart.toISOString()} - ${requestedEnd.toISOString()}`);
@@ -495,8 +498,8 @@ export async function POST(request: Request) {
       isNewPatient = true;
     }
 
-    // Calculate end time (1 hour duration)
-    const endDateObj = new Date(appointmentDateObj.getTime() + 60 * 60 * 1000);
+    // Calculate end time (30 min first-consultation duration)
+    const endDateObj = new Date(appointmentDateObj.getTime() + ONLINE_CONSULTATION_DURATION_MS);
 
     // providerId was already looked up earlier for availability check
     // If it wasn't found earlier, try one more lookup method
