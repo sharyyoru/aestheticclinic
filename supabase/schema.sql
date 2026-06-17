@@ -290,7 +290,9 @@ DO $$ BEGIN
   CREATE TYPE email_status AS ENUM (
     'draft',
     'queued',
+    'sending',
     'sent',
+    'read',
     'failed'
   );
 EXCEPTION
@@ -318,6 +320,7 @@ create table if not exists emails (
   status email_status not null default 'draft',
   direction email_direction not null default 'outbound',
   sent_at timestamptz,
+  read_at timestamptz,
   created_at timestamptz default now()
 );
 
