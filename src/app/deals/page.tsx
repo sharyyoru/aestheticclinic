@@ -7,6 +7,20 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 import { formatSwissShortDate, formatSwissTime } from "@/lib/swissTimezone";
 
+// Supabase/PostgREST `.in()` filters are encoded into the request URL. With a
+// large id list the URL exceeds server limits and the request fails with
+// ERR_HTTP2_PROTOCOL_ERROR / connection reset. Splitting ids into chunks keeps
+// each URL small and the requests reliable.
+const IN_FILTER_CHUNK_SIZE = 200;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 function SearchableSelect({
   value,
   onChange,
@@ -281,13 +295,21 @@ export default function DealsPage() {
           return;
         }
 
-        // Fetch appointments for patients to link to deals in "Appointment Set" stage
-        const patientIds = [...new Set((dealsData as unknown as DealRow[]).map(d => d.patient_id))];
-        const { data: appointmentsData } = await supabaseClient
-          .from("appointments")
-          .select("id, patient_id, start_time, end_time, status, reason, location")
-          .in("patient_id", patientIds)
-          .order("start_time", { ascending: false });
+        // Fetch appointments for patients to link to deals in "Appointment Set" stage.
+        // Chunk the id list so the request URL stays within server limits.
+        const patientIds = [...new Set((dealsData as unknown as DealRow[]).map(d => d.patient_id))]
+          .filter((id): id is string => Boolean(id));
+        const appointmentChunks = await Promise.all(
+          chunkArray(patientIds, IN_FILTER_CHUNK_SIZE).map((ids) =>
+            supabaseClient
+              .from("appointments")
+              .select("id, patient_id, start_time, end_time, status, reason, location")
+              .in("patient_id", ids)
+              .order("start_time", { ascending: false })
+              .then((res) => res.data ?? []),
+          ),
+        );
+        const appointmentsData = appointmentChunks.flat();
 
         // Map appointments by patient_id (most recent first)
         const appointmentsByPatient: Record<string, DealAppointment> = {};
@@ -313,16 +335,23 @@ export default function DealsPage() {
 
         setDeals(dealsWithAppointments);
 
-        // Fetch invoiced deals (consultations with invoice data)
+        // Fetch invoiced deals (consultations with invoice data).
+        // Chunk the id list so the request URL stays within server limits.
         const dealIds = dealsWithAppointments.map(d => d.id);
         if (dealIds.length > 0) {
-          const { data: consultationsData } = await supabaseClient
-            .from("consultations")
-            .select("id, deal_id")
-            .in("deal_id", dealIds)
-            .not("invoice_total_amount", "is", null);
+          const consultationChunks = await Promise.all(
+            chunkArray(dealIds, IN_FILTER_CHUNK_SIZE).map((ids) =>
+              supabaseClient
+                .from("consultations")
+                .select("id, deal_id")
+                .in("deal_id", ids)
+                .not("invoice_total_amount", "is", null)
+                .then((res) => res.data ?? []),
+            ),
+          );
+          const consultationsData = consultationChunks.flat();
 
-          if (consultationsData) {
+          if (consultationsData.length > 0) {
             const invoicedIds = new Set(
               consultationsData
                 .map(c => c.deal_id)

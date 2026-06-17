@@ -378,11 +378,13 @@ type AppointmentHistoryEntry = {
   changed_by_user_id: string | null;
   changed_by_email: string | null;
   changed_at: string;
-  change_type: "created" | "rescheduled" | "cancelled" | "updated";
+  change_type: "created" | "rescheduled" | "cancelled" | "updated" | "deleted";
   original_start_time: string | null;
   original_end_time: string | null;
   original_status: string | null;
   original_location: string | null;
+  original_reason: string | null;
+  original_patient_id: string | null;
   new_start_time: string | null;
   new_end_time: string | null;
   new_status: string | null;
@@ -2836,7 +2838,6 @@ export default function CalendarPage() {
         ? `${baseReason}${doctorTag}${categoryTag}${notesTag} [Status: ${bookingStatus}]`
         : `${baseReason}${doctorTag}${categoryTag}${notesTag}`;
 
-      // Don't set provider_id to avoid foreign key issues - doctor info is in [Doctor:] tag
       // For meetings, patient_id can be null
       const insertData: Record<string, unknown> = {
         start_time: startIso,
@@ -2851,6 +2852,24 @@ export default function CalendarPage() {
       // Only include patient_id for appointments (not PAUSE slots)
       if (createAppointmentType === "appointment" && createPatientId) {
         insertData.patient_id = createPatientId;
+      }
+
+      // Persist the doctor as a real provider_id (in addition to the [Doctor:]
+      // text tag) so the calendar can match this appointment reliably by
+      // provider_id instead of fragile name-substring matching. Only set it for
+      // genuine doctor calendars (not location calendars) and only when it maps
+      // to an existing provider row, to avoid foreign-key violations.
+      const CREATE_LOCATION_CALENDAR_NAMES = [
+        "gstaad", "montreux", "rhône", "rhone", "champel", "geneva", "genève", "geneve",
+      ];
+      const isLocationCalendar = !!doctorName &&
+        CREATE_LOCATION_CALENDAR_NAMES.some((loc) => doctorName.toLowerCase().includes(loc));
+      if (
+        selectedCalendar?.providerId &&
+        !isLocationCalendar &&
+        providers.some((provider) => provider.id === selectedCalendar.providerId)
+      ) {
+        insertData.provider_id = selectedCalendar.providerId;
       }
 
       const { data, error } = await supabaseClient
@@ -3225,6 +3244,25 @@ export default function CalendarPage() {
     try {
       setDeletingAppointment(true);
       setEditError(null);
+
+      // Audit the deletion BEFORE removing the row, capturing who did it and a
+      // snapshot of the appointment. The history row survives the delete
+      // (FK is ON DELETE SET NULL) so deletions are always traceable.
+      const { data: authData } = await supabaseClient.auth.getUser();
+      const currentUser = authData?.user;
+
+      await supabaseClient.from("appointment_history").insert({
+        appointment_id: editingAppointment.id,
+        changed_by_user_id: currentUser?.id || null,
+        changed_by_email: currentUser?.email || null,
+        change_type: "deleted",
+        original_start_time: editingAppointment.start_time,
+        original_end_time: editingAppointment.end_time,
+        original_status: editingAppointment.status,
+        original_location: editingAppointment.location,
+        original_reason: editingAppointment.reason,
+        original_patient_id: editingAppointment.patient_id,
+      });
 
       const { error } = await supabaseClient
         .from("appointments")
@@ -4729,6 +4767,7 @@ export default function CalendarPage() {
                                 entry.change_type === "created" ? "bg-green-100 text-green-700" :
                                 entry.change_type === "rescheduled" ? "bg-amber-100 text-amber-700" :
                                 entry.change_type === "cancelled" ? "bg-red-100 text-red-700" :
+                                entry.change_type === "deleted" ? "bg-red-200 text-red-800" :
                                 "bg-slate-100 text-slate-700"
                               }`}>
                                 {entry.change_type}
@@ -4748,6 +4787,11 @@ export default function CalendarPage() {
                             {entry.change_type === "created" && newStart && (
                               <p className="text-[9px] text-amber-600 mt-0.5">
                                 Originally booked for: {formatSwissDate(newStart)} {formatSwissTime(newStart)}
+                              </p>
+                            )}
+                            {entry.change_type === "deleted" && originalStart && (
+                              <p className="text-[9px] text-amber-600 mt-0.5">
+                                Deleted appointment was scheduled for: {formatSwissDate(originalStart)} {formatSwissTime(originalStart)}
                               </p>
                             )}
                           </div>

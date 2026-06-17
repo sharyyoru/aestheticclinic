@@ -540,27 +540,40 @@ export default function PatientActivityCard({
 
     async function loadServices() {
       try {
-        // Fetch services with their category names from all categories
-        const { data, error } = await supabaseClient
-          .from("services")
-          .select("id, name, category_name:service_categories(name)")
-          .order("name", { ascending: true });
+        // Fetch services and categories separately and map category names
+        // client-side. This avoids depending on a PostgREST embed
+        // (service_categories(name)), which fails when the FK relationship
+        // between services and service_categories isn't present in the schema.
+        const [servicesResult, categoriesResult] = await Promise.all([
+          supabaseClient
+            .from("services")
+            .select("id, name, category_id")
+            .order("name", { ascending: true }),
+          supabaseClient
+            .from("service_categories")
+            .select("id, name"),
+        ]);
 
         if (!isMounted) return;
 
+        const { data, error } = servicesResult;
         if (error || !data) {
           setServiceOptions([]);
           return;
         }
 
+        const categoryNameById = new Map<string, string>(
+          (categoriesResult.data as any[] | null)?.map((c) => [c.id, c.name]) ?? [],
+        );
+
         const excludedCategories = ["Prestations Perso", "Private Insurance", "Esthetique"];
         const mapped = (data as any[])
-          .filter((s) => !excludedCategories.includes(s.category_name?.name))
           .map((s) => ({
             id: s.id,
             name: s.name,
-            category_name: s.category_name?.name ?? "Uncategorized",
-          })) as ServiceOption[];
+            category_name: categoryNameById.get(s.category_id) ?? "Uncategorized",
+          }))
+          .filter((s) => !excludedCategories.includes(s.category_name)) as ServiceOption[];
 
         setServiceOptions(mapped);
       } catch {
@@ -4813,6 +4826,7 @@ export default function PatientActivityCard({
                         type="text"
                         value={dealServiceSearch}
                         onChange={(event) => handleDealServiceSearchChange(event.target.value)}
+                        onFocus={() => setDealServiceDropdownOpen(true)}
                         placeholder="Search services..."
                         className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2 py-1.5 pr-7 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                       />
