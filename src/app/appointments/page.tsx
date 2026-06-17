@@ -2838,6 +2838,11 @@ export default function CalendarPage() {
         ? `${baseReason}${doctorTag}${categoryTag}${notesTag} [Status: ${bookingStatus}]`
         : `${baseReason}${doctorTag}${categoryTag}${notesTag}`;
 
+      // Don't set provider_id: the FK targets the `providers` table, but the
+      // calendars are keyed by `users` ids and not every doctor (e.g. Operation
+      // Room) has a matching providers row, so setting it would risk a
+      // foreign-key violation. Doctor info lives in the [Doctor:] reason tag,
+      // which the calendar matches on.
       // For meetings, patient_id can be null
       const insertData: Record<string, unknown> = {
         start_time: startIso,
@@ -2852,24 +2857,6 @@ export default function CalendarPage() {
       // Only include patient_id for appointments (not PAUSE slots)
       if (createAppointmentType === "appointment" && createPatientId) {
         insertData.patient_id = createPatientId;
-      }
-
-      // Persist the doctor as a real provider_id (in addition to the [Doctor:]
-      // text tag) so the calendar can match this appointment reliably by
-      // provider_id instead of fragile name-substring matching. Only set it for
-      // genuine doctor calendars (not location calendars) and only when it maps
-      // to an existing provider row, to avoid foreign-key violations.
-      const CREATE_LOCATION_CALENDAR_NAMES = [
-        "gstaad", "montreux", "rhône", "rhone", "champel", "geneva", "genève", "geneve",
-      ];
-      const isLocationCalendar = !!doctorName &&
-        CREATE_LOCATION_CALENDAR_NAMES.some((loc) => doctorName.toLowerCase().includes(loc));
-      if (
-        selectedCalendar?.providerId &&
-        !isLocationCalendar &&
-        providers.some((provider) => provider.id === selectedCalendar.providerId)
-      ) {
-        insertData.provider_id = selectedCalendar.providerId;
       }
 
       const { data, error } = await supabaseClient
