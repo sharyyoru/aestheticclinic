@@ -70,7 +70,11 @@ export default function CampaignDetailPage() {
   }, [id]);
 
   const filteredRecipients =
-    statusFilter === "all" ? recipients : recipients.filter((r) => r.status === statusFilter);
+    statusFilter === "all"
+      ? recipients
+      : statusFilter === "opened"
+        ? recipients.filter((r) => r.opened_at)
+        : recipients.filter((r) => r.status === statusFilter);
 
   if (loading) {
     return <main className="mx-auto max-w-7xl p-6">Loading…</main>;
@@ -129,7 +133,7 @@ export default function CampaignDetailPage() {
 
       <div className="mb-3 flex items-center gap-2">
         <span className="text-xs font-medium text-slate-600">Filter:</span>
-        {["all", "sent", "failed", "pending", "skipped"].map((s) => (
+        {["all", "sent", "opened", "failed", "pending", "skipped"].map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -150,6 +154,7 @@ export default function CampaignDetailPage() {
             <tr>
               <th className="px-4 py-2 text-left font-medium">Email</th>
               <th className="px-4 py-2 text-left font-medium">Status</th>
+              <th className="px-4 py-2 text-left font-medium">Opened</th>
               <th className="px-4 py-2 text-left font-medium">Sent at</th>
               <th className="px-4 py-2 text-left font-medium">Error</th>
             </tr>
@@ -175,6 +180,21 @@ export default function CampaignDetailPage() {
                     {r.status}
                   </span>
                 </td>
+                <td className="px-4 py-2 text-xs">
+                  {r.opened_at ? (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700"
+                      title={`Opened ${new Date(r.opened_at).toLocaleString()}`}
+                    >
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      {new Date(r.opened_at).toLocaleString()}
+                    </span>
+                  ) : r.status === "sent" ? (
+                    <span className="text-[10px] text-slate-400">Not opened yet</span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
                 <td className="px-4 py-2 text-xs text-slate-500">
                   {r.sent_at ? new Date(r.sent_at).toLocaleString() : "—"}
                 </td>
@@ -185,7 +205,7 @@ export default function CampaignDetailPage() {
             ))}
             {filteredRecipients.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-sm text-slate-400">
+                <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">
                   No recipients match this filter.
                 </td>
               </tr>
