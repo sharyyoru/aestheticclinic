@@ -1021,14 +1021,29 @@ export async function POST(request: Request) {
 
               const fromAddress = mailgunFromEmail || `no-reply@${domain}`;
 
+              // Inject the open-tracking pixel (same mechanism as /api/emails/send
+              // and the marketing campaign sender) so workflow email opens are
+              // recorded against emails.read_at via /api/emails/track.
+              let htmlWithTracking = bodyHtml;
+              if (emailId) {
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
+                const trackingPixel = `<img src="${appUrl}/api/emails/track?id=${emailId}" width="1" height="1" style="display:none;visibility:hidden;width:1px;height:1px;opacity:0;" alt="" />`;
+                htmlWithTracking = bodyHtml.includes("</body>")
+                  ? bodyHtml.replace("</body>", `${trackingPixel}</body>`)
+                  : `${bodyHtml}${trackingPixel}`;
+              }
+
               const params = new URLSearchParams();
               params.append("from", `${mailgunFromName} <${fromAddress}>`);
               params.append("to", recipientEmail as string);
               params.append("subject", subject);
-              params.append("html", bodyHtml);
+              params.append("html", htmlWithTracking);
 
               if (replyAlias) {
                 params.append("h:Reply-To", replyAlias);
+              }
+              if (emailId) {
+                params.append("v:email-id", emailId);
               }
 
               if (isFuture) {
