@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal } from "@/lib/swissTimezone";
+import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -579,7 +580,27 @@ export async function POST(request: Request) {
       console.error("✗ Error creating Organize Anesthesia task:", err);
     }
 
-    // If this is a new patient, trigger the patient-created workflow to create deal and task
+    // Move the patient's deal to "Appointment Set" (or create it there if none
+    // exists) so the booked appointment is reflected automatically. This avoids
+    // staff having to drag the deal manually, which would open the appointment
+    // modal and create a duplicate appointment.
+    try {
+      const dealSync = await syncDealToAppointmentSet(supabase, {
+        patientId,
+        title: `${patientName} - ${service}`,
+        notes: `Booked via online booking on ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)} with ${doctorName}`,
+        location: location || null,
+      });
+      console.log("✓ Deal synced to Appointment Set:", dealSync);
+    } catch (err) {
+      console.error("✗ Failed to sync deal to Appointment Set:", err);
+      // Don't fail the booking if deal sync fails
+    }
+
+    // If this is a new patient, trigger the patient-created workflow to create
+    // the sales task. We pass skip_deal_creation so it does NOT create a
+    // separate "Request for Information" deal — the booking already places the
+    // deal in "Appointment Set" above.
     if (isNewPatient) {
       try {
         // Get the base URL from the request
@@ -589,7 +610,7 @@ export async function POST(request: Request) {
         await fetch(`${baseUrl}/api/workflows/patient-created`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ patient_id: patientId }),
+          body: JSON.stringify({ patient_id: patientId, skip_deal_creation: true }),
         });
         console.log("✓ Triggered patient-created workflow for new patient:", patientId);
       } catch (err) {

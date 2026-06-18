@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal } from "@/lib/swissTimezone";
+import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -331,32 +332,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create or update deal for this booking
-    const { data: requestStage } = await supabase
-      .from("deal_stages")
-      .select("id")
-      .ilike("name", "%request for information%")
-      .limit(1)
-      .maybeSingle();
-
-    if (requestStage) {
-      const { data: existingDeals } = await supabase
-        .from("deals")
-        .select("id")
-        .eq("patient_id", patientId)
-        .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
-        .limit(1);
-
-      if (!existingDeals || existingDeals.length === 0) {
-        await supabase.from("deals").insert({
-          patient_id: patientId,
-          stage_id: requestStage.id,
-          title: `${patient.first_name || "Unknown"} ${patient.last_name || "Caller"} - ${service.name}`,
-          pipeline: "Lead to Surgery",
-          service_id: service.id,
-          notes: `Booked via Retell AI Call\nCall ID: ${effectiveCallId}\nAppointment: ${formatSwissDateWithWeekday(appointmentDate)} at ${formatSwissTimeAmPm(appointmentDate)}`,
-        });
-      }
+    // Move the patient's deal to "Appointment Set" (or create it there if none
+    // exists) so the booked appointment is reflected automatically. This avoids
+    // staff having to drag the deal manually, which would open the appointment
+    // modal and create a duplicate appointment.
+    try {
+      const dealSync = await syncDealToAppointmentSet(supabase, {
+        patientId,
+        title: `${patient.first_name || "Unknown"} ${patient.last_name || "Caller"} - ${service.name}`,
+        serviceId: service.id,
+        notes: `Booked via Retell AI Call\nCall ID: ${effectiveCallId}\nAppointment: ${formatSwissDateWithWeekday(appointmentDate)} at ${formatSwissTimeAmPm(appointmentDate)}`,
+        location: fullLocation,
+      });
+      console.log("[Retell Book] Deal synced to Appointment Set:", dealSync);
+    } catch (err) {
+      console.error("[Retell Book] Failed to sync deal to Appointment Set:", err);
+      // Don't fail the booking if deal sync fails
     }
 
     // Send confirmation email if email provided
