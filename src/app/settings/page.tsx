@@ -3,11 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import ProvidersBillingSettingsTab from "@/components/ProvidersBillingSettingsTab";
 import WhatsAppTemplatesTab from "@/components/WhatsAppTemplatesTab";
+import { BOOKING_DOCTORS, WEEKDAYS } from "@/lib/bookingDoctors";
 
 const TABS = [
   { id: "external-labs", label: "External Labs" },
   { id: "providers-billing", label: "Providers & Billing" },
   { id: "doctor-scheduling", label: "Doctor Scheduling" },
+  { id: "doctor-days-off", label: "Doctor Days Off" },
   { id: "blocked-dates", label: "Blocked Dates" },
   { id: "medidata", label: "MediData Connection" },
   { id: "whatsapp-templates", label: "WhatsApp Templates" },
@@ -71,6 +73,7 @@ export default function SettingsPage() {
         {activeTab === "external-labs" && <ExternalLabsTab />}
         {activeTab === "providers-billing" && <ProvidersBillingSettingsTab />}
         {activeTab === "doctor-scheduling" && <DoctorSchedulingTab />}
+        {activeTab === "doctor-days-off" && <DoctorDaysOffTab />}
         {activeTab === "blocked-dates" && <BlockedDatesTab />}
         {activeTab === "medidata" && <MediDataConnectionTab />}
         {activeTab === "whatsapp-templates" && <WhatsAppTemplatesTab />}
@@ -400,6 +403,156 @@ function DoctorSchedulingTab() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Doctor Days Off Tab
+// ---------------------------------------------------------------------------
+
+function DoctorDaysOffTab() {
+  // Map of slug -> Set of weekday numbers the doctor is OFF (0=Sun..6=Sat).
+  const [daysOffBySlug, setDaysOffBySlug] = useState<Record<string, Set<number>>>({});
+  const [loading, setLoading] = useState(true);
+  const [savingSlug, setSavingSlug] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/settings/doctor-days-off");
+        if (res.ok) {
+          const data = await res.json();
+          const map: Record<string, Set<number>> = {};
+          for (const row of (data.daysOff || []) as { slug: string; days_off: number[] }[]) {
+            map[row.slug] = new Set(row.days_off || []);
+          }
+          setDaysOffBySlug(map);
+        }
+      } catch (err) {
+        console.error("Failed to load doctor days off:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  async function persist(slug: string, set: Set<number>) {
+    setSavingSlug(slug);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/doctor-days-off", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, days_off: Array.from(set) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Failed to save. Make sure the booking_doctor_days_off table exists.");
+      }
+    } catch (err) {
+      console.error("Failed to save doctor days off:", err);
+      setError("Failed to save changes.");
+    } finally {
+      setSavingSlug(null);
+    }
+  }
+
+  function toggleDay(slug: string, day: number) {
+    setDaysOffBySlug((prev) => {
+      const current = new Set(prev[slug] ?? []);
+      if (current.has(day)) {
+        current.delete(day);
+      } else {
+        current.add(day);
+      }
+      const next = { ...prev, [slug]: current };
+      // Persist this doctor's updated set.
+      void persist(slug, current);
+      return next;
+    });
+  }
+
+  return (
+    <div className="max-w-4xl space-y-5">
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <h3 className="text-sm font-semibold text-slate-800">Doctor Days Off</h3>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Tick the days each doctor is <span className="font-medium">off</span>. Those weekdays are
+          hidden from the online booking calendar and rejected if someone tries to book them.
+          Changes save automatically.
+        </p>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-slate-200/80 bg-slate-50/60">
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Doctor
+              </th>
+              {WEEKDAYS.map((wd) => (
+                <th
+                  key={wd.value}
+                  className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                >
+                  {wd.short}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={WEEKDAYS.length + 1} className="px-4 py-8 text-center text-xs text-slate-400">
+                  Loading…
+                </td>
+              </tr>
+            ) : (
+              BOOKING_DOCTORS.map((doc) => {
+                const set = daysOffBySlug[doc.slug] ?? new Set<number>();
+                return (
+                  <tr key={doc.slug} className="border-b border-slate-100/60 last:border-0">
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-700">{doc.name}</span>
+                        {savingSlug === doc.slug && (
+                          <span className="text-[10px] text-sky-500">saving…</span>
+                        )}
+                      </div>
+                    </td>
+                    {WEEKDAYS.map((wd) => {
+                      const checked = set.has(wd.value);
+                      return (
+                        <td key={wd.value} className="px-3 py-3 text-center align-middle">
+                          <label className="inline-flex cursor-pointer items-center justify-center">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleDay(doc.slug, wd.value)}
+                              className="h-4 w-4 cursor-pointer rounded border-slate-300 text-sky-500 focus:ring-sky-400/40"
+                              title={`${doc.name} off on ${wd.label}`}
+                            />
+                          </label>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {error && <p className="text-[11px] text-red-500">{error}</p>}
+
+      <p className="text-[11px] text-slate-400">
+        Note: This controls recurring weekly days off. For one-off clinic closures (holidays), use
+        the <span className="font-medium">Blocked Dates</span> tab.
+      </p>
     </div>
   );
 }

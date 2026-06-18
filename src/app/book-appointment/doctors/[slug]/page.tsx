@@ -244,6 +244,7 @@ function DoctorBookingContent() {
   const [nearestAvailableDate, setNearestAvailableDate] = useState<string | null>(null);
   const [isLoadingDates, setIsLoadingDates] = useState(true);
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
+  const [doctorDaysOff, setDoctorDaysOff] = useState<Set<number>>(new Set());
   const [selectedTime, setSelectedTime] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -297,13 +298,34 @@ function DoctorBookingContent() {
     fetchBlockedDates();
   }, []);
 
+  // Fetch this doctor's recurring days off (set in Settings -> Doctor Days Off)
+  useEffect(() => {
+    async function fetchDoctorDaysOff() {
+      try {
+        const res = await fetch("/api/settings/doctor-days-off");
+        if (res.ok) {
+          const data = await res.json();
+          const entry = (data.daysOff || []).find(
+            (d: { slug: string }) => d.slug === slug
+          );
+          setDoctorDaysOff(new Set<number>(entry?.days_off || []));
+        }
+      } catch (err) {
+        console.error("Failed to fetch doctor days off:", err);
+      }
+    }
+    fetchDoctorDaysOff();
+  }, [slug]);
+
   // Calculate available dates and nearest date when location changes
   useEffect(() => {
     if (locationId && slug) {
       setIsLoadingDates(true);
       const dates = getAvailableDates(slug, locationId, 90);
-      // Filter out blocked dates
-      const filteredDates = dates.filter((d) => !blockedDates.has(d));
+      // Filter out blocked dates and the doctor's recurring days off
+      const filteredDates = dates.filter(
+        (d) => !blockedDates.has(d) && !doctorDaysOff.has(parseLocalDate(d).getDay())
+      );
       setAvailableDatesSet(new Set(filteredDates));
       
       // Find nearest available date that is not blocked
@@ -317,19 +339,23 @@ function DoctorBookingContent() {
       }
       setIsLoadingDates(false);
     }
-  }, [locationId, slug, blockedDates]);
+  }, [locationId, slug, blockedDates, doctorDaysOff]);
 
   // Generate time slots and check availability when date changes
   useEffect(() => {
     if (selectedDate && locationId) {
-      const slots = generateTimeSlots(slug, locationId, selectedDate);
+      // No slots if the doctor is off on this weekday.
+      const isDayOff = doctorDaysOff.has(parseLocalDate(selectedDate).getDay());
+      const slots = isDayOff ? [] : generateTimeSlots(slug, locationId, selectedDate);
       setAvailableSlots(slots);
       setSelectedTime(""); // Reset selected time when date changes
-      checkAvailability(selectedDate);
+      if (!isDayOff) {
+        checkAvailability(selectedDate);
+      }
     } else {
       setAvailableSlots([]);
     }
-  }, [selectedDate, locationId, slug]);
+  }, [selectedDate, locationId, slug, doctorDaysOff]);
 
   async function checkAvailability(date: string) {
     try {

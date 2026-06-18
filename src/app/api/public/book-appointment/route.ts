@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal } from "@/lib/swissTimezone";
+import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal, getSwissDayOfWeek } from "@/lib/swissTimezone";
 import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -382,6 +382,29 @@ export async function POST(request: Request) {
         { error: "Invalid appointment date" },
         { status: 400 }
       );
+    }
+
+    // Reject bookings on a day the doctor is marked off (Settings -> Doctor Days Off).
+    // Defense-in-depth: the booking UI already hides these days, but a direct
+    // POST (or a stale page) must not slip a booking through.
+    try {
+      const { data: daysOffRow } = await supabase
+        .from("booking_doctor_days_off")
+        .select("days_off")
+        .eq("slug", doctorSlug)
+        .maybeSingle();
+
+      const daysOff: number[] = daysOffRow?.days_off || [];
+      const appointmentDow = getSwissDayOfWeek(appointmentDateObj);
+      if (daysOff.includes(appointmentDow)) {
+        return NextResponse.json(
+          { error: "The selected doctor is not available on this day. Please choose another date." },
+          { status: 409 }
+        );
+      }
+    } catch (err) {
+      console.error("[Booking] Failed to check doctor days off:", err);
+      // Don't hard-fail the booking if this lookup errors (e.g. table missing).
     }
 
     // Look up the provider ID for this doctor to filter appointments correctly
