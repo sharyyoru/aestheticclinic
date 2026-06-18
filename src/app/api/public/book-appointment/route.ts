@@ -17,6 +17,7 @@ type BookingPayload = {
   lastName: string;
   email: string;
   phone?: string;
+  patientId?: string;
   appointmentDate: string;
   service: string;
   doctorSlug: string;
@@ -345,6 +346,7 @@ export async function POST(request: Request) {
       lastName,
       email,
       phone,
+      patientId: payloadPatientId,
       appointmentDate,
       service,
       doctorSlug,
@@ -485,19 +487,55 @@ export async function POST(request: Request) {
 
     console.log(`[Booking] ALLOWED: ${doctorAppointments.length} < ${maxCapacity}`);
 
-    // Check if patient exists or create new
-    let patientId: string;
-    const { data: existingPatient } = await supabase
-      .from("patients")
-      .select("id")
-      .eq("email", email.toLowerCase())
-      .single();
-
+    // Resolve the patient, reusing an existing record whenever possible so we
+    // don't create a duplicate patient (and therefore a duplicate deal). We try,
+    // in order of confidence:
+    //   1. The magic-link patient id passed from the booking page (authoritative)
+    //   2. Exact email match
+    //   3. Normalised phone match (catches leads whose email differs)
+    // Only if all of those fail do we create a brand-new patient.
+    let patientId: string | null = null;
     let isNewPatient = false;
-    if (existingPatient) {
-      patientId = existingPatient.id;
-    } else {
-      // Create new patient
+
+    // 1. Magic-link patient id
+    if (payloadPatientId) {
+      const { data: byId } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("id", payloadPatientId)
+        .maybeSingle();
+      if (byId) patientId = byId.id;
+    }
+
+    // 2. Exact email match
+    if (!patientId) {
+      const { data: byEmail } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("email", email.toLowerCase())
+        .maybeSingle();
+      if (byEmail) patientId = byEmail.id;
+    }
+
+    // 3. Normalised phone match (last 9 significant digits — Swiss national number)
+    if (!patientId && phone) {
+      const phoneDigits = phone.replace(/\D/g, "");
+      const phoneKey = phoneDigits.slice(-9);
+      if (phoneKey.length === 9) {
+        const { data: phoneCandidates } = await supabase
+          .from("patients")
+          .select("id, phone")
+          .not("phone", "is", null)
+          .ilike("phone", `%${phoneKey}%`);
+        const match = (phoneCandidates || []).find(
+          (p) => p.phone && p.phone.replace(/\D/g, "").slice(-9) === phoneKey
+        );
+        if (match) patientId = match.id;
+      }
+    }
+
+    // 4. No existing patient found — create a new one
+    if (!patientId) {
       const { data: newPatient, error: patientError } = await supabase
         .from("patients")
         .insert({
@@ -520,6 +558,14 @@ export async function POST(request: Request) {
 
       patientId = newPatient.id;
       isNewPatient = true;
+    }
+
+    // Safety net: patientId is guaranteed set by this point (also narrows the type).
+    if (!patientId) {
+      return NextResponse.json(
+        { error: "Failed to resolve patient record" },
+        { status: 500 }
+      );
     }
 
     // Calculate end time (30 min first-consultation duration)

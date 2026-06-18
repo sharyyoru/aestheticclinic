@@ -118,6 +118,17 @@ function DoctorsListContent() {
   const searchParams = useSearchParams();
   const location = searchParams.get("location") || "";
 
+  // Preserve the magic-link / intake params so the existing patient stays
+  // associated through the doctor-selection step. Without this, pid is dropped
+  // here and the booking creates a NEW patient + duplicate deal.
+  const carryParams = new URLSearchParams();
+  if (location) carryParams.set("location", location);
+  for (const key of ["pid", "sid", "autofill", "ctype"]) {
+    const val = searchParams.get(key);
+    if (val) carryParams.set(key, val);
+  }
+  const doctorQuery = carryParams.toString();
+
   // Filter doctors available at this location
   const availableDoctors = location
     ? ALL_DOCTORS.filter((doctor) => {
@@ -185,7 +196,7 @@ function DoctorsListContent() {
             {availableDoctors.map((doctor) => (
               <Link
                 key={doctor.slug}
-                href={`/book-appointment/doctors/${doctor.slug}?location=${location}`}
+                href={`/book-appointment/doctors/${doctor.slug}?${doctorQuery}`}
                 className="group bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-400 active:bg-slate-50 transition-all transform hover:-translate-y-1 active:scale-[0.98] w-[calc(50%-0.375rem)] sm:w-[calc(50%-0.5rem)] lg:w-[calc(25%-1.125rem)] touch-manipulation"
               >
                 <div className="relative h-28 sm:h-36 md:h-40 bg-gradient-to-br from-slate-100 to-slate-50 overflow-hidden">

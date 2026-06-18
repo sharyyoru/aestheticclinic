@@ -444,6 +444,9 @@ function DoctorBookingContent() {
           lastName,
           email,
           phone,
+          // Pass the magic-link patient id (if present) so the server reuses the
+          // existing patient + deal instead of creating a duplicate.
+          patientId: patientId || undefined,
           appointmentDate: appointmentDateSwiss.toISOString(),
           service: selectedService,
           doctorSlug: slug,
@@ -555,9 +558,12 @@ function DoctorBookingContent() {
           </Link>
         </div>
 
-        {/* Back Link */}
+        {/* Back Link — preserve the magic-link patient id so going back doesn't
+            break the existing-patient association. */}
         <Link
-          href={`/book-appointment/doctors?location=${locationId}`}
+          href={`/book-appointment/doctors?location=${locationId}${
+            patientId ? `&pid=${patientId}&autofill=true` : ""
+          }`}
           className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 sm:mb-8 transition-colors text-sm sm:text-base"
         >
           <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
