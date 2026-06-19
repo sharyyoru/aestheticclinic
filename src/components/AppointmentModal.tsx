@@ -332,7 +332,21 @@ export default function AppointmentModal({
             </div>
           </div>
 
-          {/* User/Doctor Selection */}
+          {/* Operations are auto-assigned to the Operation Room (OR) agenda */}
+          {appointmentType === "operation" && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-emerald-800">
+                <span className="text-base">🏥</span>
+                <span>Added to the Operation Room (OR) agenda</span>
+              </div>
+              <p className="mt-1 text-xs text-emerald-700">
+                Operations are scheduled on the OR agenda automatically — no staff selection needed.
+              </p>
+            </div>
+          )}
+
+          {/* User/Doctor Selection (appointments only) */}
+          {appointmentType !== "operation" && (
           <div className="space-y-2" ref={userDropdownRef}>
             <label className="block text-sm font-medium text-slate-700">
               Assign to Doctor <span className="text-red-500">*</span>
@@ -394,6 +408,7 @@ export default function AppointmentModal({
               </p>
             )}
           </div>
+          )}
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-slate-700">

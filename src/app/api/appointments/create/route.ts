@@ -29,6 +29,11 @@ type CreateAppointmentPayload = {
 // Mailgun only allows scheduling emails up to 24 hours in advance
 const MAILGUN_MAX_SCHEDULE_HOURS = 24;
 
+// The calendar agenda (short form "OR") that all operations are placed on.
+// Appointments are matched to a calendar column via the [Doctor: <name>] tag
+// in the reason field, so operations carry this name.
+const OPERATION_ROOM_AGENDA = "Operation Room";
+
 async function sendEmail(
   to: string,
   subject: string,
@@ -312,6 +317,15 @@ export async function POST(request: Request) {
                           userData.user.email?.split("@")[0] || "Staff Member";
         assignedUserEmail = userData.user.email || null;
       }
+    }
+
+    // Operations are always placed on the Operation Room (OR) agenda — there is
+    // no manual staff selection for them. Forcing the agenda name here means the
+    // [Doctor: Operation Room] tag is written to the reason below, which is how
+    // the calendar matches the appointment to the OR column.
+    if (appointmentType === "operation") {
+      assignedUserName = OPERATION_ROOM_AGENDA;
+      assignedUserEmail = null;
     }
 
     // Parse the datetime-local string as Swiss timezone to ensure correct UTC time
