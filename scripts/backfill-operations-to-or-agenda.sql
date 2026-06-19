@@ -1,13 +1,13 @@
--- Backfill: Move all existing operation appointments onto the Operation Room (OR) agenda.
+-- Backfill: Move all appointments whose deal is in "Operation Scheduled" stage onto the Operation Room (OR) agenda.
 --
--- Operations are identified by the [Category: OP Surgery] tag in the reason field.
--- This script ensures they all have [Doctor: Operation Room] so they appear on the OR
--- calendar column. The update is idempotent — it only adds the tag if missing.
+-- This script joins appointments -> deals -> deal_stages to find appointments associated with deals
+-- in the "Operation Scheduled" stage, then adds [Doctor: Operation Room] to their reason field
+-- so they appear on the OR calendar column. The update is idempotent — it only adds the tag if missing.
 --
 -- Run this in Supabase SQL Editor or via psql.
 
--- Add [Doctor: Operation Room] to operation appointments that don't already have it.
--- We use a regex to ensure we don't duplicate the tag if it's already present.
+-- Add [Doctor: Operation Room] to appointments whose deal is in "Operation Scheduled" stage
+-- and that don't already have the OR doctor tag.
 UPDATE appointments
 SET reason =
   CASE
@@ -19,7 +19,18 @@ SET reason =
     -- No [Doctor: tag at all — append it
     ELSE reason || ' [Doctor: Operation Room]'
   END
-WHERE reason ~ '\[Category:\s*OP Surgery\s*\]';
+WHERE deal_id IN (
+  SELECT d.id
+  FROM deals d
+  JOIN deal_stages ds ON d.stage_id = ds.id
+  WHERE LOWER(ds.name) LIKE '%operation scheduled%'
+)
+AND reason !~ '\[Doctor:\s*Operation Room\s*\]';
 
 -- Report how many rows were updated (run separately to see count)
--- SELECT COUNT(*) FROM appointments WHERE reason ~ '\[Category:\s*OP Surgery\s*\]';
+-- SELECT COUNT(*) FROM appointments
+-- WHERE deal_id IN (
+--   SELECT d.id FROM deals d JOIN deal_stages ds ON d.stage_id = ds.id
+--   WHERE LOWER(ds.name) LIKE '%operation scheduled%'
+-- )
+-- AND reason !~ '\[Doctor:\s*Operation Room\s*\]';
