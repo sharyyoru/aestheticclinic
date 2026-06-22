@@ -282,7 +282,9 @@ export default function IntakePage() {
       if (existingPatientError) throw existingPatientError;
 
       if (existingPatient) {
-        setError(t.emailAlreadyExists);
+        setEmail(normalizedEmail);
+        setRegEmail(normalizedEmail);
+        setView("search");
         return;
       }
 

@@ -26,7 +26,6 @@ export const translations = {
     email: "Email",
     allFieldsRequired: "All fields are required",
     pleaseEnterEmail: "Please enter your email address",
-    emailAlreadyExists: "A patient with this email already exists. Please log in to continue your intake form.",
     
     // How it Works
     howItWorks: "How it Works",
@@ -177,7 +176,6 @@ export const translations = {
     email: "Email",
     allFieldsRequired: "Tous les champs sont obligatoires",
     pleaseEnterEmail: "Veuillez entrer votre adresse email",
-    emailAlreadyExists: "Un patient avec cet email existe deja. Veuillez vous connecter pour continuer votre formulaire.",
     
     // How it Works
     howItWorks: "Comment ça marche",
