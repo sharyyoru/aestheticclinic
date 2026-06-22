@@ -49,7 +49,10 @@ export default function TaskReviewList({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
-  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  // Which task card currently has its patient search dropdown open. The search
+  // state is shared, but scoped to one card at a time so multiple cards don't
+  // all show the same dropdown/text simultaneously.
+  const [activePatientTaskId, setActivePatientTaskId] = useState<string | null>(null);
   const [patientResults, setPatientResults] = useState<any[]>([]);
   const [isSearchingPatients, setIsSearchingPatients] = useState(false);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -123,13 +126,14 @@ export default function TaskReviewList({
   }
 
   function handlePatientSearchChange(value: string, taskId: string) {
+    setActivePatientTaskId(taskId);
     setPatientSearch(value);
-
-    if (value.trim()) {
-      setShowPatientDropdown(true);
-    } else {
-      setShowPatientDropdown(false);
-    }
+    // Typing clears any previously-selected patient for this card.
+    setTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId ? { ...task, patientId: "", patientName: "" } : task
+      )
+    );
 
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
@@ -150,7 +154,7 @@ export default function TaskReviewList({
       )
     );
     setPatientSearch("");
-    setShowPatientDropdown(false);
+    setActivePatientTaskId(null);
     setPatientResults([]);
   }
 
@@ -347,25 +351,43 @@ export default function TaskReviewList({
                       <div className="relative">
                         <input
                           type="text"
-                          value={task.patientName || patientSearch}
+                          value={
+                            task.patientId
+                              ? task.patientName
+                              : activePatientTaskId === task.id
+                                ? patientSearch
+                                : ""
+                          }
                           onChange={(e) => handlePatientSearchChange(e.target.value, task.id)}
-                          onFocus={() => setShowPatientDropdown(true)}
+                          onFocus={() => setActivePatientTaskId(task.id)}
                           placeholder="Search patient..."
                           className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                         />
                         {task.patientId && (
                           <button
                             type="button"
-                            onClick={() => handleTaskChange(task.id, "patientId", "")}
+                            onClick={() => {
+                              setTasks((prev) =>
+                                prev.map((t) =>
+                                  t.id === task.id
+                                    ? { ...t, patientId: "", patientName: "" }
+                                    : t
+                                )
+                              );
+                            }}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         )}
-                        {showPatientDropdown && patientResults.length > 0 && (
+                        {activePatientTaskId === task.id &&
+                          !task.patientId &&
+                          (isSearchingPatients || patientResults.length > 0) && (
                           <div className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
                             {isSearchingPatients ? (
                               <div className="px-4 py-3 text-sm text-slate-500">Searching...</div>
+                            ) : patientResults.length === 0 ? (
+                              <div className="px-4 py-3 text-sm text-slate-500">No patients found</div>
                             ) : (
                               patientResults.map((patient) => {
                                 const name = `${patient.first_name ?? ""} ${patient.last_name ?? ""}`.trim() || "Unnamed patient";

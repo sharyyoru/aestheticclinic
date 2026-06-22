@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback } from "@/lib/geminiWithFallback";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 if (!GEMINI_API_KEY) {
   console.error("GEMINI_API_KEY is not set in environment variables");
 }
-
-const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 type ExtractedTask = {
   title: string;
@@ -18,7 +16,7 @@ type ExtractedTask = {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!genAI) {
+    if (!GEMINI_API_KEY) {
       return NextResponse.json(
         { error: "Gemini API key is not configured" },
         { status: 500 }
@@ -65,19 +63,7 @@ export async function POST(req: NextRequest) {
     const base64 = buffer.toString("base64");
     const mimeType = file.type;
 
-    // Use gemini-1.5-flash for fast multimodal processing
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-    });
-
     const systemInstruction = `You are an expert project manager. Your job is to analyze the provided image of a document, whiteboard, or notes. Extract all actionable items. For each item, generate a concise title, a brief description, and assign a priority (High, Medium, Low). The default assignee for all tasks must be 'Alice'. You must return the output STRICTLY as a JSON array of objects with the keys: title, description, priority, and assignee.`;
-
-    const imagePart = {
-      inlineData: {
-        data: base64,
-        mimeType,
-      },
-    };
 
     const prompt = `Analyze this image and extract all actionable tasks. Return a JSON array with the following structure:
 [
@@ -91,7 +77,22 @@ export async function POST(req: NextRequest) {
 
 If no actionable items are found, return an empty array [].`;
 
-    const result = await model.generateContent([systemInstruction, prompt, imagePart]);
+    // Use the shared helper which handles model fallback (gemini-2.0-flash and
+    // newer — 1.5 models are deprecated and 404), retries, and rate limits.
+    const result = await generateContentWithFallback({
+      apiKey: GEMINI_API_KEY,
+      systemInstruction,
+      generationConfig: { responseMimeType: "application/json" },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            { inlineData: { data: base64, mimeType } },
+          ],
+        },
+      ],
+    });
     const response = result.response;
     const text = response.text();
 
