@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import TaskEditModal from "@/components/TaskEditModal";
 import TaskCreateModal from "@/components/TaskCreateModal";
+import SmartTaskScannerModal from "@/components/SmartTaskScannerModal";
 import { useTasksNotifications } from "@/components/TasksNotificationsContext";
 
 type TaskStatus = "not_started" | "in_progress" | "completed";
@@ -90,6 +91,9 @@ export default function TasksPage() {
 
   // Task create modal
   const [createTaskModalOpen, setCreateTaskModalOpen] = useState(false);
+
+  // Smart Task Scanner modal
+  const [smartScannerOpen, setSmartScannerOpen] = useState(false);
 
   // Admin user selector
   const [allUsers, setAllUsers] = useState<PlatformUser[]>([]);
@@ -527,6 +531,28 @@ export default function TasksPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setSmartScannerOpen(true)}
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200/80 bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-emerald-700"
+            >
+              <span className="inline-flex h-3 w-3 items-center justify-center">
+                <svg
+                  className="h-3 w-3"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" />
+                  <path d="M3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6z" />
+                  <path d="M16 10l-2 2m0 0l2 2m-2-2h6" />
+                </svg>
+              </span>
+              <span>Scan Tasks</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setCreateTaskModalOpen(true)}
               className="inline-flex items-center gap-1 rounded-full border border-sky-200/80 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm hover:bg-sky-700"
             >
@@ -719,6 +745,16 @@ export default function TasksPage() {
                 : t
             )
           );
+        }}
+      />
+
+      {/* Smart Task Scanner Modal */}
+      <SmartTaskScannerModal
+        open={smartScannerOpen}
+        onClose={() => setSmartScannerOpen(false)}
+        onTasksCreated={() => {
+          // Reload tasks to show newly created tasks
+          window.location.reload();
         }}
       />
     </div>
