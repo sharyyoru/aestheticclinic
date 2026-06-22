@@ -271,6 +271,21 @@ export default function IntakePage() {
     setError(null);
 
     try {
+      const normalizedEmail = regEmail.trim().toLowerCase();
+
+      const { data: existingPatient, error: existingPatientError } = await supabaseClient
+        .from("patients")
+        .select("id")
+        .ilike("email", normalizedEmail)
+        .maybeSingle();
+
+      if (existingPatientError) throw existingPatientError;
+
+      if (existingPatient) {
+        setError(t.emailAlreadyExists);
+        return;
+      }
+
       // Check if selected country is WhatsApp-eligible
       const selectedCountry = countryCodes.find(c => c.code === countryCode);
       const isWhatsAppEligible = selectedCountry?.whatsappEligible ?? false;
@@ -281,7 +296,7 @@ export default function IntakePage() {
         .insert({
           first_name: firstName.trim(),
           last_name: lastName.trim(),
-          email: regEmail.trim().toLowerCase(),
+          email: normalizedEmail,
           phone: `${countryCode}${phone.trim().replace(/^0+/, "")}`,
           country_code: countryCode,
           whatsapp_opt_in: isWhatsAppEligible,
