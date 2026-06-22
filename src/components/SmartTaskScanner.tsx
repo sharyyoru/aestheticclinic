@@ -2,14 +2,26 @@
 
 import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Scan, FileImage, X, Upload, Loader2 } from "lucide-react";
+import { Scan, FileImage, X, Loader2, Camera, FileText } from "lucide-react";
 
 type ExtractedTask = {
   title: string;
   description: string;
   priority: "High" | "Medium" | "Low";
   assignee: string;
+  dueDate: string | null;
 };
+
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+];
+const ACCEPT_ATTR = "image/jpeg,image/jpg,image/png,image/webp,image/gif,application/pdf";
+const MAX_SIZE = 20 * 1024 * 1024;
 
 type SmartTaskScannerProps = {
   onTasksExtracted: (tasks: ExtractedTask[]) => void;
@@ -19,9 +31,12 @@ export default function SmartTaskScanner({ onTasksExtracted }: SmartTaskScannerP
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewFileName, setPreviewFileName] = useState<string | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
   const [analyzingStep, setAnalyzingStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const analyzingSteps = [
     "Analyzing handwriting...",
@@ -60,24 +75,31 @@ export default function SmartTaskScanner({ onTasksExtracted }: SmartTaskScannerP
 
   const processFile = async (file: File) => {
     // Validate file type
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
-    if (!allowedTypes.includes(file.type)) {
-      setError("Please upload an image (JPEG, PNG, WebP, or GIF).");
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError("Please upload an image (JPEG, PNG, WebP, GIF) or a PDF.");
       return;
     }
 
-    // Validate file size (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      setError("File too large. Maximum size is 10MB.");
+    // Validate file size (20MB)
+    if (file.size > MAX_SIZE) {
+      setError("File too large. Maximum size is 20MB.");
       return;
     }
 
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setPreviewImage(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    const fileIsPdf = file.type === "application/pdf";
+    setIsPdf(fileIsPdf);
+    setPreviewFileName(file.name);
+
+    // Create preview (image only; PDFs show a document placeholder)
+    if (fileIsPdf) {
+      setPreviewImage(null);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPreviewImage(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
 
     // Start analysis
     setIsAnalyzing(true);
@@ -107,27 +129,36 @@ export default function SmartTaskScanner({ onTasksExtracted }: SmartTaskScannerP
       clearInterval(stepInterval);
       setIsAnalyzing(false);
       setPreviewImage(null);
+      setPreviewFileName(null);
+      setIsPdf(false);
 
       if (data.tasks && data.tasks.length > 0) {
         onTasksExtracted(data.tasks);
       } else {
-        setError("No actionable items found in the image.");
+        setError("No actionable items found in the document.");
       }
     } catch (err) {
       clearInterval(stepInterval);
       setIsAnalyzing(false);
       setPreviewImage(null);
-      setError(err instanceof Error ? err.message : "Failed to analyze image");
+      setPreviewFileName(null);
+      setIsPdf(false);
+      setError(err instanceof Error ? err.message : "Failed to analyze document");
     }
   };
 
   const handleReset = () => {
     setPreviewImage(null);
+    setPreviewFileName(null);
+    setIsPdf(false);
     setIsAnalyzing(false);
     setError(null);
     setAnalyzingStep(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = "";
     }
   };
 
@@ -136,12 +167,12 @@ export default function SmartTaskScanner({ onTasksExtracted }: SmartTaskScannerP
       <div className="text-center mb-6">
         <h2 className="text-2xl font-semibold text-slate-900 mb-2">Smart Task Scanner</h2>
         <p className="text-sm text-slate-500">
-          Upload an image of notes, whiteboard, or document to automatically extract tasks
+          Upload a photo or PDF of notes, a whiteboard, a letter, or a form to automatically extract tasks
         </p>
       </div>
 
       <AnimatePresence mode="wait">
-        {!isAnalyzing && !previewImage && (
+        {!isAnalyzing && !previewFileName && (
           <motion.div
             key="dropzone"
             initial={{ opacity: 0, y: 20 }}
@@ -166,7 +197,17 @@ export default function SmartTaskScanner({ onTasksExtracted }: SmartTaskScannerP
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                accept={ACCEPT_ATTR}
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              {/* Camera input: capture="environment" opens the rear camera on
+                  mobile devices for direct photo capture. */}
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
                 onChange={handleFileSelect}
                 className="hidden"
               />
@@ -182,14 +223,39 @@ export default function SmartTaskScanner({ onTasksExtracted }: SmartTaskScannerP
                 
                 <div className="text-center space-y-2">
                   <p className="text-base font-medium text-slate-700">
-                    {isDragging ? "Drop your image here" : "Drag & drop an image here"}
+                    {isDragging ? "Drop your file here" : "Drag & drop a photo or PDF here"}
                   </p>
-                  <p className="text-sm text-slate-500">or click to browse</p>
+                  <p className="text-sm text-slate-500">or use the options below</p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-sky-700"
+                  >
+                    <FileImage className="w-4 h-4" />
+                    Browse files
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      cameraInputRef.current?.click();
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Take photo
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <FileImage className="w-4 h-4" />
-                  <span>JPEG, PNG, WebP, GIF (max 10MB)</span>
+                  <FileText className="w-4 h-4" />
+                  <span>JPEG, PNG, WebP, GIF, PDF (max 20MB)</span>
                 </div>
               </div>
             </div>
@@ -206,7 +272,7 @@ export default function SmartTaskScanner({ onTasksExtracted }: SmartTaskScannerP
           </motion.div>
         )}
 
-        {(isAnalyzing || previewImage) && (
+        {(isAnalyzing || previewFileName) && (
           <motion.div
             key="analyzing"
             initial={{ opacity: 0, scale: 0.95 }}
@@ -215,12 +281,19 @@ export default function SmartTaskScanner({ onTasksExtracted }: SmartTaskScannerP
             transition={{ duration: 0.3 }}
             className="relative rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-lg"
           >
-            {previewImage && (
+            {previewImage ? (
               <img
                 src={previewImage}
                 alt="Preview"
                 className="w-full h-64 object-cover"
               />
+            ) : (
+              <div className="flex h-64 w-full flex-col items-center justify-center gap-3 bg-slate-100">
+                <FileText className="w-16 h-16 text-slate-400" />
+                <span className="max-w-[80%] truncate text-sm font-medium text-slate-600">
+                  {previewFileName}
+                </span>
+              </div>
             )}
 
             {/* Scanning line animation */}

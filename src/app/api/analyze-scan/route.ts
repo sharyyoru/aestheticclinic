@@ -12,7 +12,16 @@ type ExtractedTask = {
   description: string;
   priority: "High" | "Medium" | "Low";
   assignee: string;
+  dueDate: string | null;
 };
+
+// ISO date (YYYY-MM-DD) validation
+function isValidIsoDate(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(value);
+  return !Number.isNaN(d.getTime());
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,26 +42,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate file size (max 10MB)
-    const MAX_SIZE = 10 * 1024 * 1024;
+    // Validate file size (max 20MB to accommodate multi-page PDFs)
+    const MAX_SIZE = 20 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
       return NextResponse.json(
-        { error: "File too large. Maximum size is 10MB." },
+        { error: "File too large. Maximum size is 20MB." },
         { status: 400 }
       );
     }
 
-    // Validate file type
+    // Validate file type. Gemini 2.x accepts PDFs natively as inline data and
+    // processes every page, so we support multi-page documents too.
     const allowedTypes = [
       "image/jpeg",
       "image/jpg",
       "image/png",
       "image/webp",
       "image/gif",
+      "application/pdf",
     ];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: "Invalid file type. Please upload an image (JPEG, PNG, WebP, or GIF)." },
+        { error: "Invalid file type. Please upload an image (JPEG, PNG, WebP, GIF) or a PDF." },
         { status: 400 }
       );
     }
@@ -63,17 +74,35 @@ export async function POST(req: NextRequest) {
     const base64 = buffer.toString("base64");
     const mimeType = file.type;
 
-    const systemInstruction = `You are an expert project manager. Your job is to analyze the provided image of a document, whiteboard, or notes. Extract all actionable items. For each item, generate a concise title, a brief description, and assign a priority (High, Medium, Low). The default assignee for all tasks must be 'Alice'. You must return the output STRICTLY as a JSON array of objects with the keys: title, description, priority, and assignee.`;
+    // Today's date so the model can resolve relative due dates like "next week".
+    const today = new Date();
+    const todayIso = today.toISOString().slice(0, 10);
+    const todayHuman = today.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
 
-    const prompt = `Analyze this image and extract all actionable tasks. Return a JSON array with the following structure:
+    const systemInstruction = `You are an expert project manager. Your job is to analyze the provided document (which may be an image or a multi-page PDF of notes, a whiteboard, a letter, or a form). Extract all actionable items across every page. For each item, generate a concise title, a brief description, assign a priority (High, Medium, Low), and extract a due date if one is mentioned or clearly implied. The default assignee for all tasks must be 'Alice'. You must return the output STRICTLY as a JSON array of objects with the keys: title, description, priority, assignee, and dueDate.`;
+
+    const prompt = `Today's date is ${todayHuman} (${todayIso}). Analyze this document and extract all actionable tasks across all pages. Resolve any relative dates (e.g. "tomorrow", "next week", "by Friday", "in 3 days") into an absolute calendar date relative to today.
+
+Return a JSON array with the following structure:
 [
   {
     "title": "Task title (concise)",
     "description": "Brief description of what needs to be done",
     "priority": "High" | "Medium" | "Low",
-    "assignee": "Alice"
+    "assignee": "Alice",
+    "dueDate": "YYYY-MM-DD or null"
   }
 ]
+
+Rules for dueDate:
+- Use the strict format YYYY-MM-DD.
+- If no due date is mentioned or implied for a task, set dueDate to null.
+- Never invent a date that is not supported by the document.
 
 If no actionable items are found, return an empty array [].`;
 
@@ -119,14 +148,22 @@ If no actionable items are found, return an empty array [].`;
       );
     }
 
-    // Validate each task has required fields
-    const validTasks = tasks.filter(
-      (task) =>
-        typeof task.title === "string" &&
-        typeof task.description === "string" &&
-        ["High", "Medium", "Low"].includes(task.priority) &&
-        typeof task.assignee === "string"
-    );
+    // Validate each task has required fields and normalise the due date.
+    const validTasks: ExtractedTask[] = tasks
+      .filter(
+        (task) =>
+          typeof task.title === "string" &&
+          typeof task.description === "string" &&
+          ["High", "Medium", "Low"].includes(task.priority) &&
+          typeof task.assignee === "string"
+      )
+      .map((task) => ({
+        title: task.title,
+        description: task.description,
+        priority: task.priority,
+        assignee: task.assignee,
+        dueDate: isValidIsoDate(task.dueDate) ? task.dueDate : null,
+      }));
 
     return NextResponse.json({ tasks: validTasks });
   } catch (error) {

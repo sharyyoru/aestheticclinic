@@ -10,6 +10,7 @@ type ExtractedTask = {
   description: string;
   priority: "High" | "Medium" | "Low";
   assignee: string;
+  dueDate: string | null;
 };
 
 type SmartTaskScannerModalProps = {

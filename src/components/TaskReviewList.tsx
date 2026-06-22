@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Check, X, ChevronDown, AlertCircle } from "lucide-react";
+import { Check, X, ChevronDown, AlertCircle, Users, Calendar } from "lucide-react";
 import { supabaseClient } from "@/lib/supabaseClient";
 
 type TaskPriority = "low" | "medium" | "high";
@@ -18,6 +18,7 @@ type ExtractedTask = {
   description: string;
   priority: "High" | "Medium" | "Low";
   assignee: string;
+  dueDate: string | null;
 };
 
 type EditableTask = {
@@ -29,6 +30,15 @@ type EditableTask = {
   assignedUserName: string;
   patientId: string;
   patientName: string;
+  dueDate: string;
+};
+
+type PatientResult = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
 };
 
 type TaskReviewListProps = {
@@ -53,10 +63,18 @@ export default function TaskReviewList({
   // state is shared, but scoped to one card at a time so multiple cards don't
   // all show the same dropdown/text simultaneously.
   const [activePatientTaskId, setActivePatientTaskId] = useState<string | null>(null);
-  const [patientResults, setPatientResults] = useState<any[]>([]);
+  const [patientResults, setPatientResults] = useState<PatientResult[]>([]);
   const [isSearchingPatients, setIsSearchingPatients] = useState(false);
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Bulk "assign all tasks to one patient" search state (independent of the
+  // per-card search above).
+  const [bulkSearch, setBulkSearch] = useState("");
+  const [bulkResults, setBulkResults] = useState<PatientResult[]>([]);
+  const [showBulkDropdown, setShowBulkDropdown] = useState(false);
+  const [isSearchingBulk, setIsSearchingBulk] = useState(false);
+  const [bulkPatientName, setBulkPatientName] = useState("");
+  const bulkTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize tasks from extracted data
   useEffect(() => {
@@ -69,6 +87,7 @@ export default function TaskReviewList({
       assignedUserName: task.assignee,
       patientId: "",
       patientName: "",
+      dueDate: task.dueDate ?? "",
     }));
     setTasks(editableTasks);
   }, [initialTasks]);
@@ -90,39 +109,75 @@ export default function TaskReviewList({
     loadUsers();
   }, []);
 
-  // Patient search with debouncing
-  async function searchPatients(searchTerm: string) {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
+  // Shared patient query used by both the per-card and bulk search boxes.
+  async function queryPatients(searchTerm: string): Promise<PatientResult[]> {
     const trimmed = searchTerm.trim();
-    if (!trimmed) {
+    if (!trimmed) return [];
+    const searchPattern = `%${trimmed}%`;
+    const { data, error } = await supabaseClient
+      .from("patients")
+      .select("id, first_name, last_name, email, phone")
+      .or(`first_name.ilike.${searchPattern},last_name.ilike.${searchPattern},email.ilike.${searchPattern},phone.ilike.${searchPattern}`)
+      .order("last_name", { ascending: true })
+      .limit(20);
+    if (error || !data) return [];
+    return data as PatientResult[];
+  }
+
+  function patientLabel(patient: PatientResult): string {
+    return `${patient.first_name ?? ""} ${patient.last_name ?? ""}`.trim() || "Unnamed patient";
+  }
+
+  // Per-card patient search with debouncing
+  async function searchPatients(searchTerm: string) {
+    if (!searchTerm.trim()) {
       setPatientResults([]);
       setIsSearchingPatients(false);
       return;
     }
-
-    abortControllerRef.current = new AbortController();
-
     try {
       setIsSearchingPatients(true);
-      const searchPattern = `%${trimmed}%`;
-
-      const { data, error } = await supabaseClient
-        .from("patients")
-        .select("id, first_name, last_name, email, phone")
-        .or(`first_name.ilike.${searchPattern},last_name.ilike.${searchPattern},email.ilike.${searchPattern},phone.ilike.${searchPattern}`)
-        .order("last_name", { ascending: true })
-        .limit(20);
-
-      if (!error && data) {
-        setPatientResults(data);
-      }
+      setPatientResults(await queryPatients(searchTerm));
     } catch {
     } finally {
       setIsSearchingPatients(false);
     }
+  }
+
+  function handleBulkSearchChange(value: string) {
+    setBulkSearch(value);
+    setBulkPatientName("");
+    setShowBulkDropdown(!!value.trim());
+    if (bulkTimerRef.current) clearTimeout(bulkTimerRef.current);
+    bulkTimerRef.current = setTimeout(async () => {
+      if (!value.trim()) {
+        setBulkResults([]);
+        return;
+      }
+      setIsSearchingBulk(true);
+      try {
+        setBulkResults(await queryPatients(value));
+      } finally {
+        setIsSearchingBulk(false);
+      }
+    }, 150);
+  }
+
+  function handleBulkPatientSelect(patient: PatientResult) {
+    const name = patientLabel(patient);
+    setTasks((prev) =>
+      prev.map((task) => ({ ...task, patientId: patient.id, patientName: name }))
+    );
+    setBulkPatientName(name);
+    setBulkSearch("");
+    setShowBulkDropdown(false);
+    setBulkResults([]);
+  }
+
+  function clearBulkPatient() {
+    setBulkPatientName("");
+    setBulkSearch("");
+    setTasks((prev) => prev.map((task) => ({ ...task, patientId: "", patientName: "" })));
   }
 
   function handlePatientSearchChange(value: string, taskId: string) {
@@ -217,6 +272,7 @@ export default function TaskReviewList({
               priority: task.priority,
               content: task.description.trim() || null,
               status: "not_started",
+              activity_date: task.dueDate ? task.dueDate : null,
               assigned_user_id: task.assignedUserId || authUser.id,
               assigned_user_name: task.assignedUserName || createdByName,
               created_by_name: createdByName,
@@ -279,6 +335,65 @@ export default function TaskReviewList({
               </motion.div>
             )}
 
+            {/* Bulk patient assignment */}
+            {tasks.length > 1 && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="w-4 h-4 text-sky-600" />
+                  <span className="text-sm font-medium text-slate-700">
+                    Assign all {tasks.length} tasks to one patient
+                  </span>
+                </div>
+                <div className="relative max-w-md">
+                  <input
+                    type="text"
+                    value={bulkPatientName || bulkSearch}
+                    onChange={(e) => handleBulkSearchChange(e.target.value)}
+                    onFocus={() => setShowBulkDropdown(!!bulkSearch.trim())}
+                    placeholder="Search a patient to apply to every task..."
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  {bulkPatientName && (
+                    <button
+                      type="button"
+                      onClick={clearBulkPatient}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                  {showBulkDropdown && !bulkPatientName && (isSearchingBulk || bulkResults.length > 0) && (
+                    <div className="absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                      {isSearchingBulk ? (
+                        <div className="px-4 py-3 text-sm text-slate-500">Searching...</div>
+                      ) : bulkResults.length === 0 ? (
+                        <div className="px-4 py-3 text-sm text-slate-500">No patients found</div>
+                      ) : (
+                        bulkResults.map((patient) => (
+                          <button
+                            key={patient.id}
+                            type="button"
+                            onClick={() => handleBulkPatientSelect(patient)}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-sky-50 text-slate-700"
+                          >
+                            <div className="font-medium">{patientLabel(patient)}</div>
+                            <div className="text-xs text-slate-500">
+                              {patient.email || patient.phone || "No contact details"}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+                {bulkPatientName && (
+                  <p className="mt-2 text-xs text-emerald-700">
+                    All tasks assigned to <strong>{bulkPatientName}</strong>. You can still override individual tasks below.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="space-y-4">
               {tasks.map((task, index) => (
                 <motion.div
@@ -326,7 +441,7 @@ export default function TaskReviewList({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                     {/* Priority */}
                     <div>
                       <label className="block text-xs font-medium text-slate-500 mb-1">
@@ -341,6 +456,20 @@ export default function TaskReviewList({
                         <option value="medium">Medium</option>
                         <option value="high">High</option>
                       </select>
+                    </div>
+
+                    {/* Due Date */}
+                    <div>
+                      <label className="flex items-center gap-1 text-xs font-medium text-slate-500 mb-1">
+                        <Calendar className="w-3 h-3" />
+                        Due Date
+                      </label>
+                      <input
+                        type="date"
+                        value={task.dueDate}
+                        onChange={(e) => handleTaskChange(task.id, "dueDate", e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      />
                     </div>
 
                     {/* Patient Assignment */}
