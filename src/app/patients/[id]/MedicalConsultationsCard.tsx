@@ -112,6 +112,37 @@ type PlatformUser = {
   provider_id: string | null;
 };
 
+// Only these doctors should appear in the consultation "Doctor" dropdown.
+// Matched (accent/case-insensitive) against the user's name or email.
+const ALLOWED_DOCTOR_NAMES = [
+  "elita",
+  "yulia",
+  "cezar",
+  "tenorio",
+  "vera",
+  "sofien",
+  "buqe",
+  "audrey",
+  "yogane",
+  "ekaterina",
+  "amelie",
+  "aileen",
+  "vladimir",
+  "yosra",
+];
+
+function normalizeName(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isAllowedDoctor(user: { full_name: string | null; email: string | null }): boolean {
+  const haystack = `${normalizeName(user.full_name)} ${normalizeName(user.email)}`;
+  return ALLOWED_DOCTOR_NAMES.some((name) => haystack.includes(name));
+}
+
 type Provider = {
   id: string;
   name: string;
@@ -779,6 +810,12 @@ export default function MedicalConsultationsCard({
         return sortOrder === "desc" ? bTime - aTime : aTime - bTime;
       });
   }, [consultations, dateFrom, dateTo, sortOrder, recordTypeFilter]);
+
+  // Doctor dropdown is restricted to the allowed doctors only.
+  const doctorUserOptions = useMemo(
+    () => userOptions.filter(isAllowedDoctor),
+    [userOptions],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -4598,7 +4635,7 @@ export default function MedicalConsultationsCard({
                             value: staff.id,
                             label: `${staff.name}${staff.specialty ? ` (${staff.specialty})` : ""}${staff.gln ? ` - GLN: ${staff.gln}` : ""}`,
                           }))
-                        : userOptions.map((user) => ({
+                        : doctorUserOptions.map((user) => ({
                             value: user.id,
                             label: user.full_name || user.email || user.id,
                           }))
@@ -8456,7 +8493,7 @@ export default function MedicalConsultationsCard({
                   onChange={setEditConsultationDoctorId}
                   placeholder="Select doctor"
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  options={userOptions.map((user) => ({
+                  options={doctorUserOptions.map((user) => ({
                     value: user.id,
                     label: user.full_name || user.email || user.id,
                   }))}
