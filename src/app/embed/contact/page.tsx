@@ -2,7 +2,8 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { pushToDataLayer } from "@/components/GoogleTagManager";
+import { trackLeadConversion } from "@/components/GoogleTagManager";
+import { captureAttribution, toLeadAttributionPayload, attributionEventParams, type Attribution } from "@/lib/attribution";
 import { useEmbedHeight } from "@/hooks/useEmbedHeight";
 import { embedTranslations, getEmbedLanguage, type EmbedLanguage } from "@/lib/embedTranslations";
 
@@ -35,27 +36,11 @@ function EmbedContactPageContent() {
   const [isExistingPatient, setIsExistingPatient] = useState(false);
   const [message, setMessage] = useState("");
 
-  // Attribution tracking
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [referrer, setReferrer] = useState("");
-  const [utmParams, setUtmParams] = useState<Record<string, string>>({});
+  // Attribution tracking (utm + ad click ids, captured on mount)
+  const [attribution, setAttribution] = useState<Attribution | null>(null);
 
   useEffect(() => {
-    // Capture attribution data on mount
-    if (typeof window !== "undefined") {
-      setSourceUrl(window.location.href);
-      setReferrer(document.referrer);
-
-      // Parse UTM params
-      const params = new URLSearchParams(window.location.search);
-      setUtmParams({
-        utm_source: params.get("utm_source") || "",
-        utm_medium: params.get("utm_medium") || "",
-        utm_campaign: params.get("utm_campaign") || "",
-        utm_term: params.get("utm_term") || "",
-        utm_content: params.get("utm_content") || "",
-      });
-    }
+    setAttribution(captureAttribution());
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -90,13 +75,7 @@ function EmbedContactPageContent() {
           message,
           isExistingPatient,
           formType: "contact",
-          sourceUrl,
-          referrer,
-          utmSource: utmParams.utm_source,
-          utmMedium: utmParams.utm_medium,
-          utmCampaign: utmParams.utm_campaign,
-          utmTerm: utmParams.utm_term,
-          utmContent: utmParams.utm_content,
+          ...(attribution ? toLeadAttributionPayload(attribution) : {}),
         }),
       });
 
@@ -106,8 +85,15 @@ function EmbedContactPageContent() {
         throw new Error(data.error || t.errorSubmit);
       }
 
-      // Push GTM event
-      pushToDataLayer("aliice_form_submit");
+      // Push rich GTM conversion event (form type, value, attribution, click ids)
+      trackLeadConversion({
+        formType: "contact",
+        service: service || null,
+        location: location || null,
+        leadId: data?.leadId ?? null,
+        isExistingPatient,
+        attribution: attribution ? attributionEventParams(attribution) : undefined,
+      });
 
       setSuccess(true);
     } catch (err) {

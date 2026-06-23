@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString, createSwissDateTime } from "@/lib/swissTimezone";
-import { pushToDataLayer } from "@/components/GoogleTagManager";
+import { trackLeadConversion } from "@/components/GoogleTagManager";
 import MobileCalendar from "@/components/MobileCalendar";
 
 const DOCTORS: Record<string, {
@@ -463,8 +463,13 @@ function DoctorBookingContent() {
         throw new Error(data.error || "Failed to book appointment");
       }
 
-      // Push GTM event for form submission
-      pushToDataLayer("aliice_form_submit");
+      // Push rich GTM conversion event (auto-captures utm/gclid attribution)
+      trackLeadConversion({
+        formType: "booking",
+        service: selectedService,
+        location: locationName,
+        leadId: data?.leadId ?? null,
+      });
       
       setSuccess(true);
     } catch (err) {

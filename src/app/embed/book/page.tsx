@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString, createSwissDateTime } from "@/lib/swissTimezone";
-import { pushToDataLayer } from "@/components/GoogleTagManager";
+import { trackLeadConversion } from "@/components/GoogleTagManager";
+import { captureAttribution, toLeadAttributionPayload, attributionEventParams, type Attribution } from "@/lib/attribution";
 import { useEmbedHeight } from "@/hooks/useEmbedHeight";
 import { embedTranslations, getEmbedLanguage, type EmbedLanguage } from "@/lib/embedTranslations";
 import MobileCalendar from "@/components/MobileCalendar";
@@ -275,10 +276,8 @@ function EmbedBookPageContent() {
   const [bookedSlots, setBookedSlots] = useState<string[]>([]);
   const [doctorDaysOff, setDoctorDaysOff] = useState<Set<number>>(new Set());
 
-  // Attribution tracking
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [referrer, setReferrer] = useState("");
-  const [utmParams, setUtmParams] = useState<Record<string, string>>({});
+  // Attribution tracking (utm + ad click ids, captured on mount)
+  const [attribution, setAttribution] = useState<Attribution | null>(null);
 
   const selectedService = "General Consultation";
   const doctor = DOCTORS[selectedDoctor];
@@ -287,18 +286,7 @@ function EmbedBookPageContent() {
 
   // Capture attribution data on mount
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setSourceUrl(window.location.href);
-      setReferrer(document.referrer);
-      const params = new URLSearchParams(window.location.search);
-      setUtmParams({
-        utm_source: params.get("utm_source") || "",
-        utm_medium: params.get("utm_medium") || "",
-        utm_campaign: params.get("utm_campaign") || "",
-        utm_term: params.get("utm_term") || "",
-        utm_content: params.get("utm_content") || "",
-      });
-    }
+    setAttribution(captureAttribution());
   }, []);
 
   // Update available doctors when location changes
@@ -433,8 +421,9 @@ function EmbedBookPageContent() {
       }
 
       // Save lead to embed_form_leads for tracking
+      let leadId: string | null = null;
       try {
-        await fetch("/api/public/embed-lead", {
+        const leadRes = await fetch("/api/public/embed-lead", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -445,20 +434,23 @@ function EmbedBookPageContent() {
             service: selectedService,
             location: selectedLocation,
             formType: "booking",
-            sourceUrl,
-            referrer,
-            utmSource: utmParams.utm_source,
-            utmMedium: utmParams.utm_medium,
-            utmCampaign: utmParams.utm_campaign,
-            utmTerm: utmParams.utm_term,
-            utmContent: utmParams.utm_content,
+            ...(attribution ? toLeadAttributionPayload(attribution) : {}),
           }),
         });
+        const leadData = await leadRes.json().catch(() => null);
+        leadId = leadData?.leadId ?? null;
       } catch {
         // Don't block on lead tracking failure
       }
 
-      pushToDataLayer("aliice_form_submit");
+      // Push rich GTM conversion event (form type, value, attribution, click ids)
+      trackLeadConversion({
+        formType: "booking",
+        service: selectedService,
+        location: selectedLocation,
+        leadId,
+        attribution: attribution ? attributionEventParams(attribution) : undefined,
+      });
       setStep("success");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to book appointment");

@@ -6,7 +6,7 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import Image from "next/image";
 import { Language, getTranslation } from "@/lib/intakeTranslations";
 import InsurerSearchSelect from "@/components/InsurerSearchSelect";
-import { pushToDataLayer } from "@/components/GoogleTagManager";
+import { trackLeadConversion } from "@/components/GoogleTagManager";
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
 
@@ -792,8 +792,8 @@ function IntakeStepsContent() {
         })
         .eq("id", patientId);
 
-      // Push GTM event for form submission
-      pushToDataLayer("aliice_form_submit");
+      // Push rich GTM conversion event (auto-captures utm/gclid attribution)
+      trackLeadConversion({ formType: "intake" });
       
       setShowConfirmation(true);
     } catch (err) {

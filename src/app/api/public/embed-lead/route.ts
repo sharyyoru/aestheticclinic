@@ -18,11 +18,19 @@ interface EmbedLeadPayload {
   // Attribution
   sourceUrl?: string;
   referrer?: string;
+  landingPage?: string;
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
   utmTerm?: string;
   utmContent?: string;
+  // Ad click identifiers
+  gclid?: string;
+  gbraid?: string;
+  wbraid?: string;
+  fbclid?: string;
+  msclkid?: string;
+  ttclid?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -41,11 +49,18 @@ export async function POST(request: NextRequest) {
       formType,
       sourceUrl,
       referrer,
+      landingPage,
       utmSource,
       utmMedium,
       utmCampaign,
       utmTerm,
       utmContent,
+      gclid,
+      gbraid,
+      wbraid,
+      fbclid,
+      msclkid,
+      ttclid,
     } = body;
 
     // Validate required fields
@@ -86,11 +101,18 @@ export async function POST(request: NextRequest) {
         form_type: formType,
         source_url: sourceUrl || null,
         referrer: referrer || null,
+        landing_page: landingPage || null,
         utm_source: utmSource || null,
         utm_medium: utmMedium || null,
         utm_campaign: utmCampaign || null,
         utm_term: utmTerm || null,
         utm_content: utmContent || null,
+        gclid: gclid || null,
+        gbraid: gbraid || null,
+        wbraid: wbraid || null,
+        fbclid: fbclid || null,
+        msclkid: msclkid || null,
+        ttclid: ttclid || null,
         status: "new",
         ip_address: ipAddress,
         user_agent: userAgent,

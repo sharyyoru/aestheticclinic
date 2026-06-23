@@ -1,6 +1,7 @@
 "use client";
 
 import Script from "next/script";
+import { attributionEventParams, captureAttribution } from "@/lib/attribution";
 
 const GTM_ID = "GTM-KP9GM9QG";
 
@@ -56,6 +57,63 @@ export function pushToDataLayer(event: string, data?: Record<string, unknown>) {
       }
     }
   }
+}
+
+// Estimated lead value (CHF) per form type — used as the conversion `value`
+// for ad platform bidding. Tune these to your real average lead worth.
+export const LEAD_VALUE_BY_TYPE: Record<string, number> = {
+  booking: 150,
+  contact: 50,
+  intake: 100,
+};
+
+export interface LeadEventInput {
+  /** 'booking' | 'contact' | 'intake' | ... */
+  formType: string;
+  value?: number;
+  currency?: string;
+  service?: string | null;
+  location?: string | null;
+  leadId?: string | null;
+  isExistingPatient?: boolean;
+  /** Pre-captured attribution params (utm/gclid/...). If omitted, captured automatically. */
+  attribution?: Record<string, string>;
+}
+
+/**
+ * Fires a rich conversion event to the dataLayer (and to the parent page when
+ * embedded). Keeps the existing `aliice_form_submit` event so current GTM
+ * triggers keep working, and also emits a GA4-standard `generate_lead` event.
+ */
+export function trackLeadConversion(input: LeadEventInput) {
+  const value = input.value ?? LEAD_VALUE_BY_TYPE[input.formType] ?? 0;
+  const currency = input.currency ?? "CHF";
+
+  let attribution = input.attribution;
+  if (!attribution) {
+    try {
+      attribution = attributionEventParams(captureAttribution());
+    } catch {
+      attribution = {};
+    }
+  }
+
+  const payload: Record<string, unknown> = {
+    form_type: input.formType,
+    lead_type: input.formType,
+    value,
+    currency,
+    ...(input.service ? { service: input.service } : {}),
+    ...(input.location ? { location: input.location } : {}),
+    ...(input.leadId ? { lead_id: input.leadId } : {}),
+    ...(input.isExistingPatient !== undefined
+      ? { is_existing_patient: input.isExistingPatient }
+      : {}),
+    ...(attribution ?? {}),
+  };
+
+  pushToDataLayer("aliice_form_submit", payload);
+  pushToDataLayer("generate_lead", payload);
 }
 
 // Type declaration for window.dataLayer

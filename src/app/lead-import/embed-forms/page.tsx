@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
+import EmbedFormsReports from "./EmbedFormsReports";
 
 interface EmbedLead {
   id: string;
@@ -20,6 +21,12 @@ interface EmbedLead {
   utm_source: string | null;
   utm_medium: string | null;
   utm_campaign: string | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
+  fbclid?: string | null;
+  msclkid?: string | null;
+  ttclid?: string | null;
   status: string;
   converted_to_patient_id: string | null;
   created_at: string;
@@ -50,6 +57,7 @@ export default function EmbedFormsPage() {
   const [leads, setLeads] = useState<EmbedLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"leads" | "reports">("leads");
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -232,6 +240,34 @@ export default function EmbedFormsPage() {
         </p>
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-6 border-b border-slate-200">
+        <button
+          onClick={() => setTab("leads")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "leads"
+              ? "border-sky-500 text-sky-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Leads
+        </button>
+        <button
+          onClick={() => setTab("reports")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            tab === "reports"
+              ? "border-sky-500 text-sky-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          Reports
+        </button>
+      </div>
+
+      {tab === "reports" && <EmbedFormsReports leads={leads} />}
+
+      {tab === "leads" && (
+      <>
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
@@ -536,6 +572,8 @@ export default function EmbedFormsPage() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
