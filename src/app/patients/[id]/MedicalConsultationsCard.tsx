@@ -18,6 +18,7 @@ import {
 } from "@/lib/tardoc";
 import InsuranceBillingModal from "@/components/InsuranceBillingModal";
 import InvoiceStatusBadge from "@/components/InvoiceStatusBadge";
+import SearchableSelect from "@/components/SearchableSelect";
 import MedicalRecordsTab from "./MedicalRecordsTab";
 import TardocAccordionTree from "@/components/TardocAccordionTree";
 import AcfAccordionTree from "@/components/AcfAccordionTree";
@@ -4587,25 +4588,22 @@ export default function MedicalConsultationsCard({
                   <label className="block text-[11px] font-medium text-slate-700">
                     {consultationRecordType === "invoice" ? "Medical Staff (Doctor/Nurse)" : "Doctor"}
                   </label>
-                  <select
+                  <SearchableSelect
                     value={consultationDoctorId}
-                    onChange={(event) => setConsultationDoctorId(event.target.value)}
-                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="">Select {consultationRecordType === "invoice" ? "staff" : "doctor"}</option>
-                    {consultationRecordType === "invoice" 
-                      ? medicalStaffOptions.map((staff) => (
-                          <option key={staff.id} value={staff.id}>
-                            {staff.name}{staff.specialty ? ` (${staff.specialty})` : ""}{staff.gln ? ` - GLN: ${staff.gln}` : ""}
-                          </option>
-                        ))
-                      : userOptions.map((user) => (
-                          <option key={user.id} value={user.id}>
-                            {user.full_name || user.email}
-                          </option>
-                        ))
+                    onChange={setConsultationDoctorId}
+                    placeholder={`Select ${consultationRecordType === "invoice" ? "staff" : "doctor"}`}
+                    options={
+                      consultationRecordType === "invoice"
+                        ? medicalStaffOptions.map((staff) => ({
+                            value: staff.id,
+                            label: `${staff.name}${staff.specialty ? ` (${staff.specialty})` : ""}${staff.gln ? ` - GLN: ${staff.gln}` : ""}`,
+                          }))
+                        : userOptions.map((user) => ({
+                            value: user.id,
+                            label: user.full_name || user.email || user.id,
+                          }))
                     }
-                  </select>
+                  />
                 </div>
               </div>
 
@@ -8453,18 +8451,16 @@ export default function MedicalConsultationsCard({
               {/* Doctor */}
               <div className="space-y-1">
                 <label className="block text-[11px] font-medium text-slate-700">Doctor</label>
-                <select
+                <SearchableSelect
                   value={editConsultationDoctorId}
-                  onChange={(e) => setEditConsultationDoctorId(e.target.value)}
+                  onChange={setEditConsultationDoctorId}
+                  placeholder="Select doctor"
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                >
-                  <option value="">Select doctor</option>
-                  {userOptions.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.full_name || user.email || user.id}
-                    </option>
-                  ))}
-                </select>
+                  options={userOptions.map((user) => ({
+                    value: user.id,
+                    label: user.full_name || user.email || user.id,
+                  }))}
+                />
               </div>
 
               {/* Date & Time */}
