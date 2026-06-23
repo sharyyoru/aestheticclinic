@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
+import { reminderSuppressionReason } from "@/lib/appointmentComms";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -175,7 +176,7 @@ export async function GET(request: Request) {
     const { data: tomorrowAppts, error: tomorrowError } = await supabase
       .from("appointments")
       .select(`
-        id, patient_id, start_time, location, reason,
+        id, patient_id, start_time, location, reason, status,
         patient:patients(id, first_name, last_name, email, phone)
       `)
       .gte("start_time", tomorrowStart.toISOString())
@@ -191,6 +192,17 @@ export async function GET(request: Request) {
       console.log(`[Reminder] Processing ${tomorrowAppts.length} appointments for tomorrow`);
       
       for (const appt of tomorrowAppts) {
+        // Authoritative guard: skip appointments that were moved ("Déplacé") or
+        // cancelled via the agenda `[Status: ...]` tag even though the DB
+        // status column is still "scheduled". See @/lib/appointmentComms.
+        const suppression = reminderSuppressionReason(appt);
+        if (suppression) {
+          console.log(
+            `[Reminder] Skipping day-before reminder for appointment ${appt.id}: ${suppression}`,
+          );
+          continue;
+        }
+
         const patient = appt.patient as any;
         if (!patient) continue;
 
@@ -264,7 +276,7 @@ We look forward to seeing you!`;
     const { data: recentBookings, error: recentError } = await supabase
       .from("appointments")
       .select(`
-        id, patient_id, start_time, location, reason, created_at,
+        id, patient_id, start_time, location, reason, status, created_at,
         patient:patients(id, first_name, last_name, email, phone)
       `)
       .gte("created_at", oneHourAgoStart.toISOString())
@@ -280,6 +292,15 @@ We look forward to seeing you!`;
       console.log(`[Reminder] Processing ${recentBookings.length} booking confirmations`);
       
       for (const appt of recentBookings) {
+        // Same authoritative guard as the day-before reminder above.
+        const suppression = reminderSuppressionReason(appt);
+        if (suppression) {
+          console.log(
+            `[Reminder] Skipping booking confirmation for appointment ${appt.id}: ${suppression}`,
+          );
+          continue;
+        }
+
         const patient = appt.patient as any;
         if (!patient) continue;
 
