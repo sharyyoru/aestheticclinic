@@ -13,6 +13,9 @@ interface MobileCalendarProps {
   /** Renders a more compact calendar (shorter rows/chrome) so it fits in tight
    *  containers such as a fixed-height embed iframe. */
   compact?: boolean;
+  /** Shows only dates that have availability as a chip list (no full month
+   *  grid, no weekday header). Requires `availableDates`. */
+  availableOnly?: boolean;
 }
 
 const MONTHS = [
@@ -43,6 +46,7 @@ export default function MobileCalendar({
   blockedDates,
   isLoading = false,
   compact = false,
+  availableOnly = false,
 }: MobileCalendarProps) {
   // Current view month/year
   const [viewDate, setViewDate] = useState(() => {
@@ -151,6 +155,77 @@ export default function MobileCalendar({
   }, [currentYear, currentMonth, maxDate]);
 
   const today = formatDateToYMD(new Date());
+
+  // Available-only mode: render just the bookable dates as chips, grouped by
+  // month. No full month grid and no Sun/Mon/... weekday header.
+  if (availableOnly) {
+    const groups: { key: string; label: string; dates: { dateStr: string; date: Date }[] }[] = [];
+    Array.from(availableDates ?? [])
+      .filter((dateStr) => {
+        const date = parseYMD(dateStr);
+        if (minDate && date < minDate) return false;
+        if (maxDate && date > maxDate) return false;
+        if (blockedDates?.has(dateStr)) return false;
+        return true;
+      })
+      .sort()
+      .forEach((dateStr) => {
+        const date = parseYMD(dateStr);
+        const key = `${date.getFullYear()}-${date.getMonth()}`;
+        const label = `${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+        let group = groups.find((g) => g.key === key);
+        if (!group) {
+          group = { key, label, dates: [] };
+          groups.push(group);
+        }
+        group.dates.push({ dateStr, date });
+      });
+
+    return (
+      <div className="relative bg-white rounded-2xl border border-slate-200 overflow-hidden select-none">
+        {isLoading && (
+          <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
+            <div className="animate-spin w-6 h-6 border-2 border-slate-900 border-t-transparent rounded-full" />
+          </div>
+        )}
+        <div className={`overflow-y-auto ${compact ? "max-h-56 p-3 space-y-3" : "max-h-72 p-4 space-y-4"}`}>
+          {groups.length === 0 ? (
+            <p className="text-center text-xs text-slate-400 py-6">No available dates</p>
+          ) : (
+            groups.map((group) => (
+              <div key={group.key}>
+                <div className="mb-2 text-xs font-semibold text-slate-500">{group.label}</div>
+                <div className="flex flex-wrap gap-2">
+                  {group.dates.map(({ dateStr, date }) => {
+                    const isSelected = dateStr === selectedDate;
+                    return (
+                      <button
+                        key={dateStr}
+                        type="button"
+                        onClick={() => handleDateClick(dateStr, date)}
+                        className={`flex flex-col items-center justify-center rounded-lg border px-2.5 py-1.5 text-center transition-colors touch-manipulation ${
+                          isSelected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50 active:bg-slate-100"
+                        }`}
+                        aria-label={date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                        aria-selected={isSelected}
+                      >
+                        <span className={`text-[10px] uppercase leading-none ${isSelected ? "text-white/80" : "text-slate-400"}`}>
+                          {WEEKDAYS[date.getDay()]}
+                        </span>
+                        <span className="text-sm font-semibold leading-tight">{date.getDate()}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden select-none">
