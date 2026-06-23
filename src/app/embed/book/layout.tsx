@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { GoogleTagManager, GoogleTagManagerNoScript } from "@/components/GoogleTagManager";
+import EmbedBackground from "@/components/EmbedBackground";
 
 export const metadata: Metadata = {
   title: "Book Appointment | Aesthetics Clinic",
@@ -13,6 +14,7 @@ export default function EmbedBookLayout({
 }) {
   return (
     <>
+      <EmbedBackground />
       <GoogleTagManager />
       <GoogleTagManagerNoScript />
       {children}

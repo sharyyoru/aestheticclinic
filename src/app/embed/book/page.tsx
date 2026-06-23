@@ -8,6 +8,7 @@ import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, forma
 import { pushToDataLayer } from "@/components/GoogleTagManager";
 import { useEmbedHeight } from "@/hooks/useEmbedHeight";
 import { embedTranslations, getEmbedLanguage, type EmbedLanguage } from "@/lib/embedTranslations";
+import MobileCalendar from "@/components/MobileCalendar";
 
 // Clinic locations
 const CLINIC_LOCATIONS = [
@@ -488,18 +489,6 @@ function EmbedBookPageContent() {
     else if (step === "confirm") setStep("datetime");
   };
 
-  const getMinDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split("T")[0];
-  };
-
-  const getMaxDate = () => {
-    const maxDate = new Date();
-    maxDate.setMonth(maxDate.getMonth() + 3);
-    return maxDate.toISOString().split("T")[0];
-  };
-
   // Success screen
   if (step === "success") {
     return (
@@ -775,20 +764,28 @@ function EmbedBookPageContent() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">{t.date} *</label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => {
-                    setSelectedDate(e.target.value);
+                <label className="block text-sm font-medium text-slate-700 mb-2">{t.date} *</label>
+                <MobileCalendar
+                  selectedDate={selectedDate}
+                  onDateSelect={(date) => {
+                    setSelectedDate(date);
                     setSelectedTime("");
                   }}
-                  min={getMinDate()}
-                  max={getMaxDate()}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none"
+                  availableDates={availableDatesSet}
+                  minDate={(() => {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    tomorrow.setHours(0, 0, 0, 0);
+                    return tomorrow;
+                  })()}
+                  maxDate={(() => {
+                    const max = new Date();
+                    max.setMonth(max.getMonth() + 3);
+                    return max;
+                  })()}
                 />
                 {availableDatesSet.size > 0 && (
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-slate-500">
                     {availableDatesSet.size} {t.availableDatesCount}
                   </p>
                 )}
