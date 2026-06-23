@@ -766,6 +766,7 @@ function EmbedBookPageContent() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">{t.date} *</label>
                 <MobileCalendar
+                  compact
                   selectedDate={selectedDate}
                   onDateSelect={(date) => {
                     setSelectedDate(date);

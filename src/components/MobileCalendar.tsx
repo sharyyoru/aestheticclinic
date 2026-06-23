@@ -10,6 +10,9 @@ interface MobileCalendarProps {
   maxDate?: Date;
   blockedDates?: Set<string>;
   isLoading?: boolean;
+  /** Renders a more compact calendar (shorter rows/chrome) so it fits in tight
+   *  containers such as a fixed-height embed iframe. */
+  compact?: boolean;
 }
 
 const MONTHS = [
@@ -39,6 +42,7 @@ export default function MobileCalendar({
   maxDate,
   blockedDates,
   isLoading = false,
+  compact = false,
 }: MobileCalendarProps) {
   // Current view month/year
   const [viewDate, setViewDate] = useState(() => {
@@ -151,12 +155,12 @@ export default function MobileCalendar({
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden select-none">
       {/* Month/Year Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
+      <div className={`flex items-center justify-between bg-slate-50 border-b border-slate-200 ${compact ? "px-3 py-1.5" : "px-4 py-3"}`}>
         <button
           type="button"
           onClick={goToPrevMonth}
           disabled={!canGoPrev}
-          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200 active:bg-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors touch-manipulation"
+          className={`flex items-center justify-center rounded-full hover:bg-slate-200 active:bg-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors touch-manipulation ${compact ? "w-8 h-8" : "w-10 h-10"}`}
           aria-label="Previous month"
         >
           <svg className="w-5 h-5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -165,7 +169,7 @@ export default function MobileCalendar({
         </button>
         
         <div className="text-center">
-          <span className="text-base font-semibold text-slate-900">
+          <span className={`font-semibold text-slate-900 ${compact ? "text-sm" : "text-base"}`}>
             {MONTHS[currentMonth]} {currentYear}
           </span>
         </div>
@@ -174,7 +178,7 @@ export default function MobileCalendar({
           type="button"
           onClick={goToNextMonth}
           disabled={!canGoNext}
-          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200 active:bg-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors touch-manipulation"
+          className={`flex items-center justify-center rounded-full hover:bg-slate-200 active:bg-slate-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors touch-manipulation ${compact ? "w-8 h-8" : "w-10 h-10"}`}
           aria-label="Next month"
         >
           <svg className="w-5 h-5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -195,7 +199,7 @@ export default function MobileCalendar({
         {WEEKDAYS.map((day) => (
           <div
             key={day}
-            className="py-2 text-center text-xs font-medium text-slate-500 uppercase"
+            className={`text-center text-xs font-medium text-slate-500 uppercase ${compact ? "py-1" : "py-2"}`}
           >
             {day}
           </div>
@@ -217,7 +221,7 @@ export default function MobileCalendar({
               onClick={() => handleDateClick(dateStr, date)}
               disabled={disabled || !isCurrentMonth}
               className={`
-                relative aspect-square flex flex-col items-center justify-center bg-white
+                relative ${compact ? "h-9" : "aspect-square"} flex flex-col items-center justify-center bg-white
                 transition-all duration-150 touch-manipulation
                 ${!isCurrentMonth ? "opacity-30 cursor-default" : ""}
                 ${disabled && isCurrentMonth ? "opacity-40 cursor-not-allowed bg-slate-50" : ""}
@@ -242,7 +246,7 @@ export default function MobileCalendar({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-4 px-4 py-3 bg-slate-50 border-t border-slate-100 text-xs">
+      <div className={`flex items-center justify-center gap-4 bg-slate-50 border-t border-slate-100 text-xs ${compact ? "px-3 py-1.5" : "px-4 py-3"}`}>
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
           <span className="text-slate-600">Available</span>
