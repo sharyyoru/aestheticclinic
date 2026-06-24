@@ -123,6 +123,59 @@ function formatDoctorNameWithTitle(name: string): string {
   return `Dr. ${name}`;
 }
 
+// Internal recipients for "missed booking" alerts (slot was full at confirm).
+const MISSED_BOOKING_ALERT_RECIPIENTS = "sharyyoru@gmail.com, info@aesthetics-ge.ch";
+
+/**
+ * Notify the clinic when a patient tried to confirm a slot that was already
+ * full (the "fully booked (2/1)" 409). Captures their details so no booking
+ * attempt / lead is ever lost — the clinic can call them back and offer another
+ * time. Best-effort: never blocks or fails the API response.
+ */
+async function sendMissedBookingAlert(details: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  doctorName: string;
+  service: string;
+  location: string | null;
+  requestedStart: Date;
+  reason: string;
+}): Promise<void> {
+  const fullName = `${details.firstName} ${details.lastName}`.trim();
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: #b91c1c; padding: 28px 30px; border-radius: 16px 16px 0 0;">
+    <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">Missed booking attempt</h1>
+    <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px;">A patient tried to book a slot that was already full. Please follow up and offer another time.</p>
+  </div>
+  <div style="background: #ffffff; padding: 32px 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 16px 16px;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Name</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${fullName || "—"}</td></tr>
+      <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Email</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;"><a href="mailto:${details.email}">${details.email}</a></td></tr>
+      <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Phone</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${details.phone ? `<a href="tel:${details.phone}">${details.phone}</a>` : "—"}</td></tr>
+      <tr><td colspan="2" style="padding: 8px 0;"><hr style="border: none; border-top: 1px solid #e2e8f0;"></td></tr>
+      <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Requested doctor</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatDoctorNameWithTitle(details.doctorName)}</td></tr>
+      <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Requested date</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatDate(details.requestedStart)}</td></tr>
+      <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Requested time</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${formatTime(details.requestedStart)}</td></tr>
+      <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Service</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${details.service}</td></tr>
+      ${details.location ? `<tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Location</td><td style="padding: 8px 0; color: #1e293b; font-weight: 600; text-align: right;">${details.location}</td></tr>` : ""}
+      <tr><td style="padding: 8px 0; color: #64748b; font-size: 14px;">Reason</td><td style="padding: 8px 0; color: #b91c1c; font-weight: 600; text-align: right;">${details.reason}</td></tr>
+    </table>
+  </div>
+</body>
+</html>`;
+  await sendEmail(
+    MISSED_BOOKING_ALERT_RECIPIENTS,
+    `Missed booking: ${fullName || details.email} — ${formatDate(details.requestedStart)} ${formatTime(details.requestedStart)}`,
+    html,
+  );
+}
+
 function generatePatientConfirmationEmail(
   patientName: string,
   doctorName: string,
@@ -447,6 +500,25 @@ export async function POST(request: Request) {
     // Only block if the doctor has reached maximum capacity
     if (doctorAppointments.length >= maxCapacity) {
       console.log(`[Booking] REJECTED: ${doctorAppointments.length} >= ${maxCapacity}`);
+
+      // Capture the missed booking attempt and alert the clinic so no lead is
+      // lost. Best-effort: a failed email must never change the 409 response.
+      try {
+        await sendMissedBookingAlert({
+          firstName,
+          lastName,
+          email,
+          phone,
+          doctorName,
+          service,
+          location: location || null,
+          requestedStart,
+          reason: `Slot fully booked (${doctorAppointments.length}/${maxCapacity})`,
+        });
+      } catch (e) {
+        console.error("[Booking] Failed to send missed-booking alert:", e);
+      }
+
       return NextResponse.json(
         {
           error: `This time slot is fully booked (${doctorAppointments.length}/${maxCapacity}). Please choose another time.`,
