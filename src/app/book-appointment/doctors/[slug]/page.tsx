@@ -340,7 +340,7 @@ function DoctorBookingContent() {
         const fullByDate = new Map<string, Set<string>>();
         try {
           const res = await fetch(
-            `/api/appointments/check-availability?start=${rangeStart}&end=${rangeEnd}&doctor=${encodeURIComponent(doctorName)}&slug=${slug}`
+            `/api/appointments/check-availability?start=${rangeStart}&end=${rangeEnd}&doctor=${encodeURIComponent(doctorName)}&slug=${slug}&location=${encodeURIComponent(locationId)}`
           );
           if (!res.ok) throw new Error(`status ${res.status}`);
           const data = await res.json();
@@ -402,7 +402,7 @@ function DoctorBookingContent() {
       // Filter by the specific doctor to only show their booked slots
       // Pass slug for doctor-specific capacity (XT/CR = 3, others = 1)
       const res = await fetch(
-        `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctorName)}&slug=${slug}`
+        `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctorName)}&slug=${slug}&location=${encodeURIComponent(locationId)}`
       );
       const data = await res.json();
 

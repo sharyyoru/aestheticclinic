@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { shouldCreateDeal } from "@/lib/dealDeduplication";
+import {
+  CALL_FOLLOWUP_TEAM_EMAILS,
+  buildCallTaskContent,
+  formatTranscriptReadable,
+  parseTranscriptTurns,
+} from "@/lib/callLog";
 
 /**
  * Webhook endpoint for receiving Retell AI Agent call data
@@ -424,6 +430,144 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Retell Agent] Lead processed: Patient ${patientId}, Deal ${dealId}, New: ${isNewPatient}`);
+
+    // ========================================
+    // CALL LOG + ROUND-ROBIN FOLLOW-UP TASK
+    // ========================================
+    // Record the conversation in the unified call_logs table and, for inbound
+    // calls, create ONE follow-up task round-robin assigned to the call team.
+    // Both call_ended and call_analyzed fire for a call, so we dedupe on
+    // call_id: the first event creates the log + task, later events only
+    // enrich it (e.g. call_analyzed adds the summary). This never blocks the
+    // lead flow — failures are logged and swallowed.
+    try {
+      const turns = parseTranscriptTurns({
+        transcript_object: call.transcript_object,
+        transcript: call.transcript,
+      });
+      const transcriptText = call.transcript || formatTranscriptReadable(turns);
+      const summary = call.call_analysis?.call_summary || null;
+      const startedAt = call.start_timestamp ? new Date(call.start_timestamp).toISOString() : null;
+      const patientFullName = `${firstName || "Unknown"} ${lastName || "Caller"}`.trim();
+
+      const { data: existingLog } = await supabaseAdmin
+        .from("call_logs")
+        .select("id, task_id")
+        .eq("call_id", call.call_id)
+        .maybeSingle();
+
+      if (existingLog) {
+        // Enrich the existing log with anything new (summary/transcript).
+        await supabaseAdmin
+          .from("call_logs")
+          .update({
+            call_status: call.call_status,
+            disconnection_reason: call.disconnection_reason ?? null,
+            duration_seconds: callDuration,
+            summary: summary ?? undefined,
+            transcript: transcriptText || undefined,
+            transcript_turns: turns.length > 0 ? turns : undefined,
+            deal_id: dealId,
+          })
+          .eq("id", existingLog.id);
+      } else {
+        // Round-robin assignee for inbound/web calls (skip outbound).
+        let assignedUserId: string | null = null;
+        let assignedUserName: string | null = null;
+        let taskId: string | null = null;
+        const isInbound = call.direction !== "outbound";
+
+        if (isInbound) {
+          const { data: teamUsers } = await supabaseAdmin
+            .from("users")
+            .select("id, full_name, email")
+            .in("email", CALL_FOLLOWUP_TEAM_EMAILS);
+
+          if (teamUsers && teamUsers.length > 0) {
+            // Order deterministically to match the configured team order, then
+            // pick the next assignee based on how many calls already logged.
+            const ordered = CALL_FOLLOWUP_TEAM_EMAILS
+              .map((email) => teamUsers.find((u) => (u.email || "").toLowerCase() === email.toLowerCase()))
+              .filter((u): u is NonNullable<typeof u> => Boolean(u));
+            const team = ordered.length > 0 ? ordered : teamUsers;
+
+            const { count: logCount } = await supabaseAdmin
+              .from("call_logs")
+              .select("*", { count: "exact", head: true });
+            const assignee = team[(logCount || 0) % team.length];
+            assignedUserId = assignee.id;
+            assignedUserName = assignee.full_name || assignee.email || null;
+
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + 1); // due tomorrow
+
+            const taskContent = buildCallTaskContent({
+              patientName: patientFullName,
+              direction: call.direction,
+              when: startedAt ? new Date(startedAt) : new Date(),
+              durationSeconds: callDuration,
+              callStatus: call.call_status,
+              serviceInterest: finalServiceInterest,
+              summary,
+              turns,
+            });
+
+            const { data: newTask, error: taskError } = await supabaseAdmin
+              .from("tasks")
+              .insert({
+                name: `Call back: ${patientFullName}`,
+                content: taskContent,
+                status: "not_started",
+                priority: "high",
+                type: "call",
+                activity_date: dueDate.toISOString(),
+                assigned_user_id: assignedUserId,
+                assigned_user_name: assignedUserName,
+                patient_id: patientId,
+                created_by_name: "Aliice (AI Call Agent)",
+              })
+              .select("id")
+              .single();
+
+            if (taskError) {
+              console.error("[Retell Agent] Failed to create call-back task:", taskError);
+            } else {
+              taskId = newTask?.id ?? null;
+              console.log(`[Retell Agent] Call-back task ${taskId} assigned to ${assignedUserName}`);
+            }
+          } else {
+            console.warn("[Retell Agent] Call follow-up team not found:", CALL_FOLLOWUP_TEAM_EMAILS);
+          }
+        }
+
+        const { error: logError } = await supabaseAdmin.from("call_logs").insert({
+          call_id: call.call_id,
+          patient_id: patientId,
+          deal_id: dealId,
+          direction: call.direction || "inbound",
+          agent_id: call.agent_id || null,
+          from_number: call.from_number || null,
+          to_number: call.to_number || null,
+          call_status: call.call_status || null,
+          disconnection_reason: call.disconnection_reason ?? null,
+          duration_seconds: callDuration,
+          summary,
+          transcript: transcriptText || null,
+          transcript_turns: turns.length > 0 ? turns : null,
+          service_interest: finalServiceInterest,
+          task_id: taskId,
+          assigned_user_id: assignedUserId,
+          assigned_user_name: assignedUserName,
+          source: "retell",
+          started_at: startedAt,
+        });
+        if (logError) {
+          console.error("[Retell Agent] Failed to insert call_log:", logError);
+        }
+      }
+    } catch (callLogErr) {
+      console.error("[Retell Agent] Call log / task step failed (non-fatal):", callLogErr);
+    }
 
     return NextResponse.json({
       success: true,

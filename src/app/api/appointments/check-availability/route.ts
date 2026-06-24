@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   CONSULTATION_DURATION_MS,
-  appointmentBelongsToDoctor,
+  appointmentOccupiesDoctorSlot,
   describeBlocking,
   fetchOverlappingAppointments,
   getMaxCapacity,
@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   const end = searchParams.get("end");
   const doctorName = searchParams.get("doctor"); // Optional: filter by doctor name
   const doctorSlug = searchParams.get("slug"); // Optional: doctor slug for capacity lookup
+  const location = searchParams.get("location"); // Optional: scopes the untagged-appointment safeguard
 
   if (!start || !end) {
     return NextResponse.json(
@@ -42,12 +43,18 @@ export async function GET(request: NextRequest) {
 
     const maxCapacity = getMaxCapacity(doctorSlug);
 
-    // Pre-filter to just THIS doctor's appointments once (instead of scanning
-    // every appointment for every slot), and precompute their start/end as
-    // millis. This turns the per-slot scan from O(slots * allAppointments) into
-    // O(slots * doctorAppointments), which keeps the 3-month range query fast.
+    // Pre-filter to the appointments that occupy THIS doctor's slot once
+    // (instead of scanning every appointment for every slot), and precompute
+    // their start/end as millis. This turns the per-slot scan from
+    // O(slots * allAppointments) into O(slots * relevantAppointments), which
+    // keeps the 3-month range query fast.
+    //
+    // appointmentOccupiesDoctorSlot also folds in the SAFEGUARD: an unattributed
+    // appointment (no provider_id, no [Doctor:] tag) blocks the slot unless it is
+    // clearly at a different location — so a PAUSE/appointment a staff member
+    // saves without picking a doctor can never leave the slot bookable online.
     const doctorAppts = appointments
-      .filter((a) => appointmentBelongsToDoctor(a, providerId, doctorName))
+      .filter((a) => appointmentOccupiesDoctorSlot(a, { providerId, doctorName, bookingLocation: location }))
       .map((a) => ({ apt: a, start: new Date(a.start_time).getTime(), end: new Date(a.end_time).getTime() }));
 
     // Generate all 30-minute slots in the requested range.

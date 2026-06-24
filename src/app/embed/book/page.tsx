@@ -355,7 +355,7 @@ function EmbedBookPageContent() {
       let bookable = candidateDates;
       try {
         const res = await fetch(
-          `/api/appointments/check-availability?start=${rangeStart}&end=${rangeEnd}&doctor=${encodeURIComponent(doctorName)}&slug=${selectedDoctor}`
+          `/api/appointments/check-availability?start=${rangeStart}&end=${rangeEnd}&doctor=${encodeURIComponent(doctorName)}&slug=${selectedDoctor}&location=${encodeURIComponent(selectedLocation)}`
         );
         if (!res.ok) throw new Error(`status ${res.status}`);
         const data = await res.json();
@@ -408,7 +408,7 @@ function EmbedBookPageContent() {
       const doctorName = doctor?.name || "";
 
       const res = await fetch(
-        `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctorName)}&slug=${selectedDoctor}`
+        `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctorName)}&slug=${selectedDoctor}&location=${encodeURIComponent(selectedLocation)}`
       );
       const data = await res.json();
 

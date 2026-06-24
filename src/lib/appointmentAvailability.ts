@@ -29,6 +29,41 @@ export interface AppointmentRow {
   reason?: string | null;
   no_patient?: boolean | null;
   provider_id?: string | null;
+  location?: string | null;
+}
+
+/**
+ * Normalise any free-text / slug location into one of the four canonical
+ * booking-location keys, or null when unknown/ambiguous. Used by the
+ * "untagged appointment" safeguard so an unattributed block at a clearly
+ * different site does not wipe out availability everywhere. "Geneva" maps to
+ * null on purpose because it covers BOTH Rhône and Champel (ambiguous), so it
+ * must block conservatively.
+ */
+export function normalizeBookingLocation(loc?: string | null): string | null {
+  if (!loc) return null;
+  const l = loc.toLowerCase();
+  // Check specific district tokens first. The booking labels are
+  // "Genève - Champel" and "Genève - Rue du Rhône", so a bare "Geneva"/"Genève"
+  // with no district falls through to null (ambiguous) and blocks conservatively.
+  if (l.includes("champel")) return "champel";
+  if (l.includes("rhone") || l.includes("rhône")) return "rhone";
+  if (l.includes("gstaad")) return "gstaad";
+  if (l.includes("montreux")) return "montreux";
+  return null;
+}
+
+/**
+ * An appointment is "unattributed" when it has neither a provider_id nor a
+ * [Doctor: <name>] tag in its reason. Such rows historically blocked NOBODY's
+ * online availability (Caveat 2) — a staff PAUSE/appointment saved without a
+ * doctor could let the slot be double-booked online. The safeguard below treats
+ * these as blocking.
+ */
+export function isUnattributed(apt: AppointmentRow): boolean {
+  if (apt.provider_id) return false;
+  if (apt.reason && /\[Doctor:\s*.+?\s*\]/i.test(apt.reason)) return false;
+  return true;
 }
 
 /** Normalise a doctor display name ("Dr. Yulia Raspertova") for matching. */
@@ -94,7 +129,7 @@ export async function fetchOverlappingAppointments(
 ): Promise<AppointmentRow[]> {
   const { data, error } = await supabase
     .from("appointments")
-    .select("id, start_time, end_time, status, reason, no_patient, provider_id")
+    .select("id, start_time, end_time, status, reason, no_patient, provider_id, location")
     .lt("start_time", rangeEndIso) // starts before range ends
     .gt("end_time", rangeStartIso) // ends after range starts
     .neq("status", "cancelled");
@@ -106,21 +141,47 @@ export async function fetchOverlappingAppointments(
 }
 
 /**
+ * Whether an appointment occupies the slot for the given doctor, IGNORING the
+ * time overlap (callers check overlap separately so this can be reused for
+ * cheap pre-filtering). Two ways an appointment occupies the slot:
+ *   1. It is attributed to this doctor (provider_id or [Doctor:] tag).
+ *   2. SAFEGUARD: it is unattributed (no provider_id, no [Doctor:] tag) and not
+ *      clearly at a different location. An unattributed block is ambiguous, so
+ *      we conservatively assume it could be this doctor's and block the slot —
+ *      unless its location is known AND differs from the booking location.
+ * An appointment attributed to a DIFFERENT doctor never blocks this one.
+ */
+export function appointmentOccupiesDoctorSlot(
+  apt: AppointmentRow,
+  opts: { providerId: string | null; doctorName?: string | null; bookingLocation?: string | null },
+): boolean {
+  if (appointmentBelongsToDoctor(apt, opts.providerId, opts.doctorName)) return true;
+  if (isUnattributed(apt)) {
+    const aptLoc = normalizeBookingLocation(apt.location);
+    const bookLoc = normalizeBookingLocation(opts.bookingLocation);
+    // Block unless we can prove they are at different, known locations.
+    return !aptLoc || !bookLoc || aptLoc === bookLoc;
+  }
+  return false;
+}
+
+/**
  * From a pool of appointments, return the ones that block a specific slot for a
- * specific doctor (i.e. belong to the doctor AND overlap the slot).
+ * specific doctor (occupies the doctor's slot AND overlaps the time window).
  */
 export function getBlockingAppointments(
   appointments: AppointmentRow[],
   opts: {
     providerId: string | null;
     doctorName?: string | null;
+    bookingLocation?: string | null;
     slotStart: Date;
     slotEnd: Date;
   },
 ): AppointmentRow[] {
   return appointments.filter(
     (apt) =>
-      appointmentBelongsToDoctor(apt, opts.providerId, opts.doctorName) &&
+      appointmentOccupiesDoctorSlot(apt, opts) &&
       overlapsSlot(apt, opts.slotStart, opts.slotEnd),
   );
 }
@@ -133,6 +194,10 @@ export function describeBlocking(apt: AppointmentRow, providerId: string | null)
     end_time: apt.end_time,
     no_patient: apt.no_patient ?? false,
     has_provider_id: Boolean(apt.provider_id),
-    matched_by: providerId && apt.provider_id === providerId ? "provider_id" : "reason_tag",
+    matched_by: isUnattributed(apt)
+      ? "untagged_safeguard"
+      : providerId && apt.provider_id === providerId
+        ? "provider_id"
+        : "reason_tag",
   };
 }

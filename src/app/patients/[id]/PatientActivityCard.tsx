@@ -8,9 +8,10 @@ import { stripEmailSignature } from "@/utils/emailCleaner";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 import RichTextEditor from "@/components/RichTextEditor";
 import WhatsAppTwilioChat from "@/components/WhatsAppTwilioChat";
+import PatientCallLogsTab from "./PatientCallLogsTab";
 import { formatSwissDateTime, formatSwissDate, formatSwissShortDate, formatSwissTime } from "@/lib/swissTimezone";
 
-type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals";
+type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals" | "call_logs";
 
 type SortOrder = "desc" | "asc";
 
@@ -433,7 +434,8 @@ export default function PatientActivityCard({
       tabParam === "emails" ||
       tabParam === "whatsapp" ||
       tabParam === "tasks" ||
-      tabParam === "deals"
+      tabParam === "deals" ||
+      tabParam === "call_logs"
     ) {
       setActiveTab(tabParam as ActivityTab);
     }
@@ -2750,6 +2752,7 @@ export default function PatientActivityCard({
     { key: "whatsapp", label: "Whatsapp" },
     { key: "tasks", label: "Tasks" },
     { key: "deals", label: "Deals" },
+    { key: "call_logs", label: "Call Logs" },
   ];
 
   return (
@@ -4483,6 +4486,9 @@ export default function PatientActivityCard({
               </div>
             )}
           </div>
+        )}
+        {activeTab === "call_logs" && (
+          <PatientCallLogsTab patientId={patientId} />
         )}
       </div>
 

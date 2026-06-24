@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView, StyleSheet, Platform, ActivityIndicator, View } from 'react-native';
+import { SafeAreaView, StyleSheet, Platform, ActivityIndicator, View, Text } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useState, useRef } from 'react';
 
@@ -7,7 +7,20 @@ const APP_URL = 'https://aestheticclinic.vercel.app/prodapp';
 
 export default function App() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const webViewRef = useRef(null);
+
+  const handleError = (syntheticEvent) => {
+    const { nativeEvent } = syntheticEvent;
+    console.error('WebView error:', nativeEvent);
+    setError(nativeEvent.description || 'Failed to load app');
+    setLoading(false);
+  };
+
+  const handleHttpError = (syntheticEvent) => {
+    const { nativeEvent } = syntheticEvent;
+    console.error('HTTP error:', nativeEvent);
+  };
 
   // Handle navigation to keep everything in-app
   const handleNavigationStateChange = (navState) => {
@@ -42,43 +55,59 @@ export default function App() {
         </View>
       )}
       
-      <WebView
-        ref={webViewRef}
-        source={{ uri: APP_URL }}
-        style={styles.webview}
-        onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
-        onNavigationStateChange={handleNavigationStateChange}
-        onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
-        
-        // Enable JavaScript
-        javaScriptEnabled={true}
-        
-        // Enable DOM storage for localStorage/sessionStorage
-        domStorageEnabled={true}
-        
-        // Allow media playback
-        mediaPlaybackRequiresUserAction={false}
-        allowsInlineMediaPlayback={true}
-        
-        // iOS specific
-        allowsBackForwardNavigationGestures={true}
-        
-        // Caching
-        cacheEnabled={true}
-        
-        // Pull to refresh (iOS)
-        pullToRefreshEnabled={true}
-        
-        // Bounce effect
-        bounces={true}
-        
-        // Auto-adjust content
-        scalesPageToFit={true}
-        
-        // User agent (helps identify app requests)
-        userAgent="AliiceCRM/1.0 (iOS; Mobile)"
-      />
+      {error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Unable to load app</Text>
+          <Text style={styles.errorDetail}>{error}</Text>
+        </View>
+      ) : (
+        <WebView
+          ref={webViewRef}
+          source={{ uri: APP_URL }}
+          style={styles.webview}
+          onLoadStart={() => setLoading(true)}
+          onLoadEnd={() => setLoading(false)}
+          onError={handleError}
+          onHttpError={handleHttpError}
+          onNavigationStateChange={handleNavigationStateChange}
+          onShouldStartLoadWithRequest={handleShouldStartLoadWithRequest}
+          
+          // Enable JavaScript
+          javaScriptEnabled={true}
+          
+          // Enable DOM storage for localStorage/sessionStorage
+          domStorageEnabled={true}
+          
+          // Allow media playback
+          mediaPlaybackRequiresUserAction={false}
+          allowsInlineMediaPlayback={true}
+          
+          // iOS specific
+          allowsBackForwardNavigationGestures={true}
+          
+          // Caching
+          cacheEnabled={true}
+          
+          // Start in loading state
+          startInLoadingState={true}
+          
+          // Bounce effect
+          bounces={true}
+          
+          // Mixed content mode (allow https and http)
+          mixedContentMode="compatibility"
+          
+          // User agent (helps identify app requests)
+          userAgent={`AliiceCRM/1.0 (${Platform.OS}; Mobile)`}
+          
+          // Allow file access
+          allowFileAccess={true}
+          allowUniversalAccessFromFileURLs={true}
+          
+          // Needed for iOS
+          originWhitelist={['*']}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -101,5 +130,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
     zIndex: 10,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ef4444',
+    marginBottom: 10,
+  },
+  errorDetail: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
   },
 });

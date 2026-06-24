@@ -490,6 +490,7 @@ export async function POST(request: Request) {
     const doctorAppointments = getBlockingAppointments(overlappingAppointments, {
       providerId,
       doctorName,
+      bookingLocation: location, // scopes the untagged-appointment safeguard
       slotStart: requestedStart,
       slotEnd: requestedEnd,
     });

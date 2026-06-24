@@ -151,7 +151,7 @@ export default function BookingFlow({
       try {
         const { start, end } = getSwissDayRange(date);
         const res = await fetch(
-          `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctor.name)}&slug=${doctorSlug}`,
+          `/api/appointments/check-availability?start=${start}&end=${end}&doctor=${encodeURIComponent(doctor.name)}&slug=${doctorSlug}&location=${encodeURIComponent(locationId)}`,
         );
         const data = await res.json();
         let blocked: string[] = [];

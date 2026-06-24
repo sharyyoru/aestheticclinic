@@ -386,10 +386,15 @@ type AppointmentHistoryEntry = {
   original_location: string | null;
   original_reason: string | null;
   original_patient_id: string | null;
+  original_doctor: string | null;
+  original_service: string | null;
   new_start_time: string | null;
   new_end_time: string | null;
   new_status: string | null;
   new_location: string | null;
+  new_reason: string | null;
+  new_doctor: string | null;
+  new_service: string | null;
   notes: string | null;
 };
 
@@ -1356,6 +1361,11 @@ export default function CalendarPage() {
   const [editCategoryDropdownOpen, setEditCategoryDropdownOpen] = useState(false);
   const [editLocation, setEditLocation] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  // Editable Doctor & Service (Charline needs to change these on existing appts).
+  const [editServiceName, setEditServiceName] = useState("");
+  const [editServiceSearch, setEditServiceSearch] = useState("");
+  const [editServiceDropdownOpen, setEditServiceDropdownOpen] = useState(false);
+  const [editDoctorName, setEditDoctorName] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingAppointment, setDeletingAppointment] = useState(false);
@@ -1367,6 +1377,7 @@ export default function CalendarPage() {
   const closeEditModalDropdowns = () => {
     setEditCategoryDropdownOpen(false);
     setEditBookingStatusDropdownOpen(false);
+    setEditServiceDropdownOpen(false);
   };
 
   // Helper to close edit modal and reset state
@@ -2212,6 +2223,12 @@ export default function CalendarPage() {
     return serviceOptions.filter((opt) => opt.name.toLowerCase().includes(search));
   }, [serviceOptions, serviceSearch]);
 
+  const filteredEditServiceOptions = useMemo(() => {
+    const search = editServiceSearch.trim().toLowerCase();
+    if (!search) return serviceOptions;
+    return serviceOptions.filter((opt) => opt.name.toLowerCase().includes(search));
+  }, [serviceOptions, editServiceSearch]);
+
   const filteredStatusOptions = useMemo(() => {
     const search = statusSearch.trim().toLowerCase();
     if (!search) return BOOKING_STATUS_OPTIONS;
@@ -3026,6 +3043,16 @@ export default function CalendarPage() {
     setEditCategory(categoryFromReason ?? "");
     setEditCategorySearch(categoryFromReason ?? "");
 
+    // Seed the editable Service & Doctor fields from the existing appointment.
+    // "Appointment" is the generic placeholder used when no service is set, so
+    // we treat it as empty to encourage picking a real service.
+    const { serviceLabel } = getServiceAndStatusFromReason(appt.reason);
+    const initialService = serviceLabel && serviceLabel !== "Appointment" ? serviceLabel : "";
+    setEditServiceName(initialService);
+    setEditServiceSearch(initialService);
+    const initialDoctor = getDoctorNameFromReason(appt.reason) || appt.provider?.name || "";
+    setEditDoctorName(initialDoctor);
+
     setEditNotes(getAppointmentNotes(appt) || "");
 
     setEditModalOpen(true);
@@ -3125,26 +3152,46 @@ export default function CalendarPage() {
     try {
       setSavingEdit(true);
 
-      // Build updated reason string with category and status
+      // Build updated reason string from the EDITABLE Service & Doctor fields
+      // (Charline can now change both), plus category and status. Fall back to
+      // the existing values when a field was left untouched/empty.
       const existingReason = editingAppointment.reason ?? "";
-      const { serviceLabel } = getServiceAndStatusFromReason(existingReason);
-      const doctorName = getDoctorNameFromReason(existingReason);
-      
-      let updatedReason = serviceLabel || "Appointment";
+      const originalServiceLabel = getServiceAndStatusFromReason(existingReason).serviceLabel;
+      const originalDoctorName = getDoctorNameFromReason(existingReason) || editingAppointment.provider?.name || "";
+
+      const serviceLabel = editServiceName.trim() || "Appointment";
+      const doctorName = editDoctorName.trim();
+
+      let updatedReason = serviceLabel;
       if (doctorName) updatedReason += ` [Doctor: ${doctorName}]`;
       if (editCategory && editCategory !== "No selection") updatedReason += ` [Category: ${editCategory}]`;
       if (editBookingStatus && editBookingStatus !== "Aucune sélection") updatedReason += ` [Status: ${editBookingStatus}]`;
 
+      // Keep provider_id in sync with the chosen doctor so the calendar column
+      // and online-booking availability (which match by provider_id first) never
+      // disagree with the [Doctor:] tag. The doctor calendars are built from the
+      // providers table, so their providerId is a valid FK. If the doctor was
+      // cleared or doesn't map to a known calendar, null it and let the
+      // [Doctor:] tag be authoritative (matches manual-create behaviour).
+      const doctorChanged = normalizeComparableText(originalDoctorName) !== normalizeComparableText(doctorName);
+      const matchedCalendar = doctorName
+        ? doctorCalendars.find((c) => c.name.trim().toLowerCase() === doctorName.toLowerCase())
+        : undefined;
+      const updatePayload: Record<string, unknown> = {
+        status: nextStatus,
+        start_time: startIso,
+        end_time: endIso,
+        location: editLocation || null,
+        reason: updatedReason,
+        notes: editNotes.trim() || null,
+      };
+      if (doctorChanged) {
+        updatePayload.provider_id = matchedCalendar?.providerId ?? null;
+      }
+
       const { data, error } = await supabaseClient
         .from("appointments")
-        .update({
-          status: nextStatus,
-          start_time: startIso,
-          end_time: endIso,
-          location: editLocation || null,
-          reason: updatedReason,
-          notes: editNotes.trim() || null,
-        })
+        .update(updatePayload)
         .eq("id", editingAppointment.id)
         .select(
           "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
@@ -3169,6 +3216,12 @@ export default function CalendarPage() {
       const statusChanged = editingAppointment.status !== updated.status;
       const locationChanged = (editingAppointment.location || "") !== (updated.location || "");
       const wasCancelled = updated.status === "cancelled" && editingAppointment.status !== "cancelled";
+
+      // Detect Service / Doctor edits so they are recorded in the audit trail.
+      const newServiceLabel = getServiceAndStatusFromReason(updated.reason).serviceLabel;
+      const newDoctorName = getDoctorNameFromReason(updated.reason) || updated.provider?.name || "";
+      const serviceChanged = normalizeComparableText(originalServiceLabel) !== normalizeComparableText(newServiceLabel);
+      const reasonChanged = (editingAppointment.reason || "") !== (updated.reason || "");
       
       // Send appropriate email based on what changed
       // Per Xavier's request: Only send emails for cancellations and reschedules (date/time changes)
@@ -3190,8 +3243,9 @@ export default function CalendarPage() {
       }
       // Note: No "updated" email sent for other changes (duration, location, notes, etc.) per clinic policy
 
-      // Log the change to appointment_history
-      if (dateTimeChanged || statusChanged || locationChanged) {
+      // Log the change to appointment_history. Doctor/service edits are now
+      // captured too so there is always a record of WHO changed WHAT.
+      if (dateTimeChanged || statusChanged || locationChanged || serviceChanged || doctorChanged || reasonChanged) {
         const { data: authData } = await supabaseClient.auth.getUser();
         const currentUser = authData?.user;
         
@@ -3200,21 +3254,47 @@ export default function CalendarPage() {
           : startTimeChanged 
             ? "rescheduled" 
             : "updated";
-        
-        await supabaseClient.from("appointment_history").insert({
-          appointment_id: updated.id,
-          changed_by_user_id: currentUser?.id || null,
-          changed_by_email: currentUser?.email || null,
-          change_type: changeType,
-          original_start_time: editingAppointment.start_time,
-          original_end_time: editingAppointment.end_time,
-          original_status: editingAppointment.status,
-          original_location: editingAppointment.location,
-          new_start_time: updated.start_time,
-          new_end_time: updated.end_time,
-          new_status: updated.status,
-          new_location: updated.location,
-        });
+
+        // Human-readable summary of the doctor/service edits for quick scanning.
+        const summaryParts: string[] = [];
+        if (doctorChanged) {
+          summaryParts.push(`Doctor: ${originalDoctorName || "—"} → ${newDoctorName || "—"}`);
+        }
+        if (serviceChanged) {
+          summaryParts.push(`Service: ${originalServiceLabel || "—"} → ${newServiceLabel || "—"}`);
+        }
+
+        // Audit logging must NEVER block the actual edit. If it fails (e.g. the
+        // doctor/service columns from migration 20260625 aren't applied yet),
+        // log to console but let the successful update stand.
+        try {
+          const { error: historyError } = await supabaseClient.from("appointment_history").insert({
+            appointment_id: updated.id,
+            changed_by_user_id: currentUser?.id || null,
+            changed_by_email: currentUser?.email || null,
+            change_type: changeType,
+            original_start_time: editingAppointment.start_time,
+            original_end_time: editingAppointment.end_time,
+            original_status: editingAppointment.status,
+            original_location: editingAppointment.location,
+            original_reason: editingAppointment.reason,
+            original_doctor: originalDoctorName || null,
+            original_service: originalServiceLabel || null,
+            new_start_time: updated.start_time,
+            new_end_time: updated.end_time,
+            new_status: updated.status,
+            new_location: updated.location,
+            new_reason: updated.reason,
+            new_doctor: newDoctorName || null,
+            new_service: newServiceLabel || null,
+            notes: summaryParts.length > 0 ? summaryParts.join(" | ") : null,
+          });
+          if (historyError) {
+            console.error("Failed to log appointment change history:", historyError);
+          }
+        } catch (historyErr) {
+          console.error("Failed to log appointment change history:", historyErr);
+        }
       }
 
       setAppointments((prev) => {
@@ -4528,17 +4608,66 @@ export default function CalendarPage() {
                 <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                   <p className="text-[11px] font-semibold text-slate-700">Appointment Details</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="text-[10px] text-slate-500">Service</p>
-                      <p className="text-[11px] text-slate-800">
-                        {getServiceAndStatusFromReason(editingAppointment.reason).serviceLabel || "—"}
-                      </p>
+                    <div className="relative col-span-2">
+                      <p className="text-[10px] text-slate-500 mb-1">Service</p>
+                      <input
+                        type="text"
+                        value={editServiceSearch}
+                        onChange={(e) => {
+                          setEditServiceSearch(e.target.value);
+                          setEditServiceName(e.target.value);
+                          setEditServiceDropdownOpen(true);
+                        }}
+                        onFocus={() => setEditServiceDropdownOpen(true)}
+                        placeholder="Search or type a service..."
+                        style={{ fontSize: '16px' }}
+                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-2.5 text-sm text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400 touch-manipulation"
+                      />
+                      {editServiceName && (
+                        <button
+                          type="button"
+                          onClick={() => { setEditServiceName(""); setEditServiceSearch(""); }}
+                          className="absolute right-2 top-6 text-slate-400 hover:text-slate-600 text-xs"
+                        >
+                          ×
+                        </button>
+                      )}
+                      {editServiceDropdownOpen && filteredEditServiceOptions.length > 0 && (
+                        <div className="absolute z-50 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                          {filteredEditServiceOptions.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => {
+                                setEditServiceName(opt.name);
+                                setEditServiceSearch(opt.name);
+                                setEditServiceDropdownOpen(false);
+                              }}
+                              className="flex w-full items-center px-2 py-1.5 text-left text-[11px] text-slate-700 hover:bg-slate-50"
+                            >
+                              {opt.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-500">Doctor</p>
-                      <p className="text-[11px] text-slate-800">
-                        {getDoctorNameFromReason(editingAppointment.reason) || editingAppointment.provider?.name || "—"}
-                      </p>
+                    <div className="col-span-2">
+                      <p className="text-[10px] text-slate-500 mb-1">Doctor</p>
+                      <select
+                        value={editDoctorName}
+                        onChange={(e) => setEditDoctorName(e.target.value)}
+                        style={{ fontSize: '16px' }}
+                        className="w-full rounded-md border border-slate-200 bg-white px-2 py-2.5 text-sm text-slate-800 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400 touch-manipulation"
+                      >
+                        <option value="">No doctor</option>
+                        {editDoctorName &&
+                          !doctorCalendars.some((c) => c.name.trim().toLowerCase() === editDoctorName.toLowerCase()) && (
+                            <option value={editDoctorName}>{editDoctorName} (current)</option>
+                          )}
+                        {doctorCalendars.map((c) => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
                     </div>
                     <div className="relative col-span-2">
                       <p className="text-[10px] text-slate-500 mb-1">Category</p>
@@ -4777,6 +4906,16 @@ export default function CalendarPage() {
                             {entry.change_type === "deleted" && originalStart && (
                               <p className="text-[9px] text-amber-600 mt-0.5">
                                 Deleted appointment was scheduled for: {formatSwissDate(originalStart)} {formatSwissTime(originalStart)}
+                              </p>
+                            )}
+                            {entry.original_doctor !== entry.new_doctor && (entry.original_doctor || entry.new_doctor) && (
+                              <p className="text-[9px] text-amber-600 mt-0.5">
+                                Doctor: {entry.original_doctor || "—"} → {entry.new_doctor || "—"}
+                              </p>
+                            )}
+                            {entry.original_service !== entry.new_service && (entry.original_service || entry.new_service) && (
+                              <p className="text-[9px] text-amber-600 mt-0.5">
+                                Service: {entry.original_service || "—"} → {entry.new_service || "—"}
                               </p>
                             )}
                           </div>
