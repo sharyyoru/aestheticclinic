@@ -460,6 +460,15 @@ function DoctorBookingContent() {
       const data = await res.json();
 
       if (!res.ok) {
+        // If the slot got taken/blocked between display and confirm, refresh the
+        // availability so the offending slot is removed and another auto-selected.
+        if (res.status === 409) {
+          if (data?.debug) console.warn("[Booking] Slot rejected:", data.debug);
+          await checkAvailability(selectedDate);
+          throw new Error(
+            data.error || "This time is no longer available. We refreshed the times — please pick another slot."
+          );
+        }
         throw new Error(data.error || "Failed to book appointment");
       }
 
