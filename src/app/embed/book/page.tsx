@@ -254,6 +254,7 @@ function EmbedBookPageContent() {
   
   const [step, setStep] = useState<EmbedStep>("location");
   const [loading, setLoading] = useState(false);
+  const [datesLoading, setDatesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Selection state
@@ -335,8 +336,14 @@ function EmbedBookPageContent() {
     if (candidateDates.length === 0) {
       setAvailableDatesSet(new Set());
       setSelectedDate("");
+      setDatesLoading(false);
       return;
     }
+
+    // Show a loading spinner (not "no available dates") while we resolve which
+    // days truly have an opening, then render the final set ONCE. This avoids
+    // both the empty flash and dates disappearing mid-interaction.
+    setDatesLoading(true);
 
     async function computeBookableDates() {
       const doctorName = DOCTORS[selectedDoctor]?.name || "";
@@ -345,6 +352,7 @@ function EmbedBookPageContent() {
 
       // Map of YYYY-MM-DD -> Set of full "HH:MM" slots for this doctor.
       const fullByDate = new Map<string, Set<string>>();
+      let bookable = candidateDates;
       try {
         const res = await fetch(
           `/api/appointments/check-availability?start=${rangeStart}&end=${rangeEnd}&doctor=${encodeURIComponent(doctorName)}&slug=${selectedDoctor}`
@@ -357,25 +365,20 @@ function EmbedBookPageContent() {
           if (!fullByDate.has(ymd)) fullByDate.set(ymd, new Set());
           fullByDate.get(ymd)!.add(hhmm);
         }
+        bookable = candidateDates.filter((d) => {
+          const full = fullByDate.get(d);
+          const slots = generateTimeSlots(selectedDoctor, selectedLocation, d);
+          return slots.some((s) => !full || !full.has(s));
+        });
       } catch (err) {
         console.error("Failed to precompute date availability:", err);
-        // Graceful fallback: show all calendar dates (per-date check still guards).
-        if (!cancelled) {
-          setAvailableDatesSet(new Set(candidateDates));
-          setSelectedDate(candidateDates[0]);
-        }
-        return;
+        // Graceful fallback: keep all candidate dates (per-date check still guards).
       }
-
-      const bookable = candidateDates.filter((d) => {
-        const full = fullByDate.get(d);
-        const slots = generateTimeSlots(selectedDoctor, selectedLocation, d);
-        return slots.some((s) => !full || !full.has(s));
-      });
 
       if (cancelled) return;
       setAvailableDatesSet(new Set(bookable));
       setSelectedDate(bookable.length > 0 ? bookable[0] : "");
+      setDatesLoading(false);
     }
 
     computeBookableDates();
@@ -820,6 +823,7 @@ function EmbedBookPageContent() {
                 <MobileCalendar
                   compact
                   availableOnly
+                  isLoading={datesLoading}
                   selectedDate={selectedDate}
                   onDateSelect={(date) => {
                     setSelectedDate(date);

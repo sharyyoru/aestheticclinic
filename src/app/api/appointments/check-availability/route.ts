@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   CONSULTATION_DURATION_MS,
+  appointmentBelongsToDoctor,
   describeBlocking,
   fetchOverlappingAppointments,
-  getBlockingAppointments,
   getMaxCapacity,
   resolveProviderId,
 } from "@/lib/appointmentAvailability";
@@ -42,31 +42,29 @@ export async function GET(request: NextRequest) {
 
     const maxCapacity = getMaxCapacity(doctorSlug);
 
-    // Generate all 30-minute slots in the requested range.
-    const rangeEnd = new Date(end);
-    const allSlots: Date[] = [];
-    const currentSlot = new Date(start);
-    currentSlot.setMinutes(Math.floor(currentSlot.getMinutes() / 30) * 30, 0, 0);
-    while (currentSlot < rangeEnd) {
-      allSlots.push(new Date(currentSlot));
-      currentSlot.setTime(currentSlot.getTime() + 30 * 60 * 1000);
-    }
+    // Pre-filter to just THIS doctor's appointments once (instead of scanning
+    // every appointment for every slot), and precompute their start/end as
+    // millis. This turns the per-slot scan from O(slots * allAppointments) into
+    // O(slots * doctorAppointments), which keeps the 3-month range query fast.
+    const doctorAppts = appointments
+      .filter((a) => appointmentBelongsToDoctor(a, providerId, doctorName))
+      .map((a) => ({ apt: a, start: new Date(a.start_time).getTime(), end: new Date(a.end_time).getTime() }));
 
-    // For each slot, count the doctor's blocking (belonging + overlapping)
-    // appointments using the shared helper.
+    // Generate all 30-minute slots in the requested range.
+    const rangeEndMs = new Date(end).getTime();
+    const stepMs = 30 * 60 * 1000;
+    const firstSlot = new Date(start);
+    firstSlot.setMinutes(Math.floor(firstSlot.getMinutes() / 30) * 30, 0, 0);
+
     const slotCounts: Record<string, number> = {};
     const slotDebug: Record<string, ReturnType<typeof describeBlocking>[]> = {};
-    for (const slotStart of allSlots) {
-      const slotEnd = new Date(slotStart.getTime() + CONSULTATION_DURATION_MS);
-      const blocking = getBlockingAppointments(appointments, {
-        providerId,
-        doctorName,
-        slotStart,
-        slotEnd,
-      });
+    for (let slotStartMs = firstSlot.getTime(); slotStartMs < rangeEndMs; slotStartMs += stepMs) {
+      const slotEndMs = slotStartMs + CONSULTATION_DURATION_MS;
+      const blocking = doctorAppts.filter((da) => da.start < slotEndMs && da.end > slotStartMs);
       if (blocking.length > 0) {
-        slotCounts[slotStart.toISOString()] = blocking.length;
-        if (debug) slotDebug[slotStart.toISOString()] = blocking.map((a) => describeBlocking(a, providerId));
+        const iso = new Date(slotStartMs).toISOString();
+        slotCounts[iso] = blocking.length;
+        if (debug) slotDebug[iso] = blocking.map((da) => describeBlocking(da.apt, providerId));
       }
     }
 

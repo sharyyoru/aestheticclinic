@@ -228,7 +228,7 @@ export default function MobileCalendar({
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden select-none">
+    <div className="relative bg-white rounded-2xl border border-slate-200 overflow-hidden select-none">
       {/* Month/Year Header */}
       <div className={`flex items-center justify-between bg-slate-50 border-b border-slate-200 ${compact ? "px-3 py-1.5" : "px-4 py-3"}`}>
         <button
