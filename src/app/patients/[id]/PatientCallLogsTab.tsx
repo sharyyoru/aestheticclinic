@@ -20,51 +20,21 @@ type CallLog = {
   recording_url: string | null;
   service_interest: string | null;
   assigned_user_name: string | null;
+  whatsapp_sent_at: string | null;
   started_at: string | null;
   created_at: string;
 };
 
-/** A WhatsApp send attributed to a call (the "action taken" after the call). */
-type WaEvent = { at: number; isTemplate: boolean; status: string | null };
 /** A booking attributed to a call (the conversion). */
-type Booking = { at: number; apptDate: string | null; status: string | null; reason: string | null };
+type Booking = { at: number; apptDate: string | null; status: string | null };
 
 /** Per-call derived funnel data, keyed by call_logs.id. */
-type CallAttribution = { whatsapp: WaEvent[]; bookings: Booking[] };
+type CallAttribution = { whatsappSentAt: number | null; bookings: Booking[] };
 
-const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function callTimeMs(log: CallLog): number {
   return new Date(log.started_at || log.created_at).getTime();
-}
-
-/**
- * Last-touch attribution: assign each event to the most recent call at or
- * before the event, within maxGapMs. Used for WhatsApp sends (they happen
- * during/just after the conversation, within SIX_HOURS_MS).
- */
-function attribute(
-  logsAsc: CallLog[],
-  events: { at: number }[],
-  maxGapMs: number | null,
-): Map<string, number[]> {
-  const result = new Map<string, number[]>();
-  for (let e = 0; e < events.length; e++) {
-    const at = events[e].at;
-    let chosen: CallLog | null = null;
-    for (const log of logsAsc) {
-      const t = callTimeMs(log);
-      if (t <= at) chosen = log;
-      else break;
-    }
-    if (!chosen) continue;
-    if (maxGapMs !== null && at - callTimeMs(chosen) > maxGapMs) continue;
-    const arr = result.get(chosen.id) || [];
-    arr.push(e);
-    result.set(chosen.id, arr);
-  }
-  return result;
 }
 
 function directionLabel(direction: string | null): { label: string; cls: string } {
@@ -146,34 +116,22 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
       setLoading(true);
       setError(null);
 
-      // Load calls + everything we need to cross-match the call → WhatsApp →
-      // booking funnel for this patient, in parallel.
-      const [callsRes, waMsgRes, waQueueRes, apptRes, actRes] = await Promise.all([
+      // Load this patient's calls + their bookings. The WhatsApp action is
+      // recorded directly on the call (call_logs.whatsapp_sent_at, set from the
+      // Retell send_whatsapp function by exact call_id), so no fuzzy matching.
+      const [callsRes, apptRes] = await Promise.all([
         supabaseClient
           .from("call_logs")
           .select(
-            "id, call_id, direction, agent_id, from_number, to_number, call_status, duration_seconds, summary, transcript, transcript_turns, recording_url, service_interest, assigned_user_name, started_at, created_at",
+            "id, call_id, direction, agent_id, from_number, to_number, call_status, duration_seconds, summary, transcript, transcript_turns, recording_url, service_interest, assigned_user_name, whatsapp_sent_at, started_at, created_at",
           )
           .eq("patient_id", patientId)
           .order("started_at", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: false }),
         supabaseClient
-          .from("whatsapp_messages")
-          .select("sent_at, created_at, status, template_sid, template_id, direction")
-          .eq("patient_id", patientId),
-        supabaseClient
-          .from("whatsapp_queue")
-          .select("sent_at, created_at, status")
-          .eq("patient_id", patientId),
-        supabaseClient
           .from("appointments")
-          .select("start_time, created_at, status, reason")
+          .select("start_time, created_at, status")
           .eq("patient_id", patientId),
-        supabaseClient
-          .from("activity_log")
-          .select("created_at, metadata")
-          .eq("patient_id", patientId)
-          .eq("activity_type", "whatsapp_sent"),
       ]);
 
       if (!mounted) return;
@@ -188,58 +146,24 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
       setLogs(callLogs);
       if (callLogs.length > 0) setExpandedId(callLogs[0].id);
 
-      // --- Build event lists keyed only by timestamp + a bit of metadata ---
-      const waEvents: WaEvent[] = [];
-      for (const m of (waMsgRes.data as Record<string, unknown>[]) || []) {
-        if (m.direction && m.direction !== "outbound") continue;
-        const at = new Date((m.sent_at as string) || (m.created_at as string)).getTime();
-        if (Number.isNaN(at)) continue;
-        waEvents.push({ at, isTemplate: Boolean(m.template_sid || m.template_id), status: (m.status as string) ?? null });
-      }
-      for (const q of (waQueueRes.data as Record<string, unknown>[]) || []) {
-        const at = new Date((q.sent_at as string) || (q.created_at as string)).getTime();
-        if (Number.isNaN(at)) continue;
-        waEvents.push({ at, isTemplate: true, status: (q.status as string) ?? null });
-      }
-      // Activity-log whatsapp_sent carries an exact call_id — use it directly.
-      const exactWaByCallId = new Map<string, WaEvent>();
-      for (const a of (actRes.data as Record<string, unknown>[]) || []) {
-        const md = (a.metadata || {}) as Record<string, unknown>;
-        const at = new Date(a.created_at as string).getTime();
-        const ev: WaEvent = { at, isTemplate: true, status: "sent" };
-        if (md.call_id) exactWaByCallId.set(md.call_id as string, ev);
-        else if (!Number.isNaN(at)) waEvents.push(ev);
-      }
-
       const bookings: Booking[] = [];
       for (const a of (apptRes.data as Record<string, unknown>[]) || []) {
-        const at = new Date((a.created_at as string)).getTime();
+        const at = new Date(a.created_at as string).getTime();
         if (Number.isNaN(at)) continue;
-        bookings.push({
-          at,
-          apptDate: (a.start_time as string) ?? null,
-          status: (a.status as string) ?? null,
-          reason: (a.reason as string) ?? null,
-        });
+        bookings.push({ at, apptDate: (a.start_time as string) ?? null, status: (a.status as string) ?? null });
       }
-
-      const logsAsc = [...callLogs].sort((x, y) => callTimeMs(x) - callTimeMs(y));
-      const waMap = attribute(logsAsc, waEvents, SIX_HOURS_MS);
 
       const attr = new Map<string, CallAttribution>();
       for (const log of callLogs) {
-        const wa = (waMap.get(log.id) || []).map((i) => waEvents[i]);
-        if (log.call_id && exactWaByCallId.has(log.call_id)) {
-          wa.unshift(exactWaByCallId.get(log.call_id)!);
-        }
-        // A booking is only credited as a conversion when this call had a
-        // WhatsApp link sent AND the booking was created within a week of it.
+        const waAt = log.whatsapp_sent_at ? new Date(log.whatsapp_sent_at).getTime() : null;
+        // A booking only counts as a conversion when this call had a WhatsApp
+        // link sent AND the booking was created within a week of the call.
         const ct = callTimeMs(log);
         const bk =
-          wa.length > 0
+          waAt !== null
             ? bookings.filter((b) => b.at >= ct && b.at - ct <= ONE_WEEK_MS)
             : [];
-        if (wa.length > 0 || bk.length > 0) attr.set(log.id, { whatsapp: wa, bookings: bk });
+        if (waAt !== null || bk.length > 0) attr.set(log.id, { whatsappSentAt: waAt, bookings: bk });
       }
       setAttribution(attr);
       setLoading(false);
@@ -281,7 +205,7 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
   let callsWithWa = 0;
   let callsConverted = 0;
   attribution.forEach((a) => {
-    if (a.whatsapp.length > 0) callsWithWa += 1;
+    if (a.whatsappSentAt !== null) callsWithWa += 1;
     if (a.bookings.length > 0) callsConverted += 1;
   });
 
@@ -328,8 +252,8 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {attr && attr.whatsapp.length > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700 border border-green-200" title="WhatsApp booking link sent after this call">
+                {attr && attr.whatsappSentAt !== null && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700 border border-green-200" title="WhatsApp booking link sent during this call">
                     <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884" /></svg>
                     WhatsApp
                   </span>
@@ -382,20 +306,19 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
                   </audio>
                 )}
 
-                {attr && (attr.whatsapp.length > 0 || attr.bookings.length > 0) && (
+                {attr && (attr.whatsappSentAt !== null || attr.bookings.length > 0) && (
                   <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Actions &amp; outcome</p>
                     <div className="space-y-1.5">
-                      {attr.whatsapp.map((w, i) => (
-                        <div key={`wa-${i}`} className="flex items-center gap-2 text-[11px] text-slate-600">
+                      {attr.whatsappSentAt !== null && (
+                        <div className="flex items-center gap-2 text-[11px] text-slate-600">
                           <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-green-100 text-green-700">
                             <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884" /></svg>
                           </span>
                           <span className="font-medium text-slate-700">WhatsApp booking link sent</span>
-                          <span className="text-slate-400">· {formatSwissDateTime(new Date(w.at).toISOString())}</span>
-                          {w.status && <span className="text-slate-400">· {w.status}</span>}
+                          <span className="text-slate-400">· {formatSwissDateTime(new Date(attr.whatsappSentAt).toISOString())}</span>
                         </div>
-                      ))}
+                      )}
                       {attr.bookings.map((b, i) => (
                         <div key={`bk-${i}`} className="flex items-center gap-2 text-[11px] text-slate-600">
                           <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">

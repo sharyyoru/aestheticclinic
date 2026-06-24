@@ -1,7 +1,11 @@
 /**
- * Verifies the call -> WhatsApp -> booking attribution the Call Logs tab does,
- * but server-side across ALL patients, so we can confirm it lights up and find
- * concrete example patients to inspect.
+ * Verifies the call -> WhatsApp -> booking funnel the Call Logs tab renders,
+ * using the authoritative fields: call_logs.whatsapp_sent_at (set from the
+ * Retell send_whatsapp function by exact call_id) and the patient's bookings.
+ * A call converts only when it has whatsapp_sent_at AND a booking was created
+ * within a week after the call.
+ *
+ * Pass a patient id as argv[2] to inspect a single patient.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -18,63 +22,60 @@ for (const l of readFileSync(resolve(process.cwd(), ".env.local"), "utf8").split
   if (!(k in process.env)) process.env[k] = v;
 }
 const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-const SIX_H = 6 * 60 * 60 * 1000;
 const WEEK = 7 * 24 * 60 * 60 * 1000;
+const ms = (x?: string | null) => (x ? new Date(x).getTime() : NaN);
 
-async function main() {
+async function inspectPatient(pid: string) {
   const { data: logs } = await s
     .from("call_logs")
-    .select("id, patient_id, direction, started_at, created_at")
+    .select("call_id, direction, started_at, created_at, whatsapp_sent_at, to_number")
+    .eq("patient_id", pid)
+    .order("started_at", { ascending: true });
+  const { data: appts } = await s.from("appointments").select("created_at, start_time").eq("patient_id", pid);
+  console.log(`\n=== patient ${pid}: ${logs?.length || 0} calls, ${appts?.length || 0} appointments ===`);
+  for (const c of logs || []) {
+    const ct = ms((c.started_at as string) || (c.created_at as string));
+    const converted = c.whatsapp_sent_at && (appts || []).some((a) => { const at = ms(a.created_at as string); return at >= ct && at - ct <= WEEK; });
+    console.log(`  ${c.started_at || c.created_at}  ${c.direction}  to=${c.to_number}  wa=${c.whatsapp_sent_at ? "YES" : "-"}  converted=${converted ? "YES" : "-"}`);
+  }
+}
+
+async function main() {
+  const target = process.argv[2];
+  if (target) { await inspectPatient(target); return; }
+
+  const { data: logs } = await s
+    .from("call_logs")
+    .select("patient_id, direction, started_at, created_at, whatsapp_sent_at")
     .not("patient_id", "is", null)
     .limit(5000);
-  const byPatient = new Map<string, { at: number; dir: string }[]>();
+  const byPatient = new Map<string, { ct: number; wa: number | null }[]>();
+  let totalWaCalls = 0;
   for (const r of logs || []) {
-    const at = new Date((r.started_at as string) || (r.created_at as string)).getTime();
+    const ct = ms((r.started_at as string) || (r.created_at as string));
+    const wa = r.whatsapp_sent_at ? ms(r.whatsapp_sent_at as string) : null;
+    if (wa) totalWaCalls++;
     const arr = byPatient.get(r.patient_id as string) || [];
-    arr.push({ at, dir: (r.direction as string) || "inbound" });
+    arr.push({ ct, wa });
     byPatient.set(r.patient_id as string, arr);
   }
 
-  let patientsWithWa = 0, patientsConverted = 0, callsConverted = 0;
-  const examples: string[] = [];
-
+  let convertingCalls = 0, convertedPatients = 0;
   for (const [pid, calls] of byPatient) {
-    calls.sort((a, b) => a.at - b.at);
-    const [{ data: wa }, { data: appt }] = await Promise.all([
-      s.from("whatsapp_messages").select("sent_at, created_at, direction").eq("patient_id", pid),
-      s.from("appointments").select("created_at, start_time").eq("patient_id", pid),
-    ]);
-    const waTimes = (wa || [])
-      .filter((m) => !m.direction || m.direction === "outbound")
-      .map((m) => new Date((m.sent_at as string) || (m.created_at as string)).getTime())
-      .filter((n) => !Number.isNaN(n));
-    const apptTimes = (appt || [])
-      .map((a) => new Date(a.created_at as string).getTime())
-      .filter((n) => !Number.isNaN(n));
-
-    // New rule: a call converts only if it had a WhatsApp link sent (within 6h)
-    // AND a booking was created within a week after that call.
-    const waHit = waTimes.some((t) => calls.some((c) => t >= c.at && t - c.at <= SIX_H));
-    let convertingCalls = 0;
+    if (!calls.some((c) => c.wa)) continue;
+    const { data: appts } = await s.from("appointments").select("created_at").eq("patient_id", pid);
+    const apptTimes = (appts || []).map((a) => ms(a.created_at as string)).filter((n) => !Number.isNaN(n));
+    let any = false;
     for (const c of calls) {
-      const hasWa = waTimes.some((t) => t >= c.at && t - c.at <= SIX_H);
-      if (!hasWa) continue;
-      const booked = apptTimes.some((t) => t >= c.at && t - c.at <= WEEK);
-      if (booked) convertingCalls++;
+      if (!c.wa) continue;
+      if (apptTimes.some((t) => t >= c.ct && t - c.ct <= WEEK)) { convertingCalls++; any = true; }
     }
-    if (waHit) patientsWithWa++;
-    if (convertingCalls > 0) { patientsConverted++; callsConverted += convertingCalls; }
-    if ((waHit || convertingCalls > 0) && examples.length < 10) {
-      examples.push(`  ${pid}  calls=${calls.length} wa=${waHit ? "Y" : "-"} convertingCalls=${convertingCalls}`);
-    }
+    if (any) convertedPatients++;
   }
 
-  console.log(`patients with calls: ${byPatient.size}`);
-  console.log(`patients with WhatsApp sent after a call: ${patientsWithWa}`);
-  console.log(`patients with a booking after a call (converted): ${patientsConverted}`);
-  console.log(`total bookings attributed to calls: ${callsConverted}`);
-  console.log(`\nExamples (open /patients/<id>?m_tab=crm&crm_sub=call_logs):`);
-  console.log(examples.join("\n") || "  (none)");
+  console.log(`call_logs total: ${logs?.length}`);
+  console.log(`calls with whatsapp_sent_at: ${totalWaCalls}`);
+  console.log(`converting calls (WhatsApp + booking within 1 week): ${convertingCalls}`);
+  console.log(`patients converted: ${convertedPatients}`);
 }
-
 main().catch((e) => { console.error(e); process.exit(1); });

@@ -450,6 +450,20 @@ export async function POST(request: NextRequest) {
       const startedAt = call.start_timestamp ? new Date(call.start_timestamp).toISOString() : null;
       const patientFullName = `${firstName || "Unknown"} ${lastName || "Caller"}`.trim();
 
+      // Did the agent send a WhatsApp booking link during this call? That is
+      // logged separately by the in-call function webhook into
+      // retell_request_logs (function_name = 'send_whatsapp'), keyed by call_id.
+      let whatsappSentAt: string | null = null;
+      const { data: waLog } = await supabaseAdmin
+        .from("retell_request_logs")
+        .select("created_at")
+        .eq("call_id", call.call_id)
+        .eq("function_name", "send_whatsapp")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (waLog?.created_at) whatsappSentAt = waLog.created_at as string;
+
       const { data: existingLog } = await supabaseAdmin
         .from("call_logs")
         .select("id, task_id")
@@ -467,6 +481,7 @@ export async function POST(request: NextRequest) {
             summary: summary ?? undefined,
             transcript: transcriptText || undefined,
             transcript_turns: turns.length > 0 ? turns : undefined,
+            whatsapp_sent_at: whatsappSentAt ?? undefined,
             deal_id: dealId,
           })
           .eq("id", existingLog.id);
@@ -558,6 +573,7 @@ export async function POST(request: NextRequest) {
           task_id: taskId,
           assigned_user_id: assignedUserId,
           assigned_user_name: assignedUserName,
+          whatsapp_sent_at: whatsappSentAt,
           source: "retell",
           started_at: startedAt,
         });
