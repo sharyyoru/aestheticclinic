@@ -67,10 +67,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Exclude no_patient appointments (placeholder bookings that don't block real patients)
-    let filteredAppointments = (appointments || []).filter(
-      (apt) => apt.no_patient !== true
-    );
+    // PAUSE/no_patient appointments BLOCK booking (included in the capacity check),
+    // matching the validator in /api/public/book-appointment and /api/retell/*.
+    // Previously these were excluded here, so a slot occupied by a doctor's PAUSE/
+    // break was shown as available and then rejected at confirmation with
+    // "This time slot is fully booked (2/1)" (HTTP 409). Keeping the two sides in
+    // sync is what guarantees that every offered slot can actually be booked.
+    let filteredAppointments = appointments || [];
     
     // Filter by doctor if specified
     if (doctorName) {
