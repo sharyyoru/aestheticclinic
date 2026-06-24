@@ -320,18 +320,68 @@ function EmbedBookPageContent() {
     fetchDoctorDaysOff();
   }, [selectedDoctor]);
 
-  // Calculate available dates when doctor/location changes
+  // Calculate which dates actually have a bookable slot, so fully-booked days
+  // (e.g. a heavily-booked doctor) are HIDDEN from the date picker instead of
+  // being selectable and then showing "all slots full". A single range query
+  // powers the whole picker; the per-date check below still runs for the grid.
   useEffect(() => {
-    if (selectedLocation && selectedDoctor) {
-      const dates = getAvailableDates(selectedDoctor, selectedLocation, 90).filter(
-        (d) => !doctorDaysOff.has(parseLocalDate(d).getDay())
-      );
-      setAvailableDatesSet(new Set(dates));
-      const nearest = dates.length > 0 ? dates[0] : null;
-      if (nearest) {
-        setSelectedDate(nearest);
-      }
+    if (!selectedLocation || !selectedDoctor) return;
+    let cancelled = false;
+
+    const candidateDates = getAvailableDates(selectedDoctor, selectedLocation, 90).filter(
+      (d) => !doctorDaysOff.has(parseLocalDate(d).getDay())
+    );
+
+    if (candidateDates.length === 0) {
+      setAvailableDatesSet(new Set());
+      setSelectedDate("");
+      return;
     }
+
+    async function computeBookableDates() {
+      const doctorName = DOCTORS[selectedDoctor]?.name || "";
+      const rangeStart = getSwissDayRange(candidateDates[0]).start;
+      const rangeEnd = getSwissDayRange(candidateDates[candidateDates.length - 1]).end;
+
+      // Map of YYYY-MM-DD -> Set of full "HH:MM" slots for this doctor.
+      const fullByDate = new Map<string, Set<string>>();
+      try {
+        const res = await fetch(
+          `/api/appointments/check-availability?start=${rangeStart}&end=${rangeEnd}&doctor=${encodeURIComponent(doctorName)}&slug=${selectedDoctor}`
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        for (const iso of (data.fullSlots || []) as string[]) {
+          const ymd = formatSwissYmd(iso);
+          const hhmm = getSwissSlotString(new Date(iso));
+          if (!fullByDate.has(ymd)) fullByDate.set(ymd, new Set());
+          fullByDate.get(ymd)!.add(hhmm);
+        }
+      } catch (err) {
+        console.error("Failed to precompute date availability:", err);
+        // Graceful fallback: show all calendar dates (per-date check still guards).
+        if (!cancelled) {
+          setAvailableDatesSet(new Set(candidateDates));
+          setSelectedDate(candidateDates[0]);
+        }
+        return;
+      }
+
+      const bookable = candidateDates.filter((d) => {
+        const full = fullByDate.get(d);
+        const slots = generateTimeSlots(selectedDoctor, selectedLocation, d);
+        return slots.some((s) => !full || !full.has(s));
+      });
+
+      if (cancelled) return;
+      setAvailableDatesSet(new Set(bookable));
+      setSelectedDate(bookable.length > 0 ? bookable[0] : "");
+    }
+
+    computeBookableDates();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedLocation, selectedDoctor, doctorDaysOff]);
 
   // Generate time slots when date changes
