@@ -71,12 +71,14 @@ function parseCallBlocks(notes: string): ParsedCall[] {
 }
 
 async function main() {
+  // Scan EVERY patient whose notes contain a Retell call block, regardless of
+  // source. Outbound campaign calls live on patients sourced from Facebook,
+  // intake forms, manual entry, etc. — not just "Retell AI Agent".
   const { data: patients, error } = await supabase
     .from("patients")
     .select("id, notes")
-    .eq("source", "Retell AI Agent")
     .ilike("notes", "%[Retell AI Call]%")
-    .limit(2000);
+    .limit(5000);
   if (error) { console.error("query error:", error.message); process.exit(1); }
 
   // Existing call_ids to dedupe.

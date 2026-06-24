@@ -24,6 +24,49 @@ type CallLog = {
   created_at: string;
 };
 
+/** A WhatsApp send attributed to a call (the "action taken" after the call). */
+type WaEvent = { at: number; isTemplate: boolean; status: string | null };
+/** A booking attributed to a call (the conversion). */
+type Booking = { at: number; apptDate: string | null; status: string | null; reason: string | null };
+
+/** Per-call derived funnel data, keyed by call_logs.id. */
+type CallAttribution = { whatsapp: WaEvent[]; bookings: Booking[] };
+
+const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+
+function callTimeMs(log: CallLog): number {
+  return new Date(log.started_at || log.created_at).getTime();
+}
+
+/**
+ * Last-touch attribution: assign each event to the most recent call at or
+ * before the event. WhatsApp sends must fall within SIX_HOURS_MS of the call
+ * (they happen during/just after the conversation); bookings have no cap — any
+ * booking created after a call is credited to the latest preceding call.
+ */
+function attribute(
+  logsAsc: CallLog[],
+  events: { at: number }[],
+  maxGapMs: number | null,
+): Map<string, number[]> {
+  const result = new Map<string, number[]>();
+  for (let e = 0; e < events.length; e++) {
+    const at = events[e].at;
+    let chosen: CallLog | null = null;
+    for (const log of logsAsc) {
+      const t = callTimeMs(log);
+      if (t <= at) chosen = log;
+      else break;
+    }
+    if (!chosen) continue;
+    if (maxGapMs !== null && at - callTimeMs(chosen) > maxGapMs) continue;
+    const arr = result.get(chosen.id) || [];
+    arr.push(e);
+    result.set(chosen.id, arr);
+  }
+  return result;
+}
+
 function directionLabel(direction: string | null): { label: string; cls: string } {
   switch (direction) {
     case "outbound":
@@ -92,6 +135,7 @@ function CallTranscript({ log }: { log: CallLog }) {
 
 export default function PatientCallLogsTab({ patientId }: { patientId: string }) {
   const [logs, setLogs] = useState<CallLog[]>([]);
+  const [attribution, setAttribution] = useState<Map<string, CallAttribution>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -101,23 +145,98 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
     async function load() {
       setLoading(true);
       setError(null);
-      const { data, error: qErr } = await supabaseClient
-        .from("call_logs")
-        .select(
-          "id, call_id, direction, agent_id, from_number, to_number, call_status, duration_seconds, summary, transcript, transcript_turns, recording_url, service_interest, assigned_user_name, started_at, created_at",
-        )
-        .eq("patient_id", patientId)
-        .order("started_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false });
+
+      // Load calls + everything we need to cross-match the call → WhatsApp →
+      // booking funnel for this patient, in parallel.
+      const [callsRes, waMsgRes, waQueueRes, apptRes, actRes] = await Promise.all([
+        supabaseClient
+          .from("call_logs")
+          .select(
+            "id, call_id, direction, agent_id, from_number, to_number, call_status, duration_seconds, summary, transcript, transcript_turns, recording_url, service_interest, assigned_user_name, started_at, created_at",
+          )
+          .eq("patient_id", patientId)
+          .order("started_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false }),
+        supabaseClient
+          .from("whatsapp_messages")
+          .select("sent_at, created_at, status, template_sid, template_id, direction")
+          .eq("patient_id", patientId),
+        supabaseClient
+          .from("whatsapp_queue")
+          .select("sent_at, created_at, status")
+          .eq("patient_id", patientId),
+        supabaseClient
+          .from("appointments")
+          .select("start_time, created_at, status, reason")
+          .eq("patient_id", patientId),
+        supabaseClient
+          .from("activity_log")
+          .select("created_at, metadata")
+          .eq("patient_id", patientId)
+          .eq("activity_type", "whatsapp_sent"),
+      ]);
+
       if (!mounted) return;
-      if (qErr) {
-        setError(qErr.message);
+      if (callsRes.error) {
+        setError(callsRes.error.message);
         setLogs([]);
-      } else {
-        setLogs((data as CallLog[]) || []);
-        // Auto-expand the most recent call for convenience.
-        if (data && data.length > 0) setExpandedId((data[0] as CallLog).id);
+        setLoading(false);
+        return;
       }
+
+      const callLogs = (callsRes.data as CallLog[]) || [];
+      setLogs(callLogs);
+      if (callLogs.length > 0) setExpandedId(callLogs[0].id);
+
+      // --- Build event lists keyed only by timestamp + a bit of metadata ---
+      const waEvents: WaEvent[] = [];
+      for (const m of (waMsgRes.data as Record<string, unknown>[]) || []) {
+        if (m.direction && m.direction !== "outbound") continue;
+        const at = new Date((m.sent_at as string) || (m.created_at as string)).getTime();
+        if (Number.isNaN(at)) continue;
+        waEvents.push({ at, isTemplate: Boolean(m.template_sid || m.template_id), status: (m.status as string) ?? null });
+      }
+      for (const q of (waQueueRes.data as Record<string, unknown>[]) || []) {
+        const at = new Date((q.sent_at as string) || (q.created_at as string)).getTime();
+        if (Number.isNaN(at)) continue;
+        waEvents.push({ at, isTemplate: true, status: (q.status as string) ?? null });
+      }
+      // Activity-log whatsapp_sent carries an exact call_id — use it directly.
+      const exactWaByCallId = new Map<string, WaEvent>();
+      for (const a of (actRes.data as Record<string, unknown>[]) || []) {
+        const md = (a.metadata || {}) as Record<string, unknown>;
+        const at = new Date(a.created_at as string).getTime();
+        const ev: WaEvent = { at, isTemplate: true, status: "sent" };
+        if (md.call_id) exactWaByCallId.set(md.call_id as string, ev);
+        else if (!Number.isNaN(at)) waEvents.push(ev);
+      }
+
+      const bookings: Booking[] = [];
+      for (const a of (apptRes.data as Record<string, unknown>[]) || []) {
+        const at = new Date((a.created_at as string)).getTime();
+        if (Number.isNaN(at)) continue;
+        bookings.push({
+          at,
+          apptDate: (a.start_time as string) ?? null,
+          status: (a.status as string) ?? null,
+          reason: (a.reason as string) ?? null,
+        });
+      }
+
+      const logsAsc = [...callLogs].sort((x, y) => callTimeMs(x) - callTimeMs(y));
+      const waMap = attribute(logsAsc, waEvents, SIX_HOURS_MS);
+      const bookingMap = attribute(logsAsc, bookings, null);
+
+      const attr = new Map<string, CallAttribution>();
+      for (const log of callLogs) {
+        const wa = (waMap.get(log.id) || []).map((i) => waEvents[i]);
+        if (log.call_id && exactWaByCallId.has(log.call_id)) {
+          wa.unshift(exactWaByCallId.get(log.call_id)!);
+        }
+        const bk = (bookingMap.get(log.id) || []).map((i) => bookings[i]);
+        if (wa.length > 0 || bk.length > 0) attr.set(log.id, { whatsapp: wa, bookings: bk });
+      }
+      setAttribution(attr);
       setLoading(false);
     }
     load();
@@ -153,13 +272,38 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
     );
   }
 
+  const outboundCount = logs.filter((l) => l.direction === "outbound").length;
+  let callsWithWa = 0;
+  let callsConverted = 0;
+  attribution.forEach((a) => {
+    if (a.whatsapp.length > 0) callsWithWa += 1;
+    if (a.bookings.length > 0) callsConverted += 1;
+  });
+
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-slate-500">{logs.length} call{logs.length === 1 ? "" : "s"} logged</p>
+      {/* Funnel summary: calls → WhatsApp link sent → booking (conversion) */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 border border-slate-200">
+          {logs.length} call{logs.length === 1 ? "" : "s"}
+          <span className="text-slate-400">({outboundCount} outbound)</span>
+        </span>
+        <span className="text-slate-300">→</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-semibold text-green-700 border border-green-200">
+          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884" /></svg>
+          {callsWithWa} WhatsApp link{callsWithWa === 1 ? "" : "s"} sent
+        </span>
+        <span className="text-slate-300">→</span>
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold border ${callsConverted > 0 ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-white text-slate-400 border-slate-200"}`}>
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+          {callsConverted} booked
+        </span>
+      </div>
       {logs.map((log) => {
         const dir = directionLabel(log.direction);
         const when = log.started_at || log.created_at;
         const isExpanded = expandedId === log.id;
+        const attr = attribution.get(log.id);
         return (
           <div key={log.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <button
@@ -179,6 +323,18 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {attr && attr.whatsapp.length > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700 border border-green-200" title="WhatsApp booking link sent after this call">
+                    <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884" /></svg>
+                    WhatsApp
+                  </span>
+                )}
+                {attr && attr.bookings.length > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 border border-emerald-300" title="This call led to a booking">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                    Booked
+                  </span>
+                )}
                 {log.assigned_user_name && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700 border border-indigo-200">
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -219,6 +375,34 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
                   <audio controls src={log.recording_url} className="w-full">
                     <track kind="captions" />
                   </audio>
+                )}
+
+                {attr && (attr.whatsapp.length > 0 || attr.bookings.length > 0) && (
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Actions &amp; outcome</p>
+                    <div className="space-y-1.5">
+                      {attr.whatsapp.map((w, i) => (
+                        <div key={`wa-${i}`} className="flex items-center gap-2 text-[11px] text-slate-600">
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-green-100 text-green-700">
+                            <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884" /></svg>
+                          </span>
+                          <span className="font-medium text-slate-700">WhatsApp booking link sent</span>
+                          <span className="text-slate-400">· {formatSwissDateTime(new Date(w.at).toISOString())}</span>
+                          {w.status && <span className="text-slate-400">· {w.status}</span>}
+                        </div>
+                      ))}
+                      {attr.bookings.map((b, i) => (
+                        <div key={`bk-${i}`} className="flex items-center gap-2 text-[11px] text-slate-600">
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                          </span>
+                          <span className="font-semibold text-emerald-800">Converted to booking</span>
+                          {b.apptDate && <span className="text-slate-500">· {formatSwissDateTime(b.apptDate)}</span>}
+                          {b.status && <span className="text-slate-400">· {b.status}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
 
                 <div>
