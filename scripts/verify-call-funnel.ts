@@ -19,6 +19,7 @@ for (const l of readFileSync(resolve(process.cwd(), ".env.local"), "utf8").split
 }
 const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const SIX_H = 6 * 60 * 60 * 1000;
+const WEEK = 7 * 24 * 60 * 60 * 1000;
 
 async function main() {
   const { data: logs } = await s
@@ -51,13 +52,20 @@ async function main() {
       .map((a) => new Date(a.created_at as string).getTime())
       .filter((n) => !Number.isNaN(n));
 
-    const firstCall = calls[0].at;
+    // New rule: a call converts only if it had a WhatsApp link sent (within 6h)
+    // AND a booking was created within a week after that call.
     const waHit = waTimes.some((t) => calls.some((c) => t >= c.at && t - c.at <= SIX_H));
-    const conv = apptTimes.filter((t) => t >= firstCall);
+    let convertingCalls = 0;
+    for (const c of calls) {
+      const hasWa = waTimes.some((t) => t >= c.at && t - c.at <= SIX_H);
+      if (!hasWa) continue;
+      const booked = apptTimes.some((t) => t >= c.at && t - c.at <= WEEK);
+      if (booked) convertingCalls++;
+    }
     if (waHit) patientsWithWa++;
-    if (conv.length > 0) { patientsConverted++; callsConverted += conv.length; }
-    if ((waHit || conv.length > 0) && examples.length < 10) {
-      examples.push(`  ${pid}  calls=${calls.length} wa=${waHit ? "Y" : "-"} bookingsAfterCall=${conv.length}`);
+    if (convertingCalls > 0) { patientsConverted++; callsConverted += convertingCalls; }
+    if ((waHit || convertingCalls > 0) && examples.length < 10) {
+      examples.push(`  ${pid}  calls=${calls.length} wa=${waHit ? "Y" : "-"} convertingCalls=${convertingCalls}`);
     }
   }
 

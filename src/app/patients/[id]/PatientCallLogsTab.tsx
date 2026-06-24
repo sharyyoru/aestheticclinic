@@ -33,6 +33,7 @@ type Booking = { at: number; apptDate: string | null; status: string | null; rea
 type CallAttribution = { whatsapp: WaEvent[]; bookings: Booking[] };
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function callTimeMs(log: CallLog): number {
   return new Date(log.started_at || log.created_at).getTime();
@@ -40,9 +41,8 @@ function callTimeMs(log: CallLog): number {
 
 /**
  * Last-touch attribution: assign each event to the most recent call at or
- * before the event. WhatsApp sends must fall within SIX_HOURS_MS of the call
- * (they happen during/just after the conversation); bookings have no cap — any
- * booking created after a call is credited to the latest preceding call.
+ * before the event, within maxGapMs. Used for WhatsApp sends (they happen
+ * during/just after the conversation, within SIX_HOURS_MS).
  */
 function attribute(
   logsAsc: CallLog[],
@@ -225,7 +225,6 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
 
       const logsAsc = [...callLogs].sort((x, y) => callTimeMs(x) - callTimeMs(y));
       const waMap = attribute(logsAsc, waEvents, SIX_HOURS_MS);
-      const bookingMap = attribute(logsAsc, bookings, null);
 
       const attr = new Map<string, CallAttribution>();
       for (const log of callLogs) {
@@ -233,7 +232,13 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
         if (log.call_id && exactWaByCallId.has(log.call_id)) {
           wa.unshift(exactWaByCallId.get(log.call_id)!);
         }
-        const bk = (bookingMap.get(log.id) || []).map((i) => bookings[i]);
+        // A booking is only credited as a conversion when this call had a
+        // WhatsApp link sent AND the booking was created within a week of it.
+        const ct = callTimeMs(log);
+        const bk =
+          wa.length > 0
+            ? bookings.filter((b) => b.at >= ct && b.at - ct <= ONE_WEEK_MS)
+            : [];
         if (wa.length > 0 || bk.length > 0) attr.set(log.id, { whatsapp: wa, bookings: bk });
       }
       setAttribution(attr);
