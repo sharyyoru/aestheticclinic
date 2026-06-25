@@ -7,6 +7,7 @@ import {
   formatTranscriptReadable,
   parseTranscriptTurns,
 } from "@/lib/callLog";
+import { sendCallLogConversationEmail } from "@/lib/callLogEmail";
 
 /**
  * Webhook endpoint for receiving Retell AI Agent call data
@@ -555,30 +556,52 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const { error: logError } = await supabaseAdmin.from("call_logs").insert({
-          call_id: call.call_id,
-          patient_id: patientId,
-          deal_id: dealId,
-          direction: call.direction || "inbound",
-          agent_id: call.agent_id || null,
-          from_number: call.from_number || null,
-          to_number: call.to_number || null,
-          call_status: call.call_status || null,
-          disconnection_reason: call.disconnection_reason ?? null,
-          duration_seconds: callDuration,
-          summary,
-          transcript: transcriptText || null,
-          transcript_turns: turns.length > 0 ? turns : null,
-          service_interest: finalServiceInterest,
-          task_id: taskId,
-          assigned_user_id: assignedUserId,
-          assigned_user_name: assignedUserName,
-          whatsapp_sent_at: whatsappSentAt,
-          source: "retell",
-          started_at: startedAt,
-        });
+        const { data: insertedCallLog, error: logError } = await supabaseAdmin
+          .from("call_logs")
+          .insert({
+            call_id: call.call_id,
+            patient_id: patientId,
+            deal_id: dealId,
+            direction: call.direction || "inbound",
+            agent_id: call.agent_id || null,
+            from_number: call.from_number || null,
+            to_number: call.to_number || null,
+            call_status: call.call_status || null,
+            disconnection_reason: call.disconnection_reason ?? null,
+            duration_seconds: callDuration,
+            summary,
+            transcript: transcriptText || null,
+            transcript_turns: turns.length > 0 ? turns : null,
+            service_interest: finalServiceInterest,
+            task_id: taskId,
+            assigned_user_id: assignedUserId,
+            assigned_user_name: assignedUserName,
+            whatsapp_sent_at: whatsappSentAt,
+            source: "retell",
+            started_at: startedAt,
+          })
+          .select("id")
+          .single();
         if (logError) {
           console.error("[Retell Agent] Failed to insert call_log:", logError);
+        } else if (insertedCallLog && call.direction === "outbound") {
+          try {
+            await sendCallLogConversationEmail({
+              patientName: patientFullName,
+              callId: call.call_id,
+              direction: call.direction || "outbound",
+              startedAt,
+              durationSeconds: callDuration,
+              callStatus: call.call_status,
+              fromNumber: call.from_number,
+              toNumber: call.to_number,
+              summary,
+              transcript: transcriptText,
+              turns,
+            });
+          } catch (emailError) {
+            console.error("[Retell Agent] Failed to email call log conversation:", emailError);
+          }
         }
       }
     } catch (callLogErr) {
