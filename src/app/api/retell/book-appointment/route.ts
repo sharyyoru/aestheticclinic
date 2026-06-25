@@ -12,8 +12,8 @@ const mailgunFromEmail = process.env.MAILGUN_FROM_EMAIL;
 const mailgunFromName = process.env.MAILGUN_FROM_NAME || "Aesthetics Clinic";
 const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
 
-// Doctor-specific capacity
-const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez"];
+// Doctor-specific capacity: these doctors can have 2 concurrent bookings.
+const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova"];
 
 // Clinic location details for emails
 const LOCATION_DETAILS: Record<string, { name: string; address: string; city: string }> = {
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check capacity
-    const maxCapacity = MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 3 : 1;
+    const maxCapacity = MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 2 : 1;
     const slotStart = new Date(appointmentDate);
     const slotEnd = new Date(appointmentDate.getTime() + 30 * 60 * 1000);
 

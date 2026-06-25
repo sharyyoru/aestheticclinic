@@ -10,15 +10,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * available and then rejected at confirmation with "fully booked (2/1)" (409).
  */
 
-// Doctors that can see multiple patients concurrently (e.g. with assistants).
-export const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez"];
+// Doctors that can see two patients concurrently (e.g. with assistants).
+export const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova"];
 
 // Online bookings are first consultations, which are 30 minutes long.
 export const CONSULTATION_DURATION_MS = 30 * 60 * 1000;
 
 export function getMaxCapacity(doctorSlug?: string | null): number {
   if (!doctorSlug) return 1;
-  return MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 3 : 1;
+  return MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 2 : 1;
 }
 
 export interface AppointmentRow {

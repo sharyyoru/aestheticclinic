@@ -135,10 +135,10 @@ const DOCTOR_NAME_KEYWORDS: Record<string, string[]> = {
   "lily-radionova": ["radionova", "lily"],
 };
 
-const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez"];
+const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova"];
 
 function getMaxCapacity(doctorSlug: string): number {
-  return MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 3 : 1;
+  return MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 2 : 1;
 }
 
 /**

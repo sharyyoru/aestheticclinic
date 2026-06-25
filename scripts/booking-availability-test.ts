@@ -209,7 +209,7 @@ async function testCombo(slug: string, location: string): Promise<ComboResult> {
 async function main() {
   console.log("=== Comprehensive Booking Availability Test ===");
   console.log(`Run at: ${new Date().toISOString()}  (today Swiss: ${formatSwissYmd(getSwissToday())})`);
-  console.log(`Window: next 90 days | capacity: 1 (3 for multi-capacity doctors)\n`);
+  console.log(`Window: next 90 days | capacity: 1 (2 for multi-capacity doctors)\n`);
 
   const results: ComboResult[] = [];
   for (const slug of Object.keys(DOCTORS)) {

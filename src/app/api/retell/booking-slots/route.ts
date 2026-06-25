@@ -5,12 +5,12 @@ import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTime
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Doctor-specific capacity: XT and CR can have 3 concurrent, others have 1
-const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez"];
+// Doctor-specific capacity: these doctors can have 2 concurrent bookings.
+const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova"];
 
 function getMaxCapacity(doctorSlug: string | null): number {
   if (!doctorSlug) return 1;
-  return MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 3 : 1;
+  return MULTI_CAPACITY_DOCTORS.includes(doctorSlug) ? 2 : 1;
 }
 
 export const runtime = "nodejs";
