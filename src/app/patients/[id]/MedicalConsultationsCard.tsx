@@ -112,6 +112,15 @@ type PlatformUser = {
   provider_id: string | null;
 };
 
+const REQUIRED_CONSULTATION_DOCTORS: PlatformUser[] = [
+  {
+    id: "eced9ab1-674b-55b0-806b-91db4319e20d",
+    full_name: "Lily Radionova",
+    email: "Lily@aesthetics-ge.ch",
+    provider_id: null,
+  },
+];
+
 // Only these doctors should appear in the consultation "Doctor" dropdown.
 // Matched (accent/case-insensitive) against the user's name or email.
 const ALLOWED_DOCTOR_NAMES = [
@@ -129,6 +138,7 @@ const ALLOWED_DOCTOR_NAMES = [
   "aileen",
   "vladimir",
   "yosra",
+  "lily",
 ];
 
 function normalizeName(value: string | null | undefined): string {
@@ -826,7 +836,20 @@ export default function MedicalConsultationsCard({
         if (!response.ok) return;
         const json = (await response.json()) as PlatformUser[];
         if (!isMounted) return;
-        setUserOptions(json);
+        const userIds = new Set(json.map((user) => user.id));
+        const userNames = new Set(
+          json
+            .map((user) => user.full_name?.trim().toLowerCase())
+            .filter(Boolean),
+        );
+
+        setUserOptions([
+          ...json,
+          ...REQUIRED_CONSULTATION_DOCTORS.filter((user) => {
+            const name = user.full_name?.trim().toLowerCase();
+            return !userIds.has(user.id) && (!name || !userNames.has(name));
+          }),
+        ]);
       } catch {
       }
     }
