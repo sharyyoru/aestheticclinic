@@ -420,6 +420,13 @@ type ProviderOption = {
   name: string | null;
 };
 
+const REQUIRED_APPOINTMENT_PROVIDERS: ProviderOption[] = [
+  {
+    id: "eced9ab1-674b-55b0-806b-91db4319e20d",
+    name: "Lily Radionova",
+  },
+];
+
 type DoctorSchedulingConfig = {
   provider_id: string;
   time_interval_minutes: number;
@@ -1498,18 +1505,31 @@ export default function CalendarPage() {
           setProviders([]);
           setProvidersError(error?.message ?? "Failed to load users.");
         } else {
-          setProviders(
-            (data as any[]).map((row) => {
-              const fullName = (row.full_name as string | null) ?? null;
-              const email = (row.email as string | null) ?? null;
-              const rawName = fullName && fullName.trim().length > 0 ? fullName : email;
-              const name = rawName && rawName.trim().length > 0 ? rawName : null;
-              return {
-                id: row.id as string,
-                name,
-              };
-            }),
+          const loadedProviders = (data as any[]).map((row) => {
+            const fullName = (row.full_name as string | null) ?? null;
+            const email = (row.email as string | null) ?? null;
+            const rawName = fullName && fullName.trim().length > 0 ? fullName : email;
+            const name = rawName && rawName.trim().length > 0 ? rawName : null;
+            return {
+              id: row.id as string,
+              name,
+            };
+          });
+
+          const providerIds = new Set(loadedProviders.map((provider) => provider.id));
+          const providerNames = new Set(
+            loadedProviders
+              .map((provider) => provider.name?.trim().toLowerCase())
+              .filter(Boolean),
           );
+
+          setProviders([
+            ...loadedProviders,
+            ...REQUIRED_APPOINTMENT_PROVIDERS.filter((provider) => {
+              const name = provider.name?.trim().toLowerCase();
+              return !providerIds.has(provider.id) && (!name || !providerNames.has(name));
+            }),
+          ]);
         }
 
         setProvidersLoading(false);
@@ -1604,7 +1624,7 @@ export default function CalendarPage() {
     "Laser& treatments aesthetics clinic",
     "Gstaad",
     "Montreux",
-    "Lily Radinova",
+    "Lily Radionova",
     "Neyner Leon",
     "Mounia Khedir",
     "Vladimir Facturation",
