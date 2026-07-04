@@ -58,6 +58,13 @@ const surgeryFormIdsByLanguage = {
   ],
 };
 
+const laserFormIdsByLanguage = {
+  en: [],
+  fr: [
+    "consentement-laser-fr",
+  ],
+};
+
 type BreastFormsSendModalProps = {
   patientId: string;
   patientEmail: string | null;
@@ -82,6 +89,10 @@ function BreastFormsSendModal({
     {
       title: "Chirurgie",
       formIds: surgeryFormIdsByLanguage[language],
+    },
+    {
+      title: "Laser",
+      formIds: laserFormIdsByLanguage[language],
     },
   ].map((group) => ({
     ...group,

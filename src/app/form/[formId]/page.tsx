@@ -41,6 +41,8 @@ const BREAST_SURGERY_FORM_IDS = new Set([
   "consentement-lift-reduction-en",
   "consentement-eclaire-fr",
   "consentement-eclaire-en",
+  "consentement-laser-fr",
+  "consentement-laser-en",
   "preoperative-instructions-en",
   "consignes-pre-post-op-fr",
   "surgery-questionnaire-anesthesie-fr",

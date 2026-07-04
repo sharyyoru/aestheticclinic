@@ -1248,6 +1248,116 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
     ],
   },
 
+  // ===== LASER INFORMED CONSENT (FRENCH) =====
+  {
+    id: "consentement-laser-fr",
+    name: "Laser Informed Consent",
+    nameFr: "Consentement eclaire - Laser",
+    description: "Informed consent form for laser treatment",
+    descriptionFr: "Formulaire de consentement eclaire pour traitement laser",
+    language: "fr",
+    category: "consent",
+    originalFile: "laser hair removal/laser 1.jpg",
+    sections: [
+      {
+        id: "patient-info",
+        title: "Patient Information",
+        titleFr: "Informations du patient",
+        fields: [
+          { id: "full_name", type: "text", label: "Full Name", labelFr: "Nom", required: true },
+          { id: "date_of_birth", type: "date", label: "Date of Birth", labelFr: "Date de naissance", required: true },
+          { id: "signature_date", type: "date", label: "Date", labelFr: "Date", required: true },
+        ],
+      },
+      {
+        id: "treatment-consent",
+        title: "Treatment Consent",
+        titleFr: "Consentement au traitement",
+        fields: [
+          { id: "treatment", type: "textarea", label: "Treatment", labelFr: "Traitement", required: true },
+          { id: "informed_by_physician", type: "checkbox", label: "I confirm that I have been informed by my physician about the treatment, side effects, and possible complications", labelFr: "Je confirme avoir ete informe(e) par mon medecin du traitement, des effets indesirables et des complications eventuelles", required: true },
+          { id: "questions_answered", type: "checkbox", label: "My questions have been answered completely and clearly", labelFr: "Il a ete repondu de maniere complete et comprehensible a mes questions", required: true },
+          { id: "payment_responsibility", type: "checkbox", label: "I acknowledge that health insurance does not cover the treatment fees and I am responsible for payment", labelFr: "Je reconnais que la caisse-maladie ne prend pas en charge les frais de ce traitement et que je suis responsable du paiement", required: true },
+          { id: "invoice_timing_acknowledged", type: "checkbox", label: "I acknowledge that the invoice must be paid no later than two weeks before the procedure", labelFr: "Je reconnais que la facture doit etre reglee au maximum deux semaines avant la date operatoire", required: true },
+          { id: "cancellation_policy_acknowledged", type: "checkbox", label: "I acknowledge that later changes or cancellations may incur a CHF 800 fee", labelFr: "Je reconnais que toute modification ulterieure ou annulation peut occasionner des frais de 800 CHF", required: true },
+          { id: "results_acknowledged", type: "checkbox", label: "I understand that results cannot be guaranteed", labelFr: "Je comprends que les resultats ne peuvent pas etre garantis", required: true },
+        ],
+      },
+      {
+        id: "photo-video",
+        title: "Photo and Video Authorization",
+        titleFr: "Autorisation photo et video",
+        fields: [
+          { id: "photo_video_authorization", type: "radio", label: "Photo/video authorization", labelFr: "Autorisation photo/video", required: true, options: [
+            { value: "authorized", label: "Authorized", labelFr: "Autorise" },
+            { value: "not_authorized", label: "Not authorized", labelFr: "N'autorise pas" },
+          ] },
+        ],
+      },
+      {
+        id: "signature-section",
+        title: "Signature",
+        titleFr: "Signature",
+        fields: [
+          { id: "signature", type: "signature", label: "Patient Signature", labelFr: "Signature patient", required: true },
+        ],
+      },
+    ],
+  },
+
+  // ===== LASER INFORMED CONSENT (ENGLISH) =====
+  {
+    id: "consentement-laser-en",
+    name: "Laser Informed Consent",
+    nameFr: "Consentement eclaire - Laser",
+    description: "Informed consent form for laser treatment",
+    descriptionFr: "Formulaire de consentement eclaire pour traitement laser",
+    language: "en",
+    category: "consent",
+    originalFile: "laser hair removal/laser 1.jpg",
+    sections: [
+      {
+        id: "patient-info",
+        title: "Patient Information",
+        fields: [
+          { id: "full_name", type: "text", label: "Name", required: true },
+          { id: "date_of_birth", type: "date", label: "Date of Birth", required: true },
+          { id: "signature_date", type: "date", label: "Date", required: true },
+        ],
+      },
+      {
+        id: "treatment-consent",
+        title: "Treatment Consent",
+        fields: [
+          { id: "treatment", type: "textarea", label: "Treatment", required: true },
+          { id: "informed_by_physician", type: "checkbox", label: "I confirm that I have been informed by my physician about the treatment, side effects, and possible complications", required: true },
+          { id: "questions_answered", type: "checkbox", label: "My questions have been answered completely and clearly", required: true },
+          { id: "payment_responsibility", type: "checkbox", label: "I acknowledge that health insurance does not cover the treatment fees and I am responsible for payment", required: true },
+          { id: "invoice_timing_acknowledged", type: "checkbox", label: "I acknowledge that the invoice must be paid no later than two weeks before the procedure", required: true },
+          { id: "cancellation_policy_acknowledged", type: "checkbox", label: "I acknowledge that later changes or cancellations may incur a CHF 800 fee", required: true },
+          { id: "results_acknowledged", type: "checkbox", label: "I understand that results cannot be guaranteed", required: true },
+        ],
+      },
+      {
+        id: "photo-video",
+        title: "Photo and Video Authorization",
+        fields: [
+          { id: "photo_video_authorization", type: "radio", label: "Photo/video authorization", required: true, options: [
+            { value: "authorized", label: "Authorized" },
+            { value: "not_authorized", label: "Not authorized" },
+          ] },
+        ],
+      },
+      {
+        id: "signature-section",
+        title: "Signature",
+        fields: [
+          { id: "signature", type: "signature", label: "Patient Signature", required: true },
+        ],
+      },
+    ],
+  },
+
   // ===== PRE-OPERATIVE INSTRUCTIONS (ENGLISH) =====
   {
     id: "preoperative-instructions-en",
@@ -1641,6 +1751,66 @@ Patient signature :                                                 Dr. Xavier T
 __________________________________       ___________________________________________
 
 Dr. Xavier Tenorio – FMH en Chirurgie Plastique Reconstructive et Esthétique – Chemin Rieu 18, Genève, +41(0)22 7322223, info@aesthetics-ge.ch
+`;
+
+const LASER_INFORMED_CONSENT_FR_SOURCE = `
+CONSENTEMENT ECLAIRE
+
+NOM : ____________________________
+
+DATE DE NAISSANCE : ____________________________
+
+DATE : ____________________________
+
+Le/la soussigne(e) confirme avoir ete dument informe(e) par son medecin traitant du traitement :
+
+________________________________________________________________________________
+
+ainsi que des effets indesirables et des complications eventuelles. De plus, il a ete repondu de maniere complete et comprehensible a ses questions.
+
+Il/elle a connaissance que la caisse-maladie ne prend pas en charge les frais de ce traitement et que la clinique (en cas d'anesthesie generale) peut facturer directement le temps de depassement chirurgical si l'operation prend plus de temps que prevu.
+
+Il/elle prend la responsabilite de regler la facture de l'intervention prevue deux semaines maximum avant la date operatoire. Toute modification de date est possible jusqu'a une semaine avant l'intervention. Toute modification ulterieure ou annulation aurait des frais de 800.- CHF.
+
+Par la signature du present formulaire, le/la soussigne(e) declare accepter le traitement.
+
+Nous ne pouvons pas garantir les resultats, mais nous pouvons vous garantir que vous serez conseille(e), evalue(e) et traite(e) en toute bonne foi et au mieux de nos connaissances.
+
+Le/la soussigne(e) confirme avoir connaissance que le materiel photographique et video pris pendant la consultation appartient exclusivement a son dossier medical, neanmoins :
+
+__ Le/la patient(e) autorise l'utilisation du materiel photographique et video dans le but de la recherche medicale, des presentations scientifiques et comme materiel d'illustration, a condition que son identite ne soit pas devoilee.
+
+__ Le/la patient(e) n'autorise en aucun cas l'utilisation de son materiel photographique et video.
+`;
+
+const LASER_INFORMED_CONSENT_EN_SOURCE = `
+INFORMED CONSENT
+
+NAME : ____________________________
+
+DATE OF BIRTH : ____________________________
+
+DATE : ____________________________
+
+The undersigned confirms that he/she has been duly informed by his/her treating physician of the treatment:
+
+________________________________________________________________________________
+
+as well as the possible side effects and complications. In addition, his/her questions have been answered completely and clearly.
+
+He/she understands that health insurance does not cover the costs of this treatment and that the clinic (in the event of general anesthesia) may directly invoice any surgical overrun time if the procedure takes longer than planned.
+
+He/she takes responsibility for paying the invoice for the planned procedure no later than two weeks before the operation date. Any date change is possible up to one week before the procedure. Any later change or cancellation would incur a fee of CHF 800.
+
+By signing this form, the undersigned declares that he/she accepts the treatment.
+
+We cannot guarantee results, but we can guarantee that you will be advised, evaluated, and treated in good faith and to the best of our knowledge.
+
+The undersigned confirms that he/she understands that photographic and video material taken during the consultation belongs exclusively to his/her medical file, nevertheless:
+
+__ The patient authorizes the use of photographic and video material for medical research, scientific presentations, and illustration material, provided that his/her identity is not disclosed.
+
+__ The patient does not authorize the use of his/her photographic and video material under any circumstances.
 `;
 
 const PRE_POST_INSTRUCTIONS_FR_SOURCE = `
@@ -2080,7 +2250,7 @@ function overrideForm(formId: string, originalFile: string, sections: FormSectio
   const form = FORM_DEFINITIONS.find((definition) => definition.id === formId);
   if (!form) return;
 
-  form.originalFile = `breast surgery/${originalFile}`;
+  form.originalFile = originalFile.includes("/") ? originalFile : `breast surgery/${originalFile}`;
   form.sections = sections;
 }
 
@@ -2168,6 +2338,26 @@ overrideForm("consentement-eclaire-en", "INFORMED CONSENT.docx", exactDocumentSe
   { id: "signature", type: "signature", label: "Patient signature", required: true },
   { id: "signature_date", type: "date", label: "Date", required: true },
 ]));
+overrideForm("consentement-laser-fr", "laser hair removal/laser 1.jpg", exactDocumentSections("fr", "Laser Informed Consent", "Consentement eclaire - Laser", LASER_INFORMED_CONSENT_FR_SOURCE, [
+  { id: "full_name", type: "text", label: "Full Name", labelFr: "Nom", required: true },
+  { id: "date_of_birth", type: "date", label: "Date of Birth", labelFr: "Date de naissance", required: true },
+  { id: "photo_video_authorization", type: "radio", label: "Photo/video authorization", labelFr: "Autorisation photo/video", required: true, options: [
+    { value: "authorized", label: "Authorized", labelFr: "Autorise" },
+    { value: "not_authorized", label: "Not authorized", labelFr: "N'autorise pas" },
+  ] },
+  { id: "signature", type: "signature", label: "Patient Signature", labelFr: "Signature patient", required: true },
+  { id: "signature_date", type: "date", label: "Date", labelFr: "Date", required: true },
+]));
+overrideForm("consentement-laser-en", "laser hair removal/laser 1.jpg", exactDocumentSections("en", "Laser Informed Consent", undefined, LASER_INFORMED_CONSENT_EN_SOURCE, [
+  { id: "full_name", type: "text", label: "Name", required: true },
+  { id: "date_of_birth", type: "date", label: "Date of Birth", required: true },
+  { id: "photo_video_authorization", type: "radio", label: "Photo/video authorization", required: true, options: [
+    { value: "authorized", label: "Authorized" },
+    { value: "not_authorized", label: "Not authorized" },
+  ] },
+  { id: "signature", type: "signature", label: "Patient Signature", required: true },
+  { id: "signature_date", type: "date", label: "Date", required: true },
+]));
 overrideForm("preoperative-instructions-en", "Preoperative instruction OP ENG (1).docx", exactDocumentSections("en", "Pre and Post-operative Instructions", undefined, PRE_POST_INSTRUCTIONS_EN_SOURCE));
 overrideForm("consignes-pre-post-op-fr", "consignes pre et post op FR (1).docx", exactDocumentSections("fr", "Pre and Post-operative Instructions", "Consignes pré et post-opératoires", PRE_POST_INSTRUCTIONS_FR_SOURCE));
 
@@ -2190,6 +2380,8 @@ const ALTERNATE_LANGUAGE_FORM_IDS: Record<string, string> = {
   "consentement-lift-reduction-en": "consentement-lift-reduction-fr",
   "consentement-eclaire-fr": "consentement-eclaire-en",
   "consentement-eclaire-en": "consentement-eclaire-fr",
+  "consentement-laser-fr": "consentement-laser-en",
+  "consentement-laser-en": "consentement-laser-fr",
   "preoperative-instructions-en": "consignes-pre-post-op-fr",
   "consignes-pre-post-op-fr": "preoperative-instructions-en",
   "surgery-questionnaire-anesthesie-fr": "surgery-questionnaire-anesthesie-en",
