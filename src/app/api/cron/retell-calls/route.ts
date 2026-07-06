@@ -15,6 +15,14 @@ import {
   RETELL_FROM_NUMBER,
 } from "@/lib/retell";
 
+// Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).
+// MUST be /api/webhooks/retell-agent — the only endpoint that records the call
+// into `call_logs` and `retell_request_logs`. Without this, Retell fires no
+// webhooks and neither the patient CRM nor the /agents Retell Logs tab update.
+const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/retell-agent`
+  : "https://aestheticclinic.vercel.app/api/webhooks/retell-agent";
+
 export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
@@ -67,6 +75,7 @@ export async function GET(req: NextRequest) {
         from_number: RETELL_FROM_NUMBER,
         to_number: call.to_number as string,
         agent_id: RETELL_AGENT_ID,
+        webhook_url: RETELL_WEBHOOK_URL,
         retell_llm_dynamic_variables: {
           user_name: call.user_name as string,
           service_name: call.service_name as string,

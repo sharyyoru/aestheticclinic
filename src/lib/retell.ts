@@ -12,6 +12,7 @@ export type RetellCallPayload = {
   from_number: string;
   to_number: string;
   agent_id: string;
+  webhook_url?: string;
   retell_llm_dynamic_variables: {
     user_name: string;       // patient first name – used in Valerie's prompt as {{user_name}}
     service_name: string;    // deal service – used in Valerie's prompt as {{service_name}}
