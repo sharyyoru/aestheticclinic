@@ -107,8 +107,13 @@ function extractCustomerInfo(call: RetellCallPayload["call"]): {
     lastName = metadata.last_name as string;
   }
   
-  // Phone from caller ID or variables or analysis
-  const rawPhone = (vars.phone as string) || (vars.customer_phone as string) || (analysis.phone as string) || parsedLeadInfo.phone || call.from_number || "";
+  // Phone from caller ID or variables or analysis. The patient's own number is
+  // the OTHER party: for inbound that's from_number, for outbound it's
+  // to_number (from_number is then the clinic's caller-ID). Using the wrong one
+  // for outbound calls matched the call to the clinic's own number instead of
+  // the patient.
+  const recipientNumber = call.direction === "outbound" ? call.to_number : call.from_number;
+  const rawPhone = (vars.phone as string) || (vars.customer_phone as string) || (analysis.phone as string) || parsedLeadInfo.phone || recipientNumber || "";
   // Skip Retell placeholder numbers (web calls have no real caller ID)
   let phone = rawPhone && !rawPhone.startsWith("+1000") ? rawPhone : "";
   
@@ -184,10 +189,42 @@ function matchServiceToHubspot(
   return null;
 }
 
+/**
+ * Mirror every incoming Retell webhook into retell_request_logs so the
+ * /agents "Retell Logs" tab reflects live call activity. The clinic migrated
+ * to conversation-flow agents whose events land here (not on the old
+ * /api/retell/webhook endpoint), which is why that tab stopped updating.
+ * Fire-and-forget: never block or fail the lead flow because of logging.
+ */
+async function logRetellAgentRequest(payload: RetellCallPayload) {
+  try {
+    const call = payload.call;
+    const dynamicVars = call?.retell_llm_dynamic_variables ?? null;
+    const patientIdRaw =
+      (dynamicVars?.patient_id as string | undefined) ??
+      (call?.metadata?.patient_id as string | undefined);
+    await supabaseAdmin.from("retell_request_logs").insert({
+      call_id: call?.call_id ?? null,
+      event_type: payload.event ?? null,
+      function_name: null,
+      request_body: payload as unknown as Record<string, unknown>,
+      metadata: call?.metadata ?? null,
+      dynamic_variables: dynamicVars,
+      call_data: call ?? null,
+      patient_id: typeof patientIdRaw === "string" ? patientIdRaw : null,
+    });
+  } catch (logError) {
+    console.error("[Retell Agent] Failed to log request:", logError);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const payload = (await request.json()) as RetellCallPayload;
-    
+
+    // Log every incoming webhook (fire-and-forget) for the Retell Logs tab.
+    void logRetellAgentRequest(payload);
+
     console.log("[Retell Agent] Received webhook:", payload.event, payload.call?.call_id);
     console.log("[Retell Agent] Payload:", JSON.stringify({
       event: payload.event,
@@ -239,7 +276,23 @@ export async function POST(request: NextRequest) {
 
     let patientRow: { id: string; notes: string | null } | null = null;
 
+    // Prefer the explicit patient_id from call metadata (set by our workflow +
+    // outbound-call endpoints). This is the most reliable link — especially for
+    // outbound calls where the recipient number formatting can vary — so we
+    // never mis-attribute a call to the wrong patient.
+    const metadataPatientId =
+      typeof call.metadata?.patient_id === "string" ? (call.metadata.patient_id as string) : null;
+    if (metadataPatientId) {
+      const { data: byId } = await supabaseAdmin
+        .from("patients")
+        .select("id, notes")
+        .eq("id", metadataPatientId)
+        .maybeSingle();
+      if (byId) patientRow = byId;
+    }
+
     for (const phoneVariant of phoneVariants) {
+      if (patientRow) break;
       if (!phoneVariant) continue;
       
       const { data: existingByPhone } = await supabaseAdmin

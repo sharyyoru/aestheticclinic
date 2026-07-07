@@ -18,11 +18,16 @@ const RETELL_AGENTS = {
   french: MAIN_AGENT_ID,
 } as const;
 
-// Webhook URL for Retell to call when AI triggers functions (send_sms, etc.)
-// CRITICAL: Without this, the AI cannot send SMS or perform other actions
-const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL 
-  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/retell/webhook`
-  : "https://aestheticclinic.vercel.app/api/retell/webhook";
+// Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).
+// MUST be the /api/webhooks/retell-agent endpoint — that is the only endpoint
+// that records the call into the `call_logs` table shown on the patient CRM
+// "Call Logs" tab. Pointing this at /api/retell/webhook (the in-call function
+// handler) means the call is NEVER recorded, which is why workflow-triggered
+// outbound calls previously showed no call logs. In-call functions are wired
+// separately via the agent's tool URLs and are unaffected by this.
+const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/retell-agent`
+  : "https://aestheticclinic.vercel.app/api/webhooks/retell-agent";
 
 export const runtime = "nodejs";
 

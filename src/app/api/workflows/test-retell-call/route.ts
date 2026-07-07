@@ -14,10 +14,13 @@ const RETELL_AGENTS = {
   french: MAIN_AGENT_ID,
 } as const;
 
-// Webhook URL for Retell to call when AI triggers functions (send_sms, etc.)
-const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL 
-  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/retell/webhook`
-  : "https://aestheticclinic.vercel.app/api/retell/webhook";
+// Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).
+// MUST be /api/webhooks/retell-agent so the call is recorded into `call_logs`
+// (the patient CRM "Call Logs" tab). In-call functions use the agent's own
+// tool URLs and are unaffected.
+const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/retell-agent`
+  : "https://aestheticclinic.vercel.app/api/webhooks/retell-agent";
 
 /**
  * POST /api/workflows/test-retell-call

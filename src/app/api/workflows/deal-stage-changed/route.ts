@@ -5,10 +5,14 @@ import { normalizePhone, RETELL_FROM_NUMBER } from "@/lib/retell";
 
 export const runtime = "nodejs";
 
-// Webhook URL for Retell to call when AI triggers functions (send_sms, end_call, etc.)
-const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL 
-  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/retell/webhook`
-  : "https://aestheticclinic.vercel.app/api/retell/webhook";
+// Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).
+// MUST be /api/webhooks/retell-agent — the only endpoint that records the call
+// into `call_logs` (the patient CRM "Call Logs" tab). Using /api/retell/webhook
+// meant workflow-triggered outbound calls were never recorded. In-call
+// functions use the agent's own tool URLs and are unaffected.
+const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
+  ? `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/retell-agent`
+  : "https://aestheticclinic.vercel.app/api/webhooks/retell-agent";
 
 // Sales team users for round-robin assignment
 // Victoria removed on 2026-06-05
