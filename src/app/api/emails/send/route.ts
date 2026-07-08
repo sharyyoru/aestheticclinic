@@ -70,8 +70,9 @@ type InlineAttachment = {
 
 export async function POST(request: Request) {
   try {
-    const { to, subject, html, fromUserEmail, fromUserName, emailId, patientId, inlineAttachments } = (await request.json()) as {
+    const { to, cc, subject, html, fromUserEmail, fromUserName, emailId, patientId, inlineAttachments } = (await request.json()) as {
       to?: string;
+      cc?: string | null;
       subject?: string;
       html?: string;
       fromUserEmail?: string | null;
@@ -122,6 +123,9 @@ export async function POST(request: Request) {
     const formData = new FormData();
     formData.append("from", `${fromName} <${fromAddress}>`);
     formData.append("to", trimmedTo);
+    if (cc && cc.trim().length > 0) {
+      formData.append("cc", cc.trim());
+    }
     formData.append("subject", trimmedSubject);
     
     // Sanitize tel: links for iPhone compatibility

@@ -65,6 +65,7 @@ create table if not exists patient_insurances (
   provider_name text not null,
   card_number text not null,
   insurance_type text check (insurance_type in ('private','semi_private','basic')) not null,
+  email text,
   created_at timestamptz default now()
 );
 
@@ -314,6 +315,7 @@ create table if not exists emails (
   patient_id uuid references patients(id) on delete set null,
   deal_id uuid references deals(id) on delete set null,
   to_address text not null,
+  cc_address text,
   from_address text,
   subject text not null,
   body text not null,

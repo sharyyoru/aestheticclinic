@@ -28,6 +28,7 @@ type InsuranceRecord = {
   provider_name: string | null;
   card_number: string | null;
   insurance_type: string | null;
+  email: string | null;
   insurer_id: string | null;
   gln: string | null;
   avs_number: string | null;
@@ -292,6 +293,7 @@ export default function PatientDetailsWizard({
     const providerName = (formData.get("provider_name") as string | null)?.trim() || null;
     const cardNumber = (formData.get("card_number") as string | null)?.trim() || null;
     const insuranceType = (formData.get("insurance_type") as string | null)?.trim() || null;
+    const insuranceEmail = (formData.get("email") as string | null)?.trim() || null;
     const policyNumber = (formData.get("policy_number") as string | null)?.trim() || null;
     const lawType = (formData.get("law_type") as string | null)?.trim() || null;
     const billingType = (formData.get("billing_type") as string | null)?.trim() || null;
@@ -314,6 +316,7 @@ export default function PatientDetailsWizard({
       provider_name: providerName,
       card_number: cardNumber,
       insurance_type: insuranceType,
+      email: insuranceEmail,
       policy_number: policyNumber,
       law_type: lawType || null,
       billing_type: billingType || null,
@@ -727,6 +730,7 @@ export default function PatientDetailsWizard({
                       {ins.policy_number ? <span>Policy: {ins.policy_number}</span> : null}
                       {ins.card_number ? <span>Card: {ins.card_number}</span> : null}
                       {ins.insurance_type ? <span>Type: {ins.insurance_type}</span> : null}
+                      {ins.email ? <span>Email: {ins.email}</span> : null}
                       {ins.billing_type ? <span>Billing: {ins.billing_type === "TG" ? "Tiers Garant" : "Tiers Payant"}</span> : null}
                       {ins.avs_number ? <span>AVS: {ins.avs_number}</span> : null}
                       {ins.case_number ? <span>Case: {ins.case_number}</span> : null}
@@ -793,6 +797,22 @@ export default function PatientDetailsWizard({
                       className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="ins_email" className="block text-xs font-medium text-slate-700">
+                    Insurance email
+                  </label>
+                  <input
+                    id="ins_email"
+                    name="email"
+                    type="email"
+                    placeholder="claims@insurance.com"
+                    className="block w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Used to send claim documents and correspondence directly to the insurer.
+                  </p>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-3">

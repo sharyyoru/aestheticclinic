@@ -43,6 +43,7 @@ type EmailFilter = "all" | "inbound" | "outbound" | "scheduled";
 type PatientEmail = {
   id: string;
   to_address: string;
+  cc_address: string | null;
   from_address: string | null;
   subject: string;
   body: string;
@@ -183,6 +184,18 @@ function formatDateOnly(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function formatFileSize(bytes: number | undefined): string {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
 export default function PatientActivityCard({
   patientId,
   createdAt,
@@ -283,6 +296,20 @@ export default function PatientActivityCard({
   const [emailAttachmentsError, setEmailAttachmentsError] = useState<string | null>(
     null,
   );
+
+  // CC + recipient type + insurance
+  const [emailCc, setEmailCc] = useState("");
+  const [emailRecipientType, setEmailRecipientType] = useState<"patient" | "insurance" | "both">("patient");
+  const [patientInsurance, setPatientInsurance] = useState<{ id: string; provider_name: string; email: string | null; insurance_type: string } | null>(null);
+  const [patientInsuranceLoading, setPatientInsuranceLoading] = useState(false);
+
+  // Document picker state for attaching patient files
+  const [documentPickerOpen, setDocumentPickerOpen] = useState(false);
+  const [documentPickerFiles, setDocumentPickerFiles] = useState<Array<{ path: string; name: string; source: string; size?: number; created_at?: string; mimeType?: string }>>([]);
+  const [documentPickerLoading, setDocumentPickerLoading] = useState(false);
+  const [documentPickerSearch, setDocumentPickerSearch] = useState("");
+  const [documentPickerSelectedPaths, setDocumentPickerSelectedPaths] = useState<Set<string>>(new Set());
+  const [documentPickerAttaching, setDocumentPickerAttaching] = useState(false);
 
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("");
@@ -1008,6 +1035,10 @@ export default function PatientActivityCard({
         setEmailScheduledFor("");
         setEmailAttachments([]);
         setEmailAttachmentsError(null);
+        setEmailCc("");
+        setEmailRecipientType("patient");
+        setDocumentPickerSelectedPaths(new Set());
+        setDocumentPickerSearch("");
         setUseSignature(true);
         setComposeFromQueryHandled(false);
         // Remove composeEmail query param to prevent modal from reopening
@@ -1236,6 +1267,206 @@ export default function PatientActivityCard({
     }
   }
 
+  // Load patient insurance info when email modal opens
+  useEffect(() => {
+    if (!emailModalOpen) return;
+
+    let isMounted = true;
+
+    async function loadInsurance() {
+      try {
+        setPatientInsuranceLoading(true);
+        const { data, error } = await supabaseClient
+          .from("patient_insurances")
+          .select("id, provider_name, email, insurance_type")
+          .eq("patient_id", patientId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.error("Failed to load insurance info:", error);
+          setPatientInsurance(null);
+        } else if (data) {
+          setPatientInsurance(data as { id: string; provider_name: string; email: string | null; insurance_type: string });
+        } else {
+          setPatientInsurance(null);
+        }
+      } catch (err) {
+        console.error("Error loading insurance info:", err);
+        if (!isMounted) return;
+        setPatientInsurance(null);
+      } finally {
+        if (isMounted) setPatientInsuranceLoading(false);
+      }
+    }
+
+    loadInsurance();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [emailModalOpen, patientId]);
+
+  // Load patient documents for the document picker
+  useEffect(() => {
+    if (!documentPickerOpen) return;
+
+    let isMounted = true;
+
+    async function loadDocuments() {
+      try {
+        setDocumentPickerLoading(true);
+
+        const files: Array<{ path: string; name: string; source: string; size?: number; created_at?: string; mimeType?: string }> = [];
+
+        // Load from primary patient_document bucket
+        async function listRecursive(prefix: string) {
+          const { data, error } = await supabaseClient.storage
+            .from("patient_document")
+            .list(prefix, { limit: 1000 });
+
+          if (error || !data) return;
+
+          for (const item of data as any[]) {
+            // Skip folder placeholders
+            if (item.name === ".keep" || item.name === ".emptyFolderPlaceholder") continue;
+
+            // Folder detection: items with no id and no metadata are folders
+            const isFolder = item.id == null && item.metadata == null;
+            const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
+
+            if (isFolder) {
+              await listRecursive(itemPath);
+            } else {
+              files.push({
+                path: itemPath,
+                name: item.name,
+                source: "patient_document",
+                size: item.metadata?.size ?? undefined,
+                created_at: item.created_at || undefined,
+                mimeType: item.metadata?.mimetype ?? undefined,
+              });
+            }
+          }
+        }
+
+        await listRecursive(patientId);
+
+        // Load from legacy patient-docs bucket if patient name is available
+        if (patientName && patientName.trim().split(/\s+/).length >= 2) {
+          try {
+            const response = await fetch("/api/patient-docs/list-documents", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                patientId,
+                firstName: patientName.trim().split(/\s+/)[0],
+                lastName: patientName.trim().split(/\s+/).slice(1).join(" "),
+              }),
+            });
+
+            if (response.ok) {
+              const legacyData = await response.json();
+              for (const file of legacyData.files || []) {
+                files.push({
+                  path: file.path,
+                  name: file.name,
+                  source: "patient-docs",
+                  size: file.size ?? undefined,
+                  created_at: file.createdAt ?? undefined,
+                  mimeType: file.mimeType ?? undefined,
+                });
+              }
+            }
+          } catch (err) {
+            console.error("Failed to load legacy documents:", err);
+          }
+        }
+
+        if (!isMounted) return;
+
+        // Sort by created_at desc, then name
+        files.sort((a, b) => {
+          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          if (dateB !== dateA) return dateB - dateA;
+          return a.name.localeCompare(b.name);
+        });
+
+        setDocumentPickerFiles(files);
+      } catch (err) {
+        console.error("Error loading documents:", err);
+      } finally {
+        if (isMounted) setDocumentPickerLoading(false);
+      }
+    }
+
+    loadDocuments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [documentPickerOpen, patientId, patientName]);
+
+  async function handleAttachSelectedDocuments() {
+    if (documentPickerSelectedPaths.size === 0) return;
+
+    try {
+      setDocumentPickerAttaching(true);
+
+      const selected = documentPickerFiles.filter((f) => documentPickerSelectedPaths.has(f.path));
+      const newFiles: File[] = [];
+
+      for (const file of selected) {
+        try {
+          const bucket = file.source === "patient-docs" ? "patient-docs" : "patient_document";
+          const path = file.path;
+
+          const { data, error } = await supabaseClient.storage
+            .from(bucket)
+            .download(path);
+
+          if (error || !data) {
+            console.error("Failed to download document:", file.path, error);
+            continue;
+          }
+
+          const mimeType = file.mimeType || "application/octet-stream";
+          const newFile = new File([data], file.name, { type: mimeType });
+          newFiles.push(newFile);
+        } catch (err) {
+          console.error("Error downloading document:", file.path, err);
+        }
+      }
+
+      setEmailAttachments((prev) => {
+        const combined = [...prev, ...newFiles];
+        const seen = new Set<string>();
+        const deduped: File[] = [];
+
+        for (const file of combined) {
+          const key = `${file.name}-${file.size}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          deduped.push(file);
+        }
+
+        return deduped;
+      });
+
+      setDocumentPickerOpen(false);
+      setDocumentPickerSelectedPaths(new Set());
+      setDocumentPickerSearch("");
+    } catch (err) {
+      console.error("Error attaching documents:", err);
+    } finally {
+      setDocumentPickerAttaching(false);
+    }
+  }
+
   useEffect(() => {
     let isMounted = true;
 
@@ -1247,7 +1478,7 @@ export default function PatientActivityCard({
         const { data, error } = await supabaseClient
           .from("emails")
           .select(
-            "id, to_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
+            "id, to_address, cc_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
           )
           .eq("patient_id", patientId)
           .order("created_at", { ascending: false });
@@ -2382,12 +2613,36 @@ export default function PatientActivityCard({
     // Guard against double submission
     if (emailSaving) return;
 
-    const toAddress = emailTo.trim();
     const subject = emailSubject.trim();
     const body = emailBody.trim();
 
-    if (!toAddress || !subject || !body) {
-      setEmailSaveError("To, subject, and body are required.");
+    if (!subject || !body) {
+      setEmailSaveError("Subject and body are required.");
+      return;
+    }
+
+    // Resolve recipient based on recipient type
+    let toAddress = "";
+    let ccAddress = "";
+
+    if (emailRecipientType === "patient") {
+      toAddress = emailTo.trim() || patientEmail?.trim() || "";
+      ccAddress = emailCc.trim();
+    } else if (emailRecipientType === "insurance") {
+      toAddress = patientInsurance?.email?.trim() || emailTo.trim() || "";
+      // If sending to insurance only, CC can still be used for the patient or internal copy
+      ccAddress = emailCc.trim();
+    } else if (emailRecipientType === "both") {
+      toAddress = emailTo.trim() || patientEmail?.trim() || "";
+      ccAddress = patientInsurance?.email?.trim() || emailCc.trim();
+    }
+
+    if (!toAddress) {
+      setEmailSaveError("A recipient email address is required.");
+      return;
+    }
+    if (emailRecipientType === "insurance" && !patientInsurance?.email && !toAddress) {
+      setEmailSaveError("No insurance email found. Add an insurance email or choose a different recipient.");
       return;
     }
 
@@ -2447,6 +2702,7 @@ export default function PatientActivityCard({
         .insert({
           patient_id: patientId,
           to_address: toAddress,
+          cc_address: ccAddress || null,
           from_address: fromAddress,
           subject,
           body: finalBody,
@@ -2455,7 +2711,7 @@ export default function PatientActivityCard({
           sent_at: resolvedSentAt,
         })
         .select(
-          "id, to_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
+          "id, to_address, cc_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
         )
         .single();
 
@@ -2522,6 +2778,7 @@ export default function PatientActivityCard({
           },
           body: JSON.stringify({
             to: toAddress,
+            cc: ccAddress || null,
             subject,
             html: finalBody,
             fromUserEmail: fromAddress,
@@ -2601,6 +2858,8 @@ export default function PatientActivityCard({
 
       setEmails((prev) => [insertedEmail, ...prev.filter(e => e.id !== insertedEmail.id)]);
       setEmailTo(defaultEmailTo);
+      setEmailCc("");
+      setEmailRecipientType("patient");
       setEmailSubject("");
       setEmailBody("");
       setEmailScheduleEnabled(false);
@@ -2681,7 +2940,7 @@ export default function PatientActivityCard({
       const { data: emailsData, error: emailsErrorLatest } = await supabaseClient
         .from("emails")
         .select(
-          "id, to_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
+          "id, to_address, cc_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
         )
         .eq("patient_id", patientId)
         .order("created_at", { ascending: false });
@@ -3612,6 +3871,9 @@ export default function PatientActivityCard({
                               <>
                                 <span className="font-medium text-sky-700">To:</span>{" "}
                                 <span className="font-medium">{viewEmail.to_address}</span>
+                                {viewEmail.cc_address && (
+                                  <span className="text-slate-400"> • CC: {viewEmail.cc_address}</span>
+                                )}
                                 {viewEmail.from_address && (
                                   <span className="text-slate-400"> • From: {viewEmail.from_address}</span>
                                 )}
@@ -5011,6 +5273,10 @@ export default function PatientActivityCard({
               setEmailScheduledFor("");
               setEmailAttachments([]);
               setEmailAttachmentsError(null);
+              setEmailCc("");
+              setEmailRecipientType("patient");
+              setDocumentPickerSelectedPaths(new Set());
+              setDocumentPickerSearch("");
               setUseSignature(true);
               setComposeFromQueryHandled(false);
               // Remove composeEmail query param to prevent modal from reopening
@@ -5054,6 +5320,10 @@ export default function PatientActivityCard({
                     setEmailScheduledFor("");
                     setEmailAttachments([]);
                     setEmailAttachmentsError(null);
+                    setEmailCc("");
+                    setEmailRecipientType("patient");
+                    setDocumentPickerSelectedPaths(new Set());
+                    setDocumentPickerSearch("");
                     setUseSignature(true);
                     setComposeFromQueryHandled(false);
                     // Remove composeEmail query param to prevent modal from reopening
@@ -5069,17 +5339,86 @@ export default function PatientActivityCard({
               </div>
             </div>
             <form onSubmit={handleEmailSubmit} className="mt-3 space-y-3">
+              {/* Recipient type selector */}
+              <div className="space-y-1">
+                <label className="block text-[11px] font-medium text-slate-700">
+                  Send to
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: "patient", label: "Patient" },
+                    { value: "insurance", label: "Insurance only" },
+                    { value: "both", label: "Patient + Insurance" },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setEmailRecipientType(option.value as typeof emailRecipientType)}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                        emailRecipientType === option.value
+                          ? "border-sky-500 bg-sky-600 text-white"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                {emailRecipientType === "insurance" && patientInsuranceLoading && (
+                  <p className="text-[10px] text-slate-500">Loading insurance info...</p>
+                )}
+                {emailRecipientType === "insurance" && patientInsurance && !patientInsurance.email && (
+                  <p className="text-[10px] text-amber-600">
+                    No insurance email on file. Add one in the patient details or enter an address below.
+                  </p>
+                )}
+                {emailRecipientType === "both" && patientInsurance && patientInsurance.email && (
+                  <p className="text-[10px] text-slate-500">
+                    CC to {patientInsurance.provider_name}: {patientInsurance.email}
+                  </p>
+                )}
+                {emailRecipientType === "both" && patientInsurance && !patientInsurance.email && (
+                  <p className="text-[10px] text-amber-600">
+                    No insurance email found. Add one in patient details or use the CC field.
+                  </p>
+                )}
+              </div>
+
+              {/* To field */}
               <div className="space-y-1">
                 <label htmlFor="email_to" className="block text-[11px] font-medium text-slate-700">
-                  To
+                  To {emailRecipientType === "insurance" ? "(insurance email)" : ""}
                 </label>
                 <input
                   id="email_to"
                   type="email"
                   value={emailTo}
                   onChange={(event) => setEmailTo(event.target.value)}
+                  placeholder={
+                    emailRecipientType === "insurance"
+                      ? patientInsurance?.email || "insurance@company.com"
+                      : patientEmail || "patient@example.com"
+                  }
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="patient@example.com"
+                />
+              </div>
+
+              {/* CC field */}
+              <div className="space-y-1">
+                <label htmlFor="email_cc" className="block text-[11px] font-medium text-slate-700">
+                  CC
+                </label>
+                <input
+                  id="email_cc"
+                  type="email"
+                  value={emailCc}
+                  onChange={(event) => setEmailCc(event.target.value)}
+                  placeholder={
+                    emailRecipientType === "patient" && patientInsurance?.email
+                      ? patientInsurance.email
+                      : "cc@example.com"
+                  }
+                  className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
               <div className="space-y-1">
@@ -5233,6 +5572,13 @@ export default function PatientActivityCard({
                     className="rounded-full border border-emerald-300/80 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 shadow-sm hover:bg-emerald-100"
                   >
                     Attach Invoice
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDocumentPickerOpen(true)}
+                    className="rounded-full border border-violet-300/80 bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-700 shadow-sm hover:bg-violet-100"
+                  >
+                    Attach from Documents
                   </button>
                   {emailAttachments.length > 0 ? (
                     <span className="text-[10px] text-slate-500">
@@ -5426,6 +5772,10 @@ export default function PatientActivityCard({
                     setEmailScheduledFor("");
                     setEmailAttachments([]);
                     setEmailAttachmentsError(null);
+                    setEmailCc("");
+                    setEmailRecipientType("patient");
+                    setDocumentPickerSelectedPaths(new Set());
+                    setDocumentPickerSearch("");
                     setUseSignature(true);
                     setComposeFromQueryHandled(false);
                     // Remove composeEmail query param to prevent modal from reopening
@@ -5444,6 +5794,141 @@ export default function PatientActivityCard({
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      ) : null}
+
+      {/* Document Picker Modal */}
+      {documentPickerOpen ? createPortal(
+        <div 
+          className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setDocumentPickerOpen(false);
+              setDocumentPickerSelectedPaths(new Set());
+              setDocumentPickerSearch("");
+            }
+          }}
+        >
+          <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 text-xs shadow-[0_24px_60px_rgba(15,23,42,0.65)]">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Attach from Documents</h2>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Select patient files to attach to this email.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDocumentPickerOpen(false);
+                  setDocumentPickerSelectedPaths(new Set());
+                  setDocumentPickerSearch("");
+                }}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={documentPickerSearch}
+                onChange={(e) => setDocumentPickerSearch(e.target.value)}
+                placeholder="Search files..."
+                className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+
+              {documentPickerLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-sky-600"></div>
+                </div>
+              ) : documentPickerFiles.length === 0 ? (
+                <p className="py-8 text-center text-[11px] text-slate-500">
+                  No documents found for this patient.
+                </p>
+              ) : (
+                <div className="max-h-72 overflow-y-auto space-y-1">
+                  {documentPickerFiles
+                    .filter((file) => {
+                      if (!documentPickerSearch.trim()) return true;
+                      const search = documentPickerSearch.toLowerCase();
+                      return file.name.toLowerCase().includes(search) || file.path.toLowerCase().includes(search);
+                    })
+                    .map((file) => {
+                      const isSelected = documentPickerSelectedPaths.has(file.path);
+                      return (
+                        <button
+                          key={`${file.source}-${file.path}`}
+                          type="button"
+                          onClick={() => {
+                            setDocumentPickerSelectedPaths((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(file.path)) {
+                                next.delete(file.path);
+                              } else {
+                                next.add(file.path);
+                              }
+                              return next;
+                            });
+                          }}
+                          className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1.5 text-left text-[11px] transition-colors ${
+                            isSelected
+                              ? "border-sky-300 bg-sky-50 text-sky-900"
+                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className={`h-4 w-4 shrink-0 rounded border ${isSelected ? "bg-sky-500 border-sky-500" : "border-slate-300"}`}>
+                            {isSelected && (
+                              <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium">{file.name}</div>
+                            <div className="text-[10px] text-slate-400 truncate">
+                              {file.source === "patient-docs" ? "Legacy documents" : "Patient documents"}
+                              {file.size ? ` · ${formatFileSize(file.size)}` : ""}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-[10px] text-slate-500">
+                  {documentPickerSelectedPaths.size} file{documentPickerSelectedPaths.size > 1 ? "s" : ""} selected
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocumentPickerOpen(false);
+                      setDocumentPickerSelectedPaths(new Set());
+                      setDocumentPickerSearch("");
+                    }}
+                    className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAttachSelectedDocuments}
+                    disabled={documentPickerSelectedPaths.size === 0 || documentPickerAttaching}
+                    className="inline-flex items-center rounded-lg border border-sky-200 bg-sky-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {documentPickerAttaching ? "Attaching..." : "Attach selected"}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>,
         document.body
