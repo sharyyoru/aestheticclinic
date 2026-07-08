@@ -1040,7 +1040,6 @@ export default function PatientActivityCard({
         setDocumentPickerSelectedPaths(new Set());
         setDocumentPickerSearch("");
         setUseSignature(true);
-        setComposeFromQueryHandled(false);
         // Remove composeEmail query param to prevent modal from reopening
         router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
       }
@@ -2872,6 +2871,8 @@ export default function PatientActivityCard({
       setEmailFullscreen(false);
       setUseSignature(true);
       setEmailSaving(false);
+      // Remove composeEmail query param to prevent modal from reopening
+      router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
     } catch {
       setEmailSaveError("Unexpected error saving email.");
       setEmailSaving(false);
@@ -5278,7 +5279,6 @@ export default function PatientActivityCard({
               setDocumentPickerSelectedPaths(new Set());
               setDocumentPickerSearch("");
               setUseSignature(true);
-              setComposeFromQueryHandled(false);
               // Remove composeEmail query param to prevent modal from reopening
               router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
             }
@@ -5325,7 +5325,6 @@ export default function PatientActivityCard({
                     setDocumentPickerSelectedPaths(new Set());
                     setDocumentPickerSearch("");
                     setUseSignature(true);
-                    setComposeFromQueryHandled(false);
                     // Remove composeEmail query param to prevent modal from reopening
                     router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
                   }}
@@ -5777,7 +5776,6 @@ export default function PatientActivityCard({
                     setDocumentPickerSelectedPaths(new Set());
                     setDocumentPickerSearch("");
                     setUseSignature(true);
-                    setComposeFromQueryHandled(false);
                     // Remove composeEmail query param to prevent modal from reopening
                     router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
                   }}
