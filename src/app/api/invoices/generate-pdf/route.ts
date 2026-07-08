@@ -649,8 +649,8 @@ export async function POST(request: NextRequest) {
         paymentRemark2 = `Acompte reçu / Anzahlung erhalten: ${paidAmt2.toFixed(2)} CHF — Solde / Restbetrag: ${remaining2.toFixed(2)} CHF`;
       }
 
-      const tiersMode2 = mapSumexTiers("TG");
-      // amountPrepaid only allowed in TG — keep consistent even though this path is always TG
+      const tiersMode2 = mapSumexTiers(invoiceData.billing_type || "TG");
+      // amountPrepaid only allowed in TG — respect actual billing type
       const amountPrepaid2 = tiersMode2 === TiersMode.Garant ? paidAmt2 : 0;
 
       const sumexInput2: SumexInvoiceInput = {
@@ -665,7 +665,7 @@ export async function POST(request: NextRequest) {
         amountPrepaid: amountPrepaid2,
         invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
         invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
-        lawType: mapSumexLaw(invoiceData.health_insurance_law || "VVG"),
+        lawType: mapSumexLaw(invoiceData.health_insurance_law || "KVG"),
         esrType: EsrType.QR,
         iban: provIbanSumex,
         paymentPeriod: 30,
@@ -695,7 +695,7 @@ export async function POST(request: NextRequest) {
         // These invoices won't be sent to insurance so placeholder values are fine.
         patientSex: mapSumexSex(patientData.gender || "male"),
         patientBirthdate: patientData.dob || "1990-01-01",
-        patientSsn: "",
+        patientSsn: invoiceData.patient_ssn || "",
         patientAddress: {
           familyName: patientData.last_name || "Patient",
           givenName: patientData.first_name || "Unknown",
@@ -719,6 +719,29 @@ export async function POST(request: NextRequest) {
         treatmentCanton: provCanton,
         treatmentDateBegin: treatmentDate,
         treatmentDateEnd: treatmentDate,
+        // Include diagnoses if available (for insurance invoices)
+        diagnoses: (() => {
+          const diagCodes: string[] = Array.isArray(invoiceData.diagnosis_codes)
+            ? invoiceData.diagnosis_codes.map((d: any) => d.code || d).filter(Boolean)
+            : [];
+          return diagCodes.map(code => ({
+            type: DiagnosisType.ICD,
+            code: String(code),
+          }));
+        })(),
+        // Include insurance information if available
+        insuranceGln: invoiceData.insurer_gln || undefined,
+        insuranceAddress: invoiceData.insurer_gln ? {
+          companyName: invoiceData.insurance_name || "",
+          street: "",
+          zip: "",
+          city: "",
+          stateCode: "",
+        } : undefined,
+        // Add transport information for insurance routing
+        transportFrom: provGln,
+        transportTo: invoiceData.insurer_gln || "",
+        printCopyToGuarantor: (invoiceData.billing_type === 'TP' || invoiceData.copy_to_guarantor) ? YesNo.Yes : YesNo.No,
         services: sumexServices2,
         qualDignities:
           (staffData?.qual_dignities && staffData.qual_dignities.length > 0)
