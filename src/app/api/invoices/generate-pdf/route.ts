@@ -198,21 +198,7 @@ export async function POST(request: NextRequest) {
     );
     const isInsuranceInvoice = !!invoiceData.insurer_id || invoiceData.payment_method === "Insurance" || hasMedicalTariffItems;
     
-    // Debug logging to understand invoice detection
-    console.log(`[GeneratePDF] Invoice ${invoiceData.invoice_number} analysis:`, {
-      insurer_id: invoiceData.insurer_id,
-      payment_method: invoiceData.payment_method,
-      billing_type: invoiceData.billing_type,
-      hasMedicalTariffItems,
-      isInsuranceInvoice,
-      lineItemCount: lineItems.length,
-      lineItemsSample: lineItems.slice(0, 3).map(item => ({
-        code: item.code,
-        tariff_code: item.tariff_code,
-        catalog_name: item.catalog_name,
-        total_price: item.total_price
-      }))
-    });
+    
     if (isInsuranceInvoice) {
       console.log(`[GeneratePDF] Insurance/Medical tariff invoice detected (${invoiceData.billing_type || "TG"}) — using Sumex1 Print for PDF`);
 
@@ -273,6 +259,8 @@ export async function POST(request: NextRequest) {
         let calculatedAmount: number;
         let unit: number;
         let unitFactor: number;
+        let unitTT: number | undefined;
+        let unitFactorTT: number | undefined;
         
         if (isTarmed) {
           // TARMED: amount = tp_al (medical technical points)
@@ -281,10 +269,13 @@ export async function POST(request: NextRequest) {
           unitFactor = 1;
           calculatedAmount = unit * (item.quantity || 1);
         } else if (isTardoc || (item.catalog_name === "ACF" && item.tp_al > 0)) {
-          // TARDOC and ACF: use tp_al (tax points) and tp_al_value (point value / Taxpunktwert)
+          // TARDOC and ACF: use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors (same as medidata send-invoice)
           unit = item.tp_al || 0;
           unitFactor = item.tp_al_value || 1;
+          unitTT = item.tp_tl || undefined;
+          unitFactorTT = item.tp_tl_value || undefined;
           calculatedAmount = item.total_price || 0;
+          
         } else {
           // Other tariffs: use unit_price and total_price
           unit = item.unit_price || 0;
@@ -305,6 +296,8 @@ export async function POST(request: NextRequest) {
           serviceName: item.name || "",
           unit,
           unitFactor,
+          unitTT,
+          unitFactorTT,
           externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : (item.external_factor_mt ?? 1),
           amount: calculatedAmount,
           vatRate: 0,
@@ -618,10 +611,13 @@ export async function POST(request: NextRequest) {
           unitFactor = 1;
           calculatedAmount = unit * (item.quantity || 1);
         } else if (isTardoc || (item.catalog_name === "ACF" && item.tp_al > 0)) {
-          // TARDOC and ACF: use tp_al (tax points) and tp_al_value (point value / Taxpunktwert)
+          // TARDOC and ACF: use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors (same as medidata send-invoice)
           unit = item.tp_al || 0;
           unitFactor = item.tp_al_value || 1;
+          unitTT = item.tp_tl || undefined;
+          unitFactorTT = item.tp_tl_value || undefined;
           calculatedAmount = item.total_price || 0;
+          
         } else {
           // Other tariffs: use unit_price and total_price
           unit = item.unit_price || 0;
@@ -642,6 +638,8 @@ export async function POST(request: NextRequest) {
           serviceName: item.name || "",
           unit,
           unitFactor,
+          unitTT,
+          unitFactorTT,
           externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : (item.external_factor_mt ?? 1),
           amount: calculatedAmount,
           vatRate: 0,
