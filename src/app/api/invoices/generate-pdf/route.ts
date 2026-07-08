@@ -730,8 +730,8 @@ export async function POST(request: NextRequest) {
           }));
         })(),
         // Include insurance information if available
-        insuranceGln: invoiceData.insurer_gln || undefined,
-        insuranceAddress: invoiceData.insurer_gln ? {
+        insuranceGln: invoiceData.insurance_gln || undefined,
+        insuranceAddress: invoiceData.insurance_gln ? {
           companyName: invoiceData.insurance_name || "",
           street: "",
           zip: "",
@@ -740,7 +740,7 @@ export async function POST(request: NextRequest) {
         } : undefined,
         // Add transport information for insurance routing
         transportFrom: provGln,
-        transportTo: invoiceData.insurer_gln || "",
+        transportTo: invoiceData.insurance_gln || "",
         printCopyToGuarantor: (invoiceData.billing_type === 'TP' || invoiceData.copy_to_guarantor) ? YesNo.Yes : YesNo.No,
         services: sumexServices2,
         qualDignities:
