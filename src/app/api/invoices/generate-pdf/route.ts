@@ -267,6 +267,8 @@ export async function POST(request: NextRequest) {
           // unit = tp_al, unitFactor = 1 (Sumex handles tax point value internally)
           unit = item.tp_al || item.unit_price || 0;
           unitFactor = 1;
+          unitTT = undefined;
+          unitFactorTT = undefined;
           calculatedAmount = unit * (item.quantity || 1);
         } else if (isTardoc || (item.catalog_name === "ACF" && item.tp_al > 0)) {
           // TARDOC and ACF: use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors (same as medidata send-invoice)
@@ -280,6 +282,8 @@ export async function POST(request: NextRequest) {
           // Other tariffs: use unit_price and total_price
           unit = item.unit_price || 0;
           unitFactor = 1;
+          unitTT = undefined;
+          unitFactorTT = undefined;
           calculatedAmount = item.total_price || 0;
         }
         
@@ -603,12 +607,16 @@ export async function POST(request: NextRequest) {
         let calculatedAmount: number;
         let unit: number;
         let unitFactor: number;
+        let unitTT: number | undefined;
+        let unitFactorTT: number | undefined;
         
         if (isTarmed) {
           // TARMED: amount = tp_al (medical technical points)
           // unit = tp_al, unitFactor = 1 (Sumex handles tax point value internally)
           unit = item.tp_al || item.unit_price || 0;
           unitFactor = 1;
+          unitTT = undefined;
+          unitFactorTT = undefined;
           calculatedAmount = unit * (item.quantity || 1);
         } else if (isTardoc || (item.catalog_name === "ACF" && item.tp_al > 0)) {
           // TARDOC and ACF: use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors (same as medidata send-invoice)
@@ -622,6 +630,8 @@ export async function POST(request: NextRequest) {
           // Other tariffs: use unit_price and total_price
           unit = item.unit_price || 0;
           unitFactor = 1;
+          unitTT = undefined;
+          unitFactorTT = undefined;
           calculatedAmount = item.total_price || 0;
         }
         
