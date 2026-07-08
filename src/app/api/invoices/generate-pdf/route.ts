@@ -197,6 +197,22 @@ export async function POST(request: NextRequest) {
       item.catalog_name?.toLowerCase() === 'tardoc'
     );
     const isInsuranceInvoice = !!invoiceData.insurer_id || invoiceData.payment_method === "Insurance" || hasMedicalTariffItems;
+    
+    // Debug logging to understand invoice detection
+    console.log(`[GeneratePDF] Invoice ${invoiceData.invoice_number} analysis:`, {
+      insurer_id: invoiceData.insurer_id,
+      payment_method: invoiceData.payment_method,
+      billing_type: invoiceData.billing_type,
+      hasMedicalTariffItems,
+      isInsuranceInvoice,
+      lineItemCount: lineItems.length,
+      lineItemsSample: lineItems.slice(0, 3).map(item => ({
+        code: item.code,
+        tariff_code: item.tariff_code,
+        catalog_name: item.catalog_name,
+        total_price: item.total_price
+      }))
+    });
     if (isInsuranceInvoice) {
       console.log(`[GeneratePDF] Insurance/Medical tariff invoice detected (${invoiceData.billing_type || "TG"}) — using Sumex1 Print for PDF`);
 
@@ -513,7 +529,7 @@ export async function POST(request: NextRequest) {
 
     // ── Try Sumex1 for cash/card/bank/online invoices too (unified template) ──
     {
-      console.log(`[GeneratePDF] Non-insurance invoice (${invoiceData.payment_method}) — attempting Sumex1 unified template (TG mode, no insurance)`);
+      console.log(`[GeneratePDF] Non-insurance invoice (${invoiceData.payment_method}) — attempting Sumex1 unified template (billing_type: ${invoiceData.billing_type})`);
       // Auto-create Payrexx gateway for online/card/cash invoices that don't have one yet
       const pmLower = (invoiceData.payment_method || "").toLowerCase();
       const needsPayrexx = (pmLower.includes("online") || pmLower.includes("card") || pmLower.includes("cash")) && !invoiceData.payrexx_payment_link;
