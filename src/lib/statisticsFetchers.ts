@@ -258,25 +258,31 @@ export type AgendaPatientsPaymentsResult = {
 };
 
 /**
- * Patients who had at least one appointment in the given agenda (location)
- * and how much they paid during [from, to].
+ * Patients who had at least one appointment in the given agenda and how much
+ * they paid during [from, to].
  *
- * "Agenda" corresponds to the `location` column in `appointments` —
- * this is how both new and legacy (migrated) appointments identify the clinic.
+ * The agenda name is matched against the `[Doctor: <name>]` token embedded in
+ * the `appointments.reason` text field — that is how the legacy calendar stored
+ * agenda/resource names (e.g. "Montreux", "GSTAAD AESTH", "Xavier Tenorio").
  */
 export async function fetchAgendaPatientsPayments(params: {
   from: string;
   to: string;
-  agenda: string; // value of appointments.location, e.g. "Montreux"
+  agenda: string; // agenda name as stored in [Doctor: X] inside appointments.reason
 }): Promise<AgendaPatientsPaymentsResult> {
   const { from, to, agenda } = params;
 
-  // Step 1: collect patient IDs who ever had an appointment in this agenda
+  // Step 1: collect patient IDs who ever had an appointment in this agenda.
+  //
+  // The legacy calendar (127k+ appointments) stores the agenda name inside the
+  // `reason` text field as  [Doctor: <AgendaName>]  e.g. "[Doctor: Montreux]".
+  // Newer appointments (few dozen) have a real provider_id but also always have
+  // a matching [Doctor: X] token in reason, so the ilike filter covers both.
   let apptQuery = supabaseAdmin
     .from("appointments")
     .select("patient_id")
     .not("patient_id", "is", null);
-  if (agenda) apptQuery = apptQuery.eq("location", agenda);
+  if (agenda) apptQuery = apptQuery.ilike("reason", `%[Doctor: ${agenda}]%`);
 
   const { data: apptRows, error: apptErr } = await apptQuery;
   if (apptErr) throw new Error(apptErr.message);

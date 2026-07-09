@@ -31,11 +31,11 @@ export default function AgendaPatientsPaymentsTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch available agendas (distinct locations in appointments)
+  // Fetch available agendas (distinct [Doctor: X] names from appointments.reason)
   useEffect(() => {
     fetch("/api/appointments/locations")
       .then((r) => r.json())
-      .then((d) => setAgendas(d.locations ?? []))
+      .then((d) => setAgendas(d.agendas ?? []))
       .catch(() => {/* ignore */});
   }, []);
 
