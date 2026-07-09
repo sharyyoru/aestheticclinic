@@ -6,9 +6,10 @@ import { renderAsync } from 'docx-preview';
 interface DocxPreviewProps {
   url: string;
   fileName: string;
+  className?: string;
 }
 
-export default function DocxPreview({ url, fileName }: DocxPreviewProps) {
+export default function DocxPreview({ url, fileName, className }: DocxPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +82,7 @@ export default function DocxPreview({ url, fileName }: DocxPreviewProps) {
       )}
       <div
         ref={containerRef}
-        className="h-[70vh] w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg"
+        className={`h-[70vh] w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg ${className || ''}`}
         style={{ display: isLoading ? 'none' : 'block' }}
       />
       <style jsx global>{`
