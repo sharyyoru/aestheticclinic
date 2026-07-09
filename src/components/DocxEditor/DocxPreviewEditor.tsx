@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { renderAsync } from 'docx-preview';
+import { supabaseClient } from '@/lib/supabaseClient';
 
 interface PatientData {
   firstName?: string;
@@ -10,7 +11,40 @@ interface PatientData {
   birthdate?: string;
   email?: string;
   phone?: string;
+  mobile?: string;
+  street?: string;
+  streetNo?: string;
+  zip?: string;
+  city?: string;
+  socialSecurityNumber?: string;
+  insuranceCardNumber?: string;
+  addressBlock?: string;
   [key: string]: string | undefined;
+}
+
+interface UserData {
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  streetAndNo?: string;
+  zip?: string;
+  city?: string;
+  singleRowSpecializations?: string;
+  zsr?: string;
+  fax?: string;
+  addressBlock?: string;
+  [key: string]: string | undefined;
+}
+
+interface DocumentField {
+  id: string;
+  tag: string;
+  label: string;
+  value: string;
+  type: 'text' | 'date';
+  source: 'placeholder' | 'content-control';
 }
 
 interface DocxPreviewEditorProps {
@@ -28,6 +62,346 @@ interface DocxPreviewEditorProps {
  * Uses docx-preview for 100% fidelity rendering
  * Preserves original DOCX structure for editing
  */
+
+const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const W15_NS = 'http://schemas.microsoft.com/office/word/2012/wordml';
+
+async function readDocumentXml(blob: Blob): Promise<string | null> {
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(blob);
+  const file = zip.file('word/document.xml');
+  if (!file) return null;
+  return file.async('string');
+}
+
+async function writeDocumentXml(blob: Blob, xml: string): Promise<Blob> {
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(blob);
+  zip.file('word/document.xml', xml);
+  return zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  });
+}
+
+function parseXml(xml: string): Document {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, 'application/xml');
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) {
+    throw new Error('Failed to parse DOCX XML');
+  }
+  return doc;
+}
+
+function serializeXml(doc: Document): string {
+  const serializer = new XMLSerializer();
+  return serializer.serializeToString(doc);
+}
+
+function getTagValue(sdt: Element): string | null {
+  const tag = sdt.querySelector('sdtPr > tag');
+  if (!tag) return null;
+  return tag.getAttributeNS(W_NS, 'val') || tag.getAttribute('w:val') || null;
+}
+
+function getSdtText(sdt: Element): string {
+  const content = sdt.querySelector('sdtContent');
+  if (!content) return '';
+  const textNodes = content.querySelectorAll('t');
+  return Array.from(textNodes).map((t) => t.textContent || '').join('');
+}
+
+function setSdtText(sdt: Element, value: string): void {
+  const content = sdt.querySelector('sdtContent');
+  if (!content) return;
+  const existingRuns = content.querySelectorAll('r');
+  const firstRun = existingRuns[0];
+
+  if (firstRun) {
+    // Keep the first run's formatting and replace its text
+    const existingT = firstRun.querySelector('t');
+    if (existingT) {
+      existingT.textContent = value;
+      if (value.endsWith(' ') || value.startsWith(' ')) {
+        existingT.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+      } else {
+        existingT.removeAttributeNS('http://www.w3.org/XML/1998/namespace', 'space');
+      }
+    } else {
+      const t = firstRun.ownerDocument!.createElementNS(W_NS, 'w:t');
+      t.textContent = value;
+      if (value.endsWith(' ') || value.startsWith(' ')) {
+        t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+      }
+      firstRun.appendChild(t);
+    }
+    // Remove any extra runs
+    for (let i = 1; i < existingRuns.length; i++) {
+      existingRuns[i].remove();
+    }
+  } else {
+    // Create a new run with default formatting
+    const doc = content.ownerDocument!;
+    const r = doc.createElementNS(W_NS, 'w:r');
+    const t = doc.createElementNS(W_NS, 'w:t');
+    t.textContent = value;
+    if (value.endsWith(' ') || value.startsWith(' ')) {
+      t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+    }
+    r.appendChild(t);
+    content.appendChild(r);
+  }
+}
+
+function createContentControl(doc: Document, tag: string, value: string, formatRun?: Element | null): Element {
+  const sdt = doc.createElementNS(W_NS, 'w:sdt');
+  const sdtPr = doc.createElementNS(W_NS, 'w:sdtPr');
+  const tagEl = doc.createElementNS(W_NS, 'w:tag');
+  tagEl.setAttributeNS(W_NS, 'w:val', tag);
+  sdtPr.appendChild(tagEl);
+  sdt.appendChild(sdtPr);
+
+  const sdtContent = doc.createElementNS(W_NS, 'w:sdtContent');
+  let r: Element;
+  if (formatRun) {
+    r = formatRun.cloneNode(true) as Element;
+    clearRunFormatting(r);
+  } else {
+    r = doc.createElementNS(W_NS, 'w:r');
+  }
+  const t = doc.createElementNS(W_NS, 'w:t');
+  t.textContent = value;
+  if (value.endsWith(' ') || value.startsWith(' ')) {
+    t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+  }
+  r.appendChild(t);
+  sdtContent.appendChild(r);
+  sdt.appendChild(sdtContent);
+  return sdt;
+}
+
+interface ContentControlField {
+  tag: string;
+  value: string;
+  originalValue: string;
+}
+
+function findContentControls(xmlDoc: Document): ContentControlField[] {
+  const results: ContentControlField[] = [];
+  const sdts = xmlDoc.getElementsByTagNameNS(W_NS, 'sdt');
+  for (let i = 0; i < sdts.length; i++) {
+    const sdt = sdts[i];
+    const tag = getTagValue(sdt);
+    if (!tag) continue;
+    const value = getSdtText(sdt);
+    results.push({ tag, value, originalValue: value });
+  }
+  return results;
+}
+
+function findPlaceholderRuns(parent: Element): Element[] {
+  const runs = parent.getElementsByTagNameNS(W_NS, 'r');
+  const matching: Element[] = [];
+  for (let i = 0; i < runs.length; i++) {
+    const textNodes = runs[i].getElementsByTagNameNS(W_NS, 't');
+    for (let j = 0; j < textNodes.length; j++) {
+      const text = textNodes[j].textContent || '';
+      if (text.includes('${') || text.includes('}')) {
+        matching.push(runs[i]);
+        break;
+      }
+    }
+  }
+  return matching;
+}
+
+function collectParagraphTextRuns(paragraph: Element): Element[] {
+  const runs: Element[] = [];
+  const children = paragraph.children;
+  for (let i = 0; i < children.length; i++) {
+    if (children[i].localName === 'r') {
+      runs.push(children[i]);
+    }
+  }
+  return runs;
+}
+
+function getRunText(run: Element): string {
+  const texts = run.getElementsByTagNameNS(W_NS, 't');
+  return Array.from(texts).map((t) => t.textContent || '').join('');
+}
+
+function setRunText(run: Element, value: string): void {
+  const texts = run.getElementsByTagNameNS(W_NS, 't');
+  if (texts.length > 0) {
+    texts[0].textContent = value;
+    if (value.endsWith(' ') || value.startsWith(' ')) {
+      texts[0].setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+    } else {
+      texts[0].removeAttributeNS('http://www.w3.org/XML/1998/namespace', 'space');
+    }
+    for (let i = 1; i < texts.length; i++) {
+      texts[i].remove();
+    }
+  } else {
+    const t = run.ownerDocument!.createElementNS(W_NS, 'w:t');
+    t.textContent = value;
+    if (value.endsWith(' ') || value.startsWith(' ')) {
+      t.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+    }
+    run.appendChild(t);
+  }
+}
+
+function clearRunFormatting(run: Element): void {
+  const children = Array.from(run.children);
+  for (const child of children) {
+    if (child.localName !== 't') {
+      child.remove();
+    }
+  }
+}
+
+/**
+ * Convert ${...} placeholders inside paragraphs into content controls.
+ * Placeholders may be split across multiple <w:r> runs, so we scan each paragraph,
+ * rebuild the full text, split on placeholders, and rewrite the runs.
+ */
+function convertPlaceholdersToContentControls(xmlDoc: Document): void {
+  const paragraphs = xmlDoc.getElementsByTagNameNS(W_NS, 'p');
+  for (let pi = 0; pi < paragraphs.length; pi++) {
+    const paragraph = paragraphs[pi];
+    const runs = collectParagraphTextRuns(paragraph);
+    if (runs.length === 0) continue;
+
+    const fullText = runs.map(getRunText).join('');
+    if (!fullText.includes('${')) continue;
+
+    const placeholderRegex = /\$\{([^}]+)\}/g;
+    const parts: { type: 'text' | 'field'; value: string }[] = [];
+    let lastIndex = 0;
+    let match;
+    while ((match = placeholderRegex.exec(fullText)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', value: fullText.slice(lastIndex, match.index) });
+      }
+      parts.push({ type: 'field', value: match[1] });
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < fullText.length) {
+      parts.push({ type: 'text', value: fullText.slice(lastIndex) });
+    }
+
+    // Reuse the first run's formatting for text parts and create content controls for fields
+    const firstRun = runs[0];
+    const doc = paragraph.ownerDocument!;
+
+    // Clear all existing runs
+    runs.forEach((r) => r.remove());
+
+    parts.forEach((part) => {
+      if (part.type === 'text') {
+        if (!part.value) return;
+        const run = firstRun.cloneNode(true) as Element;
+        clearRunFormatting(run);
+        setRunText(run, part.value);
+        paragraph.appendChild(run);
+      } else {
+        const sdt = createContentControl(doc, part.value, part.value, firstRun);
+        paragraph.appendChild(sdt);
+      }
+    });
+  }
+}
+
+function updateContentControl(xmlDoc: Document, tag: string, value: string): boolean {
+  const sdts = xmlDoc.getElementsByTagNameNS(W_NS, 'sdt');
+  let found = false;
+  for (let i = 0; i < sdts.length; i++) {
+    const sdtTag = getTagValue(sdts[i]);
+    if (sdtTag === tag) {
+      setSdtText(sdts[i], value);
+      found = true;
+    }
+  }
+  return found;
+}
+
+function normalizeFieldKey(key: string): string {
+  return key.toLowerCase().replace(/[._]/g, '').replace(/^axenita:/, '').replace(/^documentrecipient/, 'patientinfo');
+}
+
+function resolveFieldValue(
+  key: string,
+  patientData?: PatientData,
+  userData?: UserData
+): string {
+  const normalized = normalizeFieldKey(key);
+  const today = new Date().toISOString().split('T')[0];
+  const formatDate = (d: string | undefined) => {
+    if (!d) return '';
+    try {
+      const date = new Date(d);
+      if (Number.isNaN(date.getTime())) return d;
+      return date.toLocaleDateString('fr-CH');
+    } catch {
+      return d;
+    }
+  };
+
+  if (normalized === 'currentdate' || key.toLowerCase() === 'currentdate') {
+    return formatDate(today);
+  }
+
+  const patientMap: Record<string, keyof PatientData> = {
+    patientinfofirstname: 'firstName',
+    patientinfolastname: 'lastName',
+    patientinfosalutation: 'salutation',
+    patientinfobirthdate: 'birthdate',
+    patientinfobirthdateformatted: 'birthdate',
+    patientinfoemail: 'email',
+    patientinfophone: 'phone',
+    patientinfomobile: 'mobile',
+    patientinfostreet: 'street',
+    patientinfostreetno: 'streetNo',
+    patientinfozip: 'zip',
+    patientinfocity: 'city',
+    patientinfosocialsecuritynumber: 'socialSecurityNumber',
+    patientinfoinsurancecardnumber: 'insuranceCardNumber',
+    patientinfoaddressblock: 'addressBlock',
+  };
+
+  if (normalized in patientMap && patientData) {
+    const value = patientData[patientMap[normalized]];
+    if ((normalized.includes('birthdate') || normalized.includes('date')) && value) {
+      return formatDate(value);
+    }
+    return value || '';
+  }
+
+  const userMap: Record<string, keyof UserData> = {
+    mandatorinfofirstname: 'firstName',
+    mandatorinfolastname: 'lastName',
+    mandatorinfofullname: 'fullName',
+    mandatorinfoemail: 'email',
+    mandatorinfophone: 'phone',
+    mandatorinfostreetandno: 'streetAndNo',
+    mandatorinfozip: 'zip',
+    mandatorinfocity: 'city',
+    mandatorinfosinglerowspecializations: 'singleRowSpecializations',
+    mandatorinfozsr: 'zsr',
+    mandatorinfofax: 'fax',
+    mandatorinfoaddressblock: 'addressBlock',
+  };
+
+  if (normalized in userMap && userData) {
+    return userData[userMap[normalized]] || '';
+  }
+
+  return '';
+}
+
 export default function DocxPreviewEditor({
   documentBlob,
   documentTitle,
@@ -41,10 +415,11 @@ export default function DocxPreviewEditor({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [placeholders, setPlaceholders] = useState<Map<string, string>>(new Map());
-  const [originalBlob, setOriginalBlob] = useState<Blob | null>(null);
+  const [documentFields, setDocumentFields] = useState<DocumentField[]>([]);
+  const [workingBlob, setWorkingBlob] = useState<Blob | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [userData, setUserData] = useState<UserData>({});
   const originalTextRef = useRef<string>('');
   const textNodeMapRef = useRef<Map<number, string>>(new Map()); // Maps text index to original content
   
@@ -60,79 +435,149 @@ export default function DocxPreviewEditor({
   // Font size options (in points)
   const fontSizeOptions = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '32', '36', '48', '72'];
 
-  // Render DOCX preview
+  // Load current user data for mandator/clinic field mapping
+  useEffect(() => {
+    let mounted = true;
+    supabaseClient.auth.getUser().then(({ data }) => {
+      const user = data?.user;
+      if (!user || !mounted) return;
+      setUserData({
+        firstName: user.user_metadata?.first_name || '',
+        lastName: user.user_metadata?.last_name || '',
+        fullName: user.user_metadata?.full_name || '',
+        email: user.email || '',
+        phone: user.user_metadata?.phone || '',
+        streetAndNo: user.user_metadata?.street_and_no || '',
+        zip: user.user_metadata?.zip || '',
+        city: user.user_metadata?.city || '',
+        singleRowSpecializations: user.user_metadata?.specializations || '',
+        zsr: user.user_metadata?.zsr || '',
+        fax: user.user_metadata?.fax || '',
+        addressBlock: user.user_metadata?.address_block || '',
+      });
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  // Render DOCX preview after converting placeholders to content controls and resolving fields
   useEffect(() => {
     if (!containerRef.current || !documentBlob) return;
 
-    setIsLoading(true);
-    setOriginalBlob(documentBlob);
+    let cancelled = false;
 
-    renderAsync(documentBlob, containerRef.current, undefined, {
-      className: 'docx-preview',
-      inWrapper: true,
-      ignoreWidth: false,
-      ignoreHeight: false,
-      ignoreFonts: false,
-      breakPages: true,
-      ignoreLastRenderedPageBreak: false,
-      experimental: true,
-      trimXmlDeclaration: true,
-      useBase64URL: true,
-      renderHeaders: true,
-      renderFooters: true,
-      renderFootnotes: true,
-      renderEndnotes: true,
-    })
-      .then(() => {
-        setIsLoading(false);
-        // Extract placeholders from rendered content
-        extractPlaceholders();
-        // Store original text for comparison and mark text nodes with indices
-        if (containerRef.current) {
-          originalTextRef.current = containerRef.current.innerText;
-          markTextNodesWithIndices();
-        }
-      })
-      .catch((err) => {
-        console.error('Error rendering DOCX:', err);
-        setError('Failed to render document');
-        setIsLoading(false);
-      });
-  }, [documentBlob]);
+    async function prepareAndRender() {
+      setIsLoading(true);
+      setError(null);
 
-  // Extract placeholders and auto-fill with patient data
-  const extractPlaceholders = () => {
-    if (!containerRef.current) return;
-    
-    const content = containerRef.current.innerText;
-    const placeholderRegex = /\$\{([^}]+)\}/g;
-    const found = new Map<string, string>();
-    
-    let match;
-    while ((match = placeholderRegex.exec(content)) !== null) {
-      const placeholder = match[0];
-      const fieldPath = match[1]; // e.g., "patientInfo.firstName"
-      
-      // Try to auto-fill from patient data
-      let value = '';
-      if (patientData && fieldPath.startsWith('patientInfo.')) {
-        const fieldName = fieldPath.replace('patientInfo.', '');
-        value = patientData[fieldName] || '';
+      try {
+        const xml = await readDocumentXml(documentBlob);
+        if (!xml) throw new Error('Invalid DOCX file');
+
+        const xmlDoc = parseXml(xml);
+
+        // Convert ${...} placeholders into content controls so they persist and can be re-edited
+        convertPlaceholdersToContentControls(xmlDoc);
+
+        // Find all content controls (both original and converted)
+        const controls = findContentControls(xmlDoc);
+
+        // Build editable fields with resolved initial values (deduplicate by tag)
+        const seenTags = new Set<string>();
+        const fields: DocumentField[] = [];
+        controls.forEach((control) => {
+          if (seenTags.has(control.tag)) return;
+          seenTags.add(control.tag);
+          const resolved = resolveFieldValue(control.tag, patientData, userData);
+          fields.push({
+            id: control.tag,
+            tag: control.tag,
+            label: formatFieldLabel(control.tag),
+            value: resolved || control.value,
+            type: control.tag.toLowerCase().includes('date') ? 'date' : 'text',
+            source: 'content-control',
+          });
+        });
+
+        // Update content controls with resolved values
+        controls.forEach((control) => {
+          const resolved = resolveFieldValue(control.tag, patientData, userData);
+          if (resolved) {
+            updateContentControl(xmlDoc, control.tag, resolved);
+          }
+        });
+
+        const modifiedXml = serializeXml(xmlDoc);
+        const processedBlob = await writeDocumentXml(documentBlob, modifiedXml);
+
+        if (cancelled) return;
+
+        setWorkingBlob(processedBlob);
+        setDocumentFields(fields);
+
+        renderAsync(processedBlob, containerRef.current!, undefined, {
+          className: 'docx-preview',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          ignoreLastRenderedPageBreak: false,
+          experimental: true,
+          trimXmlDeclaration: true,
+          useBase64URL: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+        })
+          .then(() => {
+            if (cancelled) return;
+            setIsLoading(false);
+            if (containerRef.current) {
+              originalTextRef.current = containerRef.current.innerText;
+              markTextNodesWithIndices();
+            }
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            console.error('Error rendering DOCX:', err);
+            setError('Failed to render document');
+            setIsLoading(false);
+          });
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Error preparing DOCX:', err);
+        setError('Failed to prepare document');
+        setIsLoading(false);
       }
-      
-      found.set(placeholder, value);
     }
-    
-    setPlaceholders(found);
-  };
 
-  // Handle placeholder value change
-  const handlePlaceholderChange = (placeholder: string, value: string) => {
-    setPlaceholders(prev => {
-      const newMap = new Map(prev);
-      newMap.set(placeholder, value);
-      return newMap;
-    });
+    prepareAndRender();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentBlob, patientData, userData]);
+
+  function formatFieldLabel(tag: string): string {
+    // Convert axenita:documentRecipient.firstName or patientInfo.firstName into readable label
+    const clean = tag
+      .replace(/^axenita:/i, '')
+      .replace(/^documentrecipient/i, 'Patient')
+      .replace(/^patientinfo/i, 'Patient')
+      .replace(/^mandatorinfo/i, 'Clinic')
+      .replace(/\./g, ' ');
+    return clean
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
+  // Handle document field value change
+  const handleFieldChange = (fieldId: string, value: string) => {
+    setDocumentFields((prev) =>
+      prev.map((field) => (field.id === fieldId ? { ...field, value } : field))
+    );
     setHasChanges(true);
   };
 
@@ -435,24 +880,25 @@ export default function DocxPreviewEditor({
     return changes;
   };
 
-  // Save document with replaced placeholders and edited content
+  // Save document with updated content controls and edited content
   const handleSave = async () => {
-    if (!originalBlob) {
-      console.error('[DocxEditor] No original blob to save');
+    if (!workingBlob) {
+      console.error('[DocxEditor] No working blob to save');
       return;
     }
-    
+
     setIsSaving(true);
     try {
       // Collect changes directly from live DOM (more reliable than parsing innerHTML)
       const domChanges = collectChangesFromDOM();
-      
-      // Replace placeholders and apply DOM changes in the original DOCX
-      const modifiedBlob = await applyChangesToDocx(originalBlob, placeholders, domChanges);
+
+      // Apply content control field values and DOM changes in the working DOCX
+      const modifiedBlob = await applyChangesToDocx(workingBlob, documentFields, domChanges);
       await onSave(modifiedBlob);
       setHasChanges(false);
-      
-      // Update original text reference and text node map after save
+
+      // Update working blob and text reference after save so re-editing continues from the saved state
+      setWorkingBlob(modifiedBlob);
       if (containerRef.current) {
         originalTextRef.current = containerRef.current.innerText;
         const updatedSpans = containerRef.current.querySelectorAll('span[data-docx-text-idx]');
@@ -471,68 +917,30 @@ export default function DocxPreviewEditor({
     }
   };
 
-  // Apply changes to DOCX XML using the changes map from DOM
+  // Apply changes to DOCX XML: update content controls with field values, then apply DOM text edits
   const applyChangesToDocx = async (
     blob: Blob,
-    replacements: Map<string, string>,
+    fields: DocumentField[],
     changes: Map<number, string>
   ): Promise<Blob> => {
-    const JSZip = (await import('jszip')).default;
-    const zip = await JSZip.loadAsync(blob);
-    
-    // Get document.xml
-    const documentXml = await zip.file('word/document.xml')?.async('string');
-    if (!documentXml) {
-      throw new Error('Invalid DOCX file');
+    const xml = await readDocumentXml(blob);
+    if (!xml) throw new Error('Invalid DOCX file');
+
+    const xmlDoc = parseXml(xml);
+
+    // Update content controls with the latest field values
+    for (const field of fields) {
+      updateContentControl(xmlDoc, field.tag, field.value);
     }
-    
-    // Replace placeholders - handle fragmented placeholders in XML
-    // DOCX often splits text like ${placeholder} across multiple <w:t> elements
-    let modifiedXml = documentXml;
-    
-    replacements.forEach((value, placeholder) => {
-      if (value) {
-        // Escape XML special characters in the replacement value
-        const escapedValue = value
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&apos;');
-        
-        // First try simple replacement
-        if (modifiedXml.includes(placeholder)) {
-          modifiedXml = modifiedXml.split(placeholder).join(escapedValue);
-        } else {
-          // Handle fragmented placeholder - create regex that allows XML tags between characters
-          // e.g., ${name} might be stored as $</w:t><w:t>{</w:t><w:t>name}
-          const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const fragmentedPattern = escapedPlaceholder.split('').join('(?:</w:t>(?:<[^>]*>)*<w:t[^>]*>)?');
-          const fragmentedRegex = new RegExp(fragmentedPattern, 'g');
-          
-          const beforeLength = modifiedXml.length;
-          modifiedXml = modifiedXml.replace(fragmentedRegex, escapedValue);
-          
-          // Replacement happened if length changed
-        }
-      }
-    });
-    
-    // Apply text changes if any
+
+    let modifiedXml = serializeXml(xmlDoc);
+
+    // Apply direct text edits if any
     if (changes.size > 0) {
       modifiedXml = applyTextChangesToXml(modifiedXml, changes);
     }
-    
-    // Update the zip
-    zip.file('word/document.xml', modifiedXml);
-    
-    // Generate new blob
-    const newBlob = await zip.generateAsync({
-      type: 'blob',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    });
-    
-    return newBlob;
+
+    return writeDocumentXml(blob, modifiedXml);
   };
   
   // Helper function to insert line breaks into DOCX XML for a text node
@@ -966,25 +1374,42 @@ export default function DocxPreviewEditor({
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Placeholder editor sidebar */}
-        {placeholders.size > 0 && (
+        {/* Document fields sidebar */}
+        {documentFields.length > 0 && (
           <div className="w-80 bg-slate-50 border-r border-slate-200 p-4 overflow-y-auto shrink-0">
-            <h3 className="font-semibold text-slate-700 mb-3">Fill in Fields</h3>
+            <h3 className="font-semibold text-slate-700 mb-1">Fill in Fields</h3>
+            <p className="text-xs text-slate-500 mb-3">
+              {documentFields.length} field{documentFields.length > 1 ? 's' : ''} available
+            </p>
             <div className="space-y-3">
-              {Array.from(placeholders.entries()).map(([placeholder, value]) => (
-                <div key={placeholder}>
-                  <label className="block text-xs text-slate-500 mb-1">
-                    {placeholder.replace(/\$\{|\}/g, '')}
-                  </label>
-                  <input
-                    type="text"
-                    value={value}
-                    onChange={(e) => handlePlaceholderChange(placeholder, e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={placeholder}
-                  />
-                </div>
-              ))}
+              {documentFields.map((field) => {
+                const isMultiline = field.value.includes('\n') || field.tag.toLowerCase().includes('addressblock') || field.tag.toLowerCase().includes('block');
+                return (
+                  <div key={field.id}>
+                    <label className="block text-xs text-slate-500 mb-1">
+                      {field.label}
+                      <span className="ml-1 text-[10px] text-slate-400 font-mono">{field.tag}</span>
+                    </label>
+                    {isMultiline ? (
+                      <textarea
+                        value={field.value}
+                        onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                        placeholder={field.label}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={field.value}
+                        onChange={(e) => handleFieldChange(field.id, e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={field.label}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

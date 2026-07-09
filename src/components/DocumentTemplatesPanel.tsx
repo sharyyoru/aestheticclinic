@@ -66,6 +66,22 @@ export default function DocumentTemplatesPanel({
   const [currentDocument, setCurrentDocument] = useState<PatientDocument | null>(null);
   const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
   const [isLoadingEditor, setIsLoadingEditor] = useState(false);
+  const [fullPatientData, setFullPatientData] = useState<{
+    firstName: string;
+    lastName: string;
+    salutation: string;
+    birthdate: string;
+    email: string;
+    phone: string;
+    mobile: string;
+    street: string;
+    streetNo: string;
+    zip: string;
+    city: string;
+    socialSecurityNumber: string;
+    insuranceCardNumber: string;
+    addressBlock: string;
+  } | null>(null);
 
   // Fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -98,6 +114,79 @@ export default function DocumentTemplatesPanel({
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
+
+  // Load full patient details when the editor opens so fields can be auto-filled
+  useEffect(() => {
+    if (!showEditor || !patientId) return;
+
+    let cancelled = false;
+
+    async function loadPatientDetails() {
+      try {
+        const { data, error } = await supabaseClient
+          .from('patients')
+          .select(`
+            first_name,
+            last_name,
+            title,
+            salutation,
+            date_of_birth,
+            email,
+            phone,
+            mobile,
+            street,
+            street_no,
+            postal_code,
+            zip,
+            city,
+            social_security_number,
+            insurance_card_number,
+            patient_insurances:social_security_number,
+            patient_insurances_2:card_number
+          `)
+          .eq('id', patientId)
+          .single();
+
+        if (error || !data || cancelled) return;
+
+        const patientInsurance = Array.isArray((data as any).patient_insurances) && (data as any).patient_insurances.length > 0
+          ? (data as any).patient_insurances[0]
+          : null;
+
+        const street = (data as any).street || '';
+        const streetNo = (data as any).street_no || '';
+        const zip = (data as any).postal_code || (data as any).zip || '';
+        const city = (data as any).city || '';
+
+        setFullPatientData({
+          firstName: data.first_name || '',
+          lastName: data.last_name || '',
+          salutation: data.title || data.salutation || '',
+          birthdate: data.date_of_birth || '',
+          email: data.email || '',
+          phone: data.phone || '',
+          mobile: data.mobile || data.phone || '',
+          street,
+          streetNo,
+          zip,
+          city,
+          socialSecurityNumber: patientInsurance?.social_security_number || (data as any).social_security_number || '',
+          insuranceCardNumber: patientInsurance?.card_number || (data as any).insurance_card_number || '',
+          addressBlock: [data.salutation || data.title, `${data.first_name || ''} ${data.last_name || ''}`.trim(), `${street} ${streetNo}`.trim(), `${zip} ${city}`.trim()]
+            .filter(Boolean)
+            .join('\n'),
+        });
+      } catch (err) {
+        console.error('Error loading patient details for document editor:', err);
+      }
+    }
+
+    loadPatientDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showEditor, patientId]);
 
   useEffect(() => {
     // If used as modal (onClose exists), fetch templates immediately
@@ -247,15 +336,23 @@ export default function DocumentTemplatesPanel({
 
   // Show editor fullscreen with 100% fidelity preview
   if (showEditor && currentDocument && documentBlob) {
-    // Parse patient name into first/last
-    const nameParts = patientName.split(' ');
-    const patientData = {
-      firstName: nameParts[0] || '',
-      lastName: nameParts.slice(1).join(' ') || '',
-      salutation: 'Mr/Ms',
+    const patientData = fullPatientData || {
+      firstName: '',
+      lastName: '',
+      salutation: '',
       birthdate: '',
+      email: '',
+      phone: '',
+      mobile: '',
+      street: '',
+      streetNo: '',
+      zip: '',
+      city: '',
+      socialSecurityNumber: '',
+      insuranceCardNumber: '',
+      addressBlock: '',
     };
-    
+
     return (
       <DocxPreviewEditor
         documentBlob={documentBlob}
@@ -268,6 +365,7 @@ export default function DocumentTemplatesPanel({
           setShowEditor(false);
           setCurrentDocument(null);
           setDocumentBlob(null);
+          setFullPatientData(null);
           fetchDocuments();
         }}
       />
