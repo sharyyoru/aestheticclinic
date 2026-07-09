@@ -95,6 +95,13 @@ export const translations = {
     currentMedications: "Current medications",
     generalPractitioner: "General Practitioner",
     doctorName: "Doctor's name",
+    gender: "Gender",
+    selectGender: "Select gender",
+    genderOptions: {
+      male: "Male",
+      female: "Female",
+      other: "Other"
+    },
     gynecologist: "Gynecologist",
     haveChildren: "Do you have Children?",
     numberOfChildren: "Number of children",
@@ -245,6 +252,13 @@ export const translations = {
     currentMedications: "Médicaments actuels",
     generalPractitioner: "Médecin généraliste",
     doctorName: "Nom du médecin",
+    gender: "Genre",
+    selectGender: "Sélectionnez le genre",
+    genderOptions: {
+      male: "Homme",
+      female: "Femme",
+      other: "Autre"
+    },
     gynecologist: "Gynécologue",
     haveChildren: "Avez-vous des enfants ?",
     numberOfChildren: "Nombre d'enfants",

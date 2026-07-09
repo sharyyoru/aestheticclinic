@@ -95,10 +95,20 @@ function IntakeStepsContent() {
   const [sports, setSports] = useState("");
   const [medications, setMedications] = useState("");
   const [generalPractitioner, setGeneralPractitioner] = useState("");
+  const [gender, setGender] = useState("");
   const [gynecologist, setGynecologist] = useState("");
   const [childrenCount, setChildrenCount] = useState("");
   const [birthType1, setBirthType1] = useState("");
   const [birthType2, setBirthType2] = useState("");
+  const isMalePatient = gender === "male";
+
+  useEffect(() => {
+    if (!isMalePatient) return;
+    setGynecologist("");
+    setChildrenCount("");
+    setBirthType1("");
+    setBirthType2("");
+  }, [isMalePatient]);
 
   // Step 4: Contact Preference
   const [contactPreference, setContactPreference] = useState("");
@@ -139,6 +149,7 @@ function IntakeStepsContent() {
         marital_status: maritalStatus || null,
         profession: profession || null,
         current_employer: currentEmployer || null,
+        gender: gender || null,
       }).eq("id", patientId);
 
       // Save insurance if any data exists
@@ -206,10 +217,10 @@ function IntakeStepsContent() {
           sports_activity: sports || null,
           medications: medications || null,
           general_practitioner: generalPractitioner || null,
-          gynecologist: gynecologist || null,
-          children_count: childrenCount ? parseInt(childrenCount) : null,
-          birth_type_1: birthType1 || null,
-          birth_type_2: birthType2 || null,
+          gynecologist: isMalePatient ? null : gynecologist || null,
+          children_count: isMalePatient ? null : childrenCount ? parseInt(childrenCount) : null,
+          birth_type_1: isMalePatient ? null : birthType1 || null,
+          birth_type_2: isMalePatient ? null : birthType2 || null,
         };
 
         if (existingHealth?.id) {
@@ -250,7 +261,7 @@ function IntakeStepsContent() {
       streetAddress, postalCode, town, nationality, maritalStatus, profession, currentEmployer,
       insuranceProvider, insuranceCardNumber, insuranceType, weight, height, knownIllnesses,
       previousSurgeries, allergies, cigarettes, alcohol, sports, medications, generalPractitioner,
-      gynecologist, childrenCount, birthType1, birthType2, contactPreference]);
+      gender, gynecologist, childrenCount, birthType1, birthType2, contactPreference, isMalePatient]);
 
   // Set up auto-save on window close and idle timeout
   useEffect(() => {
@@ -321,6 +332,7 @@ function IntakeStepsContent() {
           setTown(patientData.town || "");
           setProfession(patientData.profession || "");
           setCurrentEmployer(patientData.current_employer || "");
+          setGender(patientData.gender || "");
           
           // Parse DOB if exists
           if (patientData.dob) {
@@ -517,6 +529,7 @@ function IntakeStepsContent() {
             marital_status: maritalStatus || null,
             profession: profession || null,
             current_employer: currentEmployer || null,
+            gender: gender || null,
           })
           .eq("id", patientId);
 
@@ -587,10 +600,10 @@ function IntakeStepsContent() {
           sports_activity: sports || null,
           medications: medications || null,
           general_practitioner: generalPractitioner || null,
-          gynecologist: gynecologist || null,
-          children_count: childrenCount ? parseInt(childrenCount) : null,
-          birth_type_1: birthType1 || null,
-          birth_type_2: birthType2 || null,
+          gynecologist: isMalePatient ? null : gynecologist || null,
+          children_count: isMalePatient ? null : childrenCount ? parseInt(childrenCount) : null,
+          birth_type_1: isMalePatient ? null : birthType1 || null,
+          birth_type_2: isMalePatient ? null : birthType2 || null,
         };
 
         let healthError;
@@ -604,6 +617,15 @@ function IntakeStepsContent() {
 
         if (healthError) {
           throw new Error(`Failed to save health information: ${healthError.message}. Please contact support.`);
+        }
+
+        const { error: genderError } = await supabaseClient
+          .from("patients")
+          .update({ gender: gender || null })
+          .eq("id", patientId);
+
+        if (genderError) {
+          throw new Error(`Failed to save gender information: ${genderError.message}. Please contact support.`);
         }
       }
 
@@ -721,8 +743,10 @@ function IntakeStepsContent() {
                 <li><strong>Sports:</strong> ${sports || "Not provided"}</li>
                 <li><strong>Medications:</strong> ${medications || "Not provided"}</li>
                 <li><strong>GP:</strong> ${generalPractitioner || "Not provided"}</li>
+                <li><strong>Gender:</strong> ${gender || "Not provided"}</li>
+                ${!isMalePatient ? `
                 <li><strong>Gynecologist:</strong> ${gynecologist || "Not provided"}</li>
-                <li><strong>Children:</strong> ${childrenCount || "0"}</li>
+                <li><strong>Children:</strong> ${childrenCount || "0"}</li>` : ""}
               </ul>
               
               <h3>Contact Preference</h3>
@@ -748,7 +772,7 @@ function IntakeStepsContent() {
     } finally {
       setLoading(false);
     }
-  }, [submissionId, patientId, firstName, lastName, dobDay, dobMonth, dobYear, maritalStatus, nationality, streetAddress, postalCode, town, email, mobile, profession, currentEmployer, insuranceProvider, insuranceCardNumber, insuranceType, weight, height, knownIllnesses, previousSurgeries, allergies, cigarettes, alcohol, sports, medications, generalPractitioner, gynecologist, childrenCount, birthType1, birthType2, contactPreference, calculateBMI]);
+  }, [submissionId, patientId, firstName, lastName, dobDay, dobMonth, dobYear, maritalStatus, nationality, streetAddress, postalCode, town, email, mobile, profession, currentEmployer, insuranceProvider, insuranceCardNumber, insuranceType, weight, height, knownIllnesses, previousSurgeries, allergies, cigarettes, alcohol, sports, medications, generalPractitioner, gender, gynecologist, childrenCount, birthType1, birthType2, contactPreference, calculateBMI, isMalePatient]);
 
   const handleNext = async () => {
     try {
@@ -1282,6 +1306,20 @@ function IntakeStepsContent() {
               </div>
 
               <div>
+                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.gender}</label>
+                <select
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                >
+                  <option value="">{t.selectGender}</option>
+                  <option value="male">{t.genderOptions.male}</option>
+                  <option value="female">{t.genderOptions.female}</option>
+                  <option value="other">{t.genderOptions.other}</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.maritalStatus}</label>
                 <select
                   value={maritalStatus}
@@ -1620,58 +1658,62 @@ function IntakeStepsContent() {
                 />
               </div>
 
-              <div>
-                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.gynecologist}</label>
-                <input
-                  type="text"
-                  value={gynecologist}
-                  onChange={(e) => setGynecologist(e.target.value)}
-                  placeholder={t.doctorName}
-                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
-                />
-              </div>
+              {!isMalePatient && (
+                <>
+                  <div>
+                    <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.gynecologist}</label>
+                    <input
+                      type="text"
+                      value={gynecologist}
+                      onChange={(e) => setGynecologist(e.target.value)}
+                      placeholder={t.doctorName}
+                      className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.haveChildren}</label>
-                <input
-                  type="number"
-                  value={childrenCount}
-                  onChange={(e) => setChildrenCount(e.target.value)}
-                  placeholder={t.numberOfChildren}
-                  className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
-                />
-              </div>
+                  <div>
+                    <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.haveChildren}</label>
+                    <input
+                      type="number"
+                      value={childrenCount}
+                      onChange={(e) => setChildrenCount(e.target.value)}
+                      placeholder={t.numberOfChildren}
+                      className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-slate-500 focus:outline-none"
+                    />
+                  </div>
 
-              {parseInt(childrenCount) >= 1 && (
-                <div>
-                  <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.birthType1}</label>
-                  <select
-                    value={birthType1}
-                    onChange={(e) => setBirthType1(e.target.value)}
-                    className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
-                  >
-                    <option value="">{t.selectType}</option>
-                    {t.birthTypes.map((type, idx) => (
-                      <option key={type} value={BIRTH_TYPES[idx]}>{type}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+                  {parseInt(childrenCount) >= 1 && (
+                    <div>
+                      <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.birthType1}</label>
+                      <select
+                        value={birthType1}
+                        onChange={(e) => setBirthType1(e.target.value)}
+                        className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
+                      >
+                        <option value="">{t.selectType}</option>
+                        {t.birthTypes.map((type, idx) => (
+                          <option key={type} value={BIRTH_TYPES[idx]}>{type}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
-              {parseInt(childrenCount) >= 2 && (
-                <div>
-                  <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.birthType2}</label>
-                  <select
-                    value={birthType2}
-                    onChange={(e) => setBirthType2(e.target.value)}
-                    className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
-                  >
-                    <option value="">{t.selectType}</option>
-                    {t.birthTypes.map((type, idx) => (
-                      <option key={type} value={BIRTH_TYPES[idx]}>{type}</option>
-                    ))}
-                  </select>
-                </div>
+                  {parseInt(childrenCount) >= 2 && (
+                    <div>
+                      <label className="block text-[#1a4d7c] text-sm font-medium mb-1">{t.birthType2}</label>
+                      <select
+                        value={birthType2}
+                        onChange={(e) => setBirthType2(e.target.value)}
+                        className="w-full px-4 py-3 rounded-full border border-slate-300 bg-white text-black focus:border-slate-500 focus:outline-none"
+                      >
+                        <option value="">{t.selectType}</option>
+                        {t.birthTypes.map((type, idx) => (
+                          <option key={type} value={BIRTH_TYPES[idx]}>{type}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
