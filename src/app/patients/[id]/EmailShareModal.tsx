@@ -10,8 +10,14 @@ interface EmailShareModalProps {
   selectedFileCount: number;
   emailSubject: string;
   emailBody: string;
+  emailTo: string;
+  emailCc: string;
+  ccPatient: boolean;
   onSubjectChange: (value: string) => void;
   onBodyChange: (value: string) => void;
+  onToChange: (value: string) => void;
+  onCcChange: (value: string) => void;
+  onCcPatientChange: (value: boolean) => void;
   onSend: (event: React.FormEvent) => void;
   sending: boolean;
   error: string | null;
@@ -28,8 +34,14 @@ export default function EmailShareModal({
   selectedFileCount,
   emailSubject,
   emailBody,
+  emailTo,
+  emailCc,
+  ccPatient,
   onSubjectChange,
   onBodyChange,
+  onToChange,
+  onCcChange,
+  onCcPatientChange,
   onSend,
   sending,
   error,
@@ -175,7 +187,7 @@ export default function EmailShareModal({
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Share Documents by Email</h2>
             <p className="mt-1 text-[11px] text-slate-500">
-              Sending {selectedFileCount} file{selectedFileCount > 1 ? "s" : ""} to {patientName}
+              Sending {selectedFileCount} file{selectedFileCount > 1 ? "s" : ""} from {patientName}
             </p>
           </div>
           <button
@@ -203,13 +215,48 @@ export default function EmailShareModal({
 
           {/* To */}
           <div className="space-y-1">
-            <label className="block text-[11px] font-medium text-slate-700">To</label>
+            <label htmlFor="share-email-to" className="block text-[11px] font-medium text-slate-700">
+              To
+            </label>
             <input
-              type="text"
-              value={patientEmail || "Patient's registered email address"}
-              readOnly
-              className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-600 cursor-default focus:outline-none shadow-sm"
+              id="share-email-to"
+              type="email"
+              value={emailTo}
+              onChange={(e) => onToChange(e.target.value)}
+              placeholder={patientEmail || "Recipient email address"}
+              disabled={sending}
+              required
+              className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed"
             />
+          </div>
+
+          {/* CC */}
+          <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={ccPatient}
+                onChange={(e) => onCcPatientChange(e.target.checked)}
+                disabled={sending || !patientEmail}
+                className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500 disabled:cursor-not-allowed"
+              />
+              <span className="text-[11px] font-medium text-slate-700">CC patient ({patientEmail || "no email"})</span>
+            </label>
+
+            <div className="space-y-1">
+              <label htmlFor="share-email-cc" className="block text-[11px] font-medium text-slate-700">
+                Additional CC
+              </label>
+              <input
+                id="share-email-cc"
+                type="email"
+                value={emailCc}
+                onChange={(e) => onCcChange(e.target.value)}
+                placeholder="Custom CC address (optional)"
+                disabled={sending}
+                className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed"
+              />
+            </div>
           </div>
 
           {/* Subject */}

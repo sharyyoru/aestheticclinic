@@ -199,24 +199,56 @@ export async function POST(request: Request) {
         if (!attachmentsError && attachments && attachments.length > 0) {
           for (const att of attachments as EmailAttachmentRow[]) {
             try {
-              const { data: fileData, error: downloadError } = await supabase.storage
-                .from("email-attachments")
-                .download(att.storage_path);
+              let bucket = "email-attachments";
+              let path = att.storage_path;
 
-              if (!downloadError && fileData) {
-                // Convert Blob to File for FormData
+              // Support source-referenced attachments (e.g. source://patient-docs/path)
+              if (att.storage_path.startsWith("source://")) {
+                const rest = att.storage_path.slice("source://".length);
+                const firstSlash = rest.indexOf("/");
+                if (firstSlash > 0) {
+                  bucket = rest.slice(0, firstSlash);
+                  path = rest.slice(firstSlash + 1);
+                }
+              }
+
+              let fileData: Blob | null = null;
+
+              if (bucket === "patient_document") {
+                // Public bucket: prefer direct download over CDN
+                const { data, error: downloadError } = await supabase.storage
+                  .from(bucket)
+                  .download(path);
+                if (!downloadError && data) {
+                  fileData = data;
+                }
+              } else {
+                // Private bucket: create a short-lived signed URL
+                const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+                  .from(bucket)
+                  .createSignedUrl(path, 60);
+                if (!signedUrlError && signedUrlData?.signedUrl) {
+                  const response = await fetch(signedUrlData.signedUrl);
+                  if (response.ok) {
+                    fileData = await response.blob();
+                  }
+                }
+              }
+
+              if (fileData) {
                 const file = new File([fileData], att.file_name, {
                   type: att.mime_type || "application/octet-stream",
                 });
                 formData.append("attachment", file, att.file_name);
               } else {
-                console.error("Error downloading attachment:", att.file_name, downloadError);
+                console.error("Error downloading attachment:", att.file_name, path);
               }
             } catch (dlError) {
               console.error("Error processing attachment:", att.file_name, dlError);
             }
           }
         }
+
       } catch (attError) {
         console.error("Error fetching attachments:", attError);
       }

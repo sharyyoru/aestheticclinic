@@ -171,6 +171,9 @@ export default function PatientDocumentsTab({
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
+  const [emailTo, setEmailTo] = useState("");
+  const [emailCc, setEmailCc] = useState("");
+  const [ccPatient, setCcPatient] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailPatientEmail, setEmailPatientEmail] = useState<string | undefined>(undefined);
@@ -243,6 +246,39 @@ export default function PatientDocumentsTab({
       cancelled = true;
     };
   }, [patientName, patientId, refreshKey]);
+
+  // Load patient email when email modal opens and default the recipient
+  useEffect(() => {
+    if (!emailModalOpen) return;
+
+    let cancelled = false;
+
+    async function loadPatientEmail() {
+      try {
+        const { data, error } = await supabaseClient
+          .from("patients")
+          .select("email, first_name, last_name")
+          .eq("id", patientId)
+          .single();
+
+        if (cancelled || error || !data) return;
+
+        const email = data.email || "";
+        setEmailPatientEmail(email);
+        if (email && !emailTo) {
+          setEmailTo(email);
+        }
+      } catch (err) {
+        console.error("Error loading patient email for sharing:", err);
+      }
+    }
+
+    loadPatientEmail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [emailModalOpen, patientId, emailTo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -781,61 +817,40 @@ async function handleSendEmail(event: React.FormEvent) {
         return;
       }
 
-      // Get patient email
+      // Get patient details
       const { data: patientData, error: patientError } = await supabaseClient
         .from("patients")
         .select("email, first_name, last_name")
         .eq("id", patientId)
         .single();
 
-      if (patientError || !patientData?.email) {
-        setEmailError("Patient email not found.");
+      if (patientError || !patientData) {
+        setEmailError("Patient details not found.");
         setSendingEmail(false);
         return;
       }
 
-      const patientEmail = patientData.email;
-      const patientFullName = `${patientData.first_name} ${patientData.last_name}`;
+      const patientEmail = patientData.email || "";
+      const patientFullName = `${patientData.first_name} ${patientData.last_name}`.trim();
       setEmailPatientEmail(patientEmail);
 
-      // Download selected files and encode as base64 for direct attachment
-      const inlineAttachments: { filename: string; content: string; encoding: string; contentType: string }[] = [];
-      const attachmentMeta: { file_name: string; storage_path: string; mime_type: string; file_size: number }[] = [];
-      for (const itemPath of Array.from(selectedFilesForEmail)) {
-        const fullPath = [patientId, itemPath].filter(Boolean).join("/");
-        const item = items.find(i => i.path === itemPath);
-        if (!item) continue;
-
-        const { data: fileBlob, error: downloadError } = await supabaseClient.storage
-          .from(BUCKET_NAME)
-          .download(fullPath);
-
-        if (downloadError || !fileBlob) {
-          console.error("Failed to download file for attachment:", item.name, downloadError);
-          continue;
-        }
-
-        const arrayBuffer = await fileBlob.arrayBuffer();
-        const uint8 = new Uint8Array(arrayBuffer);
-        let binary = "";
-        for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
-        const base64 = btoa(binary);
-        const mimeType = item.metadata?.mimetype || fileBlob.type || "application/octet-stream";
-        inlineAttachments.push({
-          filename: item.name,
-          content: base64,
-          encoding: "base64",
-          contentType: mimeType,
-        });
-        // Store the public URL as storage_path so the email log can display it
-        const { data: urlData } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
-        attachmentMeta.push({
-          file_name: item.name,
-          storage_path: urlData.publicUrl,
-          mime_type: mimeType,
-          file_size: arrayBuffer.byteLength,
-        });
+      const toAddress = emailTo.trim() || patientEmail;
+      if (!toAddress) {
+        setEmailError("Please enter a recipient email address.");
+        setSendingEmail(false);
+        return;
       }
+
+      // Build CC from custom CC + optional patient CC
+      const ccParts: string[] = [];
+      if (ccPatient && patientEmail && patientEmail !== toAddress) {
+        ccParts.push(patientEmail);
+      }
+      const customCc = emailCc.trim();
+      if (customCc) {
+        ccParts.push(customCc);
+      }
+      const ccAddress = ccParts.join(", ") || null;
 
       const fromAddress = authUser.email ?? null;
       const fromName = authUser.user_metadata?.full_name ||
@@ -843,7 +858,6 @@ async function handleSendEmail(event: React.FormEvent) {
                        null;
 
       // Build HTML body — convert bare newlines to <br> so email clients render line breaks correctly
-      // (RichTextEditor uses whiteSpace:pre-wrap which stores \n in innerHTML, but email clients ignore that CSS)
       const rawBody = emailBody.trim() || `<p>Hi ${patientFullName},</p><p>Please find your documents attached.</p>`;
       const htmlBody = rawBody.replace(/\n/g, "<br>");
 
@@ -851,7 +865,8 @@ async function handleSendEmail(event: React.FormEvent) {
         .from("emails")
         .insert({
           patient_id: patientId,
-          to_address: patientEmail,
+          to_address: toAddress,
+          cc_address: ccAddress,
           from_address: fromAddress,
           subject: emailSubject || `Your documents from Aesthetic Clinic`,
           body: htmlBody,
@@ -870,28 +885,57 @@ async function handleSendEmail(event: React.FormEvent) {
 
       const emailId = (inserted as any).id;
 
-      // Insert email_attachments records so the email log displays them
-      if (attachmentMeta.length > 0) {
-        await supabaseClient.from("email_attachments").insert(
-          attachmentMeta.map((a) => ({ ...a, email_id: emailId }))
-        );
+      // Create reference-based attachment records so the email log displays them and the API can download them
+      const attachmentMeta: { file_name: string; storage_path: string; mime_type: string; file_size: number; email_id: string }[] = [];
+      for (const itemPath of Array.from(selectedFilesForEmail)) {
+        const item = items.find(i => i.path === itemPath);
+        if (!item || item.kind !== "file") continue;
+
+        const mimeType = item.metadata?.mimetype || getMimeType(item.name, item.metadata) || "application/octet-stream";
+        const fileSize = (item.metadata?.size ?? 0) as number;
+
+        const bucket = item.source === "patient-docs" ? "patient-docs" : BUCKET_NAME;
+        const storagePath = bucket === "patient-docs"
+          ? itemPath
+          : [patientId, itemPath].filter(Boolean).join("/");
+
+        attachmentMeta.push({
+          file_name: item.name,
+          storage_path: `source://${bucket}/${storagePath}`,
+          mime_type: mimeType,
+          file_size: fileSize,
+          email_id: emailId,
+        });
       }
 
-      // Send email via API with files as direct attachments
+      if (attachmentMeta.length > 0) {
+        const { error: attachError } = await supabaseClient
+          .from("email_attachments")
+          .insert(attachmentMeta);
+
+        if (attachError) {
+          console.error("Failed to save attachment metadata:", attachError);
+          setEmailError("Email saved but failed to record attachments.");
+          setSendingEmail(false);
+          return;
+        }
+      }
+
+      // Send email via API — the API will download attachments from the referenced buckets
       const response = await fetch("/api/emails/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          to: patientEmail,
+          to: toAddress,
+          cc: ccAddress,
           subject: emailSubject || `Your documents from Aesthetic Clinic`,
           html: htmlBody,
           fromUserEmail: fromAddress,
           fromUserName: fromName,
           emailId: emailId,
           patientId: patientId,
-          inlineAttachments,
         }),
       });
 
@@ -904,6 +948,9 @@ async function handleSendEmail(event: React.FormEvent) {
       setSelectedFilesForEmail(new Set());
       setEmailSubject("");
       setEmailBody("");
+      setEmailTo("");
+      setEmailCc("");
+      setCcPatient(false);
       setEmailError(null);
     } catch (err: any) {
       setEmailError(err?.message ?? "Failed to send email.");
@@ -2049,12 +2096,21 @@ async function handleSendEmail(event: React.FormEvent) {
         onClose={() => {
           setEmailModalOpen(false);
           setEmailError(null);
+          setEmailTo("");
+          setEmailCc("");
+          setCcPatient(false);
         }}
         selectedFileCount={selectedFilesForEmail.size}
         emailSubject={emailSubject}
         emailBody={emailBody}
+        emailTo={emailTo}
+        emailCc={emailCc}
+        ccPatient={ccPatient}
         onSubjectChange={setEmailSubject}
         onBodyChange={setEmailBody}
+        onToChange={setEmailTo}
+        onCcChange={setEmailCc}
+        onCcPatientChange={setCcPatient}
         onSend={handleSendEmail}
         sending={sendingEmail}
         error={emailError}

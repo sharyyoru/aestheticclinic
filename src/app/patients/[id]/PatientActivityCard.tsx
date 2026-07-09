@@ -64,6 +64,18 @@ type EmailAttachment = {
   public_url: string | null;
 };
 
+type EmailAttachmentInput = {
+  id: string;
+  source: "file" | "storage";
+  name: string;
+  size: number;
+  mimeType: string;
+  file?: File;
+  storageBucket?: string;
+  storagePath?: string;
+  storageUrl?: string;
+};
+
 type EmailAttachmentCount = {
   email_id: string;
   count: number;
@@ -292,7 +304,7 @@ export default function PatientActivityCard({
   const [emailSignatureHtml, setEmailSignatureHtml] = useState("");
   const [useSignature, setUseSignature] = useState(true);
 
-  const [emailAttachments, setEmailAttachments] = useState<File[]>([]);
+  const [emailAttachments, setEmailAttachments] = useState<EmailAttachmentInput[]>([]);
   const [emailAttachmentsError, setEmailAttachmentsError] = useState<string | null>(
     null,
   );
@@ -305,11 +317,12 @@ export default function PatientActivityCard({
 
   // Document picker state for attaching patient files
   const [documentPickerOpen, setDocumentPickerOpen] = useState(false);
-  const [documentPickerFiles, setDocumentPickerFiles] = useState<Array<{ path: string; name: string; source: string; size?: number; created_at?: string; mimeType?: string }>>([]);
+  const [documentPickerFiles, setDocumentPickerFiles] = useState<Array<{ path: string; name: string; source: string; size?: number; created_at?: string; mimeType?: string; url?: string }>>([]);
   const [documentPickerLoading, setDocumentPickerLoading] = useState(false);
   const [documentPickerSearch, setDocumentPickerSearch] = useState("");
   const [documentPickerSelectedPaths, setDocumentPickerSelectedPaths] = useState<Set<string>>(new Set());
   const [documentPickerAttaching, setDocumentPickerAttaching] = useState(false);
+  const [documentPickerAttachingError, setDocumentPickerAttachingError] = useState<string | null>(null);
 
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("");
@@ -1039,6 +1052,7 @@ export default function PatientActivityCard({
         setEmailRecipientType("patient");
         setDocumentPickerSelectedPaths(new Set());
         setDocumentPickerSearch("");
+        setDocumentPickerAttachingError(null);
         setUseSignature(true);
         // Remove composeEmail query param to prevent modal from reopening
         router.replace(`/patients/${patientId}?m_tab=crm&crm_sub=emails`);
@@ -1122,10 +1136,22 @@ export default function PatientActivityCard({
         const attachments: EmailAttachment[] = (data as any[]).map((row) => {
           const path = (row.storage_path as string) || "";
           let publicUrl: string | null = null;
-          
+          let effectivePath = path;
+          let effectiveBucket = "email-attachments";
+
           // If storage_path is already a full URL (e.g. from patient_document bucket), use it directly
           if (path.startsWith("https://") || path.startsWith("http://")) {
             publicUrl = path;
+          } else if (path.startsWith("source://")) {
+            // Reference-based attachments: source://bucket/path
+            const rest = path.slice("source://".length);
+            const firstSlash = rest.indexOf("/");
+            if (firstSlash > 0) {
+              effectiveBucket = rest.slice(0, firstSlash);
+              effectivePath = rest.slice(firstSlash + 1);
+            }
+            // Only public buckets can be viewed via public URL; private ones will show no link
+            publicUrl = supabaseClient.storage.from(effectiveBucket).getPublicUrl(effectivePath).data?.publicUrl ?? null;
           } else if (path.includes("/")) {
             // Check if path has bucket prefix (e.g., "invoice-pdfs/path/to/file.pdf")
             const parts = path.split("/");
@@ -1137,6 +1163,8 @@ export default function PatientActivityCard({
             
             if (knownBuckets.includes(possibleBucket) && restOfPath) {
               // Use the specified bucket
+              effectiveBucket = possibleBucket;
+              effectivePath = restOfPath;
               publicUrl = supabaseClient.storage.from(possibleBucket).getPublicUrl(restOfPath).data?.publicUrl ?? null;
             } else {
               // Default to email-attachments bucket
@@ -1250,11 +1278,19 @@ export default function PatientActivityCard({
       }
 
       const file = new File([data], invoiceName, { type: "application/pdf" });
+      const input: EmailAttachmentInput = {
+        id: `${invoiceName}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        source: "file",
+        name: invoiceName,
+        size: file.size,
+        mimeType: "application/pdf",
+        file,
+      };
 
       setEmailAttachments((prev) => {
         const exists = prev.some((f) => f.name === invoiceName);
         if (exists) return prev;
-        return [...prev, file];
+        return [...prev, input];
       });
 
       setInvoiceModalOpen(false);
@@ -1314,90 +1350,117 @@ export default function PatientActivityCard({
     if (!documentPickerOpen) return;
 
     let isMounted = true;
+    const abortController = new AbortController();
+
+    async function loadPrimaryDocuments() {
+      const files: Array<{ path: string; name: string; source: string; size?: number; created_at?: string; mimeType?: string; url?: string }> = [];
+
+      // Load from primary patient_document bucket (public CDN)
+      async function listRecursive(prefix: string) {
+        const { data, error } = await supabaseClient.storage
+          .from("patient_document")
+          .list(prefix, { limit: 1000 });
+
+        if (error || !data) return;
+
+        for (const item of data as any[]) {
+          if (item.name === ".keep" || item.name === ".emptyFolderPlaceholder") continue;
+
+          const isFolder = item.id == null && item.metadata == null;
+          const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
+
+          if (isFolder) {
+            await listRecursive(itemPath);
+          } else {
+            const { data: publicUrlData } = supabaseClient.storage
+              .from("patient_document")
+              .getPublicUrl(itemPath);
+            files.push({
+              path: itemPath,
+              name: item.name,
+              source: "patient_document",
+              size: item.metadata?.size ?? undefined,
+              created_at: item.created_at || undefined,
+              mimeType: item.metadata?.mimetype ?? undefined,
+              url: publicUrlData?.publicUrl,
+            });
+          }
+        }
+      }
+
+      await listRecursive(patientId);
+
+      if (!isMounted) return files;
+
+      files.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (dateB !== dateA) return dateB - dateA;
+        return a.name.localeCompare(b.name);
+      });
+
+      return files;
+    }
+
+    async function loadLegacyDocuments() {
+      if (!patientName || patientName.trim().split(/\s+/).length < 2) return [];
+
+      const response = await fetch("/api/patient-docs/list-documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortController.signal,
+        body: JSON.stringify({
+          patientId,
+          firstName: patientName.trim().split(/\s+/)[0],
+          lastName: patientName.trim().split(/\s+/).slice(1).join(" "),
+          skipDedup: true,
+        }),
+      });
+
+      if (!response.ok) return [];
+
+      const legacyData = await response.json();
+      return (legacyData.files || []).map((file: any) => ({
+        path: file.path,
+        name: file.name,
+        source: "patient-docs",
+        size: file.size ?? undefined,
+        created_at: file.createdAt ?? undefined,
+        mimeType: file.mimeType ?? undefined,
+      }));
+    }
 
     async function loadDocuments() {
       try {
         setDocumentPickerLoading(true);
+        setDocumentPickerAttachingError(null);
 
-        const files: Array<{ path: string; name: string; source: string; size?: number; created_at?: string; mimeType?: string }> = [];
-
-        // Load from primary patient_document bucket
-        async function listRecursive(prefix: string) {
-          const { data, error } = await supabaseClient.storage
-            .from("patient_document")
-            .list(prefix, { limit: 1000 });
-
-          if (error || !data) return;
-
-          for (const item of data as any[]) {
-            // Skip folder placeholders
-            if (item.name === ".keep" || item.name === ".emptyFolderPlaceholder") continue;
-
-            // Folder detection: items with no id and no metadata are folders
-            const isFolder = item.id == null && item.metadata == null;
-            const itemPath = prefix ? `${prefix}/${item.name}` : item.name;
-
-            if (isFolder) {
-              await listRecursive(itemPath);
-            } else {
-              files.push({
-                path: itemPath,
-                name: item.name,
-                source: "patient_document",
-                size: item.metadata?.size ?? undefined,
-                created_at: item.created_at || undefined,
-                mimeType: item.metadata?.mimetype ?? undefined,
-              });
-            }
-          }
+        // Show primary files immediately via CDN, then load legacy docs in the background
+        const primaryFiles = await loadPrimaryDocuments();
+        if (isMounted) {
+          setDocumentPickerFiles(primaryFiles);
+          setDocumentPickerLoading(false);
         }
 
-        await listRecursive(patientId);
-
-        // Load from legacy patient-docs bucket if patient name is available
-        if (patientName && patientName.trim().split(/\s+/).length >= 2) {
-          try {
-            const response = await fetch("/api/patient-docs/list-documents", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                patientId,
-                firstName: patientName.trim().split(/\s+/)[0],
-                lastName: patientName.trim().split(/\s+/).slice(1).join(" "),
-              }),
-            });
-
-            if (response.ok) {
-              const legacyData = await response.json();
-              for (const file of legacyData.files || []) {
-                files.push({
-                  path: file.path,
-                  name: file.name,
-                  source: "patient-docs",
-                  size: file.size ?? undefined,
-                  created_at: file.createdAt ?? undefined,
-                  mimeType: file.mimeType ?? undefined,
-                });
-              }
-            }
-          } catch (err) {
-            console.error("Failed to load legacy documents:", err);
-          }
-        }
-
+        const legacyFiles = await loadLegacyDocuments();
         if (!isMounted) return;
 
-        // Sort by created_at desc, then name
-        files.sort((a, b) => {
+        // Deduplicate legacy files against primary files by normalized filename
+        const primaryKeys = new Set(primaryFiles.map((f) => f.name.toLowerCase().replace(/[-_]/g, "_")));
+        const dedupedLegacy = legacyFiles.filter((f: { name: string }) => !primaryKeys.has(f.name.toLowerCase().replace(/[-_]/g, "_")));
+
+        const combined = [...primaryFiles, ...dedupedLegacy].sort((a, b) => {
           const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
           const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
           if (dateB !== dateA) return dateB - dateA;
           return a.name.localeCompare(b.name);
         });
 
-        setDocumentPickerFiles(files);
+        setDocumentPickerFiles(combined);
       } catch (err) {
-        console.error("Error loading documents:", err);
+        if ((err as Error).name !== "AbortError") {
+          console.error("Error loading documents:", err);
+        }
       } finally {
         if (isMounted) setDocumentPickerLoading(false);
       }
@@ -1407,6 +1470,7 @@ export default function PatientActivityCard({
 
     return () => {
       isMounted = false;
+      abortController.abort();
     };
   }, [documentPickerOpen, patientId, patientName]);
 
@@ -1415,52 +1479,49 @@ export default function PatientActivityCard({
 
     try {
       setDocumentPickerAttaching(true);
+      setDocumentPickerAttachingError(null);
 
       const selected = documentPickerFiles.filter((f) => documentPickerSelectedPaths.has(f.path));
-      const newFiles: File[] = [];
+      const newRefs: EmailAttachmentInput[] = [];
 
       for (const file of selected) {
-        try {
-          const bucket = file.source === "patient-docs" ? "patient-docs" : "patient_document";
-          const path = file.path;
-
-          const { data, error } = await supabaseClient.storage
-            .from(bucket)
-            .download(path);
-
-          if (error || !data) {
-            console.error("Failed to download document:", file.path, error);
-            continue;
-          }
-
-          const mimeType = file.mimeType || "application/octet-stream";
-          const newFile = new File([data], file.name, { type: mimeType });
-          newFiles.push(newFile);
-        } catch (err) {
-          console.error("Error downloading document:", file.path, err);
-        }
+        const bucket = file.source === "patient-docs" ? "patient-docs" : "patient_document";
+        const ref: EmailAttachmentInput = {
+          id: `${file.name}-${file.size ?? 0}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          source: "storage",
+          name: file.name,
+          size: file.size ?? 0,
+          mimeType: file.mimeType || "application/octet-stream",
+          storageBucket: bucket,
+          storagePath: file.path,
+          storageUrl: file.url,
+        };
+        newRefs.push(ref);
       }
 
-      setEmailAttachments((prev) => {
-        const combined = [...prev, ...newFiles];
-        const seen = new Set<string>();
-        const deduped: File[] = [];
+      if (newRefs.length > 0) {
+        setEmailAttachments((prev) => {
+          const combined = [...prev, ...newRefs];
+          const seen = new Set<string>();
+          const deduped: EmailAttachmentInput[] = [];
 
-        for (const file of combined) {
-          const key = `${file.name}-${file.size}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          deduped.push(file);
-        }
+          for (const att of combined) {
+            const key = `${att.name}-${att.size}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            deduped.push(att);
+          }
 
-        return deduped;
-      });
+          return deduped;
+        });
 
-      setDocumentPickerOpen(false);
-      setDocumentPickerSelectedPaths(new Set());
-      setDocumentPickerSearch("");
+        setDocumentPickerOpen(false);
+        setDocumentPickerSelectedPaths(new Set());
+        setDocumentPickerSearch("");
+      }
     } catch (err) {
-      console.error("Error attaching documents:", err);
+      console.error("Error attaching selected documents:", err);
+      setDocumentPickerAttachingError("Failed to attach selected documents.");
     } finally {
       setDocumentPickerAttaching(false);
     }
@@ -2725,8 +2786,32 @@ export default function PatientActivityCard({
       if (emailAttachments.length > 0) {
         let lastAttachmentError: string | null = null;
 
-        for (const file of emailAttachments) {
+        for (const att of emailAttachments) {
           try {
+            if (att.source === "storage" && att.storageBucket && att.storagePath) {
+              // Reference-based attachments: store a pointer so the send API can download from the source bucket
+              const { error: attachError } = await supabaseClient
+                .from("email_attachments")
+                .insert({
+                  email_id: insertedEmail.id,
+                  file_name: att.name,
+                  storage_path: `source://${att.storageBucket}/${att.storagePath}`,
+                  mime_type: att.mimeType || null,
+                  file_size: att.size,
+                });
+
+              if (attachError) {
+                lastAttachmentError = attachError.message;
+              }
+              continue;
+            }
+
+            const file = att.file;
+            if (!file) {
+              lastAttachmentError = "Attachment file is missing.";
+              continue;
+            }
+
             const ext = file.name.split(".").pop() || "bin";
             const safeName = file.name.replace(/[^a-zA-Z0-9.\-]+/g, "_");
             const path = `${authUser.id}/${insertedEmail.id}/${Date.now()}.${ext}-${safeName}`;
@@ -5548,15 +5633,23 @@ export default function PatientActivityCard({
                           if (files.length === 0) return;
 
                           setEmailAttachments((prev) => {
-                            const combined = [...prev, ...files];
+                            const inputs: EmailAttachmentInput[] = files.map((file) => ({
+                              id: `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                              source: "file",
+                              name: file.name,
+                              size: file.size,
+                              mimeType: file.type || "application/octet-stream",
+                              file,
+                            }));
+                            const combined = [...prev, ...inputs];
                             const seen = new Set<string>();
-                            const deduped: File[] = [];
+                            const deduped: EmailAttachmentInput[] = [];
 
-                            for (const file of combined) {
-                              const key = `${file.name}-${file.size}`;
+                            for (const att of combined) {
+                              const key = `${att.name}-${att.size}`;
                               if (seen.has(key)) continue;
                               seen.add(key);
-                              deduped.push(file);
+                              deduped.push(att);
                             }
 
                             return deduped;
@@ -5588,9 +5681,12 @@ export default function PatientActivityCard({
                 </div>
                 {emailAttachments.length > 0 ? (
                   <ul className="mt-1 max-h-20 space-y-0.5 overflow-y-auto text-[10px] text-slate-600">
-                    {emailAttachments.map((file) => (
-                      <li key={file.name} className="truncate">
-                        {file.name}
+                    {emailAttachments.map((att) => (
+                      <li key={att.id} className="truncate">
+                        {att.name}
+                        {att.source === "storage" ? (
+                          <span className="ml-1 text-slate-400">(document)</span>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -5806,6 +5902,7 @@ export default function PatientActivityCard({
               setDocumentPickerOpen(false);
               setDocumentPickerSelectedPaths(new Set());
               setDocumentPickerSearch("");
+              setDocumentPickerAttachingError(null);
             }
           }}
         >
@@ -5823,6 +5920,7 @@ export default function PatientActivityCard({
                   setDocumentPickerOpen(false);
                   setDocumentPickerSelectedPaths(new Set());
                   setDocumentPickerSearch("");
+                  setDocumentPickerAttachingError(null);
                 }}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
               >
@@ -5900,6 +5998,10 @@ export default function PatientActivityCard({
                 </div>
               )}
 
+              {documentPickerAttachingError ? (
+                <p className="text-[10px] text-red-600">{documentPickerAttachingError}</p>
+              ) : null}
+
               <div className="flex items-center justify-between pt-2">
                 <span className="text-[10px] text-slate-500">
                   {documentPickerSelectedPaths.size} file{documentPickerSelectedPaths.size > 1 ? "s" : ""} selected
@@ -5911,6 +6013,7 @@ export default function PatientActivityCard({
                       setDocumentPickerOpen(false);
                       setDocumentPickerSelectedPaths(new Set());
                       setDocumentPickerSearch("");
+                      setDocumentPickerAttachingError(null);
                     }}
                     className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
                   >

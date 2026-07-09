@@ -19,7 +19,6 @@ type DocumentFile = {
   mimeType: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-  publicUrl: string;
   source: "patient-docs"; // To distinguish from patient_document bucket
 };
 
@@ -119,14 +118,14 @@ async function fetchAllPatientDocumentKeys(patientId: string): Promise<Set<strin
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { firstName, lastName, patientId } = body;
+    const { firstName, lastName, patientId, skipDedup } = body;
 
     if (!firstName || !lastName) {
       return NextResponse.json({ error: "firstName and lastName are required" }, { status: 400 });
     }
     
-    // Fetch all file names from patient_document bucket for deduplication
-    const existingKeys = patientId
+    // Fetch all file names from patient_document bucket for deduplication unless caller skips it
+    const existingKeys = patientId && !skipDedup
       ? await fetchAllPatientDocumentKeys(patientId)
       : new Set<string>();
 
@@ -184,12 +183,6 @@ export async function POST(request: NextRequest) {
 
         const filePath = `${documentsPath}/${file.name}`;
 
-        const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .createSignedUrl(filePath, 86400); // 24 hours instead of 1 hour
-
-        if (signedUrlError || !signedUrlData?.signedUrl) continue;
-
         const legacyDisplayName = file.name.replace(/_/g, "-");
         const normalizedLegacyName = normalizeForMatch(legacyDisplayName);
 
@@ -208,7 +201,6 @@ export async function POST(request: NextRequest) {
           mimeType: (file as any).metadata?.mimetype || null,
           createdAt: (file as any).created_at || null,
           updatedAt: (file as any).updated_at || null,
-          publicUrl: signedUrlData.signedUrl,
           source: "patient-docs",
         });
       }
