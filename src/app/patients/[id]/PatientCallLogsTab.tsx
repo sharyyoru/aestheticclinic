@@ -8,6 +8,7 @@ import { formatCallDuration, type CallTurn } from "@/lib/callLog";
 type CallLog = {
   id: string;
   call_id: string | null;
+  scheduled_call_id: string | null;
   direction: string | null;
   agent_id: string | null;
   from_number: string | null;
@@ -23,6 +24,7 @@ type CallLog = {
   whatsapp_sent_at: string | null;
   started_at: string | null;
   created_at: string;
+  prompt: string | null;
 };
 
 /** A booking attributed to a call (the conversion). */
@@ -123,7 +125,7 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
         supabaseClient
           .from("call_logs")
           .select(
-            "id, call_id, direction, agent_id, from_number, to_number, call_status, duration_seconds, summary, transcript, transcript_turns, recording_url, service_interest, assigned_user_name, whatsapp_sent_at, started_at, created_at",
+            "id, call_id, scheduled_call_id, direction, agent_id, from_number, to_number, call_status, duration_seconds, summary, transcript, transcript_turns, recording_url, service_interest, assigned_user_name, whatsapp_sent_at, started_at, created_at, prompt",
           )
           .eq("patient_id", patientId)
           .order("started_at", { ascending: false, nullsFirst: false })
@@ -248,7 +250,15 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
                 <span className="text-[11px] text-slate-400">·</span>
                 <span className="text-[11px] text-slate-500">{formatCallDuration(log.duration_seconds)}</span>
                 {log.call_status && (
-                  <span className="text-[11px] text-slate-400">· {log.call_status}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium border ${
+                      log.call_status === "scheduled"
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-slate-50 text-slate-500 border-slate-200"
+                    }`}
+                  >
+                    {log.call_status}
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -285,11 +295,19 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
 
             {isExpanded && (
               <div className="space-y-3 border-t border-slate-100 px-4 py-3">
-                {(log.service_interest || log.from_number) && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-                    {log.service_interest && <span>Interest: <span className="text-slate-700">{log.service_interest}</span></span>}
-                    {log.from_number && <span>From: <span className="font-mono text-slate-700">{log.from_number}</span></span>}
-                    {log.to_number && <span>To: <span className="font-mono text-slate-700">{log.to_number}</span></span>}
+                {(log.service_interest || log.from_number || log.prompt) && (
+                  <div className="flex flex-col gap-y-2 text-[11px] text-slate-500">
+                    {log.prompt && (
+                      <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2">
+                        <span className="font-semibold text-amber-700">AI prompt: </span>
+                        <span className="text-slate-700">{log.prompt}</span>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {log.service_interest && <span>Interest: <span className="text-slate-700">{log.service_interest}</span></span>}
+                      {log.from_number && <span>From: <span className="font-mono text-slate-700">{log.from_number}</span></span>}
+                      {log.to_number && <span>To: <span className="font-mono text-slate-700">{log.to_number}</span></span>}
+                    </div>
                   </div>
                 )}
 

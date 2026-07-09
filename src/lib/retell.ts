@@ -16,6 +16,7 @@ export type RetellCallPayload = {
   retell_llm_dynamic_variables: {
     user_name: string;       // patient first name – used in Valerie's prompt as {{user_name}}
     service_name: string;    // deal service – used in Valerie's prompt as {{service_name}}
+    [key: string]: string;   // additional dynamic variables (e.g. prompt for AI calls)
   };
   metadata?: Record<string, string>;
 };

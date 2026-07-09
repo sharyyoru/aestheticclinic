@@ -402,7 +402,7 @@ export default async function PatientPage({
         </div>
       </div>
 
-      <PatientPageClientWrapper patientId={patient.id} medicalTab={medicalTab}>
+      <PatientPageClientWrapper patientId={patient.id} medicalTab={medicalTab} patientName={`${patient.first_name} ${patient.last_name}`}>
         {medicalTab === "cockpit" ? (
           <>
             <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">

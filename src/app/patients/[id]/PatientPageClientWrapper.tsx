@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import DocumentPreviewTabsWrapper from "./DocumentPreviewTabsWrapper";
 import CrmTabDropdown from "./CrmTabDropdown";
+import AiCallButton from "./AiCallButton";
 
 type MedicalTab =
   | "cockpit"
@@ -24,12 +25,14 @@ type MedicalTab =
 interface PatientPageClientWrapperProps {
   patientId: string;
   medicalTab: MedicalTab;
+  patientName?: string;
   children: ReactNode;
 }
 
 export default function PatientPageClientWrapper({
   patientId,
   medicalTab,
+  patientName,
   children,
 }: PatientPageClientWrapperProps) {
   const medicalTabs: { id: MedicalTab; label: string }[] = [
@@ -52,6 +55,9 @@ export default function PatientPageClientWrapper({
       medicalTabs={medicalTabs}
       CrmTabDropdown={
         <CrmTabDropdown patientId={patientId} isActive={medicalTab === "crm"} />
+      }
+      AiCallButton={
+        <AiCallButton patientId={patientId} patientName={patientName} />
       }
     >
       {children}

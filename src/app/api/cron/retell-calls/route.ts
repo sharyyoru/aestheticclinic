@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const now = new Date().toISOString();
   const { data: dueCalls, error: fetchError } = await supabaseAdmin
     .from("retell_scheduled_calls")
-    .select("id, patient_id, deal_id, to_number, user_name, service_name")
+    .select("id, patient_id, deal_id, to_number, user_name, service_name, prompt")
     .eq("status", "pending")
     .lte("scheduled_for", now)
     .order("scheduled_for", { ascending: true })
@@ -79,6 +79,7 @@ export async function GET(req: NextRequest) {
         retell_llm_dynamic_variables: {
           user_name: call.user_name as string,
           service_name: call.service_name as string,
+          ...(call.prompt ? { prompt: call.prompt as string } : {}),
         },
         metadata: {
           patient_id: call.patient_id as string,

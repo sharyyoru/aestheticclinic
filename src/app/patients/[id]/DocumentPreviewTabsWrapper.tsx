@@ -69,6 +69,7 @@ interface DocumentPreviewTabsWrapperProps {
   medicalTab: string;
   medicalTabs: { id: string; label: string }[];
   CrmTabDropdown: ReactNode;
+  AiCallButton?: ReactNode;
 }
 
 export default function DocumentPreviewTabsWrapper({
@@ -77,6 +78,7 @@ export default function DocumentPreviewTabsWrapper({
   medicalTab,
   medicalTabs,
   CrmTabDropdown,
+  AiCallButton,
 }: DocumentPreviewTabsWrapperProps) {
   const [openTabs, setOpenTabs] = useState<DocumentPreviewTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -139,11 +141,12 @@ export default function DocumentPreviewTabsWrapper({
             {medicalTabs.map((tab) => {
               const isActive = !isDocTabActive && tab.id === medicalTab;
 
-              // Special rendering for CRM tab with dropdown
+              // Special rendering for CRM tab with dropdown + AI Call button
               if (tab.id === "crm") {
                 return (
-                  <div key={tab.id} onClick={() => setActiveTabId(null)}>
+                  <div key={tab.id} className="flex items-center gap-2" onClick={() => setActiveTabId(null)}>
                     {CrmTabDropdown}
+                    {AiCallButton}
                   </div>
                 );
               }

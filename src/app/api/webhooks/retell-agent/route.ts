@@ -518,17 +518,33 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (waLog?.created_at) whatsappSentAt = waLog.created_at as string;
 
-      const { data: existingLog } = await supabaseAdmin
+      // Try to find an existing log by Retell call_id first, then fall back to
+      // the pre-created scheduled row (metadata.scheduled_call_id) so scheduled
+      // AI calls update the same CRM log entry once they actually fire.
+      let existingLogQuery = supabaseAdmin
         .from("call_logs")
         .select("id, task_id")
-        .eq("call_id", call.call_id)
-        .maybeSingle();
+        .eq("call_id", call.call_id);
+
+      let existingLog = await existingLogQuery.maybeSingle().then((r) => r.data);
+
+      const scheduledCallId = (call.metadata?.scheduled_call_id as string) || null;
+      if (!existingLog && scheduledCallId && patientId) {
+        const { data: scheduledLog } = await supabaseAdmin
+          .from("call_logs")
+          .select("id, task_id")
+          .eq("scheduled_call_id", scheduledCallId)
+          .eq("patient_id", patientId)
+          .maybeSingle();
+        existingLog = scheduledLog ?? null;
+      }
 
       if (existingLog) {
         // Enrich the existing log with anything new (summary/transcript).
         await supabaseAdmin
           .from("call_logs")
           .update({
+            call_id: call.call_id,
             call_status: call.call_status,
             disconnection_reason: call.disconnection_reason ?? null,
             duration_seconds: callDuration,
@@ -537,6 +553,10 @@ export async function POST(request: NextRequest) {
             transcript_turns: turns.length > 0 ? turns : undefined,
             whatsapp_sent_at: whatsappSentAt ?? undefined,
             deal_id: dealId,
+            from_number: call.from_number || null,
+            to_number: call.to_number || null,
+            agent_id: call.agent_id || null,
+            started_at: startedAt,
           })
           .eq("id", existingLog.id);
       } else {
