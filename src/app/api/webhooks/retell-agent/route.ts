@@ -218,6 +218,50 @@ async function logRetellAgentRequest(payload: RetellCallPayload) {
   }
 }
 
+/**
+ * Update the task linked to a scheduled AI call. We mark it completed when the
+ * call finishes successfully, failed when Retell reports failure, and leave
+ * it in_progress for everything else (no-answer, voicemail, etc.) so a human
+ * can review.
+ */
+async function updateLinkedAiTask(
+  scheduledCallId: string,
+  callStatus: string,
+  summary: string | null,
+) {
+  try {
+    const { data: scheduled } = await supabaseAdmin
+      .from("retell_scheduled_calls")
+      .select("task_id")
+      .eq("id", scheduledCallId)
+      .maybeSingle();
+
+    const taskId = scheduled?.task_id as string | null;
+    if (!taskId) return;
+
+    let nextStatus = "in_progress";
+    const lower = (callStatus || "").toLowerCase();
+    if (lower === "completed") {
+      nextStatus = "completed";
+    } else if (["failed", "error", "busy", "no-answer", "canceled", "cancelled"].includes(lower)) {
+      nextStatus = "failed";
+    }
+
+    await supabaseAdmin
+      .from("tasks")
+      .update({
+        status: nextStatus,
+        content: summary
+          ? `${summary}\n\n(Status: ${callStatus})`
+          : `AI call finished. Status: ${callStatus}`,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", taskId);
+  } catch (err) {
+    console.error("[Retell Agent] Failed to update linked AI task:", err);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const payload = (await request.json()) as RetellCallPayload;
@@ -675,6 +719,12 @@ export async function POST(request: NextRequest) {
           } catch (emailError) {
             console.error("[Retell Agent] Failed to email call log conversation:", emailError);
           }
+        }
+
+        // Keep the linked AI task in sync with the call outcome
+        const linkedScheduledCallId = (call.metadata?.scheduled_call_id as string) || null;
+        if (linkedScheduledCallId && (payload.event === "call_ended" || payload.event === "call_analyzed")) {
+          await updateLinkedAiTask(linkedScheduledCallId, call.call_status, summary);
         }
       }
     } catch (callLogErr) {

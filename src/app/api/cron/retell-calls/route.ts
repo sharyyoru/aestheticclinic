@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const now = new Date().toISOString();
   const { data: dueCalls, error: fetchError } = await supabaseAdmin
     .from("retell_scheduled_calls")
-    .select("id, patient_id, deal_id, to_number, user_name, service_name, prompt")
+    .select("id, patient_id, deal_id, to_number, user_name, service_name, prompt, task_id")
     .eq("status", "pending")
     .lte("scheduled_for", now)
     .order("scheduled_for", { ascending: true })
@@ -69,6 +69,14 @@ export async function GET(req: NextRequest) {
         .from("retell_scheduled_calls")
         .update({ status: "dispatched", dispatched_at: new Date().toISOString() })
         .eq("id", call.id);
+
+      // Mark the linked AI task as in progress
+      if (call.task_id) {
+        await supabaseAdmin
+          .from("tasks")
+          .update({ status: "in_progress", updated_at: new Date().toISOString() })
+          .eq("id", call.task_id);
+      }
 
       // Fire the Retell call
       const retellResponse = await createRetellCall({
@@ -116,6 +124,14 @@ export async function GET(req: NextRequest) {
         .from("retell_scheduled_calls")
         .update({ status: "failed", error_message: err.message ?? "Unknown error" })
         .eq("id", call.id);
+
+      // Mark the linked AI task as failed
+      if (call.task_id) {
+        await supabaseAdmin
+          .from("tasks")
+          .update({ status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", call.task_id);
+      }
 
       failed += 1;
     }

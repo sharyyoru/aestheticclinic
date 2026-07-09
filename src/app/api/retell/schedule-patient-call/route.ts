@@ -17,6 +17,20 @@ import { normalizePhone, RETELL_FROM_NUMBER } from "@/lib/retell";
 
 export const runtime = "nodejs";
 
+function formatReadableDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-GB", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
@@ -77,6 +91,41 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join(" ") || "there";
 
+    // Build task content from prompt + scheduling context
+    const taskContent = [
+      prompt && `Prompt: ${prompt}`,
+      serviceName !== "our services" && `Topic: ${serviceName}`,
+      `Scheduled for: ${formatReadableDateTime(scheduledFor)}`,
+      `Patient phone: ${toNumber}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    // Create a task assigned to the AI so the call is tracked in the patient's task list
+    const { data: aiTask, error: taskError } = await supabaseAdmin
+      .from("tasks")
+      .insert({
+        patient_id: patientId,
+        name: `AI Call: ${userName === "there" ? patientId : userName}`,
+        type: "call",
+        priority: "high",
+        content: taskContent || "AI call scheduled",
+        activity_date: scheduledFor,
+        status: "not_started",
+        assigned_user_id: null,
+        assigned_user_name: "Aliice (AI Call Agent)",
+        created_by_name: "Aliice (AI Call Agent)",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (taskError) {
+      console.error("Failed to create AI call task:", taskError);
+      // Non-fatal: continue scheduling the call
+    }
+
     // Insert scheduled call row
     const { data: scheduled, error: insertError } = await supabaseAdmin
       .from("retell_scheduled_calls")
@@ -89,6 +138,7 @@ export async function POST(req: NextRequest) {
         service_name: serviceName,
         prompt,
         to_number: toNumber,
+        task_id: aiTask?.id ?? null,
       })
       .select("id")
       .single();
@@ -134,6 +184,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       scheduled_call_id: scheduledId,
       scheduled_for: scheduledFor,
+      task_id: aiTask?.id ?? null,
     });
   } catch (err: any) {
     console.error("Error in /api/retell/schedule-patient-call:", err);
