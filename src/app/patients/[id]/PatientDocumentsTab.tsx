@@ -1456,7 +1456,7 @@ async function handleSendEmail(event: React.FormEvent) {
               </div>
               {loading ? <span className="text-slate-400">Loading…</span> : null}
             </div>
-            <div className="max-h-[420px] overflow-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2">
+            <div className="max-h-[560px] overflow-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2">
               {filteredItems.length === 0 ? (
                 <div className="flex h-24 items-center justify-center text-[11px] text-slate-500">
                   No documents yet. Use the Upload button to add files.
@@ -1743,7 +1743,7 @@ async function handleSendEmail(event: React.FormEvent) {
               ) : null}
             </div>
 
-            <div className="flex min-h-[220px] items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50/70 p-3">
+            <div className="flex min-h-[560px] items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50/70 p-3">
               {!selectedFile || selectedFile.kind !== "file" ? (
                 <p className="text-[11px] text-slate-500">
                   Select a file from the list to see a larger preview.
@@ -1754,7 +1754,7 @@ async function handleSendEmail(event: React.FormEvent) {
                     <DocxPreview
                       url={selectedFilePreviewUrl}
                       fileName={selectedFile.name}
-                      className="!h-[260px] !rounded-none !border-0 !shadow-none"
+                      className="!h-[520px] !rounded-none !border-0 !shadow-none"
                     />
                   </div>
                   <button

@@ -96,9 +96,9 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="group inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-violet-200/50 transition-all hover:from-violet-600 hover:to-fuchsia-600"
+        className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-200/50 transition-all hover:from-violet-600 hover:to-fuchsia-600"
       >
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -110,37 +110,37 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-80 origin-top-left animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute left-0 top-full z-50 mt-2 w-[420px] origin-top-left animate-in fade-in slide-in-from-top-2 duration-200">
           <form
             onSubmit={handleSchedule}
-            className="rounded-xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-200/50"
+            className="rounded-xl border border-slate-200 bg-white p-5 shadow-xl shadow-slate-200/50"
           >
-            <div className="mb-2 px-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="mb-3 px-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Schedule AI Call
               </p>
               {patientName && (
-                <p className="mt-0.5 text-xs text-slate-600">{patientName}</p>
+                <p className="mt-1 text-sm font-medium text-slate-700">{patientName}</p>
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-[10px] font-medium text-slate-600">
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   What should the AI call about?
                 </label>
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  rows={3}
+                  rows={5}
                   placeholder="e.g. Follow up after consultation and confirm next appointment."
-                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 resize-y"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200 resize-y"
                   required
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-[10px] font-medium text-slate-600">
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Service / topic (optional)
                 </label>
                 <input
@@ -148,28 +148,28 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
                   value={serviceName}
                   onChange={(e) => setServiceName(e.target.value)}
                   placeholder="e.g. Breast augmentation consultation"
-                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-[10px] font-medium text-slate-600">Date</label>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Date</label>
                   <input
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     required
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[10px] font-medium text-slate-600">Time</label>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Time</label>
                   <input
                     type="time"
                     value={time}
                     onChange={(e) => setTime(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     required
                   />
                 </div>
@@ -177,23 +177,23 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
             </div>
 
             {error && (
-              <p className="mt-2 rounded-lg bg-red-50 px-2 py-1 text-[10px] text-red-600">
+              <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
                 {error}
               </p>
             )}
 
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-4 flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                className="flex-1 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3 py-1.5 text-xs font-semibold text-white hover:from-violet-600 hover:to-fuchsia-600 disabled:opacity-60"
+                className="flex-1 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2.5 text-sm font-semibold text-white hover:from-violet-600 hover:to-fuchsia-600 disabled:opacity-60"
               >
                 {loading ? "Scheduling…" : "Schedule Call"}
               </button>
