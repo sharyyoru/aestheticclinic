@@ -28,6 +28,12 @@ const HeicPreview = dynamic(() => import('@/components/HeicPreview'), {
   loading: () => <div className="flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div></div>
 });
 
+// Dynamic import for DOCX editor (client-side only)
+const DocxPreviewEditor = dynamic(() => import('@/components/DocxEditor/DocxPreviewEditor'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div></div>
+});
+
 interface PatientDocumentsTabProps {
   patientId: string;
   patientName?: string;
@@ -142,6 +148,25 @@ export default function PatientDocumentsTab({
   const [newFolderName, setNewFolderName] = useState("");
   const [showBeforeAfterEditor, setShowBeforeAfterEditor] = useState(false);
   const [showPdfEditor, setShowPdfEditor] = useState(false);
+  const [editingDocxFile, setEditingDocxFile] = useState<ListedItem | null>(null);
+  const [editingDocxBlob, setEditingDocxBlob] = useState<Blob | null>(null);
+  const [editingDocxLoading, setEditingDocxLoading] = useState(false);
+  const [editingDocxPatientData, setEditingDocxPatientData] = useState<{
+    firstName: string;
+    lastName: string;
+    salutation: string;
+    birthdate: string;
+    email: string;
+    phone: string;
+    mobile: string;
+    street: string;
+    streetNo: string;
+    zip: string;
+    city: string;
+    socialSecurityNumber: string;
+    insuranceCardNumber: string;
+    addressBlock: string;
+  } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [renamingFile, setRenamingFile] = useState<ListedItem | null>(null);
   const [newFileName, setNewFileName] = useState("");
@@ -184,6 +209,79 @@ export default function PatientDocumentsTab({
   // State for files from patient-docs/5_Documents folder
   const [legacyDocsItems, setLegacyDocsItems] = useState<ListedItem[]>([]);
   const [legacyDocsLoading, setLegacyDocsLoading] = useState(false);
+
+  // Load full patient details when DOCX editor opens so fields can be auto-filled
+  useEffect(() => {
+    if (!editingDocxFile || !patientId) return;
+
+    let cancelled = false;
+
+    async function loadPatientDetails() {
+      try {
+        const { data, error } = await supabaseClient
+          .from('patients')
+          .select(`
+            first_name,
+            last_name,
+            title,
+            salutation,
+            date_of_birth,
+            email,
+            phone,
+            mobile,
+            street,
+            street_no,
+            postal_code,
+            zip,
+            city,
+            social_security_number,
+            insurance_card_number,
+            patient_insurances:social_security_number,
+            patient_insurances_2:card_number
+          `)
+          .eq('id', patientId)
+          .single();
+
+        if (error || !data || cancelled) return;
+
+        const patientInsurance = Array.isArray((data as any).patient_insurances) && (data as any).patient_insurances.length > 0
+          ? (data as any).patient_insurances[0]
+          : null;
+
+        const street = (data as any).street || '';
+        const streetNo = (data as any).street_no || '';
+        const zip = (data as any).postal_code || (data as any).zip || '';
+        const city = (data as any).city || '';
+
+        setEditingDocxPatientData({
+          firstName: data.first_name || '',
+          lastName: data.last_name || '',
+          salutation: data.title || data.salutation || '',
+          birthdate: data.date_of_birth || '',
+          email: data.email || '',
+          phone: data.phone || '',
+          mobile: data.mobile || data.phone || '',
+          street,
+          streetNo,
+          zip,
+          city,
+          socialSecurityNumber: patientInsurance?.social_security_number || (data as any).social_security_number || '',
+          insuranceCardNumber: patientInsurance?.card_number || (data as any).insurance_card_number || '',
+          addressBlock: [data.salutation || data.title, `${data.first_name || ''} ${data.last_name || ''}`.trim(), `${street} ${streetNo}`.trim(), `${zip} ${city}`.trim()]
+            .filter(Boolean)
+            .join('\n'),
+        });
+      } catch (err) {
+        console.error('Error loading patient details for document editor:', err);
+      }
+    }
+
+    loadPatientDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingDocxFile, patientId]);
 
   // Fetch files from patient-docs/5_Documents folder (legacy storage)
   // Deduplication is done server-side by passing patientId
@@ -1040,6 +1138,67 @@ async function handleSendEmail(event: React.FormEvent) {
     }
   }
 
+  async function handleEditDocx(item: ListedItem) {
+    if (item.kind !== "file") return;
+    const ext = getExtension(item.name);
+    if (!["docx", "doc"].includes(ext)) return;
+
+    setEditingDocxLoading(true);
+    setEditingDocxFile(item);
+
+    try {
+      const fullPath = [patientId, item.path].filter(Boolean).join("/");
+      const response = await fetch(`/api/documents/download?bucket=${BUCKET_NAME}&path=${encodeURIComponent(fullPath)}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to download document");
+      }
+
+      const blob = await response.blob();
+      setEditingDocxBlob(blob);
+    } catch (err: any) {
+      console.error("Error opening DOCX for editing:", err);
+      setError(err?.message ?? "Failed to open document for editing.");
+      setEditingDocxFile(null);
+    } finally {
+      setEditingDocxLoading(false);
+    }
+  }
+
+  async function handleSaveEditedDocx(blob: Blob) {
+    if (!editingDocxFile) return;
+
+    try {
+      setUploading(true);
+      const fullPath = [patientId, editingDocxFile.path].filter(Boolean).join("/");
+
+      const formData = new FormData();
+      formData.append("file", blob);
+      formData.append("bucket", BUCKET_NAME);
+      formData.append("path", fullPath);
+
+      const response = await fetch("/api/documents/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
+
+      setEditingDocxFile(null);
+      setEditingDocxBlob(null);
+      setRefreshKey((prev) => prev + 1);
+    } catch (err: any) {
+      console.error("Error saving edited DOCX:", err);
+      setError(err?.message ?? "Failed to save document.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   const selectedMimeType = (() => {
     if (!selectedFile || selectedFile.kind !== "file") return "";
     // Always resolve by extension first for known types (metadata can be wrong, e.g. jfif → application/octet-stream)
@@ -1062,6 +1221,7 @@ async function handleSendEmail(event: React.FormEvent) {
   const isImage = selectedMimeType.startsWith("image/") && !isTiff && !isHeic;
   const isPdf = selectedMimeType === "application/pdf";
   const isVideo = selectedMimeType.startsWith("video/");
+  const isDocx = selectedFile && ["docx", "doc"].includes(getExtension(selectedFile.name));
 
   return (
     <>
@@ -1666,6 +1826,29 @@ async function handleSendEmail(event: React.FormEvent) {
                     Edit PDF
                   </button>
                 </div>
+              ) : isDocx ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                    <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="text-center text-[11px] text-slate-500">
+                    <p className="font-medium text-slate-700">{selectedFile.name}</p>
+                    <p>Word document</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleEditDocx(selectedFile)}
+                    disabled={editingDocxLoading}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-sky-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow hover:bg-sky-600 disabled:opacity-60"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    {editingDocxLoading ? "Opening…" : "Edit Document"}
+                  </button>
+                </div>
               ) : isVideo ? (
                 <video
                   src={selectedFilePreviewUrl}
@@ -1740,6 +1923,36 @@ async function handleSendEmail(event: React.FormEvent) {
             
             // Refresh the file list
             setRefreshKey((k) => k + 1);
+          }}
+        />
+      ) : null}
+      {editingDocxFile && editingDocxBlob ? (
+        <DocxPreviewEditor
+          documentBlob={editingDocxBlob}
+          documentTitle={editingDocxFile.name}
+          patientId={patientId}
+          documentId={editingDocxFile.path}
+          patientData={editingDocxPatientData || {
+            firstName: '',
+            lastName: '',
+            salutation: '',
+            birthdate: '',
+            email: '',
+            phone: '',
+            mobile: '',
+            street: '',
+            streetNo: '',
+            zip: '',
+            city: '',
+            socialSecurityNumber: '',
+            insuranceCardNumber: '',
+            addressBlock: '',
+          }}
+          onSave={handleSaveEditedDocx}
+          onClose={() => {
+            setEditingDocxFile(null);
+            setEditingDocxBlob(null);
+            setEditingDocxPatientData(null);
           }}
         />
       ) : null}
