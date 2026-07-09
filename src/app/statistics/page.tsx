@@ -8,6 +8,7 @@ import PaidInvoicesTab from "./tabs/PaidInvoicesTab";
 import InvoicedServicesTab from "./tabs/InvoicedServicesTab";
 import PaidServicesTab from "./tabs/PaidServicesTab";
 import FirstConsultationsTab from "./tabs/FirstConsultationsTab";
+import AgendaPatientsPaymentsTab from "./tabs/AgendaPatientsPaymentsTab";
 
 type TabKey =
   | "debiteurs"
@@ -16,6 +17,7 @@ type TabKey =
   | "invoiced_services"
   | "paid_services"
   | "first_consultations"
+  | "agenda_patients_payments"
   | "services_apercu"
   | "non_invoiced"
   | "cash_collection"
@@ -56,6 +58,11 @@ const TABS: {
     key: "first_consultations",
     label: "1ères Consultations",
     description: "Patients who had their first consultation — export to Excel",
+  },
+  {
+    key: "agenda_patients_payments",
+    label: "Agenda Patients Payments",
+    description: "Patients from specific agenda/location and their payments during period",
   },
   {
     key: "services_apercu",
@@ -248,6 +255,9 @@ export default function StatisticsPage() {
         )}
         {activeTab === "first_consultations" && (
           <FirstConsultationsTab filters={filters} entities={entities} doctors={doctors} />
+        )}
+        {activeTab === "agenda_patients_payments" && (
+          <AgendaPatientsPaymentsTab filters={filters} entities={entities} doctors={doctors} />
         )}
       </div>
     </div>
