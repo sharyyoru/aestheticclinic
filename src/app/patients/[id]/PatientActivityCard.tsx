@@ -1159,7 +1159,7 @@ export default function PatientActivityCard({
             const restOfPath = parts.slice(1).join("/");
             
             // List of known buckets
-            const knownBuckets = ["invoice-pdfs", "email-attachments", "patient-documents"];
+            const knownBuckets = ["invoice-pdfs", "email-attachments", "patient-documents", "patient_document", "patient-docs"];
             
             if (knownBuckets.includes(possibleBucket) && restOfPath) {
               // Use the specified bucket
