@@ -3,7 +3,222 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --blz-bg: #ffffff;
+  --blz-surface: #f8fafc;
+  --blz-surface-elevated: #ffffff;
+  --blz-border: rgba(226, 232, 240, 0.8);
+  --blz-text-primary: #0f172a;
+  --blz-text-secondary: #475569;
+  --blz-text-muted: #94a3b8;
   color-scheme: light;
+}
+
+.dark {
+  --background: #141820;
+  --foreground: #f1f5f9;
+  --blz-bg: #141820;
+  --blz-surface: #1a1f2e;
+  --blz-surface-elevated: #232938;
+  --blz-border: rgba(51, 65, 85, 0.4);
+  --blz-text-primary: #f1f5f9;
+  --blz-text-secondary: #94a3b8;
+  --blz-text-muted: #64748b;
+  color-scheme: dark;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BLIZZARD DARK MODE - Global utility overrides
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Cards and panels in dark mode */
+.dark .blz-card,
+.dark [class*="rounded-xl"][class*="bg-white"],
+.dark [class*="rounded-xl"][class*="border-slate-200"] {
+  background-color: var(--blz-surface-elevated) !important;
+  border-color: var(--blz-border) !important;
+}
+
+/* General text overrides for dark mode content area */
+.dark .blz-content {
+  color: var(--blz-text-primary);
+}
+
+.dark .blz-content h1,
+.dark .blz-content h2,
+.dark .blz-content h3,
+.dark .blz-content h4 {
+  color: var(--blz-text-primary);
+}
+
+.dark .blz-content p {
+  color: var(--blz-text-secondary);
+}
+
+/* Input fields in dark mode */
+.dark .blz-content input,
+.dark .blz-content select,
+.dark .blz-content textarea {
+  background-color: rgba(30, 41, 59, 0.6);
+  border-color: var(--blz-border);
+  color: var(--blz-text-primary);
+}
+
+.dark .blz-content input::placeholder,
+.dark .blz-content textarea::placeholder {
+  color: var(--blz-text-muted);
+}
+
+/* Tables in dark mode */
+.dark .blz-content table {
+  border-color: var(--blz-border);
+}
+
+.dark .blz-content th {
+  background-color: var(--blz-surface);
+  color: var(--blz-text-secondary);
+  border-color: var(--blz-border);
+}
+
+.dark .blz-content td {
+  border-color: var(--blz-border);
+  color: var(--blz-text-primary);
+}
+
+.dark .blz-content tr:hover td {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Header buttons in dark mode (notification bells, etc.) */
+.dark header button[class*="border-slate-200"][class*="bg-white"] {
+  background-color: transparent !important;
+  border-color: rgba(71, 85, 105, 0.4) !important;
+  color: #94a3b8 !important;
+}
+
+.dark header button[class*="border-slate-200"][class*="bg-white"]:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #e2e8f0 !important;
+}
+
+/* Dropdown panels in dark mode */
+.dark [class*="bg-white"][class*="rounded-xl"][class*="shadow-lg"] {
+  background-color: #232938 !important;
+  border-color: rgba(51, 65, 85, 0.6) !important;
+}
+
+.dark [class*="bg-white"][class*="rounded-xl"][class*="shadow-lg"] [class*="text-slate-900"] {
+  color: #f1f5f9 !important;
+}
+
+.dark [class*="bg-white"][class*="rounded-xl"][class*="shadow-lg"] [class*="text-slate-500"],
+.dark [class*="bg-white"][class*="rounded-xl"][class*="shadow-lg"] [class*="text-slate-600"] {
+  color: #94a3b8 !important;
+}
+
+.dark [class*="bg-white"][class*="rounded-xl"][class*="shadow-lg"] [class*="border-slate-100"],
+.dark [class*="bg-white"][class*="rounded-xl"][class*="shadow-lg"] [class*="border-slate-200"] {
+  border-color: rgba(51, 65, 85, 0.4) !important;
+}
+
+.dark [class*="bg-white"][class*="rounded-xl"][class*="shadow-lg"] [class*="hover:bg-slate-50"]:hover,
+.dark [class*="bg-white"][class*="rounded-xl"][class*="shadow-lg"] [class*="hover:bg-sky-50"]:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Agenda/Calendar dark mode */
+.dark .blz-content aside[class*="bg-white"][class*="rounded-3xl"] {
+  background-color: var(--blz-surface-elevated) !important;
+  border-color: var(--blz-border) !important;
+  color: var(--blz-text-secondary) !important;
+}
+
+.dark .blz-content [class*="border-slate-100"] {
+  border-color: rgba(51, 65, 85, 0.3) !important;
+}
+
+.dark .blz-content [class*="border-slate-200"] {
+  border-color: rgba(51, 65, 85, 0.4) !important;
+}
+
+.dark .blz-content [class*="bg-white"] {
+  background-color: var(--blz-surface-elevated) !important;
+}
+
+.dark .blz-content [class*="bg-slate-50"] {
+  background-color: var(--blz-surface) !important;
+}
+
+.dark .blz-content [class*="text-slate-900"],
+.dark .blz-content [class*="text-slate-800"],
+.dark .blz-content [class*="text-slate-700"] {
+  color: var(--blz-text-primary) !important;
+}
+
+.dark .blz-content [class*="text-slate-600"],
+.dark .blz-content [class*="text-slate-500"] {
+  color: var(--blz-text-secondary) !important;
+}
+
+.dark .blz-content [class*="text-slate-400"],
+.dark .blz-content [class*="text-slate-300"] {
+  color: var(--blz-text-muted) !important;
+}
+
+/* Preserve brand accent colors in dark mode */
+.dark .blz-content [class*="text-sky-"],
+.dark .blz-content [class*="text-emerald-"],
+.dark .blz-content [class*="text-rose-"],
+.dark .blz-content [class*="text-violet-"],
+.dark .blz-content [class*="text-amber-"] {
+  /* Keep accent colors as-is */
+}
+
+.dark .blz-content [class*="bg-sky-50"],
+.dark .blz-content [class*="bg-emerald-50"],
+.dark .blz-content [class*="bg-rose-50"],
+.dark .blz-content [class*="bg-violet-50"],
+.dark .blz-content [class*="bg-amber-50"] {
+  opacity: 0.15;
+}
+
+/* Modals and overlays in dark mode */
+.dark .blz-content [class*="fixed"][class*="bg-black"] {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+.dark .blz-content [class*="fixed"] [class*="bg-white"][class*="rounded"] {
+  background-color: var(--blz-surface-elevated) !important;
+  border-color: var(--blz-border) !important;
+}
+
+/* Buttons in dark mode */
+.dark .blz-content button[class*="bg-white"][class*="border"] {
+  background-color: var(--blz-surface) !important;
+  border-color: var(--blz-border) !important;
+  color: var(--blz-text-primary) !important;
+}
+
+.dark .blz-content button[class*="bg-white"][class*="border"]:hover {
+  background-color: var(--blz-surface-elevated) !important;
+}
+
+/* Scrollbars dark mode */
+.dark .blz-content ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.dark .blz-content ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dark .blz-content ::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.5);
+  border-radius: 3px;
+}
+
+.dark .blz-content ::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
 }
 
 .email-template-editor-shell > div,
@@ -380,6 +595,12 @@ body {
   color: var(--foreground);
   font-family: var(--font-manrope), system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+}
+
+.dark body,
+html.dark body {
+  background: #141820;
+  color: #f1f5f9;
 }
 
 .power-button-bg {

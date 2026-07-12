@@ -24,6 +24,9 @@ import GlobalLoader from "@/components/GlobalLoader";
 import SidebarLeadImportDropdown from "@/components/SidebarLeadImportDropdown";
 import { ProdAppProvider } from "@/components/ProdAppContext";
 import ProdAppHeader from "@/components/ProdAppHeader";
+import { LayoutModeProvider } from "@/components/LayoutModeContext";
+import { ThemeProvider } from "@/components/ThemeContext";
+import LayoutShellSwitch from "@/components/LayoutShellSwitch";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -58,17 +61,21 @@ export default function RootLayout({
       <body
         className={`${manrope.variable} ${geistMono.variable} antialiased`}
       >
-        <ShellBackground>
-          <GlobalLoader />
-          <ProdAppProvider>
-          <AuthProvider>
-          <ProdAppHeader />
-          <CommentsUnreadProvider>
-          <TasksNotificationsProvider>
-          <EmailNotificationsProvider>
-          <DealNotificationsProvider>
-          <PatientTabsProvider>
-          <ShellFrame>
+        <LayoutModeProvider>
+        <ThemeProvider>
+        <ProdAppProvider>
+        <AuthProvider>
+        <CommentsUnreadProvider>
+        <TasksNotificationsProvider>
+        <EmailNotificationsProvider>
+        <DealNotificationsProvider>
+        <PatientTabsProvider>
+        <LayoutShellSwitch
+          classicShell={
+            <ShellBackground>
+              <GlobalLoader />
+              <ProdAppHeader />
+              <ShellFrame>
           <div className="flex min-h-[80vh] flex-1 overflow-hidden">
             <input
               id="sidebar-toggle"
@@ -627,14 +634,20 @@ export default function RootLayout({
             </main>
           </div>
           </ShellFrame>
-          </PatientTabsProvider>
-          </DealNotificationsProvider>
-          </EmailNotificationsProvider>
-          </TasksNotificationsProvider>
-          </CommentsUnreadProvider>
-          </AuthProvider>
-          </ProdAppProvider>
-        </ShellBackground>
+          </ShellBackground>
+          }
+        >
+          {children}
+        </LayoutShellSwitch>
+        </PatientTabsProvider>
+        </DealNotificationsProvider>
+        </EmailNotificationsProvider>
+        </TasksNotificationsProvider>
+        </CommentsUnreadProvider>
+        </AuthProvider>
+        </ProdAppProvider>
+        </ThemeProvider>
+        </LayoutModeProvider>
       </body>
     </html>
   );
