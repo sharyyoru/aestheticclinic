@@ -1,11 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { supabaseClient } from "@/lib/supabaseClient";
-
-type EmailStatus = "draft" | "queued" | "sent" | "failed";
-type EmailDirection = "outbound" | "inbound";
 
 type Email = {
   id: string;
@@ -14,33 +10,34 @@ type Email = {
   to_address: string;
   from_address: string | null;
   subject: string;
-  body: string;
-  status: EmailStatus;
-  direction: EmailDirection;
+  status: string;
+  direction: string;
+  source: string | null;
   sent_at: string | null;
+  read_at: string | null;
   created_at: string;
 };
 
 type Patient = {
-  id: string;
   first_name: string;
   last_name: string;
   email: string | null;
 };
 
 type FilterState = {
-  direction: "all" | "inbound" | "outbound";
-  status: "all" | EmailStatus;
+  direction: string;
+  status: string;
   dateFrom: string;
   dateTo: string;
   searchQuery: string;
-  source: "all" | "automation" | "manual";
+  source: string;
 };
 
 type EmailStats = {
   total: number;
   sent: number;
   failed: number;
+  read: number;
   inbound: number;
   outbound: number;
   automation: number;
@@ -63,11 +60,18 @@ function truncate(text: string, maxLength: number) {
   return text.slice(0, maxLength) + "...";
 }
 
+const ITEMS_PER_PAGE = 25;
+
 export default function EmailReportsPage() {
   const [emails, setEmails] = useState<Email[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<Record<string, Patient>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [totalEmails, setTotalEmails] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [stats, setStats] = useState<EmailStats>({
+    total: 0, sent: 0, failed: 0, read: 0, inbound: 0, outbound: 0, automation: 0, manual: 0,
+  });
 
   const [filters, setFilters] = useState<FilterState>({
     direction: "all",
@@ -80,138 +84,64 @@ export default function EmailReportsPage() {
 
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
-
-  // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 25;
+
+  // Debounce search
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   useEffect(() => {
-    let isMounted = true;
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(filters.searchQuery);
+    }, 400);
+    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
+  }, [filters.searchQuery]);
 
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchEmails = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        const [emailsResult, patientsResult] = await Promise.all([
-          supabaseClient
-            .from("emails")
-            .select("id, patient_id, deal_id, to_address, from_address, subject, body, status, direction, sent_at, created_at")
-            .order("created_at", { ascending: false }),
-          supabaseClient
-            .from("patients")
-            .select("id, first_name, last_name, email"),
-        ]);
+      const params = new URLSearchParams();
+      params.set("page", String(currentPage));
+      params.set("per_page", String(ITEMS_PER_PAGE));
+      if (filters.direction !== "all") params.set("direction", filters.direction);
+      if (filters.status !== "all") params.set("status", filters.status);
+      if (filters.source !== "all") params.set("source", filters.source);
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+      if (filters.dateTo) params.set("date_to", filters.dateTo);
 
-        if (!isMounted) return;
+      const res = await fetch(`/api/email-reports?${params.toString()}`);
+      const data = await res.json();
 
-        if (emailsResult.error) {
-          setError(emailsResult.error.message);
-          setLoading(false);
-          return;
-        }
-
-        setEmails((emailsResult.data ?? []) as Email[]);
-        setPatients((patientsResult.data ?? []) as Patient[]);
+      if (!res.ok) {
+        setError(data.error || "Failed to load emails");
         setLoading(false);
-      } catch {
-        if (!isMounted) return;
-        setError("Failed to load email data.");
-        setLoading(false);
+        return;
       }
+
+      setEmails(data.emails || []);
+      setPatients(data.patients || {});
+      setTotalEmails(data.total || 0);
+      setTotalPages(data.total_pages || 1);
+      setStats(data.stats || { total: 0, sent: 0, failed: 0, read: 0, inbound: 0, outbound: 0, automation: 0, manual: 0 });
+      setLoading(false);
+    } catch {
+      setError("Failed to load email data.");
+      setLoading(false);
     }
+  }, [currentPage, filters.direction, filters.status, filters.source, filters.dateFrom, filters.dateTo, debouncedSearch]);
 
-    loadData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const patientMap = useMemo(() => {
-    const map = new Map<string, Patient>();
-    for (const p of patients) {
-      map.set(p.id, p);
-    }
-    return map;
-  }, [patients]);
-
-  const filteredEmails = useMemo(() => {
-    return emails.filter((email) => {
-      // Direction filter
-      if (filters.direction !== "all" && email.direction !== filters.direction) {
-        return false;
-      }
-
-      // Status filter
-      if (filters.status !== "all" && email.status !== filters.status) {
-        return false;
-      }
-
-      // Date from filter
-      if (filters.dateFrom) {
-        const emailDate = new Date(email.created_at);
-        const fromDate = new Date(filters.dateFrom);
-        if (emailDate < fromDate) return false;
-      }
-
-      // Date to filter
-      if (filters.dateTo) {
-        const emailDate = new Date(email.created_at);
-        const toDate = new Date(filters.dateTo);
-        toDate.setHours(23, 59, 59, 999);
-        if (emailDate > toDate) return false;
-      }
-
-      // Source filter (automation = has deal_id, manual = no deal_id)
-      if (filters.source === "automation" && !email.deal_id) {
-        return false;
-      }
-      if (filters.source === "manual" && email.deal_id) {
-        return false;
-      }
-
-      // Search query
-      if (filters.searchQuery) {
-        const query = filters.searchQuery.toLowerCase();
-        const patient = email.patient_id ? patientMap.get(email.patient_id) : null;
-        const patientName = patient ? `${patient.first_name} ${patient.last_name}`.toLowerCase() : "";
-        const matchesSubject = email.subject.toLowerCase().includes(query);
-        const matchesTo = email.to_address.toLowerCase().includes(query);
-        const matchesFrom = (email.from_address ?? "").toLowerCase().includes(query);
-        const matchesPatient = patientName.includes(query);
-        if (!matchesSubject && !matchesTo && !matchesFrom && !matchesPatient) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [emails, filters, patientMap]);
-
-  const stats: EmailStats = useMemo(() => {
-    const total = emails.length;
-    const sent = emails.filter((e) => e.status === "sent").length;
-    const failed = emails.filter((e) => e.status === "failed").length;
-    const inbound = emails.filter((e) => e.direction === "inbound").length;
-    const outbound = emails.filter((e) => e.direction === "outbound").length;
-    const automation = emails.filter((e) => e.deal_id).length;
-    const manual = emails.filter((e) => !e.deal_id).length;
-    return { total, sent, failed, inbound, outbound, automation, manual };
-  }, [emails]);
-
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredEmails.length / ITEMS_PER_PAGE);
-  const paginatedEmails = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const end = start + ITEMS_PER_PAGE;
-    return filteredEmails.slice(start, end);
-  }, [filteredEmails, currentPage]);
+  useEffect(() => {
+    fetchEmails();
+  }, [fetchEmails]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters]);
+  }, [filters.direction, filters.status, filters.source, filters.dateFrom, filters.dateTo, debouncedSearch]);
 
   function handleViewEmail(email: Email) {
     setSelectedEmail(email);
@@ -285,14 +215,14 @@ export default function EmailReportsPage() {
 
         <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-100 to-violet-50 text-violet-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-100 to-green-50 text-green-600">
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                <path d="M2 12l5 5L20 5" />
               </svg>
             </div>
             <div>
-              <p className="text-2xl font-semibold text-slate-900">{stats.automation}</p>
-              <p className="text-xs text-slate-500">From Automation</p>
+              <p className="text-2xl font-semibold text-slate-900">{stats.read}</p>
+              <p className="text-xs text-slate-500">Read (Opened)</p>
             </div>
           </div>
         </div>
@@ -398,7 +328,7 @@ export default function EmailReportsPage() {
               <label className="mb-1 block text-xs font-medium text-slate-500">Direction</label>
               <select
                 value={filters.direction}
-                onChange={(e) => setFilters((f) => ({ ...f, direction: e.target.value as FilterState["direction"] }))}
+                onChange={(e) => setFilters((f) => ({ ...f, direction: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               >
                 <option value="all">All</option>
@@ -412,13 +342,14 @@ export default function EmailReportsPage() {
               <label className="mb-1 block text-xs font-medium text-slate-500">Status</label>
               <select
                 value={filters.status}
-                onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value as FilterState["status"] }))}
+                onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               >
                 <option value="all">All</option>
                 <option value="draft">Draft</option>
                 <option value="queued">Queued</option>
                 <option value="sent">Sent</option>
+                <option value="read">Read</option>
                 <option value="failed">Failed</option>
               </select>
             </div>
@@ -428,12 +359,17 @@ export default function EmailReportsPage() {
               <label className="mb-1 block text-xs font-medium text-slate-500">Source</label>
               <select
                 value={filters.source}
-                onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value as FilterState["source"] }))}
+                onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               >
                 <option value="all">All</option>
-                <option value="automation">Automation</option>
                 <option value="manual">Manual</option>
+                <option value="automation">Automation</option>
+                <option value="ai_transcript">AI Transcript</option>
+                <option value="appointment_reminder">Reminder</option>
+                <option value="marketing">Marketing</option>
+                <option value="invoice">Invoice</option>
+                <option value="otp">OTP</option>
               </select>
             </div>
 
@@ -467,7 +403,7 @@ export default function EmailReportsPage() {
         <div className="border-b border-slate-100 px-4 py-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-slate-700">
-              Emails <span className="ml-1 text-slate-400">({filteredEmails.length})</span>
+              Emails <span className="ml-1 text-slate-400">({totalEmails})</span>
             </h3>
           </div>
         </div>
@@ -478,7 +414,7 @@ export default function EmailReportsPage() {
           </div>
         ) : error ? (
           <div className="py-8 text-center text-sm text-red-600">{error}</div>
-        ) : filteredEmails.length === 0 ? (
+        ) : emails.length === 0 ? (
           <div className="py-12 text-center">
             <svg className="mx-auto h-12 w-12 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
@@ -489,9 +425,9 @@ export default function EmailReportsPage() {
         ) : (
           <>
           <div className="divide-y divide-slate-100">
-            {paginatedEmails.map((email) => {
-              const patient = email.patient_id ? patientMap.get(email.patient_id) : null;
-              const isAutomation = !!email.deal_id;
+            {emails.map((email) => {
+              const patient = email.patient_id ? patients[email.patient_id] : null;
+              const isAutomation = email.source === "automation" || !!email.deal_id;
 
               return (
                 <div
@@ -530,14 +466,22 @@ export default function EmailReportsPage() {
                           Automation
                         </span>
                       )}
+                      {email.read_at && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700" title={`Read: ${formatDate(email.read_at)}`}>
+                          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M2 12l5 5L20 5" />
+                          </svg>
+                          Read
+                        </span>
+                      )}
                     </div>
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-                      <span>{email.direction === "inbound" ? "From" : "To"}: {email.direction === "inbound" ? (email.from_address || "—") : email.to_address}</span>
+                      <span>{email.direction === "inbound" ? "From" : "To"}: {email.direction === "inbound" ? (email.from_address || "\u2014") : email.to_address}</span>
                       {patient && (
                         <>
                           <span className="text-slate-300">|</span>
                           <Link
-                            href={`/patients/${patient.id}`}
+                            href={`/patients/${email.patient_id}`}
                             onClick={(e) => e.stopPropagation()}
                             className="text-sky-600 hover:text-sky-700 hover:underline"
                           >
@@ -545,16 +489,21 @@ export default function EmailReportsPage() {
                           </Link>
                         </>
                       )}
+                      {email.source && email.source !== "manual" && (
+                        <>
+                          <span className="text-slate-300">|</span>
+                          <span className="text-slate-400">{email.source.replace(/_/g, " ")}</span>
+                        </>
+                      )}
                     </div>
-                    <p className="mt-1 truncate text-xs text-slate-400">
-                      {truncate(email.body.replace(/<[^>]*>/g, ""), 100)}
-                    </p>
                   </div>
 
                   {/* Status & Date */}
                   <div className="flex flex-shrink-0 flex-col items-end gap-1">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                      email.status === "sent"
+                      email.read_at
+                        ? "bg-green-50 text-green-700"
+                        : email.status === "sent"
                         ? "bg-emerald-50 text-emerald-700"
                         : email.status === "failed"
                         ? "bg-red-50 text-red-700"
@@ -562,10 +511,10 @@ export default function EmailReportsPage() {
                         ? "bg-amber-50 text-amber-700"
                         : "bg-slate-100 text-slate-600"
                     }`}>
-                      {email.status.charAt(0).toUpperCase() + email.status.slice(1)}
+                      {email.read_at ? "Read" : email.status.charAt(0).toUpperCase() + email.status.slice(1)}
                     </span>
                     <span className="text-[10px] text-slate-400">
-                      {formatDate(email.created_at)}
+                      {formatDate(email.read_at || email.sent_at || email.created_at)}
                     </span>
                   </div>
                 </div>
@@ -577,7 +526,7 @@ export default function EmailReportsPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
               <p className="text-xs text-slate-500">
-                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredEmails.length)} of {filteredEmails.length} emails
+                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, totalEmails)} of {totalEmails} emails
               </p>
               <div className="flex items-center gap-1">
                 <button
@@ -705,26 +654,34 @@ export default function EmailReportsPage() {
                       <span className="w-16 flex-shrink-0 font-medium text-slate-500">Subject:</span>
                       <span className="font-medium text-slate-900">{selectedEmail.subject || "(No subject)"}</span>
                     </div>
-                    {selectedEmail.patient_id && patientMap.get(selectedEmail.patient_id) && (
+                    {selectedEmail.patient_id && patients[selectedEmail.patient_id] && (
                       <div className="flex gap-3">
                         <span className="w-16 flex-shrink-0 font-medium text-slate-500">Patient:</span>
                         <Link
                           href={`/patients/${selectedEmail.patient_id}`}
                           className="text-sky-600 hover:text-sky-700 hover:underline"
                         >
-                          {patientMap.get(selectedEmail.patient_id)!.first_name} {patientMap.get(selectedEmail.patient_id)!.last_name}
+                          {patients[selectedEmail.patient_id].first_name} {patients[selectedEmail.patient_id].last_name}
                         </Link>
+                      </div>
+                    )}
+                    {selectedEmail.read_at && (
+                      <div className="flex gap-3">
+                        <span className="w-16 flex-shrink-0 font-medium text-slate-500">Read:</span>
+                        <span className="inline-flex items-center gap-1 text-green-700">
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M2 12l5 5L20 5" />
+                          </svg>
+                          {formatDate(selectedEmail.read_at)}
+                        </span>
                       </div>
                     )}
                   </div>
                 </div>
 
                 <div className="rounded-lg border border-slate-100 bg-white p-4">
-                  <h3 className="mb-2 text-xs font-medium text-slate-500">Message Body</h3>
-                  <div
-                    className="prose prose-sm max-w-none text-slate-700"
-                    dangerouslySetInnerHTML={{ __html: selectedEmail.body }}
-                  />
+                  <h3 className="mb-2 text-xs font-medium text-slate-500">Email ID</h3>
+                  <p className="text-xs text-slate-500 font-mono">{selectedEmail.id}</p>
                 </div>
               </div>
             </div>

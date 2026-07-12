@@ -1,5 +1,6 @@
 import type { CallTurn } from "@/lib/callLog";
 import { formatCallDuration, formatTranscriptReadable } from "@/lib/callLog";
+import { logEmailSent } from "@/lib/logEmail";
 
 const mailgunApiKey = process.env.MAILGUN_API_KEY;
 const mailgunDomain = process.env.MAILGUN_DOMAIN;
@@ -93,8 +94,26 @@ export async function sendCallLogConversationEmail(opts: {
   if (!response.ok) {
     const details = await response.text().catch(() => "");
     console.error("[CallLogEmail] Mailgun rejected call log email:", response.status, details);
+    void logEmailSent({
+      to_address: recipient,
+      from_address: `${mailgunFromName} <${fromAddress}>`,
+      subject,
+      body: html,
+      source: "ai_transcript",
+      status: "failed",
+    });
     return { sent: false, reason: `mailgun_${response.status}` };
   }
+
+  // Log to emails table for reporting
+  void logEmailSent({
+    to_address: recipient,
+    from_address: `${mailgunFromName} <${fromAddress}>`,
+    subject,
+    body: html,
+    source: "ai_transcript",
+    status: "sent",
+  });
 
   return { sent: true };
 }

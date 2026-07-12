@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { reminderSuppressionReason } from "@/lib/appointmentComms";
+import { logEmailSent } from "@/lib/logEmail";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -43,9 +44,11 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       console.error("Error sending email via Mailgun", response.status, text);
+      void logEmailSent({ to_address: to, from_address: fromAddress, subject, body: html, source: "scheduled_reminder", status: "failed" });
       return false;
     }
 
+    void logEmailSent({ to_address: to, from_address: fromAddress, subject, body: html, source: "scheduled_reminder", status: "sent" });
     return true;
   } catch (err) {
     console.error("Error sending email:", err);

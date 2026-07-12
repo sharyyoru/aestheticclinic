@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { generateOtp } from "@/lib/patientAppAuth";
+import { logEmailSent } from "@/lib/logEmail";
 
 const mailgunApiKey = process.env.MAILGUN_API_KEY;
 const mailgunDomain = process.env.MAILGUN_DOMAIN;
@@ -61,11 +62,16 @@ export async function POST(request: Request) {
         },
       );
 
+      const otpSubject = `${code} is your patient portal sign-in code`;
+      const otpTo = patient.email || normalized;
+      const otpFrom = `${mailgunFromName} <${mailgunFromEmail || `clinic@${mailgunDomain}`}>`;
       if (!mgResponse.ok) {
         const errText = await mgResponse.text();
         console.error("Patient OTP email failed:", errText);
+        void logEmailSent({ patient_id: patient.id, to_address: otpTo, from_address: otpFrom, subject: otpSubject, body: html, source: "otp", status: "failed" });
         return NextResponse.json({ error: "Failed to send code. Please try again." }, { status: 500 });
       }
+      void logEmailSent({ patient_id: patient.id, to_address: otpTo, from_address: otpFrom, subject: otpSubject, body: html, source: "otp", status: "sent" });
     }
 
     return NextResponse.json({ ok: true });
