@@ -14,6 +14,35 @@ const AGENTS = [
   { id: "agent_b347fa0d08519c114af295671d", label: "French", flag: "🇫🇷" },
 ] as const;
 
+/** Get current date/time in Swiss timezone (Europe/Zurich) */
+function getSwissNow(): Date {
+  const now = new Date();
+  const swiss = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Zurich" }));
+  return swiss;
+}
+
+function toDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(days: number): string {
+  const swiss = getSwissNow();
+  swiss.setDate(swiss.getDate() + days);
+  return toDateString(swiss);
+}
+
+const DATE_PRESETS = [
+  { label: "Tomorrow", getValue: () => addDays(1) },
+  { label: "In 3 days", getValue: () => addDays(3) },
+  { label: "In 1 week", getValue: () => addDays(7) },
+] as const;
+
+const TIME_PRESETS = [
+  { label: "☀️ Morning", value: "09:30" },
+  { label: "🌤️ Afternoon", value: "14:00" },
+  { label: "🌙 Evening", value: "17:30" },
+] as const;
+
 export default function AiCallButton({ patientId, patientName }: AiCallButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -38,13 +67,12 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
   }, []);
 
   useEffect(() => {
-    // Set sensible defaults when opening
+    // Set sensible defaults when opening (Swiss time)
     if (isOpen) {
-      const now = new Date();
-      now.setMinutes(now.getMinutes() + 5);
-      const iso = now.toISOString();
-      setDate(iso.slice(0, 10));
-      setTime(iso.slice(11, 16));
+      const swiss = getSwissNow();
+      swiss.setMinutes(swiss.getMinutes() + 5);
+      setDate(toDateString(swiss));
+      setTime(`${String(swiss.getHours()).padStart(2, "0")}:${String(swiss.getMinutes()).padStart(2, "0")}`);
     }
   }, [isOpen]);
 
@@ -160,7 +188,7 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
 
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  What should the AI call about?
+                  Call Topic
                 </label>
                 <textarea
                   value={prompt}
@@ -185,27 +213,58 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Date</label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
-                    required
-                  />
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">Date</label>
+                <div className="mb-1.5 flex gap-1.5">
+                  {DATE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setDate(preset.getValue())}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-all ${
+                        date === preset.getValue()
+                          ? "border-violet-400 bg-violet-50 text-violet-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Time</label>
-                  <input
-                    type="time"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
-                    required
-                  />
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">Time (Swiss)</label>
+                <div className="mb-1.5 flex gap-1.5">
+                  {TIME_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => setTime(preset.value)}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-all ${
+                        time === preset.value
+                          ? "border-violet-400 bg-violet-50 text-violet-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
                 </div>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                  required
+                />
               </div>
             </div>
 
