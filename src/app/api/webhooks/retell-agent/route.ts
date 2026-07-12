@@ -223,21 +223,35 @@ async function logRetellAgentRequest(payload: RetellCallPayload) {
  * call finishes successfully, failed when Retell reports failure, and leave
  * it in_progress for everything else (no-answer, voicemail, etc.) so a human
  * can review.
+ *
+ * Also sends the readable transcript to the user who scheduled the call and
+ * annotates the task/call log with a notification that the email was sent.
  */
 async function updateLinkedAiTask(
   scheduledCallId: string,
   callStatus: string,
   summary: string | null,
+  transcriptContext?: {
+    patientName: string;
+    callId: string;
+    startedAt: string | null;
+    durationSeconds: number | null;
+    fromNumber: string | null;
+    toNumber: string | null;
+    transcript: string | null;
+    turns: import("@/lib/callLog").CallTurn[];
+  },
 ) {
   try {
     const { data: scheduled } = await supabaseAdmin
       .from("retell_scheduled_calls")
-      .select("task_id")
+      .select("task_id, scheduled_by_email, scheduled_by_name")
       .eq("id", scheduledCallId)
       .maybeSingle();
 
     const taskId = scheduled?.task_id as string | null;
-    if (!taskId) return;
+    const schedulerEmail = scheduled?.scheduled_by_email as string | null;
+    const schedulerName = scheduled?.scheduled_by_name as string | null;
 
     let nextStatus = "in_progress";
     const lower = (callStatus || "").toLowerCase();
@@ -247,16 +261,56 @@ async function updateLinkedAiTask(
       nextStatus = "failed";
     }
 
-    await supabaseAdmin
-      .from("tasks")
-      .update({
-        status: nextStatus,
-        content: summary
-          ? `${summary}\n\n(Status: ${callStatus})`
-          : `AI call finished. Status: ${callStatus}`,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", taskId);
+    // Send transcript email to the user who scheduled the call
+    let emailSent = false;
+    if (schedulerEmail && transcriptContext && transcriptContext.turns.length > 0) {
+      try {
+        const { sent } = await sendCallLogConversationEmail({
+          patientName: transcriptContext.patientName,
+          callId: transcriptContext.callId,
+          direction: "task_outbound",
+          startedAt: transcriptContext.startedAt,
+          durationSeconds: transcriptContext.durationSeconds,
+          callStatus,
+          fromNumber: transcriptContext.fromNumber,
+          toNumber: transcriptContext.toNumber,
+          summary,
+          transcript: transcriptContext.transcript,
+          turns: transcriptContext.turns,
+        }, schedulerEmail);
+        emailSent = !!sent;
+      } catch (emailErr) {
+        console.error("[Retell Agent] Failed to send transcript email to scheduler:", emailErr);
+      }
+    }
+
+    // Build task content with email notification
+    const emailNote = emailSent
+      ? `\n\n📧 Transcript emailed to: ${schedulerName || schedulerEmail}`
+      : "";
+
+    if (taskId) {
+      await supabaseAdmin
+        .from("tasks")
+        .update({
+          status: nextStatus,
+          content: summary
+            ? `${summary}\n\n(Status: ${callStatus})${emailNote}`
+            : `AI call finished. Status: ${callStatus}${emailNote}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", taskId);
+    }
+
+    // Also annotate the call_log entry with email notification
+    if (emailSent) {
+      await supabaseAdmin
+        .from("call_logs")
+        .update({
+          assigned_user_name: `Transcript sent to ${schedulerName || schedulerEmail}`,
+        })
+        .eq("scheduled_call_id", scheduledCallId);
+    }
   } catch (err) {
     console.error("[Retell Agent] Failed to update linked AI task:", err);
   }
@@ -726,10 +780,19 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Keep the linked AI task in sync with the call outcome
+        // Keep the linked AI task in sync with the call outcome + send transcript email
         const linkedScheduledCallId = (call.metadata?.scheduled_call_id as string) || null;
         if (linkedScheduledCallId && (payload.event === "call_ended" || payload.event === "call_analyzed")) {
-          await updateLinkedAiTask(linkedScheduledCallId, call.call_status, summary);
+          await updateLinkedAiTask(linkedScheduledCallId, call.call_status, summary, {
+            patientName: patientFullName,
+            callId: call.call_id,
+            startedAt,
+            durationSeconds: callDuration,
+            fromNumber: call.from_number || null,
+            toNumber: call.to_number || null,
+            transcript: transcriptText,
+            turns,
+          });
         }
       }
     } catch (callLogErr) {

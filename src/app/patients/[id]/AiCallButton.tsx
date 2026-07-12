@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/AuthContext";
 
 interface AiCallButtonProps {
   patientId: string;
@@ -24,6 +25,7 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const { user } = useAuth();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -73,6 +75,8 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
           scheduled_for: scheduledFor.toISOString(),
           service_name: serviceName,
           agent_id: agentId,
+          scheduled_by_email: user?.email || null,
+          scheduled_by_name: user?.user_metadata?.full_name || user?.email || null,
         }),
       });
 

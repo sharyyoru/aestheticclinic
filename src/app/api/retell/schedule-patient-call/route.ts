@@ -39,12 +39,16 @@ export async function POST(req: NextRequest) {
       scheduled_for?: string;
       service_name?: string;
       agent_id?: string;
+      scheduled_by_email?: string;
+      scheduled_by_name?: string;
     };
 
     const patientId = body.patient_id?.trim();
     const prompt = (body.prompt ?? "").trim();
     const serviceName = (body.service_name ?? "").trim() || "our services";
     const agentId = (body.agent_id ?? "").trim() || null;
+    const scheduledByEmail = (body.scheduled_by_email ?? "").trim() || null;
+    const scheduledByName = (body.scheduled_by_name ?? "").trim() || null;
 
     if (!patientId) {
       return NextResponse.json({ error: "patient_id is required" }, { status: 400 });
@@ -99,6 +103,7 @@ export async function POST(req: NextRequest) {
       serviceName !== "our services" && `Topic: ${serviceName}`,
       `Scheduled for: ${formatReadableDateTime(scheduledFor)}`,
       `Patient phone: ${toNumber}`,
+      scheduledByName && `Scheduled by: ${scheduledByName}`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -142,6 +147,8 @@ export async function POST(req: NextRequest) {
         to_number: toNumber,
         task_id: aiTask?.id ?? null,
         agent_id: agentId,
+        scheduled_by_email: scheduledByEmail,
+        scheduled_by_name: scheduledByName,
       })
       .select("id")
       .single();

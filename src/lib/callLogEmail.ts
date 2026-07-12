@@ -34,7 +34,7 @@ export async function sendCallLogConversationEmail(opts: {
   summary?: string | null;
   transcript?: string | null;
   turns: CallTurn[];
-}) {
+}, toEmail?: string) {
   if (!mailgunApiKey || !mailgunDomain) {
     console.warn("[CallLogEmail] Mailgun not configured, skipping call log email");
     return { sent: false, reason: "mailgun_not_configured" };
@@ -46,6 +46,7 @@ export async function sendCallLogConversationEmail(opts: {
   const subject = `Ai Outbound Call with Patient: ${patientName}`;
   const conversation = formatTranscriptReadable(opts.turns) || opts.transcript || "No transcript was recorded.";
   const startedAt = opts.startedAt ? new Date(opts.startedAt).toLocaleString("fr-CH") : "Unknown";
+  const recipient = toEmail || CALL_LOG_NOTIFICATION_TO;
 
   const html = `
     <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
@@ -76,7 +77,7 @@ export async function sendCallLogConversationEmail(opts: {
 
   const formData = new FormData();
   formData.append("from", `${mailgunFromName} <${fromAddress}>`);
-  formData.append("to", CALL_LOG_NOTIFICATION_TO);
+  formData.append("to", recipient);
   formData.append("subject", subject);
   formData.append("html", html);
 
