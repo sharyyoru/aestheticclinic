@@ -41,6 +41,8 @@ function callTimeMs(log: CallLog): number {
 
 function directionLabel(direction: string | null): { label: string; cls: string } {
   switch (direction) {
+    case "task_outbound":
+      return { label: "AI Task Call", cls: "bg-violet-50 text-violet-700 border-violet-200" };
     case "outbound":
       return { label: "Outbound", cls: "bg-sky-50 text-sky-700 border-sky-200" };
     case "web":
@@ -203,7 +205,7 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
     );
   }
 
-  const outboundCount = logs.filter((l) => l.direction === "outbound").length;
+  const outboundCount = logs.filter((l) => l.direction === "outbound" || l.direction === "task_outbound").length;
   let callsWithWa = 0;
   let callsConverted = 0;
   attribution.forEach((a) => {

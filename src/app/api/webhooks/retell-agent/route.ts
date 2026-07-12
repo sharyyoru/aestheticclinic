@@ -604,11 +604,11 @@ export async function POST(request: NextRequest) {
           })
           .eq("id", existingLog.id);
       } else {
-        // Round-robin assignee for inbound/web calls (skip outbound).
+        // Round-robin assignee for inbound/web calls (skip outbound & task_outbound).
         let assignedUserId: string | null = null;
         let assignedUserName: string | null = null;
         let taskId: string | null = null;
-        const isInbound = call.direction !== "outbound";
+        const isInbound = call.direction !== "outbound" && !scheduledCallId;
 
         if (isInbound) {
           const { data: teamUsers } = await supabaseAdmin
@@ -673,13 +673,18 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // If this is a scheduled AI call (has scheduled_call_id in metadata), mark as task_outbound
+        const callDirection = scheduledCallId
+          ? "task_outbound"
+          : (call.direction || "inbound");
+
         const { data: insertedCallLog, error: logError } = await supabaseAdmin
           .from("call_logs")
           .insert({
             call_id: call.call_id,
             patient_id: patientId,
             deal_id: dealId,
-            direction: call.direction || "inbound",
+            direction: callDirection,
             agent_id: call.agent_id || null,
             from_number: call.from_number || null,
             to_number: call.to_number || null,

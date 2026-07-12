@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
     const scheduledCallLog = {
       patient_id: patientId,
       scheduled_call_id: scheduledId,
-      direction: "outbound" as const,
+      direction: "task_outbound",
       from_number: RETELL_FROM_NUMBER,
       to_number: toNumber,
       call_status: "scheduled",
