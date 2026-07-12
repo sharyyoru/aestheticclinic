@@ -8,12 +8,18 @@ interface AiCallButtonProps {
   patientName?: string;
 }
 
+const AGENTS = [
+  { id: "agent_eae6c598f3b68c71c9e1ae6aad", label: "English", flag: "🇬🇧" },
+  { id: "agent_b347fa0d08519c114af295671d", label: "French", flag: "🇫🇷" },
+] as const;
+
 export default function AiCallButton({ patientId, patientName }: AiCallButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [serviceName, setServiceName] = useState("");
+  const [agentId, setAgentId] = useState<string>(AGENTS[0].id);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -66,6 +72,7 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
           prompt,
           scheduled_for: scheduledFor.toISOString(),
           service_name: serviceName,
+          agent_id: agentId,
         }),
       });
 
@@ -125,6 +132,28 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
             </div>
 
             <div className="space-y-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Agent Language
+                </label>
+                <div className="flex gap-2">
+                  {AGENTS.map((agent) => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => setAgentId(agent.id)}
+                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-all ${
+                        agentId === agent.id
+                          ? "border-violet-400 bg-violet-50 text-violet-700 ring-2 ring-violet-200"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {agent.flag} {agent.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   What should the AI call about?

@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const now = new Date().toISOString();
   const { data: dueCalls, error: fetchError } = await supabaseAdmin
     .from("retell_scheduled_calls")
-    .select("id, patient_id, deal_id, to_number, user_name, service_name, prompt, task_id")
+    .select("id, patient_id, deal_id, to_number, user_name, service_name, prompt, task_id, agent_id")
     .eq("status", "pending")
     .lte("scheduled_for", now)
     .order("scheduled_for", { ascending: true })
@@ -78,11 +78,12 @@ export async function GET(req: NextRequest) {
           .eq("id", call.task_id);
       }
 
-      // Fire the Retell call
+      // Fire the Retell call (use per-call agent_id if set, otherwise env default)
+      const callAgentId = (call.agent_id as string) || RETELL_AGENT_ID;
       const retellResponse = await createRetellCall({
         from_number: RETELL_FROM_NUMBER,
         to_number: call.to_number as string,
-        agent_id: RETELL_AGENT_ID,
+        agent_id: callAgentId,
         webhook_url: RETELL_WEBHOOK_URL,
         retell_llm_dynamic_variables: {
           user_name: call.user_name as string,

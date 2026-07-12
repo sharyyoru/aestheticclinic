@@ -3,7 +3,8 @@
 
 ALTER TABLE retell_scheduled_calls
   ADD COLUMN IF NOT EXISTS prompt text,
-  ADD COLUMN IF NOT EXISTS task_id uuid REFERENCES tasks(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS task_id uuid REFERENCES tasks(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS agent_id text;
 
 ALTER TABLE call_logs
   ADD COLUMN IF NOT EXISTS scheduled_call_id uuid REFERENCES retell_scheduled_calls(id) ON DELETE SET NULL,
