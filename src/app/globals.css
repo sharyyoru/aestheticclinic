@@ -306,7 +306,7 @@ html { font-size: 17px; }
 .dark .appt-pill-text,
 .dark .blz-content .appt-pill-text.appt-pill-text,
 .dark .blz-content [class*="bg-white"] .appt-pill-text.appt-pill-text {
-  color: #1e293b !important;
+  color: #000000 !important;
 }
 
 /* Modals and overlays in dark mode */
