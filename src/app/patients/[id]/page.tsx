@@ -359,7 +359,7 @@ export default async function PatientPage({
           <div className="flex items-center gap-2">
             <Link
               href={`/patients/${patient.id}?m_tab=crm&composeEmail=1`}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-300/80 bg-gradient-to-b from-slate-50/90 via-slate-100/90 to-slate-200/90 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-[0_4px_12px_rgba(15,23,42,0.18)] backdrop-blur hover:from-slate-100 hover:to-slate-300"
+              className="send-email-btn inline-flex items-center gap-1 rounded-full border border-slate-300/80 bg-gradient-to-b from-slate-50/90 via-slate-100/90 to-slate-200/90 px-3 py-1.5 text-xs font-medium text-slate-800 shadow-[0_4px_12px_rgba(15,23,42,0.18)] backdrop-blur hover:from-slate-100 hover:to-slate-300"
             >
               <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
                 <svg

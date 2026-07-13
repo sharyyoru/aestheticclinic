@@ -299,6 +299,12 @@ html { font-size: 17px; }
 .dark .blz-content button[class*="bg-gradient"][class*="text-slate-"],
 .dark .blz-content a[class*="bg-slate-50"][class*="text-slate-"],
 .dark .blz-content button[class*="bg-slate-50"][class*="text-slate-"] {
+  color: inherit !important; /* revert to the original Tailwind class value */
+}
+
+/* Send an email button specifically needs black text on its light gradient background in dark mode */
+.dark .blz-content a.send-email-btn.send-email-btn,
+.dark .blz-content a.send-email-btn.send-email-btn [class*="text-slate-"] {
   color: #000000 !important;
 }
 
