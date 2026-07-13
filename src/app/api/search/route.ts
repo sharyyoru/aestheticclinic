@@ -39,7 +39,7 @@ const SYSTEM_PAGES = [
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { query, page = 1, limit = 20 } = body as {
+    const { query, categories, page = 1, limit = 20 } = body as {
       query: string;
       categories?: string[];
       page?: number;
@@ -163,6 +163,39 @@ export async function POST(request: Request) {
       category: "invoices" as const,
     }));
 
+    // Search appointments
+    const { data: appointments } = await supabase
+      .from("appointments")
+      .select("id, patient_id, start_time, end_time, status, reason, location, patients(first_name, last_name)")
+      .or(
+        `reason.ilike.%${searchTerm}%,location.ilike.%${searchTerm}%,status.ilike.%${searchTerm}%,patients.first_name.ilike.%${searchTerm}%,patients.last_name.ilike.%${searchTerm}%`,
+      )
+      .range(offset, offset + limit - 1)
+      .limit(limit);
+
+    const appointmentResults = (appointments || []).map((a: any) => {
+      const patientName = a.patients
+        ? `${a.patients.first_name || ""} ${a.patients.last_name || ""}`.trim()
+        : "Unknown patient";
+      const startLabel = a.start_time
+        ? new Date(a.start_time).toLocaleString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "";
+      const subtitleParts = [startLabel, a.location, a.status].filter(Boolean);
+      return {
+        id: a.id,
+        title: `${patientName} — ${a.reason || "Appointment"}`,
+        subtitle: subtitleParts.join(" • "),
+        href: `/appointments?patientId=${a.patient_id}`,
+        category: "appointments" as const,
+      };
+    });
+
     const results = [
       { category: "pages", items: pageResults.slice(0, limit), total: pageResults.length },
       { category: "patients", items: patientResults, total: patientResults.length },
@@ -170,6 +203,7 @@ export async function POST(request: Request) {
       { category: "deals", items: dealResults, total: dealResults.length },
       { category: "services", items: serviceResults, total: serviceResults.length },
       { category: "invoices", items: invoiceResults, total: invoiceResults.length },
+      { category: "appointments", items: appointmentResults, total: appointmentResults.length },
     ].filter((r) => r.items.length > 0);
 
     return NextResponse.json({ results, query: searchTerm });

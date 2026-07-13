@@ -32,6 +32,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   deals: "Deals",
   services: "Services",
   invoices: "Invoices",
+  appointments: "Appointments",
 };
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -65,6 +66,11 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
       <rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h4M7 14h2" />
     </svg>
   ),
+  appointments: (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
+  ),
 };
 
 export default function SearchPage() {
@@ -74,6 +80,7 @@ export default function SearchPage() {
 
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<SearchResultGroup[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set(Object.keys(CATEGORY_LABELS)));
   const [assist, setAssist] = useState<AssistResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [assistLoading, setAssistLoading] = useState(false);
@@ -151,6 +158,17 @@ export default function SearchPage() {
     }
   }, [initialQuery, performSearch]);
 
+  // Auto-select any newly appearing categories so "all" is the default
+  useEffect(() => {
+    setSelectedCategories((prev) => {
+      const next = new Set(prev);
+      for (const group of results) {
+        next.add(group.category);
+      }
+      return next;
+    });
+  }, [results]);
+
   function handleInputChange(value: string) {
     setQuery(value);
     setShowSuggestions(true);
@@ -175,7 +193,8 @@ export default function SearchPage() {
     router.push(item.href);
   }
 
-  const totalResults = results.reduce((sum, g) => sum + g.items.length, 0);
+  const filteredResults = results.filter((group) => selectedCategories.has(group.category));
+  const totalResults = filteredResults.reduce((sum, g) => sum + g.items.length, 0);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -322,10 +341,47 @@ export default function SearchPage() {
       {/* Results */}
       {!loading && results.length > 0 && (
         <div className="space-y-6">
-          <p className="text-xs text-slate-500">
-            {totalResults} result{totalResults !== 1 ? "s" : ""} for &ldquo;{initialQuery || query}&rdquo;
-          </p>
-          {results.map((group) => (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              {totalResults} result{totalResults !== 1 ? "s" : ""} for &ldquo;{initialQuery || query}&rdquo;
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {results.map((group) => {
+                const selected = selectedCategories.has(group.category);
+                return (
+                  <button
+                    key={group.category}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategories((prev) => {
+                        const next = new Set(prev);
+                        if (selected) {
+                          next.delete(group.category);
+                        } else {
+                          next.add(group.category);
+                        }
+                        return next;
+                      });
+                    }}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      selected
+                        ? "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-300"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    <span className={selected ? "text-sky-600 dark:text-sky-300" : "text-slate-400 dark:text-slate-500"}>
+                      {CATEGORY_ICONS[group.category] || CATEGORY_ICONS.pages}
+                    </span>
+                    {CATEGORY_LABELS[group.category] || group.category}
+                    <span className="rounded-full bg-white/70 px-1.5 py-0 text-[10px] dark:bg-black/20">
+                      {group.total}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {filteredResults.map((group) => (
             <div key={group.category}>
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-slate-400">
@@ -365,7 +421,7 @@ export default function SearchPage() {
       )}
 
       {/* Empty state */}
-      {!loading && !assistLoading && results.length === 0 && initialQuery && (
+      {!loading && !assistLoading && initialQuery && results.length === 0 && (
         <div className="py-12 text-center">
           <svg className="mx-auto h-12 w-12 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
@@ -375,6 +431,21 @@ export default function SearchPage() {
           </p>
           <p className="mt-1 text-xs text-slate-400">
             Try different keywords or ask a question
+          </p>
+        </div>
+      )}
+
+      {/* Filtered-empty state */}
+      {!loading && !assistLoading && results.length > 0 && filteredResults.length === 0 && (
+        <div className="py-12 text-center">
+          <svg className="mx-auto h-12 w-12 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+          </svg>
+          <p className="mt-4 text-sm text-slate-500">
+            No results match the selected filters.
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Select a category above to show results.
           </p>
         </div>
       )}
