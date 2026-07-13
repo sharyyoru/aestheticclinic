@@ -1227,6 +1227,7 @@ export default function CalendarPage() {
   const [newCalendarProviderId, setNewCalendarProviderId] = useState("");
   const [view, setView] = useState<CalendarView>("day");
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [calendarSelectorOpen, setCalendarSelectorOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(swissTodayAnchor());
   const [rangeEndDate, setRangeEndDate] = useState<Date | null>(null);
@@ -3454,10 +3455,21 @@ export default function CalendarPage() {
   const moreCalendarsCount = Math.max(0, activeCalendarCount - 3);
 
   function handleMiniDayMouseDown(date: Date) {
-    setSelectedDate(date);
-    setRangeEndDate(null);
+    const base = swissDayAnchorFrom(date);
+    if (view === "range") {
+      const weekday = getSwissDayOfWeek(base);
+      const adjustedWeekday = weekday === 0 ? 6 : weekday - 1;
+      const start = addSwissDays(base, -adjustedWeekday);
+      const end = addSwissDays(start, 6);
+      setSelectedDate(start);
+      setRangeEndDate(end);
+      setVisibleMonth(swissMonthAnchor(start));
+    } else {
+      setSelectedDate(base);
+      setRangeEndDate(null);
+      setView("day");
+    }
     setIsDraggingRange(true);
-    setView("day");
   }
 
   function handleMiniDayMouseEnter(date: Date) {
@@ -3483,8 +3495,10 @@ export default function CalendarPage() {
       } as React.CSSProperties}
     >
       {/* Left sidebar similar to Google Calendar */}
-      <aside className="hidden w-64 shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] md:flex" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-        <div className="mb-3">
+      <aside className={`hidden shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] transition-all duration-200 md:flex ${leftPanelOpen ? 'w-64 p-3' : 'w-10 items-center py-2 px-1'}`} style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+        <div className={`mb-3 flex items-center ${leftPanelOpen ? 'justify-between gap-2' : 'justify-center'}`}>
+          {leftPanelOpen && (
+            <div className="flex-1">
           <button
             type="button"
             onClick={() => {
@@ -3542,7 +3556,29 @@ export default function CalendarPage() {
               Paste
             </button>
           )}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setLeftPanelOpen((prev) => !prev)}
+            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+            aria-label={leftPanelOpen ? "Collapse sidebar" : "Expand sidebar"}
+          >
+            {leftPanelOpen ? (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 17l-5-5 5-5" />
+                <path d="M18 17V7" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M13 17l5-5-5-5" />
+                <path d="M6 17V7" />
+              </svg>
+            )}
+          </button>
         </div>
+        {leftPanelOpen && (
+          <>
         {/* Mini month */}
         <div className="mb-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-2">
           <div className="mb-2 flex items-center justify-between text-[11px] font-medium text-slate-700">
@@ -3791,15 +3827,8 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        {/* Booking pages / Other calendars placeholders */}
-        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
-          <p className="font-semibold">Booking pages</p>
-          <p className="text-slate-400">Coming soon</p>
-        </div>
-        <div className="mt-4 space-y-2 text-[10px] text-slate-500">
-          <p className="font-semibold">Other calendars</p>
-          <p className="text-slate-400">Coming soon</p>
-        </div>
+      </>
+    )}
       </aside>
 
       {/* Main month view */}
@@ -3956,11 +3985,11 @@ export default function CalendarPage() {
                 <>
                   {/* Invisible backdrop to close menu on touch/click outside */}
                   <div 
-                    className="fixed inset-0 z-10" 
+                    className="fixed inset-0 z-40" 
                     onClick={() => setViewMenuOpen(false)}
                     onTouchEnd={() => setViewMenuOpen(false)}
                   />
-                  <div className="absolute right-0 z-20 mt-1 min-w-[140px] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                  <div className="absolute right-0 z-50 mt-1 min-w-[140px] rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
                     <button
                       type="button"
                       onClick={handleSelectDayView}
