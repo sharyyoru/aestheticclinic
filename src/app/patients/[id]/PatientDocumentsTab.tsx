@@ -1563,8 +1563,8 @@ async function handleSendEmail(event: React.FormEvent) {
                         onClick={() => handleSelectFile(item)}
                         className={`group relative flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-[11px] transition-all cursor-pointer ${
                           isSelected
-                            ? "border-sky-400 bg-gradient-to-r from-sky-50 to-white shadow-[0_0_0_1px_rgba(56,189,248,0.4)]"
-                            : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/60 hover:shadow-sm"
+                            ? "border-sky-400 bg-gradient-to-r from-sky-50 to-white shadow-[0_0_0_1px_rgba(56,189,248,0.4)] dark:border-sky-600 dark:from-sky-900 dark:to-sky-950"
+                            : "border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/60 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:hover:border-sky-600 dark:hover:bg-sky-900/40"
                         }`}
                       >
                         {/* Checkbox for email selection */}
