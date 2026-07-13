@@ -4360,7 +4360,8 @@ export default function CalendarPage() {
                                     dragStartMinutes !== null && 
                                     dragEndMinutes !== null &&
                                     totalMinutes >= Math.min(dragStartMinutes, dragEndMinutes) &&
-                                    totalMinutes < Math.max(dragStartMinutes, dragEndMinutes);
+                                    totalMinutes < Math.max(dragStartMinutes, dragEndMinutes) &&
+                                    (dragDoctorCalendarId === null || dragDoctorCalendarId === doctorCol?.id);
 
                                   return (
                                     <div
@@ -4378,7 +4379,7 @@ export default function CalendarPage() {
                                         handleTouchStart(e, date, totalMinutes, doctorCol?.id ?? null, e.currentTarget);
                                       }}
                                       className={`block w-full border-t border-slate-100 cursor-pointer hover:bg-sky-50 transition-colors ${
-                                        isInDragRange ? "bg-sky-100" : ""
+                                        isInDragRange ? "bg-sky-100 agenda-drag-highlight" : ""
                                       }`}
                                       style={{ height: DAY_VIEW_SLOT_HEIGHT, touchAction: 'none' }}
                                     />

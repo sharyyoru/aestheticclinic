@@ -309,6 +309,11 @@ html { font-size: 17px; }
   color: #000000 !important;
 }
 
+/* Agenda drag-to-create highlight in dark mode */
+.dark .blz-content .agenda-drag-highlight {
+  background-color: rgba(56, 189, 248, 0.45) !important;
+}
+
 /* Modals and overlays in dark mode */
 .dark .blz-content [class*="fixed"][class*="bg-black"] {
   background-color: rgba(0, 0, 0, 0.7) !important;
