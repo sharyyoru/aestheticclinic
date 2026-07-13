@@ -356,6 +356,7 @@ export async function POST(request: Request) {
       .insert({
         patient_id: patientId,
         provider_id: null,
+        doctor_user_id: appointmentType === "operation" ? null : providerId || null,
         start_time: appointmentDateObj.toISOString(),
         end_time: endDateObj.toISOString(),
         reason,

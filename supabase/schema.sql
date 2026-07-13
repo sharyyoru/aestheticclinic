@@ -99,6 +99,7 @@ create table if not exists appointments (
   id uuid primary key default gen_random_uuid(),
   patient_id uuid not null references patients(id) on delete cascade,
   provider_id uuid references providers(id) on delete set null,
+  doctor_user_id uuid references users(id) on delete set null,
   start_time timestamptz not null,
   end_time timestamptz,
   status appointment_status not null default 'scheduled',
@@ -110,6 +111,7 @@ create table if not exists appointments (
 
 create index if not exists appointments_patient_id_idx on appointments(patient_id);
 create index if not exists appointments_provider_id_idx on appointments(provider_id);
+create index if not exists appointments_doctor_user_id_idx on appointments(doctor_user_id);
 create index if not exists appointments_start_time_idx on appointments(start_time);
 
 -- Deal stage type enum

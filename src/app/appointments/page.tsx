@@ -357,6 +357,7 @@ type CalendarAppointment = {
   id: string;
   patient_id: string;
   provider_id: string | null;
+  doctor_user_id: string | null;
   start_time: string;
   end_time: string | null;
   status: AppointmentStatus;
@@ -556,6 +557,20 @@ function getDoctorNameFromReason(reason: string | null): string | null {
   if (!match) return null;
   const raw = match[1].trim();
   return raw || null;
+}
+
+function normalizeDoctorName(name: string | null | undefined): string {
+  return (name ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^(mme|mr|mrs|ms|dr|prof)\.?\s+/i, "")
+    .replace(/z/g, "s")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort()
+    .join(" ");
 }
 
 // Returns the reason text with the free-text [Notes: ...] segment removed, for
@@ -1419,7 +1434,7 @@ export default function CalendarPage() {
         const { data, error } = await supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, temporary_text, source, patient:patients(id, first_name, last_name, email, phone, dob), provider:providers(id, name)",
+            "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, temporary_text, source, patient:patients(id, first_name, last_name, email, phone, dob), provider:providers(id, name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
@@ -2023,7 +2038,7 @@ export default function CalendarPage() {
         // Match against the reason WITHOUT the [Notes: ...] free text, so a
         // patient's name in the notes can't match a similarly-named doctor.
         const reasonLower = getReasonForDoctorMatch(appt.reason).toLowerCase();
-        const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
+        const doctorKey = normalizeDoctorName(doctorFromReason ?? providerName);
         const appointmentLocation = (appt.location ?? "").trim().toLowerCase();
         
         let matchesAnyCalendar = false;
@@ -2041,11 +2056,12 @@ export default function CalendarPage() {
         // Check doctor-based calendars
         if (selectedDoctorCalendarsOnly.length > 0 && !matchesAnyCalendar) {
           // Match by provider_id first (most reliable)
-          const matchesByProviderId = appt.provider_id && selectedProviderIds.includes(appt.provider_id);
+          const matchesByProviderId = (appt.doctor_user_id && selectedProviderIds.includes(appt.doctor_user_id)) ||
+            (appt.provider_id && selectedProviderIds.includes(appt.provider_id));
           
           // Match by doctor key (from [Doctor:] tag or provider.name)
           const matchesByDoctorKey = doctorKey && selectedDoctorNames.some((selectedName) => 
-            doctorKey.includes(selectedName) || selectedName.includes(doctorKey)
+            doctorKey === normalizeDoctorName(selectedName)
           );
           
           // Fallback: search the reason text (notes stripped) for the doctor
@@ -2073,9 +2089,10 @@ export default function CalendarPage() {
             if (!matchesActiveLocation) return;
           } else {
             // Doctor tab: filter by doctor
-            const matchesActiveTabById = appt.provider_id && appt.provider_id === activeTabProviderId;
+            const matchesActiveTabById = (appt.doctor_user_id && appt.doctor_user_id === activeTabProviderId) ||
+              (appt.provider_id && appt.provider_id === activeTabProviderId);
             const matchesActiveTabByName = activeTabDoctorName && doctorKey && 
-              (doctorKey.includes(activeTabDoctorName) || activeTabDoctorName.includes(doctorKey));
+              doctorKey === normalizeDoctorName(activeTabDoctorName);
             const activeTabParts = (activeTabDoctorName ?? "").split(/\s+/).filter((part) => part.length > 2);
             const matchesActiveTabByReason = activeTabParts.length > 0 && activeTabParts.every((part) => reasonLower.includes(part));
             if (!matchesActiveTabById && !matchesActiveTabByName && !matchesActiveTabByReason) return;
@@ -2899,11 +2916,8 @@ export default function CalendarPage() {
         ? `${baseReason}${doctorTag}${categoryTag}${notesTag} [Status: ${bookingStatus}]`
         : `${baseReason}${doctorTag}${categoryTag}${notesTag}`;
 
-      // Don't set provider_id: the FK targets the `providers` table, but the
-      // calendars are keyed by `users` ids and not every doctor (e.g. Operation
-      // Room) has a matching providers row, so setting it would risk a
-      // foreign-key violation. Doctor info lives in the [Doctor:] reason tag,
-      // which the calendar matches on.
+      // provider_id belongs to the billing providers table. Calendar ownership
+      // uses doctor_user_id, with the text tag retained for legacy integrations.
       // For meetings, patient_id can be null
       const insertData: Record<string, unknown> = {
         start_time: startIso,
@@ -2913,6 +2927,7 @@ export default function CalendarPage() {
         notes: draftDescription.trim() || null,
         location: draftLocation || null,
         source: "manual",
+        doctor_user_id: selectedCalendar?.providerId ?? null,
       };
       
       // Only include patient_id for appointments (not PAUSE slots)
@@ -2924,7 +2939,7 @@ export default function CalendarPage() {
         .from("appointments")
         .insert(insertData)
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, source, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, source, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -3188,15 +3203,11 @@ export default function CalendarPage() {
       if (editCategory && editCategory !== "No selection") updatedReason += ` [Category: ${editCategory}]`;
       if (editBookingStatus && editBookingStatus !== "Aucune sélection") updatedReason += ` [Status: ${editBookingStatus}]`;
 
-      // Keep provider_id in sync with the chosen doctor so the calendar column
-      // and online-booking availability (which match by provider_id first) never
-      // disagree with the [Doctor:] tag. The doctor calendars are built from the
-      // providers table, so their providerId is a valid FK. If the doctor was
-      // cleared or doesn't map to a known calendar, null it and let the
-      // [Doctor:] tag be authoritative (matches manual-create behaviour).
+      // Calendar ids reference users, so persist them in doctor_user_id rather
+      // than provider_id (which references the billing providers table).
       const doctorChanged = normalizeComparableText(originalDoctorName) !== normalizeComparableText(doctorName);
       const matchedCalendar = doctorName
-        ? doctorCalendars.find((c) => c.name.trim().toLowerCase() === doctorName.toLowerCase())
+        ? doctorCalendars.find((c) => normalizeDoctorName(c.name) === normalizeDoctorName(doctorName))
         : undefined;
       const updatePayload: Record<string, unknown> = {
         status: nextStatus,
@@ -3207,7 +3218,7 @@ export default function CalendarPage() {
         notes: editNotes.trim() || null,
       };
       if (doctorChanged) {
-        updatePayload.provider_id = matchedCalendar?.providerId ?? null;
+        updatePayload.doctor_user_id = matchedCalendar?.providerId ?? null;
       }
 
       const { data, error } = await supabaseClient
@@ -3215,7 +3226,7 @@ export default function CalendarPage() {
         .update(updatePayload)
         .eq("id", editingAppointment.id)
         .select(
-          "id, patient_id, provider_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
         )
         .single();
 
@@ -4355,14 +4366,15 @@ export default function CalendarPage() {
                                   // Strip the [Notes: ...] free text so a patient's
                                   // name in the notes can't match a similar doctor name.
                                   const reasonLower = getReasonForDoctorMatch(appt.reason).toLowerCase();
-                                  const doctorKey = (doctorFromReason ?? providerName).trim().toLowerCase();
+                                  const doctorKey = normalizeDoctorName(doctorFromReason ?? providerName);
                                   const calName = doctorCol.name.trim().toLowerCase();
                                   
                                   // Match by provider_id first
+                                  if (appt.doctor_user_id && doctorCol.providerId === appt.doctor_user_id) return true;
                                   if (appt.provider_id && doctorCol.providerId === appt.provider_id) return true;
                                   
                                   // Match by doctor key
-                                  if (doctorKey && (doctorKey.includes(calName) || calName.includes(doctorKey))) return true;
+                                  if (doctorKey && doctorKey === normalizeDoctorName(calName)) return true;
                                   
                                   // Fallback: reason text must contain ALL significant
                                   // name parts (not just one shared word).
