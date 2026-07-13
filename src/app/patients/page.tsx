@@ -599,10 +599,10 @@ export default function PatientsPage() {
                           }
                         />
                       </td>
-                      <td className="py-2 pr-3 align-top text-sky-700">
+                      <td className="py-2 pr-3 align-top text-slate-900">
                         <Link
                           href={buildPatientHref(patient.id)}
-                          className="hover:underline"
+                          className="hover:text-sky-600 hover:underline"
                         >
                           {fullName || "Unnamed patient"}
                         </Link>

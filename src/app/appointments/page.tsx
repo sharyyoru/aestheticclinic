@@ -4308,19 +4308,27 @@ export default function CalendarPage() {
                       const { hour: nowH, minute: nowM } = getSwissHourMinute(currentTime);
                       const nowMinutes = nowH * 60 + nowM;
                       const isToday = selectedDate && formatYmd(selectedDate) === formatYmd(currentTime);
-                      const isInBounds = nowMinutes >= DAY_VIEW_START_MINUTES && nowMinutes <= DAY_VIEW_END_MINUTES;
+                      const isInBounds = nowMinutes >= DAY_VIEW_START_MINUTES - DAY_VIEW_SLOT_MINUTES && nowMinutes <= DAY_VIEW_END_MINUTES + DAY_VIEW_SLOT_MINUTES;
                       
                       if (!isToday || !isInBounds) return null;
                       
-                      const topPosition = ((nowMinutes - DAY_VIEW_START_MINUTES) / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
+                      const clampedMinutes = Math.max(DAY_VIEW_START_MINUTES, Math.min(DAY_VIEW_END_MINUTES, nowMinutes));
+                      const topPosition = ((clampedMinutes - DAY_VIEW_START_MINUTES) / DAY_VIEW_SLOT_MINUTES) * DAY_VIEW_SLOT_HEIGHT;
+                      const isBefore = nowMinutes < DAY_VIEW_START_MINUTES;
+                      const isAfter = nowMinutes > DAY_VIEW_END_MINUTES;
                       
                       return (
                         <div
-                          className="absolute left-0 right-0 z-20 pointer-events-none flex items-center"
+                          className="absolute left-0 right-0 z-30 pointer-events-none flex items-center"
                           style={{ top: topPosition }}
                         >
-                          <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 shrink-0" />
-                          <div className="flex-1 h-0.5 bg-red-500" />
+                          <div className={`w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white/40 shrink-0 ${isBefore ? 'ml-0' : '-ml-1'}`} />
+                          <div className="flex-1 h-0.5 bg-gradient-to-r from-red-500 to-red-400 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+                          {(isBefore || isAfter) && (
+                            <span className="ml-2 rounded bg-red-500 px-1 py-0.5 text-[9px] font-bold text-white shadow-sm">
+                              {isBefore ? 'Earlier' : 'Later'}
+                            </span>
+                          )}
                         </div>
                       );
                     })()}

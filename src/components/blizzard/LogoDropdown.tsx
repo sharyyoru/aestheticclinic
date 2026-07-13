@@ -12,19 +12,55 @@ type Props = {
 type NavItem = {
   label: string;
   href: string;
+  icon?: React.ReactNode;
   children?: { label: string; href: string }[];
 };
+
+function NavIcon({ paths }: { paths: string }) {
+  return (
+    <svg
+      className="h-4 w-4 shrink-0"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={paths} />
+    </svg>
+  );
+}
+
+function MultiPathNavIcon({ paths }: { paths: string[] }) {
+  return (
+    <svg
+      className="h-4 w-4 shrink-0"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {paths.map((d, i) => (
+        <path key={i} d={d} />
+      ))}
+    </svg>
+  );
+}
 
 const NAV_SECTIONS: { items: NavItem[] }[] = [
   {
     items: [
-      { label: "Dashboard", href: "/" },
-      { label: "Patients", href: "/patients" },
-      { label: "Agenda", href: "/appointments" },
-      { label: "Deals & Pipeline", href: "/deals" },
+      { label: "Dashboard", href: "/", icon: <MultiPathNavIcon paths={["M4 11.5 12 4l8 7.5", "M5 10.5V20h4v-5h6v5h4v-9.5"]} /> },
+      { label: "Patients", href: "/patients", icon: <MultiPathNavIcon paths={["M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z", "M4 20a6 6 0 0 1 8-5.29A6 6 0 0 1 20 20"]} /> },
+      { label: "Agenda", href: "/appointments", icon: <MultiPathNavIcon paths={["M3 5h18v16H3z", "M16 3v4M8 3v4M3 11h18"]} /> },
+      { label: "Deals & Pipeline", href: "/deals", icon: <MultiPathNavIcon paths={["M3 6h4v12H3zM10 10h4v8h-4zM17 8h4v10h-4z"]} /> },
       {
         label: "Lead Import",
         href: "/lead-import",
+        icon: <MultiPathNavIcon paths={["M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z", "M6 9v3a3 3 0 0 0 3 3h3M12 15v3a3 3 0 0 0 3 3h3"]} />,
         children: [
           { label: "CSV Import", href: "/lead-import" },
           { label: "Import History", href: "/lead-import/history" },
@@ -33,48 +69,51 @@ const NAV_SECTIONS: { items: NavItem[] }[] = [
           { label: "Embed Forms", href: "/lead-import/embed-forms" },
         ],
       },
-      { label: "Financials", href: "/financials" },
-      { label: "Invoices", href: "/invoices" },
-      { label: "MediData", href: "/medidata" },
-      { label: "Services", href: "/services" },
-      { label: "Tasks", href: "/tasks" },
-      { label: "User Management", href: "/users" },
+      { label: "Financials", href: "/financials", icon: <MultiPathNavIcon paths={["M3 6h18v12H3z", "M7 10h4M7 14h2"]} /> },
+      { label: "Invoices", href: "/invoices", icon: <MultiPathNavIcon paths={["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", "M14 2v6h6", "M16 13H8M16 17H8M10 9H8"]} /> },
+      { label: "MediData", href: "/medidata", icon: <MultiPathNavIcon paths={["M9 12l2 2 4-4", "M12 3c7.2 0 9 1.8 9 9s-1.8 9-9 9-9-1.8-9-9 1.8-9 9-9z"]} /> },
+      { label: "Services", href: "/services", icon: <MultiPathNavIcon paths={["M3 4h18v16H3z", "M7 9h10M7 13h6M7 17h3"]} /> },
+      { label: "Tasks", href: "/tasks", icon: <MultiPathNavIcon paths={["M4 4h16v16H4z", "M8 9h8M8 13h5M8 17h3"]} /> },
+      { label: "User Management", href: "/users", icon: <MultiPathNavIcon paths={["M9 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z", "M17 11a3 3 0 1 0-3-3", "M3 20a4 4 0 0 1 8 0", "M13 20a4 4 0 0 1 8 0"]} /> },
       {
         label: "Workflows",
         href: "/workflows",
+        icon: <MultiPathNavIcon paths={["M3 3h6v6H3zM9 9h6v6H9zM15 15h6v6h-6z", "M6 9v3a3 3 0 0 0 3 3h3M12 15v3a3 3 0 0 0 3 3h3"]} />,
         children: [
           { label: "Workflows", href: "/workflows" },
           { label: "Templates", href: "/workflows/templates" },
         ],
       },
-      { label: "AI Agents", href: "/agents" },
+      { label: "AI Agents", href: "/agents", icon: <MultiPathNavIcon paths={["M12 8V4H8", "M2 2h20v20H2z", "M6 12h4m4 0h4", "M9 17a3 3 0 0 0 6 0"]} /> },
       {
         label: "Marketing",
         href: "/marketing",
+        icon: <NavIcon paths="M3 11l18-8-8 18-2-8-8-2z" />,
         children: [
           { label: "Marketing", href: "/marketing" },
           { label: "New Campaign", href: "/marketing/campaigns" },
         ],
       },
-      { label: "Controllers", href: "/controllers" },
-      { label: "Email Reports", href: "/email-reports" },
-      { label: "Statistics", href: "/statistics" },
+      { label: "Controllers", href: "/controllers", icon: <NavIcon paths="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /> },
+      { label: "Email Reports", href: "/email-reports", icon: <MultiPathNavIcon paths={["M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z", "M22 6 12 13 2 6", "M2 20l7-7", "M22 20l-7-7"]} /> },
+      { label: "Statistics", href: "/statistics", icon: <MultiPathNavIcon paths={["M3 3v18h18", "M7 14l4-4 4 4 5-5"]} /> },
       {
         label: "Chat with Aliice",
         href: "/chat",
+        icon: <MultiPathNavIcon paths={["M4 6h16v9H8l-4 3z", "M8 10h8", "M8 13h5"]} />,
         children: [
           { label: "Chat with Aliice", href: "/chat" },
           { label: "Chat Logs", href: "/chatlogs" },
         ],
       },
-      { label: "Client Onboarding", href: "/client-onboarding" },
-      { label: "Invoice Linker", href: "/invoice-linker" },
+      { label: "Client Onboarding", href: "/client-onboarding", icon: <MultiPathNavIcon paths={["M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101", "M10.172 13.828a4 4 0 0 0 5.656 0l4-4a4 4 0 1 0-5.656-5.656l-1.1 1.1"]} /> },
+      { label: "Invoice Linker", href: "/invoice-linker", icon: <MultiPathNavIcon paths={["M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"]} /> },
     ],
   },
   {
     items: [
-      { label: "Settings", href: "/settings" },
-      { label: "Knowledgebase", href: "/knowledgebase" },
+      { label: "Settings", href: "/settings", icon: <NavIcon paths="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7.5-3c0 .35-.04.7-.12 1.03l1.95 1.55c.17.14.22.39.1.59l-1.85 3.2c-.12.21-.37.28-.58.2l-2.3-.93c-.48.36-1 .65-1.56.87l-.35 2.45c-.05.23-.25.39-.49.39h-3.7c-.24 0-.44-.16-.49-.39l-.35-2.45a6.96 6.96 0 0 1-1.56-.87l-2.3.93c-.21.08-.46 0-.58-.2l-1.85-3.2a.42.42 0 0 1 .1-.59l1.95-1.55c-.08-.33-.12-.68-.12-1.03s.04-.7.12-1.03l-1.95-1.55a.42.42 0 0 1-.1-.59l1.85-3.2c.12-.21.37-.28.58-.2l2.3.93c.48-.36 1-.65 1.56-.87l.35-2.45c.05-.23.25-.39.49-.39h3.7c.24 0 .44.16.49.39l.35 2.45c.56.22 1.08.51 1.56.87l2.3-.93c.21-.08.46 0 .58.2l1.85 3.2a.42.42 0 0 1-.1.59l-1.95 1.55c.08.33.12.68.12 1.03z" /> },
+      { label: "Knowledgebase", href: "/knowledgebase", icon: <MultiPathNavIcon paths={["M4 19.5A2.5 2.5 0 0 1 6.5 17H20", "M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"]} /> },
     ],
   },
 ];
@@ -114,8 +153,18 @@ export default function LogoDropdown({ onClose }: Props) {
         onClose();
       }
     }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [onClose]);
 
   return (
@@ -143,6 +192,7 @@ export default function LogoDropdown({ onClose }: Props) {
                       : "text-slate-300 hover:bg-white/5 hover:text-white"
                   }`}
                 >
+                  {item.icon ? <span className="text-slate-400">{item.icon}</span> : null}
                   <span>{item.label}</span>
                 </Link>
               );
@@ -159,7 +209,10 @@ export default function LogoDropdown({ onClose }: Props) {
                       : "text-slate-300 hover:bg-white/5 hover:text-white"
                   }`}
                 >
-                  <span>{item.label}</span>
+                  <span className="flex items-center gap-3">
+                    {item.icon ? <span className="text-slate-400">{item.icon}</span> : null}
+                    <span>{item.label}</span>
+                  </span>
                   <svg
                     className={`h-3.5 w-3.5 text-slate-500 transition-transform duration-200 ${
                       isExpanded ? "rotate-180" : ""

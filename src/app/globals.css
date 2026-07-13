@@ -303,6 +303,7 @@ html { font-size: 17px; }
 }
 
 /* Appointment pill text — always dark on colored backgrounds */
+.appt-pill-text,
 .dark .appt-pill-text,
 .dark .blz-content .appt-pill-text.appt-pill-text,
 .dark .blz-content [class*="bg-white"] .appt-pill-text.appt-pill-text {
