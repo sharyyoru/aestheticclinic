@@ -559,7 +559,7 @@ export default function PatientsPage() {
             <table className="min-w-full text-left text-[11px]">
               <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="w-8 py-2 pr-2">
+                  <th className="w-8 py-2 pl-3 pr-2">
                     <input
                       type="checkbox"
                       className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
@@ -589,7 +589,7 @@ export default function PatientsPage() {
 
                   return (
                     <tr key={patient.id} className="hover:bg-slate-50/70">
-                      <td className="py-2 pr-2 align-top">
+                      <td className="py-2 pl-3 pr-2 align-top">
                         <input
                           type="checkbox"
                           className="h-3.5 w-3.5 rounded border-slate-300 text-sky-600 focus:ring-sky-500"

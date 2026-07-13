@@ -678,7 +678,7 @@ export default function DealsPage() {
     <div className="space-y-6">
       {/* Main centered container: header, metrics, filter, and list view */}
       <div className="flex justify-center">
-        <div className="w-full max-w-5xl space-y-6">
+        <div className="w-full max-w-7xl space-y-6 px-4">
           <div className="flex items-baseline justify-between gap-3">
             <div>
               <h1 className="text-xl font-semibold text-slate-900">Deals</h1>
@@ -931,7 +931,7 @@ export default function DealsPage() {
                     <table className="min-w-full text-left text-[11px]">
                       <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
                         <tr>
-                          <th className="py-2 pr-3 font-medium">ID</th>
+                          <th className="py-2 pl-3 pr-3 font-medium">ID</th>
                           <th className="py-2 pr-3 font-medium">Deal Name</th>
                           <th className="py-2 pr-3 font-medium">Pipeline</th>
                           <th className="py-2 pr-3 font-medium">Stage</th>
@@ -969,7 +969,7 @@ export default function DealsPage() {
                               }
                               className="cursor-pointer hover:bg-slate-50/70"
                             >
-                              <td className="py-2 pr-3 align-top text-slate-500">
+                              <td className="py-2 pl-3 pr-3 align-top text-slate-500">
                                 {deal.id.slice(0, 8)}
                               </td>
                               <td className="py-2 pr-3 align-top text-slate-900">
