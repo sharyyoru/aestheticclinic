@@ -220,6 +220,93 @@ html { font-size: 17px; }
   color: #a78bfa !important;
 }
 
+/* Financial summary cards — ensure text stays readable in dark mode */
+.dark .blz-content [class*="bg-blue-50"] {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+.dark .blz-content [class*="bg-red-50"] {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+}
+.dark .blz-content [class*="border-emerald-100"] [class*="text-emerald-"],
+.dark .blz-content [class*="border-amber-100"] [class*="text-amber-"],
+.dark .blz-content [class*="border-blue-100"] [class*="text-blue-"],
+.dark .blz-content [class*="border-red-100"] [class*="text-red-"] {
+  opacity: 1 !important;
+}
+.dark .blz-content [class*="bg-emerald-50"] [class*="text-slate-"],
+.dark .blz-content [class*="bg-amber-50"] [class*="text-slate-"],
+.dark .blz-content [class*="bg-blue-50"] [class*="text-slate-"],
+.dark .blz-content [class*="bg-red-50"] [class*="text-slate-"],
+.dark .blz-content [class*="bg-slate-50"] [class*="text-slate-900"],
+.dark .blz-content [class*="bg-slate-50"] [class*="text-slate-600"] {
+  color: #f1f5f9 !important;
+}
+.dark .blz-content [class*="text-emerald-600"] {
+  color: #6ee7b7 !important;
+}
+.dark .blz-content [class*="text-amber-600"] {
+  color: #fcd34d !important;
+}
+.dark .blz-content [class*="text-blue-600"] {
+  color: #93c5fd !important;
+}
+.dark .blz-content [class*="text-blue-700"] {
+  color: #60a5fa !important;
+}
+.dark .blz-content [class*="text-red-600"] {
+  color: #fca5a5 !important;
+}
+.dark .blz-content [class*="text-red-700"] {
+  color: #f87171 !important;
+}
+
+/* "In Progress" badge — amber bg with readable text */
+.dark .blz-content [class*="bg-amber-100"] {
+  background-color: rgba(245, 158, 11, 0.25) !important;
+}
+.dark .blz-content [class*="bg-amber-100"][class*="text-amber-700"],
+.dark .blz-content [class*="bg-amber-100"] [class*="text-amber-700"] {
+  color: #92400e !important;
+}
+
+/* Emerald badges (Completed) */
+.dark .blz-content [class*="bg-emerald-100"] {
+  background-color: rgba(16, 185, 129, 0.25) !important;
+}
+.dark .blz-content [class*="bg-emerald-100"][class*="text-emerald-700"],
+.dark .blz-content [class*="bg-emerald-100"] [class*="text-emerald-700"] {
+  color: #065f46 !important;
+}
+
+/* Kanban board — suppress white glow/shadow in dark mode */
+.dark .blz-content [class*="shadow-sm"][class*="rounded-xl"][class*="bg-white"] {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+  border-color: var(--blz-border) !important;
+}
+.dark .blz-content [class*="hover\:shadow-md"]:hover,
+.dark .blz-content [class*="hover\:border-sky-300"]:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
+}
+
+/* Buttons/links with light backgrounds should keep dark text in dark mode */
+.dark .blz-content [class*="bg-white"] [class*="text-slate-"],
+.dark .blz-content [class*="bg-slate-50"] [class*="text-slate-"],
+.dark .blz-content [class*="bg-gradient-to-b"][class*="from-slate-"] [class*="text-slate-"],
+.dark .blz-content a[class*="bg-white"][class*="text-slate-"],
+.dark .blz-content button[class*="bg-white"][class*="text-slate-"],
+.dark .blz-content a[class*="bg-gradient"][class*="text-slate-"],
+.dark .blz-content button[class*="bg-gradient"][class*="text-slate-"],
+.dark .blz-content a[class*="bg-slate-50"][class*="text-slate-"],
+.dark .blz-content button[class*="bg-slate-50"][class*="text-slate-"] {
+  color: inherit !important; /* revert to the original Tailwind class value */
+}
+
+/* Appointment pill text — always dark on colored backgrounds */
+.dark .blz-content .appt-pill-text {
+  color: #1e293b !important;
+}
+
 /* Modals and overlays in dark mode */
 .dark .blz-content [class*="fixed"][class*="bg-black"] {
   background-color: rgba(0, 0, 0, 0.7) !important;

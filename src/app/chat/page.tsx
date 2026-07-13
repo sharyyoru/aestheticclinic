@@ -1,6 +1,17 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  Archive,
+  Menu,
+  MoreHorizontal,
+  Plus,
+  Send,
+  Sparkles,
+  Trash2,
+  User,
+  X,
+} from "lucide-react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import CollapseSidebarOnMount from "@/components/CollapseSidebarOnMount";
 
@@ -69,6 +80,137 @@ function formatConversationTitle(conversation: ChatConversation): string {
   return `${raw.slice(0, 60)}…`;
 }
 
+function renderInline(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[1];
+    if (token.startsWith("**") && token.endsWith("**")) {
+      parts.push(
+        <strong key={parts.length} className="font-semibold">
+          {token.slice(2, -2)}
+        </strong>,
+      );
+    } else if (token.startsWith("*") && token.endsWith("*")) {
+      parts.push(
+        <em key={parts.length} className="italic">
+          {token.slice(1, -1)}
+        </em>,
+      );
+    } else if (token.startsWith("`") && token.endsWith("`")) {
+      parts.push(
+        <code
+          key={parts.length}
+          className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-slate-800"
+        >
+          {token.slice(1, -1)}
+        </code>,
+      );
+    } else {
+      parts.push(token);
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
+
+function MarkdownContent({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  let listItems: string[] | null = null;
+  let keyIndex = 0;
+
+  const flushList = () => {
+    if (listItems && listItems.length > 0) {
+      elements.push(
+        <ul
+          key={`ul-${keyIndex++}`}
+          className="my-2 list-disc space-y-1 pl-4"
+        >
+          {listItems.map((item, idx) => (
+            <li key={idx}>{renderInline(item)}</li>
+          ))}
+        </ul>,
+      );
+      listItems = null;
+    }
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith("```")) {
+      flushList();
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++;
+      elements.push(
+        <pre
+          key={`pre-${keyIndex++}`}
+          className="my-2 overflow-x-auto rounded-lg bg-slate-100 p-2 text-[12px] dark:bg-slate-800"
+        >
+          <code>{codeLines.join("\n")}</code>
+        </pre>,
+      );
+      continue;
+    }
+    if (line.startsWith("- ") || line.startsWith("* ")) {
+      if (!listItems) listItems = [];
+      listItems.push(line.slice(2));
+      i++;
+      continue;
+    }
+    flushList();
+    if (line.trim() === "") {
+      elements.push(<br key={`br-${keyIndex++}`} />);
+    } else {
+      elements.push(
+        <p key={`p-${keyIndex++}`} className="mb-2 last:mb-0">
+          {renderInline(line)}
+        </p>,
+      );
+    }
+    i++;
+  }
+  flushList();
+  return <>{elements}</>;
+}
+
+const SUGGESTIONS = [
+  {
+    label: "Draft a post-op document",
+    prompt:
+      "Draft a post-operative care document for my patient with clear instructions.",
+  },
+  {
+    label: "Book an appointment",
+    prompt:
+      "Help me find the next available appointment slot for a consultation.",
+  },
+  {
+    label: "Write a patient email",
+    prompt:
+      "Write a professional and reassuring email to a patient about their upcoming appointment.",
+  },
+  {
+    label: "Explain an invoice",
+    prompt:
+      "Explain this invoice to a patient in simple, friendly language.",
+  },
+];
+
 export default function ChatWithAliicePage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -79,12 +221,14 @@ export default function ChatWithAliicePage() {
     null,
   );
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [conversationsError, setConversationsError] = useState<string | null>(
     null,
   );
   const [initialMessagesLoading, setInitialMessagesLoading] = useState(false);
   const [editingTitle, setEditingTitle] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [patientOptions, setPatientOptions] = useState<ChatPatientSuggestion[]>([]);
   const [patientOptionsLoading, setPatientOptionsLoading] = useState(false);
@@ -139,6 +283,11 @@ export default function ChatWithAliicePage() {
 
         const authUser = data.user;
         setCurrentUserId(authUser.id);
+        const displayName =
+          (authUser.user_metadata?.full_name as string | undefined) ||
+          (authUser.user_metadata?.first_name as string | undefined) ||
+          (authUser.email ? authUser.email.split("@")[0] : null);
+        setUserName(displayName ?? null);
 
         const { data: rows, error } = await supabaseClient
           .from("chat_conversations")
