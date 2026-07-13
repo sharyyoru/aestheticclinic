@@ -905,10 +905,10 @@ export default function WorkflowBuilderPage() {
                 <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${badgeColor}`}>
                   {node.type}
                 </span>
-                <span className="text-xs text-slate-400">Step {index + 1}</span>
+                <span className="text-xs text-slate-400 dark:text-black">Step {index + 1}</span>
               </div>
-              <h3 className="font-medium text-slate-900">{title}</h3>
-              <p className="text-sm text-slate-600 truncate">{description}</p>
+              <h3 className="font-medium text-slate-900 dark:text-black">{title}</h3>
+              <p className="text-sm text-slate-600 dark:text-black truncate">{description}</p>
             </div>
             {!isTrigger && (
               <button
@@ -1629,14 +1629,14 @@ export default function WorkflowBuilderPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <p className="text-slate-500">Loading...</p>
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950 flex items-center justify-center">
+        <p className="text-slate-500 dark:text-slate-400">Loading...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
       <div className="px-3 py-4 sm:px-4 sm:py-6 lg:px-6">
         {/* Header */}
         <header className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1652,7 +1652,7 @@ export default function WorkflowBuilderPage() {
                   type="text"
                   value={workflowName}
                   onChange={(e) => setWorkflowName(e.target.value)}
-                  className="text-lg sm:text-xl font-bold text-slate-900 bg-transparent border-b-2 border-transparent hover:border-slate-300 focus:border-sky-500 focus:outline-none transition-colors px-1 -mx-1 w-full truncate"
+                  className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 bg-transparent border-b-2 border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-sky-500 focus:outline-none transition-colors px-1 -mx-1 w-full truncate placeholder:text-slate-400 dark:placeholder:text-slate-500"
                   placeholder="Enter workflow name..."
                 />
                 <svg className="absolute right-0 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1660,10 +1660,10 @@ export default function WorkflowBuilderPage() {
                 </svg>
               </div>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 truncate">Build custom automations with triggers, actions, and conditions</p>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 truncate">Build custom automations with triggers, actions, and conditions</p>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <label className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600">
+            <label className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
               <input
                 type="checkbox"
                 checked={workflowActive}
@@ -1683,24 +1683,24 @@ export default function WorkflowBuilderPage() {
         </header>
 
         {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs sm:text-sm text-red-700">{error}</div>
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs sm:text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">{error}</div>
         )}
         {success && (
-          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs sm:text-sm text-emerald-700">{success}</div>
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs sm:text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">{success}</div>
         )}
 
         <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 h-[calc(100vh-180px)] min-h-[500px]">
           {/* Workflow Canvas */}
-          <div className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm overflow-x-auto flex flex-col">
-            <h2 className="mb-4 text-base font-semibold text-slate-900">Workflow Steps</h2>
+          <div className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm overflow-x-auto flex flex-col dark:border-slate-700 dark:bg-slate-800">
+            <h2 className="mb-4 text-base font-semibold text-slate-900 dark:text-slate-100">Workflow Steps</h2>
             <div className="space-y-0 min-w-[280px]">
               {nodes.map((node, index) => renderNodeCard(node, index))}
             </div>
           </div>
 
           {/* Configuration Panel */}
-          <div className="w-full sm:w-[320px] lg:w-[360px] shrink-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
-            <h2 className="mb-3 text-base font-semibold text-slate-900">Configuration</h2>
+          <div className="w-full sm:w-[320px] lg:w-[360px] shrink-0 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto dark:border-slate-700 dark:bg-slate-800">
+            <h2 className="mb-3 text-base font-semibold text-slate-900 dark:text-slate-100">Configuration</h2>
             {renderConfigPanel()}
           </div>
         </div>

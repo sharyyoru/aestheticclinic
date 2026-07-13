@@ -330,13 +330,13 @@ export default function WorkflowsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Workflows</h1>
-            <p className="mt-1 text-sm text-slate-500">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Workflows</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Automate tasks, emails, and notifications based on triggers
             </p>
           </div>
@@ -360,7 +360,7 @@ export default function WorkflowsPage() {
                   console.error("Failed to fetch agent info:", e);
                 }
               }}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-medium text-sky-700 hover:bg-sky-100"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-300 dark:hover:bg-sky-900/50"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -380,7 +380,7 @@ export default function WorkflowsPage() {
         </header>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
             {error}
             <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
           </div>
@@ -392,34 +392,34 @@ export default function WorkflowsPage() {
             onClick={() => setStatusFilter("all")}
             className={`rounded-xl border p-4 text-left transition-all ${
               statusFilter === "all"
-                ? "border-sky-300 bg-sky-50 ring-2 ring-sky-200"
-                : "border-slate-200 bg-white hover:border-slate-300"
+                ? "border-sky-300 bg-sky-50 ring-2 ring-sky-200 dark:border-sky-700 dark:bg-sky-900/30 dark:ring-sky-800"
+                : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600"
             }`}
           >
-            <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
-            <p className="text-xs text-slate-500">Total Workflows</p>
+            <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stats.total}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Total Workflows</p>
           </button>
           <button
             onClick={() => setStatusFilter("active")}
             className={`rounded-xl border p-4 text-left transition-all ${
               statusFilter === "active"
-                ? "border-emerald-300 bg-emerald-50 ring-2 ring-emerald-200"
-                : "border-slate-200 bg-white hover:border-slate-300"
+                ? "border-emerald-300 bg-emerald-50 ring-2 ring-emerald-200 dark:border-emerald-700 dark:bg-emerald-900/30 dark:ring-emerald-800"
+                : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600"
             }`}
           >
             <p className="text-2xl font-bold text-emerald-600">{stats.active}</p>
-            <p className="text-xs text-slate-500">Active</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Active</p>
           </button>
           <button
             onClick={() => setStatusFilter("inactive")}
             className={`rounded-xl border p-4 text-left transition-all ${
               statusFilter === "inactive"
-                ? "border-slate-400 bg-slate-100 ring-2 ring-slate-300"
-                : "border-slate-200 bg-white hover:border-slate-300"
+                ? "border-slate-400 bg-slate-100 ring-2 ring-slate-300 dark:border-slate-500 dark:bg-slate-700 dark:ring-slate-600"
+                : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-600"
             }`}
           >
-            <p className="text-2xl font-bold text-slate-600">{stats.inactive}</p>
-            <p className="text-xs text-slate-500">Inactive</p>
+            <p className="text-2xl font-bold text-slate-600 dark:text-slate-300">{stats.inactive}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Inactive</p>
           </button>
         </div>
 
@@ -444,13 +444,13 @@ export default function WorkflowsPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search workflows..."
-              className="w-full rounded-lg border border-slate-200 bg-white pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100"
+              className="w-full rounded-lg border border-slate-200 bg-white pl-10 pr-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-sky-500 dark:focus:ring-sky-900/30"
             />
           </div>
           <select
             value={triggerFilter}
             onChange={(e) => setTriggerFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-500 dark:focus:ring-sky-900/30"
           >
             <option value="all">All Triggers</option>
             {triggerTypes.map((type) => (
@@ -466,7 +466,7 @@ export default function WorkflowsPage() {
                 setTriggerFilter("all");
                 setSearchQuery("");
               }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
             >
               Clear Filters
             </button>
@@ -476,15 +476,15 @@ export default function WorkflowsPage() {
         {/* Workflows Grid */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <p className="text-sm text-slate-500">Loading workflows...</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Loading workflows...</p>
           </div>
         ) : filteredWorkflows.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center">
+          <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center dark:border-slate-700 dark:bg-slate-800">
             <div className="mb-3 text-4xl">🔄</div>
-            <h3 className="font-medium text-slate-900">
+            <h3 className="font-medium text-slate-900 dark:text-slate-100">
               {workflows.length === 0 ? "No workflows yet" : "No matching workflows"}
             </h3>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               {workflows.length === 0
                 ? "Create your first workflow to automate tasks"
                 : "Try adjusting your filters"}
@@ -503,7 +503,7 @@ export default function WorkflowsPage() {
             {filteredWorkflows.map((workflow) => (
               <div
                 key={workflow.id}
-                className={`rounded-2xl border bg-white p-5 shadow-sm transition-all hover:shadow-md ${
+                className={`rounded-2xl border bg-white p-5 shadow-sm transition-all hover:shadow-md dark:border-slate-700 dark:bg-slate-800 ${
                   workflow.active ? "border-slate-200" : "border-slate-200 opacity-75"
                 }`}
               >
@@ -517,8 +517,8 @@ export default function WorkflowsPage() {
                   <div className="flex items-center gap-1">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                       workflow.active
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-slate-100 text-slate-500"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                        : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
                     }`}>
                       {workflow.active ? "Active" : "Inactive"}
                     </span>
@@ -526,19 +526,19 @@ export default function WorkflowsPage() {
                 </div>
 
                 {/* Title & Description */}
-                <h3 className="font-semibold text-slate-900 truncate mb-1">{workflow.name}</h3>
-                <p className="text-xs text-slate-500 mb-3">{getTriggerDescription(workflow)}</p>
+                <h3 className="font-semibold text-slate-900 dark:text-slate-100 truncate mb-1">{workflow.name}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">{getTriggerDescription(workflow)}</p>
 
                 {/* Actions Summary */}
                 {getActionsCount(workflow) > 0 && (
                   <div className="mb-3 flex flex-wrap gap-1.5">
                     {getActionsSummary(workflow).map((action, i) => (
-                      <span key={i} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">
+                      <span key={i} className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                         {action}
                       </span>
                     ))}
                     {getActionsCount(workflow) > 3 && (
-                      <span className="text-[10px] text-slate-400">+{getActionsCount(workflow) - 3} more</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">+{getActionsCount(workflow) - 3} more</span>
                     )}
                   </div>
                 )}
@@ -546,7 +546,7 @@ export default function WorkflowsPage() {
                 {/* Enrollment Count */}
                 <button
                   onClick={() => setShowEnrollmentsModal(workflow.id)}
-                  className="mb-4 flex items-center gap-2 text-xs text-slate-500 hover:text-sky-600 transition-colors"
+                  className="mb-4 flex items-center gap-2 text-xs text-slate-500 hover:text-sky-600 transition-colors dark:text-slate-400 dark:hover:text-sky-400"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -558,12 +558,12 @@ export default function WorkflowsPage() {
                 </button>
 
                 {/* Actions */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700">
                   <button
                     onClick={() => toggleWorkflow(workflow)}
                     disabled={togglingId === workflow.id}
                     className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${
-                      workflow.active ? "bg-emerald-500" : "bg-slate-200"
+                      workflow.active ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-600"
                     }`}
                   >
                     <span
@@ -576,7 +576,7 @@ export default function WorkflowsPage() {
                   <div className="flex items-center gap-1">
                     <Link
                       href={`/workflows/builder?id=${workflow.id}`}
-                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                       title="Edit"
                     >
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -586,7 +586,7 @@ export default function WorkflowsPage() {
                     <button
                       onClick={() => duplicateWorkflow(workflow)}
                       disabled={duplicatingId === workflow.id}
-                      className="rounded-lg p-2 text-slate-400 hover:bg-sky-50 hover:text-sky-500 disabled:opacity-50"
+                      className="rounded-lg p-2 text-slate-400 hover:bg-sky-50 hover:text-sky-500 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-sky-900/30 dark:hover:text-sky-400"
                       title="Duplicate"
                     >
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -596,7 +596,7 @@ export default function WorkflowsPage() {
                     <button
                       onClick={() => deleteWorkflow(workflow)}
                       disabled={deletingId === workflow.id}
-                      className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
+                      className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-red-900/30 dark:hover:text-red-400"
                       title="Delete"
                     >
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
