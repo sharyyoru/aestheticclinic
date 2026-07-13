@@ -3855,7 +3855,11 @@ export default function MedicalConsultationsCard({
                           if (acfLines.length > 0) {
                             // Build validation request from ACF lines.
                             // tpValue is the per-invoice ACF TPV multiplier (default 1.00).
-                            const acfServicesToValidate = acfLines.map((line, i) => ({
+                            // Validate all ACF flat-rate lines in session 1 —
+                            // that is how they are stored on the invoice.
+                            // (TMA gesture codes are grouped via the TMA grouper,
+                            //  not this ACF validator, and are also session 1.)
+                            const acfServicesToValidate = acfLines.map((line) => ({
                               code: line.serviceId.replace("flatrate-", ""),
                               tp: line.acfBaseTP ?? line.unitPrice ?? 0,
                               tpValue: effectiveAcfTpv,
@@ -3863,7 +3867,7 @@ export default function MedicalConsultationsCard({
                               side: (line.acfSideType ?? 0) as 0 | 1 | 2 | 3,
                               externalFactor: line.acfExternalFactor ?? 1.0,
                               quantity: line.quantity > 0 ? line.quantity : 1,
-                              sessionNumber: i + 1,
+                              sessionNumber: 1,
                               referenceCode: line.acfRefCode || "",
                             }));
 
@@ -4032,7 +4036,10 @@ export default function MedicalConsultationsCard({
                               record_id: tardocRecordId,
                               ref_code: isAcfRelated ? (line.acfRefCode || null) : isTardocLine ? (line.tardocRefCode || null) : (null as string | null),
                               section_code: tardocSection,
-                              session_number: isAcfRelated ? (idx + 16) : 1,
+                              // ACF flat-rate (005) and TMA gesture codes share the
+                              // treatment session with the main service; lSessionNumber
+                              // (= "Gr" column) must be 1, not a generated offset.
+                              session_number: 1,
                               service_attributes: 0,
                               side_type: isAcfRelated ? (line.acfSideType ?? 0) : isTardocLine ? (line.tardocSideType ?? 0) : 0,
                               date_begin: scheduledAtIso || null,

@@ -175,13 +175,19 @@ export async function POST(request: NextRequest) {
           const unitFactor = hasTpAl ? (Number(li.tp_al_value) || 1) : 1;
           const extFactor = Number(li.external_factor_mt) || 1;
           const amount = Number(li.total_price) || 0;
+          // ACF (005) / TMA gesture codes belong to the same treatment session
+          // as the main service; force sessionNumber=1 instead of inventing
+          // sequential numbers.
+          const isSameSession = tariffType === "005" || tariffType === "TMA";
+          const sessionNumber = isSameSession ? 1 : (li.session_number || 1);
+
           return {
             tariffType,
             // No fallback code — if this row has no code, the invoice is
             // broken and the caller must fix it before sending.
             code: li.code || li.tardoc_code || "",
             quantity: Number(li.quantity) || 1,
-            sessionNumber: li.session_number || idx + 1,
+            sessionNumber,
             dateBegin: li.date_begin ? new Date(li.date_begin).toISOString().split("T")[0] : treatmentDate,
             providerGln: li.provider_gln || doctorGln,
             responsibleGln: li.responsible_gln || li.provider_gln || doctorGln,
