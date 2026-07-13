@@ -77,7 +77,7 @@ export default function FavoritesBar() {
             className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all ${
               isActive(fav.href)
                 ? "border-sky-400/60 bg-sky-500/10 text-sky-400"
-                : "border-slate-600/40 text-slate-400 hover:border-sky-400/40 hover:bg-sky-500/10 hover:text-sky-300 hover:shadow-[0_0_12px_rgba(56,189,248,0.15)] hover:scale-105 transition-all duration-200"
+                : "border-slate-600/40 text-slate-400 hover:border-sky-400 hover:bg-sky-500/20 hover:text-sky-200 hover:shadow-[0_0_16px_rgba(56,189,248,0.35)] hover:scale-105 transition-all duration-200"
             }`}
           >
             {fav.icon}
@@ -87,7 +87,7 @@ export default function FavoritesBar() {
         <Link
           href="/search"
           title="Search"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-600/40 text-slate-400 hover:border-sky-400/40 hover:bg-sky-500/10 hover:text-sky-300 hover:shadow-[0_0_12px_rgba(56,189,248,0.15)] hover:scale-105 transition-all duration-200"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-600/40 text-slate-400 hover:border-sky-400 hover:bg-sky-500/20 hover:text-sky-200 hover:shadow-[0_0_16px_rgba(56,189,248,0.35)] hover:scale-105 transition-all duration-200"
         >
           <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" />

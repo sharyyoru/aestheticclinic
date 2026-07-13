@@ -4137,22 +4137,22 @@ export default function CalendarPage() {
                                 appt.status,
                               )} ${isCopiedPatient ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
                             >
-                              <div className="appt-pill-text flex items-center gap-1 truncate font-medium text-slate-800">
+                              <div className="appt-pill-text flex items-center gap-1 truncate font-medium text-slate-800" style={{ color: '#1e293b' }}>
                                 {statusIcon && <span className="flex-shrink-0">{statusIcon}</span>}
                                 {isCopiedPatient && <span className="flex-shrink-0 text-blue-500">📋</span>}
                                 {appt.source === 'online_booking' && <span className="flex-shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-300" title="Booked via online booking">🌐 Online</span>}
                                 <span className={`truncate ${isCopiedPatient ? 'text-blue-600 font-semibold' : ''}`}>{patientName || serviceLabel}</span>
                               </div>
-                              <div className="appt-pill-text truncate text-[10px] text-slate-500">
+                              <div className="appt-pill-text truncate text-[10px] text-slate-500" style={{ color: '#1e293b' }}>
                                 {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
                               </div>
                               {category && (
-                                <div className="appt-pill-text truncate text-[9px] text-slate-400">
+                                <div className="appt-pill-text truncate text-[9px] text-slate-400" style={{ color: '#1e293b' }}>
                                   {category}
                                 </div>
                               )}
                               {notes && (
-                                <div className="appt-pill-text truncate text-[9px] text-slate-400 italic">
+                                <div className="appt-pill-text truncate text-[9px] text-slate-400 italic" style={{ color: '#1e293b' }}>
                                   {notes}
                                 </div>
                               )}
@@ -4468,17 +4468,17 @@ export default function CalendarPage() {
                                           style={{ touchAction: 'manipulation', backgroundColor: getDynamicCategoryColor(category) }}
                                           className={`w-full h-full rounded-md px-1.5 py-1 text-[11px] text-left shadow-sm overflow-hidden ${getAppointmentStatusColorClasses(appt.status)} ${isCopiedPatient ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
                                         >
-                                          <div className="appt-pill-text flex items-center gap-1 truncate font-medium text-slate-800">
+                                          <div className="appt-pill-text flex items-center gap-1 truncate font-medium text-slate-800" style={{ color: '#1e293b' }}>
                                             {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
                                             {isCopiedPatient && <span className="flex-shrink-0 text-blue-500">📋</span>}
                                             {appt.source === 'online_booking' && <span className="flex-shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-300" title="Booked via online booking">🌐 Online</span>}
                                             <span className={`truncate ${isCopiedPatient ? 'text-blue-600 font-semibold' : ''}`}>{patientName || serviceLabel}</span>
                                           </div>
-                                          <div className="appt-pill-text truncate text-[10px] text-slate-600">
+                                          <div className="appt-pill-text truncate text-[10px] text-slate-600" style={{ color: '#1e293b' }}>
                                             {timeLabel} {serviceLabel ? `• ${serviceLabel}` : ""}
                                           </div>
                                           {notes && (
-                                            <div className="appt-pill-text truncate text-[10px] text-slate-500 italic">
+                                            <div className="appt-pill-text truncate text-[10px] text-slate-500 italic" style={{ color: '#1e293b' }}>
                                               {notes}
                                             </div>
                                           )}
