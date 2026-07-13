@@ -963,37 +963,37 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Link
               href="/workflows"
-              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-300/70 hover:shadow-md hover:shadow-sky-500/10"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-300/70 hover:shadow-md hover:shadow-sky-500/10 dark:border-slate-700/60 dark:from-slate-800 dark:to-slate-900"
             >
-              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 shadow-sm transition-colors group-hover:bg-indigo-600 group-hover:text-white">
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 shadow-sm transition-colors group-hover:bg-indigo-600 group-hover:text-white dark:bg-indigo-500/20 dark:text-indigo-300">
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 2L2 7l10 5 10-5-10-5z" />
                   <path d="M2 17l10 5 10-5" />
                   <path d="M2 12l10 5 10-5" />
                 </svg>
               </span>
-              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-sky-700">Workflows</p>
-              <p className="mt-0.5 text-[10px] text-slate-500">Automations</p>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-sky-700 dark:text-white">Workflows</p>
+              <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">Automations</p>
             </Link>
             <Link
               href="/invoices"
-              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/70 hover:shadow-md hover:shadow-emerald-500/10"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/70 hover:shadow-md hover:shadow-emerald-500/10 dark:border-slate-700/60 dark:from-slate-800 dark:to-slate-900"
             >
-              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 shadow-sm transition-colors group-hover:bg-emerald-600 group-hover:text-white">
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 shadow-sm transition-colors group-hover:bg-emerald-600 group-hover:text-white dark:bg-emerald-500/20 dark:text-emerald-300">
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <path d="M14 2v6h6" />
                   <path d="M16 13H8M16 17H8M10 9H8" />
                 </svg>
               </span>
-              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-emerald-700">Invoices</p>
-              <p className="mt-0.5 text-[10px] text-slate-500">Billing</p>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-emerald-700 dark:text-white">Invoices</p>
+              <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">Billing</p>
             </Link>
             <Link
               href="/email-reports"
-              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300/70 hover:shadow-md hover:shadow-amber-500/10"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300/70 hover:shadow-md hover:shadow-amber-500/10 dark:border-slate-700/60 dark:from-slate-800 dark:to-slate-900"
             >
-              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-600 shadow-sm transition-colors group-hover:bg-amber-600 group-hover:text-white">
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-600 shadow-sm transition-colors group-hover:bg-amber-600 group-hover:text-white dark:bg-amber-500/20 dark:text-amber-300">
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                   <polyline points="22,6 12,13 2,6" />
@@ -1001,14 +1001,14 @@ export default function Home() {
                   <path d="M22 20l-7-7" />
                 </svg>
               </span>
-              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-amber-700">Email Reports</p>
-              <p className="mt-0.5 text-[10px] text-slate-500">Communications</p>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-amber-700 dark:text-white">Email Reports</p>
+              <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">Communications</p>
             </Link>
             <Link
               href="/agents"
-              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300/70 hover:shadow-md hover:shadow-violet-500/10"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300/70 hover:shadow-md hover:shadow-violet-500/10 dark:border-slate-700/60 dark:from-slate-800 dark:to-slate-900"
             >
-              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-600 shadow-sm transition-colors group-hover:bg-violet-600 group-hover:text-white">
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-600 shadow-sm transition-colors group-hover:bg-violet-600 group-hover:text-white dark:bg-violet-500/20 dark:text-violet-300">
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 8V4H8" />
                   <path d="M2 2h20v20H2z" />
@@ -1016,22 +1016,22 @@ export default function Home() {
                   <path d="M9 17a3 3 0 0 0 6 0" />
                 </svg>
               </span>
-              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-violet-700">AI Agents</p>
-              <p className="mt-0.5 text-[10px] text-slate-500">Assistants</p>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-violet-700 dark:text-white">AI Agents</p>
+              <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">Assistants</p>
             </Link>
             <Link
               href="/chatlogs"
-              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-300/70 hover:shadow-md hover:shadow-sky-500/10"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-300/70 hover:shadow-md hover:shadow-sky-500/10 dark:border-slate-700/60 dark:from-slate-800 dark:to-slate-900"
             >
-              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-sky-100 text-sky-600 shadow-sm transition-colors group-hover:bg-sky-600 group-hover:text-white">
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-sky-100 text-sky-600 shadow-sm transition-colors group-hover:bg-sky-600 group-hover:text-white dark:bg-sky-500/20 dark:text-sky-300">
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M4 6h16v9H8l-4 3z" />
                   <path d="M8 10h8" />
                   <path d="M8 13h5" />
                 </svg>
               </span>
-              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-sky-700">Chat Logs</p>
-              <p className="mt-0.5 text-[10px] text-slate-500">Conversations</p>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-sky-700 dark:text-white">Chat Logs</p>
+              <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">Conversations</p>
             </Link>
           </div>
         </div>
