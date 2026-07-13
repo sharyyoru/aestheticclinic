@@ -27,6 +27,7 @@ import ProdAppHeader from "@/components/ProdAppHeader";
 import { LayoutModeProvider } from "@/components/LayoutModeContext";
 import { ThemeProvider } from "@/components/ThemeContext";
 import LayoutShellSwitch from "@/components/LayoutShellSwitch";
+import ClassicLayoutToggle from "@/components/ClassicLayoutToggle";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -578,6 +579,7 @@ export default function RootLayout({
                   </Link>
                 </div>
               </nav>
+              <ClassicLayoutToggle />
             </aside>
             </ShellSidebar>
             <main className="flex-1 min-w-0 bg-slate-50/40">

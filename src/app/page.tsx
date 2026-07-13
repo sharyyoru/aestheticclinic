@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useCommentsUnread } from "@/components/CommentsUnreadContext";
+import { SkeletonCard, SkeletonLine } from "@/components/SkeletonLoader";
 
 type PlatformUser = {
   id: string;
@@ -33,6 +34,9 @@ export default function Home() {
   const [mentions, setMentions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [userFirstName, setUserFirstName] = useState<string | null>(null);
+
+  // Task productivity stats
+  const [weekTasks, setWeekTasks] = useState<any[]>([]);
 
   const { unreadCount } = useCommentsUnread();
 
@@ -125,8 +129,20 @@ export default function Home() {
               .limit(3)
           : Promise.resolve({ data: [], error: null } as any);
 
-        const [appointmentsResult, tasksResult, mentionsResult] =
-          await Promise.all([appointmentsPromise, tasksPromise, mentionsPromise]);
+        // Fetch task stats for the past 7 days (productivity chart)
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - 6);
+        weekStart.setHours(0, 0, 0, 0);
+        const weekTasksPromise = user
+          ? supabaseClient
+              .from("tasks")
+              .select("id, status, activity_date, created_at")
+              .eq("assigned_user_id", user.id)
+              .gte("created_at", weekStart.toISOString())
+          : Promise.resolve({ data: [], error: null } as any);
+
+        const [appointmentsResult, tasksResult, mentionsResult, weekTasksResult] =
+          await Promise.all([appointmentsPromise, tasksPromise, mentionsPromise, weekTasksPromise]);
 
         if (cancelled) return;
 
@@ -145,11 +161,18 @@ export default function Home() {
             ? (mentionsResult.data as any[])
             : [],
         );
+
+        setWeekTasks(
+          !weekTasksResult.error && weekTasksResult.data
+            ? (weekTasksResult.data as any[])
+            : [],
+        );
       } catch {
         if (cancelled) return;
         setAppointments([]);
         setTasks([]);
         setMentions([]);
+        setWeekTasks([]);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -393,6 +416,32 @@ export default function Home() {
     }
   }
 
+  // Productivity chart: tasks completed per day over last 7 days
+  const chartData = useMemo(() => {
+    const days: { label: string; completed: number; total: number }[] = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const ymd = d.toISOString().slice(0, 10);
+      const dayLabel = d.toLocaleDateString(undefined, { weekday: "short" });
+      const dayTasks = weekTasks.filter((t: any) => {
+        const created = (t.created_at as string | null) ?? "";
+        return created.startsWith(ymd);
+      });
+      const completed = dayTasks.filter((t: any) => t.status === "completed").length;
+      days.push({ label: dayLabel, completed, total: dayTasks.length });
+    }
+    return days;
+  }, [weekTasks]);
+
+  const todayCompleted = chartData[chartData.length - 1]?.completed ?? 0;
+  const overdueCount = tasks.length; // tasks state already filters for non-completed, overdue/today
+  const weekCompleted = chartData.reduce((sum, d) => sum + d.completed, 0);
+  const weekTotal = chartData.reduce((sum, d) => sum + d.total, 0);
+  const completionRate = weekTotal > 0 ? Math.round((weekCompleted / weekTotal) * 100) : 0;
+  const maxBarValue = Math.max(...chartData.map((d) => d.completed), 1);
+
   return (
     <div className="space-y-8">
       <header className="flex items-center justify-between gap-4">
@@ -438,8 +487,47 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Productivity Stats Row */}
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Completed Today</p>
+          {loading ? <SkeletonLine width="40px" height="28px" className="mt-2" /> : (
+            <p className="mt-1 text-2xl font-bold text-emerald-600">{todayCompleted}</p>
+          )}
+        </div>
+        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Open Tasks</p>
+          {loading ? <SkeletonLine width="40px" height="28px" className="mt-2" /> : (
+            <p className="mt-1 text-2xl font-bold text-amber-600">{overdueCount}</p>
+          )}
+        </div>
+        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Week Rate</p>
+          {loading ? <SkeletonLine width="50px" height="28px" className="mt-2" /> : (
+            <p className="mt-1 text-2xl font-bold text-sky-600">{completionRate}%</p>
+          )}
+        </div>
+        {/* Mini bar chart */}
+        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">7-Day Activity</p>
+          {loading ? <SkeletonLine width="100%" height="48px" /> : (
+            <div className="flex items-end gap-1 h-12">
+              {chartData.map((day, i) => (
+                <div key={day.label} className="flex flex-1 flex-col items-center gap-0.5">
+                  <div
+                    className={`w-full rounded-sm transition-all ${i === chartData.length - 1 ? "bg-sky-500" : "bg-slate-300"}`}
+                    style={{ height: `${Math.max((day.completed / maxBarValue) * 100, 8)}%` }}
+                  />
+                  <span className="text-[8px] text-slate-400">{day.label.slice(0, 2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="space-y-4">
-        <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">
@@ -457,9 +545,7 @@ export default function Home() {
             </Link>
           </div>
           {loading ? (
-            <p className="text-xs text-slate-500">
-              Loading today&apos;s appointments...
-            </p>
+            <SkeletonCard rows={3} />
           ) : appointments.length === 0 ? (
             <p className="text-xs text-slate-500">
               No appointments scheduled for today.
@@ -519,7 +605,7 @@ export default function Home() {
           )}
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Tasks</h2>
@@ -535,7 +621,7 @@ export default function Home() {
             </Link>
           </div>
           {loading ? (
-            <p className="text-xs text-slate-500">Loading your tasks...</p>
+            <SkeletonCard rows={4} />
           ) : tasks.length === 0 ? (
             <p className="text-xs text-slate-500">
               No open tasks assigned to you.
@@ -608,7 +694,7 @@ export default function Home() {
           )}
         </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Mentions</h2>
@@ -624,7 +710,7 @@ export default function Home() {
             </Link>
           </div>
           {loading ? (
-            <p className="text-xs text-slate-500">Loading mentions...</p>
+            <SkeletonCard rows={3} />
           ) : mentions.length === 0 ? (
             <p className="text-xs text-slate-500">No new mentions.</p>
           ) : (
@@ -693,7 +779,7 @@ export default function Home() {
             </div>
 
             {taskDetailsLoading ? (
-              <p className="text-xs text-slate-500">Loading task details...</p>
+              <div className="space-y-2"><SkeletonLine width="80%" height="12px" /><SkeletonLine width="60%" height="10px" /><SkeletonLine width="40%" height="10px" /></div>
             ) : (
               <div className="space-y-2 text-xs text-slate-700">
                 {(() => {
@@ -795,7 +881,7 @@ export default function Home() {
                 Comments
               </p>
               {taskCommentsLoading ? (
-                <p className="text-[11px] text-slate-500">Loading comments...</p>
+                <div className="space-y-1.5"><SkeletonLine width="100%" height="24px" /><SkeletonLine width="80%" height="24px" /></div>
               ) : taskComments.length === 0 ? (
                 <p className="text-[11px] text-slate-400">No comments yet.</p>
               ) : (

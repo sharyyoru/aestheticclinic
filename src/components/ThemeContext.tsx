@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useLayoutMode } from "./LayoutModeContext";
 
 type Theme = "dark" | "light";
 
@@ -21,6 +22,7 @@ const STORAGE_KEY = "app_theme";
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);
+  const { mode } = useLayoutMode();
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
@@ -30,16 +32,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setMounted(true);
   }, []);
 
-  // Apply/remove .dark class on <html>
+  // Apply/remove .dark class on <html> — only in blizzard mode
   useEffect(() => {
     if (!mounted) return;
     const html = document.documentElement;
-    if (theme === "dark") {
-      html.classList.add("dark");
-    } else {
+    // Classic layout stays light always — dark mode only affects blizzard layout
+    if (mode === "classic" || theme === "light") {
       html.classList.remove("dark");
+    } else {
+      html.classList.add("dark");
     }
-  }, [theme, mounted]);
+  }, [theme, mounted, mode]);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);

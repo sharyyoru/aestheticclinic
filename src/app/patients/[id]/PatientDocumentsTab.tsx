@@ -1853,10 +1853,10 @@ async function handleSendEmail(event: React.FormEvent) {
                   </button>
                 </div>
               ) : isPdf ? (
-                <div className="flex flex-col items-center gap-3">
+                <div className="flex flex-col items-center gap-3 w-full">
                   <iframe
                     src={selectedFilePreviewUrl}
-                    className="h-[320px] w-full rounded-md border border-slate-200 bg-white"
+                    className="h-[520px] w-full rounded-md border border-slate-200 bg-white"
                     title={selectedFile.name}
                   />
                   <button

@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+/* Global font-size bump (~+3pt via scaling from 16→17px) */
+html { font-size: 17px; }
+
+/* Skeleton shimmer animation for loading states */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--blz-surface, #f1f5f9) 25%, var(--blz-surface-elevated, #e2e8f0) 50%, var(--blz-surface, #f1f5f9) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+.dark .skeleton-shimmer {
+  background: linear-gradient(90deg, #1a1f2e 25%, #232938 50%, #1a1f2e 75%);
+  background-size: 200% 100%;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -164,21 +183,41 @@
   color: var(--blz-text-muted) !important;
 }
 
-/* Preserve brand accent colors in dark mode */
-.dark .blz-content [class*="text-sky-"],
-.dark .blz-content [class*="text-emerald-"],
-.dark .blz-content [class*="text-rose-"],
-.dark .blz-content [class*="text-violet-"],
-.dark .blz-content [class*="text-amber-"] {
-  /* Keep accent colors as-is */
+/* Accent background pills in dark mode — readable translucent fills */
+.dark .blz-content [class*="bg-sky-50"] {
+  background-color: rgba(14, 165, 233, 0.15) !important;
+}
+.dark .blz-content [class*="bg-emerald-50"] {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+.dark .blz-content [class*="bg-rose-50"] {
+  background-color: rgba(244, 63, 94, 0.12) !important;
+}
+.dark .blz-content [class*="bg-amber-50"] {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+.dark .blz-content [class*="bg-violet-50"] {
+  background-color: rgba(139, 92, 246, 0.15) !important;
+}
+.dark .blz-content [class*="bg-slate-100"] {
+  background-color: rgba(51, 65, 85, 0.4) !important;
 }
 
-.dark .blz-content [class*="bg-sky-50"],
-.dark .blz-content [class*="bg-emerald-50"],
-.dark .blz-content [class*="bg-rose-50"],
-.dark .blz-content [class*="bg-violet-50"],
-.dark .blz-content [class*="bg-amber-50"] {
-  opacity: 0.15;
+/* Accent text colors lightened for dark backgrounds */
+.dark .blz-content [class*="text-sky-700"] {
+  color: #38bdf8 !important;
+}
+.dark .blz-content [class*="text-emerald-700"] {
+  color: #34d399 !important;
+}
+.dark .blz-content [class*="text-rose-700"] {
+  color: #fb7185 !important;
+}
+.dark .blz-content [class*="text-amber-700"] {
+  color: #fbbf24 !important;
+}
+.dark .blz-content [class*="text-violet-700"] {
+  color: #a78bfa !important;
 }
 
 /* Modals and overlays in dark mode */
@@ -202,24 +241,32 @@
   background-color: var(--blz-surface-elevated) !important;
 }
 
-/* Scrollbars dark mode */
-.dark .blz-content ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ═══════════════════════════════════════════════════════════════════════════
+   SCROLLBARS — Thin auto-hide (Linear/Notion style)
+   ═══════════════════════════════════════════════════════════════════════════ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
 
-.dark .blz-content ::-webkit-scrollbar-track {
+*:hover {
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
   background: transparent;
+  border-radius: 4px;
+  transition: background 0.3s;
 }
+*:hover::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); }
+*:hover::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.6); }
 
-.dark .blz-content ::-webkit-scrollbar-thumb {
-  background: rgba(71, 85, 105, 0.5);
-  border-radius: 3px;
-}
-
-.dark .blz-content ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.7);
-}
+/* Dark mode scrollbar */
+.dark *:hover { scrollbar-color: rgba(71, 85, 105, 0.5) transparent; }
+.dark *:hover::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.5); }
+.dark *:hover::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.7); }
 
 .email-template-editor-shell > div,
 .email-template-editor-shell > div > div,
