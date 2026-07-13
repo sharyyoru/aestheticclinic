@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useCommentsUnread } from "@/components/CommentsUnreadContext";
 import { SkeletonCard, SkeletonLine } from "@/components/SkeletonLoader";
@@ -29,6 +30,7 @@ function renderTextWithMentions(text: string) {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [mentions, setMentions] = useState<any[]>([]);
@@ -42,6 +44,13 @@ export default function Home() {
 
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [weather, setWeather] = useState<{ temp: number; code: number; city?: string } | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [taskDetails, setTaskDetails] = useState<any | null>(null);
   const [taskDetailsLoading, setTaskDetailsLoading] = useState(false);
   const [taskComments, setTaskComments] = useState<any[]>([]);
@@ -227,6 +236,91 @@ export default function Home() {
       cancelled = true;
     };
   }, [unreadCount]);
+
+  // Clock tick
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Weather via Open-Meteo (free, no API key)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchWeather(lat: number, lon: number, city?: string) {
+      try {
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.current_weather) {
+          setWeather({
+            temp: Math.round(data.current_weather.temperature),
+            code: data.current_weather.weathercode,
+            city,
+          });
+        }
+      } catch {
+        // ignore weather errors
+      } finally {
+        if (!cancelled) setWeatherLoading(false);
+      }
+    }
+
+    setWeatherLoading(true);
+
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => fetchWeather(pos.coords.latitude, pos.coords.longitude),
+        () => fetchWeather(46.2044, 6.1432, "Geneva"), // fallback
+        { timeout: 5000 }
+      );
+    } else {
+      void fetchWeather(46.2044, 6.1432, "Geneva");
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleDashboardSearch(query: string) {
+    setSearchQuery(query);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!query.trim()) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const { data } = await supabaseClient
+          .from("patients")
+          .select("id, first_name, last_name, email, phone")
+          .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%,phone.ilike.%${query}%`)
+          .limit(8);
+        setSearchResults((data || []) as any[]);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  }
+
+  function weatherIcon(code: number) {
+    // WMO Weather interpretation codes (WW)
+    if (code === 0) return "☀️";
+    if ([1, 2, 3].includes(code)) return "🌤️";
+    if ([45, 48].includes(code)) return "🌫️";
+    if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "🌧️";
+    if ([71, 73, 75, 77, 85, 86].includes(code)) return "🌨️";
+    if ([95, 96, 99].includes(code)) return "⛈️";
+    return "🌡️";
+  }
 
   const trimmedMentionQuery = activeMentionQuery.trim();
   const mentionOptions =
@@ -452,6 +546,31 @@ export default function Home() {
           <p className="text-sm text-slate-500">
             Let&apos;s get you on a productive routine today!
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+            {currentTime ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1 shadow-sm backdrop-blur">
+                <svg className="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+                {currentTime.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            ) : null}
+            {weatherLoading ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1 shadow-sm backdrop-blur text-slate-400">
+                <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                Loading weather…
+              </span>
+            ) : weather ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1 shadow-sm backdrop-blur">
+                <span className="text-base leading-none" title="Weather icon">{weatherIcon(weather.code)}</span>
+                <span>{weather.temp}°C</span>
+                {weather.city ? <span className="text-slate-400">· {weather.city}</span> : null}
+              </span>
+            ) : null}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
           <Link
@@ -526,8 +645,83 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
+      {/* Patient search */}
+      <section className="relative">
+        <div className="relative">
+          <svg
+            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => void handleDashboardSearch(e.target.value)}
+            placeholder="Search patients by name, email, or phone..."
+            className="w-full rounded-2xl border border-slate-200/60 bg-white/95 py-3 pl-10 pr-4 text-sm text-slate-900 shadow-lg backdrop-blur-sm placeholder-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+          />
+          {searching && (
+            <svg
+              className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          )}
+        </div>
+        {searchQuery && (
+          <div className="absolute z-30 mt-2 w-full rounded-2xl border border-slate-200/60 bg-white/95 p-2 shadow-xl backdrop-blur-sm">
+            {searching ? (
+              <div className="py-4 text-center text-xs text-slate-500">Searching…</div>
+            ) : searchResults.length > 0 ? (
+              <div className="max-h-60 overflow-y-auto">
+                {searchResults.map((p) => {
+                  const name = `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "Unknown patient";
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchResults([]);
+                        router.push(`/patients/${p.id}`);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-slate-50"
+                    >
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-700">
+                        {name.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?"}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-800">{name}</p>
+                        {(p.email || p.phone) && (
+                          <p className="truncate text-xs text-slate-500">{p.email || p.phone}</p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-4 text-center text-xs text-slate-500">No patients found</div>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+        <div className="lg:col-span-2 rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">
@@ -605,7 +799,7 @@ export default function Home() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
+        <div className="lg:col-span-2 rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Tasks</h2>
@@ -694,7 +888,7 @@ export default function Home() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
+        <div className="lg:col-span-1 rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Mentions</h2>
@@ -754,6 +948,92 @@ export default function Home() {
               })}
             </div>
           )}
+        </div>
+
+        {/* Shortcuts */}
+        <div className="lg:col-span-3 rounded-2xl border border-slate-200/60 bg-white/95 p-5 shadow-lg backdrop-blur-sm">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Shortcuts</h2>
+              <p className="text-xs text-slate-500">
+                Jump to your most used tools.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Link
+              href="/workflows"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-300/70 hover:shadow-md hover:shadow-sky-500/10"
+            >
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 shadow-sm transition-colors group-hover:bg-indigo-600 group-hover:text-white">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </span>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-sky-700">Workflows</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">Automations</p>
+            </Link>
+            <Link
+              href="/invoices"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300/70 hover:shadow-md hover:shadow-emerald-500/10"
+            >
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 shadow-sm transition-colors group-hover:bg-emerald-600 group-hover:text-white">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6" />
+                  <path d="M16 13H8M16 17H8M10 9H8" />
+                </svg>
+              </span>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-emerald-700">Invoices</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">Billing</p>
+            </Link>
+            <Link
+              href="/email-reports"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-300/70 hover:shadow-md hover:shadow-amber-500/10"
+            >
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-600 shadow-sm transition-colors group-hover:bg-amber-600 group-hover:text-white">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                  <polyline points="22,6 12,13 2,6" />
+                  <path d="M2 20l7-7" />
+                  <path d="M22 20l-7-7" />
+                </svg>
+              </span>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-amber-700">Email Reports</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">Communications</p>
+            </Link>
+            <Link
+              href="/agents"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300/70 hover:shadow-md hover:shadow-violet-500/10"
+            >
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-600 shadow-sm transition-colors group-hover:bg-violet-600 group-hover:text-white">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 8V4H8" />
+                  <path d="M2 2h20v20H2z" />
+                  <path d="M6 12h4m4 0h4" />
+                  <path d="M9 17a3 3 0 0 0 6 0" />
+                </svg>
+              </span>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-violet-700">AI Agents</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">Assistants</p>
+            </Link>
+            <Link
+              href="/chatlogs"
+              className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-300/70 hover:shadow-md hover:shadow-sky-500/10"
+            >
+              <span className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-sky-100 text-sky-600 shadow-sm transition-colors group-hover:bg-sky-600 group-hover:text-white">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 6h16v9H8l-4 3z" />
+                  <path d="M8 10h8" />
+                  <path d="M8 13h5" />
+                </svg>
+              </span>
+              <p className="text-sm font-semibold text-slate-800 transition-colors group-hover:text-sky-700">Chat Logs</p>
+              <p className="mt-0.5 text-[10px] text-slate-500">Conversations</p>
+            </Link>
+          </div>
         </div>
       </section>
 
