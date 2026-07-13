@@ -900,214 +900,363 @@ export default function ChatWithAliicePage() {
   }
 
   return (
-    <div className="h-full space-y-4">
+    <div className="flex h-full flex-col overflow-hidden">
       <CollapseSidebarOnMount />
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Chat with Aliice</h1>
-        <p className="text-sm text-slate-500">
-          Your AI assistant for bookings, post-op docs, and patient or insurance
-          communication.
-        </p>
-      </div>
-      <div className="flex min-h-[540px] flex-col gap-4 sm:flex-row">
-        <aside className="flex w-full flex-shrink-0 flex-col rounded-xl border border-slate-200/80 bg-white/90 text-[13px] shadow-[0_12px_30px_rgba(15,23,42,0.12)] sm:w-64">
-          <div className="flex items-center justify-between border-b border-slate-100/80 px-3 py-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Conversations
-            </span>
-            <button
-              type="button"
-              onClick={handleStartNewConversation}
-              disabled={loading || !currentUserId}
-              className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              New
-            </button>
+
+      {/* Slim header */}
+      <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-100/80 px-3 py-2.5 dark:border-slate-700/30 sm:px-4 sm:py-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((prev) => !prev)}
+            className="rounded-full p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label="Toggle conversations"
+          >
+            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-600 text-white">
+              <Sparkles size={14} />
+            </div>
+            <h1 className="text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
+              Chat with Aliice
+            </h1>
           </div>
-          <div className="flex-1 space-y-1 overflow-y-auto px-2 py-2">
-            {conversationsLoading ? (
-              <p className="px-2 text-[12px] text-slate-400">Loading...</p>
-            ) : conversations.length === 0 ? (
-              <p className="px-2 text-[12px] text-slate-400">
-                No conversations yet.
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Patient search */}
+          <div className="relative hidden max-w-[220px] sm:block">
+            <input
+              type="text"
+              value={patientSearch}
+              onChange={(event) => setPatientSearch(event.target.value)}
+              disabled={!activeConversationId || !currentUserId}
+              placeholder="Link patient..."
+              className="w-full rounded-full border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-3 text-[11px] text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+            <User
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+              size={14}
+            />
+            {patientOptionsLoading ? (
+              <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-slate-200 bg-white p-2 text-[11px] text-slate-500 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                Loading patients...
+              </div>
+            ) : null}
+            {!patientOptionsLoading && patientSearch.trim().length > 0 ? (
+              <div className="absolute right-0 top-full z-20 mt-1 max-h-56 w-64 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-[11px] shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                {filteredPatientOptions.length === 0 ? (
+                  <div className="px-3 py-1.5 text-slate-500">
+                    No matching patients.
+                  </div>
+                ) : (
+                  filteredPatientOptions.map((patient) => (
+                    <button
+                      key={patient.id}
+                      type="button"
+                      onClick={() => handleSelectPatient(patient)}
+                      className="flex w-full flex-col items-start px-3 py-1.5 text-left text-slate-900 hover:bg-sky-50 dark:text-slate-100 dark:hover:bg-slate-700/50"
+                    >
+                      <span className="font-medium">
+                        {formatPatientForDisplay(patient)}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
+            {patientOptionsError ? (
+              <p className="absolute right-0 top-full mt-1 text-[10px] text-red-600">
+                {patientOptionsError}
               </p>
-            ) : (
-              conversations.map((conversation) => {
-                const isActive = conversation.id === activeConversationId;
-                return (
-                  <button
-                    key={conversation.id}
-                    type="button"
-                    onClick={() => setActiveConversationId(conversation.id)}
-                    className={
-                      "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[12px] " +
-                      (isActive
-                        ? "bg-sky-600 text-white shadow-sm"
-                        : "bg-white/70 text-slate-800 hover:bg-slate-100")
-                    }
-                  >
-                    <span className="line-clamp-2">
-                      {formatConversationTitle(conversation)}
-                    </span>
-                  </button>
-                );
-              })
-            )}
+            ) : null}
           </div>
-        </aside>
-        <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
-          <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex-1">
-              <input
-                type="text"
-                value={editingTitle}
-                onChange={(event) => setEditingTitle(event.target.value)}
-                onBlur={handleTitleSave}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void handleTitleSave();
-                  }
-                }}
-                placeholder="Name this conversation..."
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2 text-[11px]">
-              <button
-                type="button"
-                onClick={handleArchiveActiveConversation}
-                disabled={!activeConversationId || !currentUserId}
-                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Archive
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteActiveConversation}
-                disabled={!activeConversationId || !currentUserId}
-                className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-          <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative flex-1 max-w-md text-[11px]">
-              <input
-                type="text"
-                value={patientSearch}
-                onChange={(event) => setPatientSearch(event.target.value)}
-                disabled={!activeConversationId || !currentUserId}
-                placeholder="Search patient by name, email, or phone..."
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
-              />
-              {patientOptionsError ? (
-                <p className="mt-1 text-[10px] text-red-600">{patientOptionsError}</p>
-              ) : null}
-              {patientOptionsLoading ? (
-                <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-500 shadow-lg">
-                  Loading patients...
-                </div>
-              ) : null}
-              {!patientOptionsLoading && patientSearch.trim().length > 0 ? (
-                <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 text-[11px] shadow-lg">
-                  {filteredPatientOptions.length === 0 ? (
-                    <div className="px-3 py-1.5 text-slate-500">
-                      No matching patients.
-                    </div>
-                  ) : (
-                    filteredPatientOptions.map((patient) => (
-                      <button
-                        key={patient.id}
-                        type="button"
-                        onClick={() => handleSelectPatient(patient)}
-                        className="flex w-full flex-col items-start px-3 py-1.5 text-left text-slate-900 hover:bg-sky-50"
-                      >
-                        <span className="font-medium text-slate-900">
-                          {formatPatientForDisplay(patient)}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="text-slate-500">
-                {!activeConversationId || !currentUserId
-                  ? "Start a conversation to link it to a patient."
-                  : selectedPatient
-                  ? `Linked patient: ${formatPatientForDisplay(selectedPatient)}`
-                  : "No patient selected."}
+          {selectedPatient ? (
+            <div className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 sm:flex">
+              <User size={12} />
+              <span className="max-w-[120px] truncate">
+                {formatPatientForDisplay(selectedPatient)}
               </span>
-              {selectedPatient ? (
+              <button
+                type="button"
+                onClick={handleClearPatient}
+                className="ml-1 rounded-full p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleStartNewConversation}
+            disabled={loading || !currentUserId}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 sm:px-3"
+          >
+            <Plus size={14} />
+            <span className="hidden sm:inline">New</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Body */}
+      <div className="relative flex flex-1 overflow-hidden">
+        {/* Conversation sidebar */}
+        <aside
+          className={
+            "inset-y-0 left-0 z-20 transform border-r border-slate-100 bg-white/95 shadow-lg backdrop-blur transition-all duration-200 ease-out dark:border-slate-700/30 dark:bg-slate-900/95 " +
+            (sidebarOpen
+              ? "absolute w-72 translate-x-0 p-3 sm:static sm:w-64 sm:shadow-none"
+              : "absolute w-72 -translate-x-full p-3 sm:static sm:w-0 sm:translate-x-0 sm:border-r-0 sm:p-0 sm:shadow-none sm:overflow-hidden")
+          }
+        >
+          <div className="flex h-full flex-col">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Conversations
+              </span>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={handleClearPatient}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-100"
+                  onClick={() => setSidebarOpen(false)}
+                  className="rounded-full p-1 text-slate-500 hover:bg-slate-100 sm:hidden dark:hover:bg-slate-800"
                 >
-                  Clear
+                  <X size={16} />
                 </button>
-              ) : null}
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen((prev) => !prev)}
+                  className="hidden rounded-full p-1 text-slate-500 hover:bg-slate-100 sm:inline-flex dark:hover:bg-slate-800"
+                  aria-label="Collapse sidebar"
+                >
+                  <Menu size={16} />
+                </button>
+              </div>
             </div>
+            <div className="flex-1 space-y-1 overflow-y-auto px-1 py-1">
+              {conversationsLoading ? (
+                <p className="px-2 text-[12px] text-slate-400">Loading...</p>
+              ) : conversations.length === 0 ? (
+                <p className="px-2 text-[12px] text-slate-400">
+                  No conversations yet.
+                </p>
+              ) : (
+                conversations.map((conversation) => {
+                  const isActive = conversation.id === activeConversationId;
+                  return (
+                    <button
+                      key={conversation.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveConversationId(conversation.id);
+                        setSidebarOpen(false);
+                      }}
+                      className={
+                        "group flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-[12px] " +
+                        (isActive
+                          ? "bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300"
+                          : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800")
+                      }
+                    >
+                      <span className="line-clamp-2">
+                        {formatConversationTitle(conversation)}
+                      </span>
+                      {isActive ? (
+                        <div className="flex flex-shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleArchiveActiveConversation();
+                            }}
+                            className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                            title="Archive"
+                          >
+                            <Archive size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleDeleteActiveConversation();
+                            }}
+                            className="rounded p-1 text-slate-400 hover:bg-rose-100 hover:text-rose-600 dark:hover:bg-rose-900/30 dark:hover:text-rose-300"
+                            title="Delete"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* Mobile overlay */}
+        {sidebarOpen ? (
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="absolute inset-0 z-10 bg-black/20 sm:hidden"
+            aria-label="Close sidebar"
+          />
+        ) : null}
+
+        {/* Main chat area */}
+        <main className="flex min-w-0 flex-1 flex-col bg-white/50 dark:bg-slate-900/30">
+          {/* Title bar */}
+          <div className="flex flex-shrink-0 items-center border-b border-slate-100 px-4 py-2 dark:border-slate-700/30">
+            <input
+              type="text"
+              value={editingTitle}
+              onChange={(event) => setEditingTitle(event.target.value)}
+              onBlur={handleTitleSave}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleTitleSave();
+                }
+              }}
+              placeholder="Name this conversation..."
+              className="w-full max-w-md rounded-lg border-0 bg-transparent px-2 py-1 text-[13px] font-medium text-slate-900 placeholder:text-slate-400 focus:bg-slate-50 focus:ring-1 focus:ring-sky-500 dark:text-slate-100 dark:focus:bg-slate-800"
+            />
           </div>
 
-          <div className="flex-1 min-h-[220px] max-h-[440px] space-y-2 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-[13px]">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-8">
             {initialMessagesLoading ? (
-              <p className="text-[12px] text-slate-500">Loading conversation...</p>
+              <div className="flex h-full items-center justify-center">
+                <p className="text-[12px] text-slate-500">Loading conversation...</p>
+              </div>
             ) : messages.length === 0 ? (
-              <p className="text-[12px] text-slate-500">
-                Start a conversation with Aliice about bookings, post-op docs, or
-                how to communicate with patients and insurers.
-              </p>
+              <div className="flex min-h-full flex-col items-center justify-center text-center">
+                <div className="mb-6 sm:mb-8">
+                  <h2 className="bg-gradient-to-r from-sky-500 via-violet-500 to-fuchsia-500 bg-clip-text text-3xl font-semibold text-transparent sm:text-5xl">
+                    Hello{userName ? `, ${userName}` : ""}
+                  </h2>
+                  <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
+                    Ask Aliice about bookings, post-op documents, patient emails,
+                    or insurance communication.
+                  </p>
+                </div>
+                <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+                  {SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion.label}
+                      type="button"
+                      onClick={() => setInput(suggestion.prompt)}
+                      className="rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-sky-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-sky-500/50"
+                    >
+                      <div className="mb-1 text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+                        {suggestion.label}
+                      </div>
+                      <div className="text-[12px] text-slate-500 dark:text-slate-400">
+                        {suggestion.prompt}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : (
-              messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={
-                    "flex " +
-                    (message.role === "user"
-                      ? "justify-end text-right"
-                      : "justify-start text-left")
-                  }
-                >
+              <div className="mx-auto flex max-w-3xl flex-col gap-4 pb-20">
+                {messages.map((message) => (
                   <div
+                    key={message.id}
                     className={
-                      "inline-block max-w-[80%] rounded-2xl px-3 py-2 text-[12px] " +
-                      (message.role === "user"
-                        ? "bg-sky-600 text-white"
-                        : "bg-slate-100 text-slate-900")
+                      "flex items-start gap-2 sm:gap-3 " +
+                      (message.role === "user" ? "justify-end" : "justify-start")
                     }
                   >
-                    {message.content}
+                    {message.role === "assistant" ? (
+                      <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 sm:h-7 sm:w-7 dark:bg-slate-800">
+                        <Sparkles
+                          size={12}
+                          className="text-sky-600 dark:text-sky-400"
+                        />
+                      </div>
+                    ) : null}
+                    <div
+                      className={
+                        "max-w-[88%] text-[13px] leading-relaxed sm:max-w-[75%] " +
+                        (message.role === "user"
+                          ? "rounded-2xl rounded-tr-sm bg-slate-100 px-3 py-1.5 text-slate-900 dark:bg-slate-800 dark:text-slate-100 sm:px-4 sm:py-2"
+                          : "rounded-2xl rounded-tl-sm px-3 py-1.5 text-slate-800 dark:text-slate-200 sm:px-4 sm:py-2")
+                      }
+                    >
+                      {message.role === "user" ? (
+                        message.content
+                      ) : (
+                        <MarkdownContent content={message.content} />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+                {loading ? (
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 sm:h-7 sm:w-7 dark:bg-slate-800">
+                      <Sparkles
+                        size={12}
+                        className="text-sky-600 dark:text-sky-400"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-slate-50 px-3 py-1.5 text-[12px] text-slate-500 dark:bg-slate-800/40 dark:text-slate-400 sm:px-4 sm:py-2">
+                      <span
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-current"
+                        style={{ animationDelay: "0ms" }}
+                      />
+                      <span
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-current"
+                        style={{ animationDelay: "150ms" }}
+                      />
+                      <span
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-current"
+                        style={{ animationDelay: "300ms" }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
-          {(error || conversationsError) && (
-            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
-              {error || conversationsError}
-            </div>
-          )}
-          <form onSubmit={handleSubmit} className="mt-3 flex items-end gap-2 pt-1">
-            <textarea
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              rows={2}
-              placeholder="Ask Aliice a question..."
-              className="flex-1 resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim() || initialMessagesLoading}
-              className="inline-flex items-center justify-center rounded-full border border-sky-500 bg-sky-600 px-4 py-2 text-[12px] font-semibold text-white shadow-sm hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+
+          {/* Floating input */}
+          <div className="flex flex-shrink-0 flex-col border-t border-slate-100 bg-white/80 px-3 py-3 backdrop-blur dark:border-slate-700/30 dark:bg-slate-900/80 sm:px-4 sm:py-4">
+            <form
+              onSubmit={handleSubmit}
+              className="mx-auto flex w-full max-w-3xl items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-400 dark:border-slate-700 dark:bg-slate-800"
             >
-              {loading ? "Sending..." : "Send"}
-            </button>
-          </form>
-        </div>
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                rows={1}
+                placeholder="Ask Aliice a question..."
+                className="max-h-32 min-h-[40px] flex-1 resize-none rounded-l-xl bg-transparent px-3 py-2 text-[13px] text-slate-900 placeholder:text-slate-400 focus:outline-none dark:text-slate-100"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if (input.trim() && !loading && !initialMessagesLoading) {
+                      event.currentTarget.form?.requestSubmit();
+                    }
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                disabled={loading || !input.trim() || initialMessagesLoading}
+                className="mb-0.5 inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? <MoreHorizontal size={18} /> : <Send size={18} />}
+              </button>
+            </form>
+            {(error || conversationsError) && (
+              <div className="mx-auto mt-2 w-full max-w-3xl rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 dark:border-red-900/30 dark:bg-red-900/20 dark:text-red-300">
+                {error || conversationsError}
+              </div>
+            )}
+          </div>
+        </main>
       </div>
     </div>
   );
