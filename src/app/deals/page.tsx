@@ -533,7 +533,6 @@ export default function DealsPage() {
   }
 
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
-  const topScrollRef = useRef<HTMLDivElement | null>(null);
   const boardContentRef = useRef<HTMLDivElement | null>(null);
 
   function handleBoardDragOver(event: any) {
@@ -1093,34 +1092,11 @@ export default function DealsPage() {
               </span>
             </div>
           </div>
-          <div className="mt-2 rounded-xl border border-slate-200/80 bg-white/90 text-xs shadow-sm">
-              {/* Top scrollbar - identical to bottom, synced with main board */}
+          <div className="mt-2 min-w-0 rounded-xl border border-slate-200/80 bg-white/90 text-xs shadow-sm">
               <div
-                ref={topScrollRef}
-                className="kanban-scroll w-full max-w-full"
-                style={{ height: '18px' }}
-                onScroll={(e) => {
-                  if (boardScrollRef.current) {
-                    boardScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-                  }
-                }}
-              >
-                {/* Mirror the same content width as bottom scroller */}
-                <div className="flex w-max gap-3 px-3 md:gap-4" style={{ visibility: 'hidden', height: '1px' }}>
-                  {dealStages.map((stage) => (
-                    <div key={stage.id} className="min-w-[260px] max-w-xs flex-shrink-0" />
-                  ))}
-                </div>
-              </div>
-              <div
-                className="kanban-scroll w-full max-w-full pb-2"
+                className="kanban-scroll w-full min-w-0 overflow-x-auto pb-2"
                 ref={boardScrollRef}
                 onDragOver={handleBoardDragOver}
-                onScroll={(e) => {
-                  if (topScrollRef.current) {
-                    topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
-                  }
-                }}
               >
                 <div ref={boardContentRef} className="flex w-max gap-3 px-3 py-3 md:gap-4">
                   {dealStages.map((stage) => {
