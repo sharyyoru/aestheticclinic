@@ -562,6 +562,64 @@ export default function PatientDocumentsTab({
     setCurrentPage(1);
   }, [searchQuery, filterType, sortBy, sortOrder]);
 
+  // Pre-compute per-file preview metadata once per item instead of inline on every render
+  const fileItemData = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        ext: string;
+        isImageThumb: boolean;
+        convertedUrl: string;
+        mimeType: string;
+        uploadDate: string | undefined;
+      }
+    >();
+
+    for (const item of paginatedItems) {
+      if (item.kind !== "file") continue;
+
+      const ext = getExtension(item.name);
+      const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
+      const isHeicImage = ["heic", "heif"].includes(ext);
+      const isImageThumb = isRegularImage || isHeicImage;
+
+      let convertedUrl = "";
+      if (item.source === "patient-docs" && item.publicUrl) {
+        const baseUrl = item.publicUrl;
+        if (isRegularImage) {
+          convertedUrl = `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
+        } else if (isHeicImage) {
+          convertedUrl = `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
+        } else {
+          convertedUrl = baseUrl;
+        }
+      } else if (item.source !== "patient-docs") {
+        const fullPath = [patientId, item.path].filter(Boolean).join("/");
+        const { data } = supabaseClient.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
+        const thumbUrl = data.publicUrl;
+        const cacheBuster = `?v=${refreshKey}-${item.updated_at || Date.now()}`;
+        const previewUrl = thumbUrl + cacheBuster;
+        if (isRegularImage) {
+          convertedUrl = `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`;
+        } else if (isHeicImage) {
+          convertedUrl = `/api/documents/convert-heic?url=${encodeURIComponent(previewUrl)}`;
+        } else {
+          convertedUrl = previewUrl;
+        }
+      }
+
+      map.set(item.path, {
+        ext,
+        isImageThumb,
+        convertedUrl,
+        mimeType: getMimeType(item.name, item.metadata),
+        uploadDate: item.created_at || item.updated_at,
+      });
+    }
+
+    return map;
+  }, [paginatedItems, patientId, refreshKey]);
+
   // Get unique file types for filter dropdown
   const availableTypes = useMemo(() => {
     const types = new Set<string>();
@@ -1490,63 +1548,13 @@ async function handleSendEmail(event: React.FormEvent) {
                       );
                     }
 
-                    const ext = getExtension(item.name);
-                    const isImageThumb = [
-                      "jpg",
-                      "jpeg",
-                      "png",
-                      "gif",
-                      "webp",
-                      "jfif",
-                      "heic",
-                      "heif",
-                    ].includes(ext);
-                    
-                    // Determine the correct thumbnail source based on file type
-                    const isRegularImage = ["jpg", "jpeg", "png", "gif", "webp", "jfif", "bmp", "svg"].includes(ext);
-                    const isHeicImage = ["heic", "heif"].includes(ext);
-                    
-                    // For patient-docs files, use the pre-fetched signed URL (valid for 24 hours)
-                    let convertedUrl: string;
-                    if (item.source === "patient-docs" && item.publicUrl) {
-                      const baseUrl = item.publicUrl;
-                      // For images, use proxy to avoid CORS issues
-                      if (isRegularImage) {
-                        convertedUrl = `/api/documents/proxy-image?url=${encodeURIComponent(baseUrl)}`;
-                      } else if (isHeicImage) {
-                        convertedUrl = `/api/documents/convert-heic?url=${encodeURIComponent(baseUrl)}`;
-                      } else {
-                        convertedUrl = baseUrl;
-                      }
-                    } else if (item.source !== "patient-docs") {
-                      const fullPath = [patientId, item.path]
-                        .filter(Boolean)
-                        .join("/");
-                      const { data } = supabaseClient.storage
-                        .from(BUCKET_NAME)
-                        .getPublicUrl(fullPath);
-                      const thumbUrl = data.publicUrl;
-                      // Add cache-busting parameter to ensure fresh content after edits
-                      const cacheBuster = `?v=${refreshKey}-${item.updated_at || Date.now()}`;
-                      const previewUrl = thumbUrl + cacheBuster;
-                      
-                      // For regular images: use proxy API
-                      // For HEIC: use conversion API (browsers can't display HEIC directly)
-                      if (isRegularImage) {
-                        convertedUrl = `/api/documents/proxy-image?url=${encodeURIComponent(previewUrl)}`;
-                      } else if (isHeicImage) {
-                        convertedUrl = `/api/documents/convert-heic?url=${encodeURIComponent(previewUrl)}`;
-                      } else {
-                        convertedUrl = previewUrl;
-                      }
-                    } else {
-                      // Fallback for patient-docs without publicUrl (should not happen)
-                      convertedUrl = "";
-                    }
+                    const data = fileItemData.get(item.path);
+                    const ext = data?.ext ?? "";
+                    const isImageThumb = data?.isImageThumb ?? false;
+                    const convertedUrl = data?.convertedUrl ?? "";
                     const thumbnailSrc = convertedUrl;
-                    const uploadDate = item.created_at || item.updated_at;
-                    const mimeType = getMimeType(item.name, item.metadata);
-
+                    const uploadDate = data?.uploadDate;
+                    const mimeType = data?.mimeType ?? "";
                     const isSelectedForEmail = selectedFilesForEmail.has(item.path);
 
                     return (
@@ -1581,7 +1589,7 @@ async function handleSendEmail(event: React.FormEvent) {
                               className="h-full w-full object-cover"
                             />
                           ) : (
-                            <span className="inline-flex h-full w-full items-center justify-center rounded-lg bg-gradient-to-br from-slate-100 to-slate-50 text-[10px] font-bold text-slate-600">
+                            <span className="inline-flex h-full w-full items-center justify-center rounded-lg bg-gradient-to-br from-slate-100 to-slate-50 text-[10px] font-bold text-black">
                               {ext ? ext.toUpperCase() : "FILE"}
                             </span>
                           )}
@@ -1878,7 +1886,7 @@ async function handleSendEmail(event: React.FormEvent) {
                 />
               ) : (
                 <div className="flex flex-col items-center gap-2 text-[11px] text-slate-500">
-                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-[11px] font-semibold text-slate-700">
+                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-[11px] font-semibold text-black">
                     {getExtension(selectedFile.name).toUpperCase() || "FILE"}
                   </div>
                   <p className="max-w-xs text-center">
@@ -2150,7 +2158,7 @@ async function handleSendEmail(event: React.FormEvent) {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-                    <div className="inline-flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-lg font-bold text-slate-600">
+                    <div className="inline-flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-lg font-bold text-black">
                       {getExtension(previewModal.name).toUpperCase() || "FILE"}
                     </div>
                     <div className="text-center">

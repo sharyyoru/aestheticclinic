@@ -53,6 +53,7 @@ interface DocxPreviewEditorProps {
   patientId: string;
   documentId: string;
   patientData?: PatientData;
+  missingFields?: { tag: string; placeholder: string }[];
   onSave: (blob: Blob) => Promise<void>;
   onClose: () => void;
 }
@@ -408,6 +409,7 @@ export default function DocxPreviewEditor({
   patientId,
   documentId,
   patientData,
+  missingFields: missingFieldsProp,
   onSave,
   onClose,
 }: DocxPreviewEditorProps) {
@@ -1374,46 +1376,6 @@ export default function DocxPreviewEditor({
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Document fields sidebar */}
-        {documentFields.length > 0 && (
-          <div className="w-80 bg-slate-50 border-r border-slate-200 p-4 overflow-y-auto shrink-0">
-            <h3 className="font-semibold text-slate-700 mb-1">Fill in Fields</h3>
-            <p className="text-xs text-slate-500 mb-3">
-              {documentFields.length} field{documentFields.length > 1 ? 's' : ''} available
-            </p>
-            <div className="space-y-3">
-              {documentFields.map((field) => {
-                const isMultiline = field.value.includes('\n') || field.tag.toLowerCase().includes('addressblock') || field.tag.toLowerCase().includes('block');
-                return (
-                  <div key={field.id}>
-                    <label className="block text-xs text-slate-500 mb-1">
-                      {field.label}
-                      <span className="ml-1 text-[10px] text-slate-400 font-mono">{field.tag}</span>
-                    </label>
-                    {isMultiline ? (
-                      <textarea
-                        value={field.value}
-                        onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                        rows={3}
-                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-                        placeholder={field.label}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        value={field.value}
-                        onChange={(e) => handleFieldChange(field.id, e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder={field.label}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Document preview */}
         <div className="flex-1 overflow-auto bg-gray-100 p-8">
           {isLoading && (
@@ -1421,6 +1383,20 @@ export default function DocxPreviewEditor({
               <div className="text-center">
                 <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-4 border-sky-200 border-t-sky-500" />
                 <p className="text-slate-600">Loading document...</p>
+              </div>
+            </div>
+          )}
+          {/* Missing patient data warning */}
+          {missingFieldsProp && missingFieldsProp.length > 0 && !isLoading && (
+            <div className="mb-4 mx-auto max-w-[850px] bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-start gap-2 text-red-800 text-sm">
+              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="font-medium">Some patient fields are missing</p>
+                <p className="text-xs text-red-700 mt-0.5">
+                  Missing values are highlighted in red inside the document. Please fill them in the patient record or edit the document directly.
+                </p>
               </div>
             </div>
           )}

@@ -65,6 +65,7 @@ export default function DocumentTemplatesPanel({
   const [showEditor, setShowEditor] = useState(false);
   const [currentDocument, setCurrentDocument] = useState<PatientDocument | null>(null);
   const [documentBlob, setDocumentBlob] = useState<Blob | null>(null);
+  const [missingFields, setMissingFields] = useState<{ tag: string; placeholder: string }[] | undefined>(undefined);
   const [isLoadingEditor, setIsLoadingEditor] = useState(false);
   const [fullPatientData, setFullPatientData] = useState<{
     firstName: string;
@@ -304,6 +305,13 @@ export default function DocumentTemplatesPanel({
       console.log('Create from template response:', data);
       
       if (data.success && data.document) {
+        // Remember any missing patient fields so we can warn the user
+        if (data.missingFields && Array.isArray(data.missingFields)) {
+          setMissingFields(data.missingFields);
+        } else {
+          setMissingFields(undefined);
+        }
+
         // Download the newly created document blob using API endpoint
         const downloadPath = data.storagePath || `${patientId}/${data.fileName}`;
         console.log('Downloading from path:', downloadPath);
@@ -360,11 +368,13 @@ export default function DocumentTemplatesPanel({
         patientId={patientId}
         documentId={currentDocument.id}
         patientData={patientData}
+        missingFields={missingFields}
         onSave={handleSaveDocument}
         onClose={() => {
           setShowEditor(false);
           setCurrentDocument(null);
           setDocumentBlob(null);
+          setMissingFields(undefined);
           setFullPatientData(null);
           fetchDocuments();
         }}

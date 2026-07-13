@@ -490,6 +490,31 @@ export default function DealsPage() {
     return filteredDeals.slice(start, end);
   }, [filteredDeals, listPage]);
 
+  // Pre-compute derived table-row data once per page instead of inline on every render
+  const tableRows = useMemo(
+    () =>
+      paginatedListDeals.map((deal) => {
+        const stageName = getStageName(deal.stage_id);
+        const patientName = deal.patient
+          ? `${deal.patient.first_name ?? ""} ${deal.patient.last_name ?? ""}`.trim() || "Unknown patient"
+          : "Unknown patient";
+        const createdDate = deal.created_at ? new Date(deal.created_at) : null;
+        const createdLabel =
+          createdDate && !Number.isNaN(createdDate.getTime())
+            ? createdDate.toLocaleDateString()
+            : "—";
+        const serviceName = deal.service?.name ?? "Not set";
+        return {
+          ...deal,
+          stageName,
+          patientName,
+          createdLabel,
+          serviceName,
+        };
+      }),
+    [paginatedListDeals],
+  );
+
   // Reset to page 1 when filters change
   useEffect(() => {
     setListPage(1);
@@ -942,76 +967,58 @@ export default function DealsPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {paginatedListDeals.map((deal) => {
-                          const stageName = getStageName(deal.stage_id);
-                          const patientName = deal.patient
-                            ? `${deal.patient.first_name ?? ""} ${
-                                deal.patient.last_name ?? ""
-                              }`.trim() || "Unknown patient"
-                            : "Unknown patient";
-                          const createdDate = deal.created_at
-                            ? new Date(deal.created_at)
-                            : null;
-                          const createdLabel =
-                            createdDate && !Number.isNaN(createdDate.getTime())
-                              ? createdDate.toLocaleDateString()
-                              : "—";
-
-                          const serviceName = deal.service?.name ?? "Not set";
-
-                          return (
-                            <tr
-                              key={deal.id}
-                              onClick={() =>
-                                router.push(
-                                  `/patients/${deal.patient_id}?m_tab=crm&crm_sub=deals`,
-                                )
-                              }
-                              className="cursor-pointer hover:bg-slate-50/70"
-                            >
-                              <td className="py-2 pl-3 pr-3 align-top text-slate-500">
-                                {deal.id.slice(0, 8)}
-                              </td>
-                              <td className="py-2 pr-3 align-top text-slate-900">
-                                {deal.title || "Untitled deal"}
-                              </td>
-                              <td className="py-2 pr-3 align-top text-slate-700">
-                                {deal.pipeline || "Geneva"}
-                              </td>
-                              <td className="py-2 pr-3 align-top text-slate-700">
-                                <span>{stageName}</span>
-                                {/* Show appointment details for "Appointment Set" stage */}
-                                {deal.appointment && (
-                                  <div className="mt-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1">
-                                    <div className="flex items-center gap-1 text-emerald-700">
-                                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                      </svg>
-                                      <span className="text-[10px] font-medium">
-                                        {formatSwissShortDate(deal.appointment.start_time)}{" "}
-                                        {formatSwissTime(deal.appointment.start_time)}
-                                      </span>
-                                    </div>
+                        {tableRows.map((deal) => (
+                          <tr
+                            key={deal.id}
+                            onClick={() =>
+                              router.push(
+                                `/patients/${deal.patient_id}?m_tab=crm&crm_sub=deals`,
+                              )
+                            }
+                            className="cursor-pointer hover:bg-slate-50/70"
+                          >
+                            <td className="py-2 pl-3 pr-3 align-top text-slate-500">
+                              {deal.id.slice(0, 8)}
+                            </td>
+                            <td className="py-2 pr-3 align-top text-slate-900">
+                              {deal.title || "Untitled deal"}
+                            </td>
+                            <td className="py-2 pr-3 align-top text-slate-700">
+                              {deal.pipeline || "Geneva"}
+                            </td>
+                            <td className="py-2 pr-3 align-top text-slate-700">
+                              <span>{deal.stageName}</span>
+                              {/* Show appointment details for "Appointment Set" stage */}
+                              {deal.appointment && (
+                                <div className="mt-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1">
+                                  <div className="flex items-center gap-1 text-emerald-700">
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <span className="text-[10px] font-medium">
+                                      {formatSwissShortDate(deal.appointment.start_time)}{" "}
+                                      {formatSwissTime(deal.appointment.start_time)}
+                                    </span>
                                   </div>
-                                )}
-                              </td>
-                              <td className="py-2 pr-3 align-top text-slate-700">
-                                {serviceName}
-                              </td>
-                              <td className="py-2 pr-3 align-top text-slate-700">
-                                <span className="text-sky-700 underline-offset-2 hover:underline">
-                                  {patientName}
-                                </span>
-                              </td>
-                              <td className="py-2 pr-3 align-top text-slate-600">
-                                {deal.owner_name || "—"}
-                              </td>
-                              <td className="py-2 pr-3 align-top text-slate-500">
-                                {createdLabel}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 align-top text-slate-700">
+                              {deal.serviceName}
+                            </td>
+                            <td className="py-2 pr-3 align-top text-slate-700">
+                              <span className="text-sky-700 underline-offset-2 hover:underline">
+                                {deal.patientName}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-3 align-top text-slate-600">
+                              {deal.owner_name || "—"}
+                            </td>
+                            <td className="py-2 pr-3 align-top text-slate-500">
+                              {deal.createdLabel}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>

@@ -338,6 +338,22 @@ export default function InvoicesPage() {
     return filtered.slice(start, start + ROWS_PER_PAGE);
   }, [filtered, page]);
 
+  // Pre-compute derived invoice row data once per page
+  const tableRows = useMemo(
+    () =>
+      paginated.map((row) => {
+        const badge = statusBadge(row.status, row.is_complimentary);
+        const amt = Number(row.total_amount) || 0;
+        const pa = Number(row.paid_amount) || 0;
+        const remaining = Math.max(0, amt - pa);
+        const isReceipt = RECEIPT_STATUSES.includes(row.status);
+        const latest = latestInsByInvoice[row.id];
+        const insBadge = insuranceBadge(latest?.status, row.billing_type);
+        return { ...row, badge, amt, pa, remaining, isReceipt, insBadge };
+      }),
+    [paginated, latestInsByInvoice],
+  );
+
   // Summary
   const summary = useMemo(() => {
     let total = 0, paid = 0, unpaid = 0, count = 0;
@@ -923,12 +939,7 @@ export default function InvoicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {paginated.map(row => {
-                const badge = statusBadge(row.status, row.is_complimentary);
-                const amt = Number(row.total_amount) || 0;
-                const pa = Number(row.paid_amount) || 0;
-                const remaining = Math.max(0, amt - pa);
-                const isReceipt = RECEIPT_STATUSES.includes(row.status);
+              {tableRows.map((row) => {
                 const isGenerating = generatingPdf.has(row.id);
                 const isSending = sendingEmail.has(row.id);
 
@@ -948,25 +959,19 @@ export default function InvoicesPage() {
                         <span className="text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right font-medium text-slate-900 whitespace-nowrap">{formatCurrency(amt)}</td>
-                    <td className="px-3 py-2 text-right text-emerald-700 whitespace-nowrap">{pa > 0 ? formatCurrency(pa) : "-"}</td>
+                    <td className="px-3 py-2 text-right font-medium text-slate-900 whitespace-nowrap">{formatCurrency(row.amt)}</td>
+                    <td className="px-3 py-2 text-right text-emerald-700 whitespace-nowrap">{row.pa > 0 ? formatCurrency(row.pa) : "-"}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
-                      {remaining > 0.01 ? <span className="text-amber-700 font-medium">{formatCurrency(remaining)}</span> : <span className="text-slate-400">-</span>}
+                      {row.remaining > 0.01 ? <span className="text-amber-700 font-medium">{formatCurrency(row.remaining)}</span> : <span className="text-slate-400">-</span>}
                     </td>
                     <td className="px-3 py-2">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}>{badge.label}</span>
+                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${row.badge.cls}`}>{row.badge.label}</span>
                     </td>
                     <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{row.payment_method || "-"}</td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      {(() => {
-                        const latest = latestInsByInvoice[row.id];
-                        const b = insuranceBadge(latest?.status, row.billing_type);
-                        return (
-                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${b.cls}`} title={b.title}>
-                            {b.label}
-                          </span>
-                        );
-                      })()}
+                      <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${row.insBadge.cls}`} title={row.insBadge.title}>
+                        {row.insBadge.label}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[120px] truncate">{row.doctor_name || "-"}</td>
                     <td className="px-3 py-2 text-center">
@@ -989,7 +994,7 @@ export default function InvoicesPage() {
                         >
                           {isGenerating ? "..." : "PDF"}
                         </button>
-                        {isReceipt && (
+                        {row.isReceipt && (
                           <button
                             type="button"
                             onClick={() => handleGeneratePdf(row.id)}
