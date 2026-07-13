@@ -126,7 +126,7 @@ export default function HeaderNotificationsButton() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className={`truncate text-xs ${!notification.read_at ? "font-semibold text-slate-900" : "font-medium text-slate-700"}`}>
+                      <p className={`truncate text-xs ${!notification.read_at ? "font-semibold text-slate-900 dark:text-white" : "font-medium text-slate-700 dark:text-slate-200"}`}>
                         {getPatientName(notification.patient)}
                       </p>
                       <span className="flex-shrink-0 text-[10px] text-slate-400">

@@ -612,12 +612,12 @@ export default function TasksPage() {
             <table className="min-w-full text-left text-[11px]">
               <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="py-2 pr-3 font-medium">Associated Contact</th>
-                  <th className="py-2 pr-3 font-medium">Date</th>
-                  <th className="py-2 pr-3 font-medium">Content</th>
-                  <th className="py-2 pr-3 font-medium">Priority</th>
-                  <th className="py-2 pr-3 font-medium">Status</th>
-                  <th className="py-2 pr-3 font-medium">Action</th>
+                  <th className="py-2 px-3 font-medium">Associated Contact</th>
+                  <th className="py-2 px-3 font-medium">Date</th>
+                  <th className="py-2 px-3 font-medium">Content</th>
+                  <th className="py-2 px-3 font-medium">Priority</th>
+                  <th className="py-2 px-3 font-medium">Status</th>
+                  <th className="py-2 px-3 font-medium">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -636,7 +636,7 @@ export default function TasksPage() {
                       key={task.id}
                       className="hover:bg-slate-50/70"
                     >
-                      <td className="py-2 pr-3 align-top text-slate-800">
+                      <td className="py-2 px-3 align-top text-slate-800">
                         {patient ? (
                           <Link
                             href={`/patients/${patient.id}?mode=crm&tab=tasks`}
@@ -651,10 +651,10 @@ export default function TasksPage() {
                           {patient?.email || patient?.phone || ""}
                         </div>
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700">
+                      <td className="py-2 px-3 align-top text-slate-700">
                         {dateLabel}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-800">
+                      <td className="py-2 px-3 align-top text-slate-800">
                         <div className="font-semibold">{task.name}</div>
                         {task.content ? (
                           <div className="mt-0.5 line-clamp-2 text-[10px] text-slate-600">
@@ -672,13 +672,13 @@ export default function TasksPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700 capitalize">
+                      <td className="py-2 px-3 align-top text-slate-700 capitalize">
                         {task.priority}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700 capitalize">
+                      <td className="py-2 px-3 align-top text-slate-700 capitalize">
                         {task.status.replace("_", " ")}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700">
+                      <td className="py-2 px-3 align-top text-slate-700">
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"

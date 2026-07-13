@@ -893,7 +893,34 @@ export default function DealsPage() {
                 </div>
 
                 {loading ? (
-                  <p className="text-[11px] text-slate-500">Loading deals...</p>
+                  <div className="space-y-2">
+                    <div className="overflow-x-auto rounded-lg border border-slate-200/80 bg-white/80 p-3">
+                      <div className="grid grid-cols-8 gap-3 border-b border-slate-200 pb-2 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                        <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                        <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                        <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                        <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                        <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                        <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                        <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                        <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <div key={i} className="grid grid-cols-8 gap-3">
+                            <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                            <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                            <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                            <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                            <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                            <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                            <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                            <div className="col-span-1 h-3 rounded bg-slate-200 animate-pulse" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 ) : error ? (
                   <p className="text-[11px] text-red-600">{error}</p>
                 ) : filteredDeals.length === 0 ? (
@@ -1118,7 +1145,23 @@ export default function DealsPage() {
                           </span>
                         </div>
                         <div className="flex-1 space-y-2 overflow-y-auto p-2">
-                          {stageDeals.length === 0 ? (
+                          {loading ? (
+                            <div className="space-y-2">
+                              {Array.from({ length: 3 }).map((_, i) => (
+                                <div
+                                  key={i}
+                                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm"
+                                >
+                                  <div className="h-3 w-3/4 rounded bg-slate-200 animate-pulse" />
+                                  <div className="mt-2 h-2 w-1/2 rounded bg-slate-200 animate-pulse" />
+                                  <div className="mt-1 h-2 w-2/3 rounded bg-slate-200 animate-pulse" />
+                                  <div className="mt-1 h-2 w-1/2 rounded bg-slate-200 animate-pulse" />
+                                  <div className="mt-1 h-2 w-3/4 rounded bg-slate-200 animate-pulse" />
+                                  <div className="mt-1 h-2 w-1/3 rounded bg-slate-200 animate-pulse" />
+                                </div>
+                              ))}
+                            </div>
+                          ) : stageDeals.length === 0 ? (
                             <p className="text-[10px] text-slate-400">
                               No deals in this stage.
                             </p>

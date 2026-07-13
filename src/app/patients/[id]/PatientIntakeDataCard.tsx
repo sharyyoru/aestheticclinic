@@ -2020,7 +2020,7 @@ export default function PatientIntakeDataCard({
             <div className="space-y-4">
               {/* BMI Highlight Card */}
               {healthBackground.bmi && (
-                <div className="p-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200">
+                <div className="health-bmi-card p-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-medium text-slate-600">Body Mass Index (BMI)</span>
                     {(() => {

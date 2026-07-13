@@ -299,7 +299,7 @@ html { font-size: 17px; }
 .dark .blz-content button[class*="bg-gradient"][class*="text-slate-"],
 .dark .blz-content a[class*="bg-slate-50"][class*="text-slate-"],
 .dark .blz-content button[class*="bg-slate-50"][class*="text-slate-"] {
-  color: inherit !important; /* revert to the original Tailwind class value */
+  color: #000000 !important;
 }
 
 /* Appointment pill text — always dark on colored backgrounds */
@@ -307,6 +307,11 @@ html { font-size: 17px; }
 .dark .appt-pill-text,
 .dark .blz-content .appt-pill-text.appt-pill-text,
 .dark .blz-content [class*="bg-white"] .appt-pill-text.appt-pill-text {
+  color: #000000 !important;
+}
+
+/* Health Background BMI card keeps a light background, so force dark text in dark mode */
+.dark .blz-content .health-bmi-card [class*="text-slate-"] {
   color: #000000 !important;
 }
 
