@@ -649,7 +649,7 @@ export default function Home() {
       <section className="relative">
         <div className="relative">
           <svg
-            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-300"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -664,10 +664,17 @@ export default function Home() {
             type="text"
             value={searchQuery}
             onChange={(e) => void handleDashboardSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchQuery.trim()) {
+                setSearchQuery("");
+                setSearchResults([]);
+                router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+              }
+            }}
             placeholder="Search patients by name, email, or phone..."
-            className="w-full rounded-2xl border border-slate-200/60 bg-white/95 py-3 pl-10 pr-4 text-sm text-slate-900 shadow-lg backdrop-blur-sm placeholder-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+            className="w-full rounded-2xl border border-slate-200/60 bg-white/95 py-3 pl-10 pr-12 text-sm text-slate-900 shadow-lg backdrop-blur-sm placeholder-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
           />
-          {searching && (
+          {searching ? (
             <svg
               className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-slate-400"
               viewBox="0 0 24 24"
@@ -679,6 +686,23 @@ export default function Home() {
             >
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
             </svg>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (searchQuery.trim()) {
+                  setSearchQuery("");
+                  setSearchResults([]);
+                  router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                }
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-sky-500 p-2 text-white shadow-sm hover:bg-sky-600 transition-colors"
+              aria-label="Search"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </button>
           )}
         </div>
         {searchQuery && (
