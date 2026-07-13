@@ -349,12 +349,10 @@ export async function POST(request: NextRequest) {
         // (catalog_name='TMA' but tariff_code=5/7) emit as "TMA", not "005".
         // See src/lib/tariffType.ts for the full priority chain.
         const tariffType = deriveTariffType(item);
-        const isAcf = tariffType === "005";
-        const isTma = tariffType === "TMA";
-        // ACF flat-rate (005) and TMA gesture codes are part of the same
-        // treatment session as the main service and must use sessionNumber=1.
-        const rawSession = item.session_number ?? 1;
-        const sessionNumber = (isAcf || isTma) ? 1 : rawSession;
+        // Use the session number stored on the line. The frontend now assigns
+        // distinct sessions to distinct ACF flat-rate codes and keeps TMA gestures
+        // in the same session as their associated flat-rate code.
+        const sessionNumber = item.session_number ?? 1;
 
         // For TARDOC, prefer stored tp_al/tp_tl; fall back to catalog tp_mt/tp_tt
         const catalog = item.tariff_code === 7 ? tardocCatalogMap[item.code] : undefined;

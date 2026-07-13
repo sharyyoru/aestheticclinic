@@ -175,11 +175,10 @@ export async function POST(request: NextRequest) {
           const unitFactor = hasTpAl ? (Number(li.tp_al_value) || 1) : 1;
           const extFactor = Number(li.external_factor_mt) || 1;
           const amount = Number(li.total_price) || 0;
-          // ACF (005) / TMA gesture codes belong to the same treatment session
-          // as the main service; force sessionNumber=1 instead of inventing
-          // sequential numbers.
-          const isSameSession = tariffType === "005" || tariffType === "TMA";
-          const sessionNumber = isSameSession ? 1 : (li.session_number || 1);
+          // Use the session number stored on the line. The frontend now assigns
+          // distinct sessions to distinct ACF flat-rate codes and keeps TMA
+          // gestures in the same session as their associated flat-rate code.
+          const sessionNumber = li.session_number || 1;
 
           return {
             tariffType,

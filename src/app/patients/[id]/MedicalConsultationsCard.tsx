@@ -221,6 +221,65 @@ type InvoicePaymentTerm = "full" | "installment";
 
 type InvoiceExtraOption = "complimentary" | null;
 
+/**
+ * Assign sequential invoice session numbers to ACF flat-rate and TMA gesture lines.
+ *
+ * Background (from acfValidator100.chm):
+ *   - IValidate005::AddService validates services "against all previously added
+ *     services of the same session".
+ *   - The Sumex ACF validator rejects two different ACF flat-rate codes in the
+ *     same session with error 431 ("A flat rate with SessionID=[x] already exists").
+ *   - The SessionNumber is a grouping object that links a main flat-rate code to
+ *     the TMA gesture codes that belong to the same treatment session/procedure.
+ *
+ * Heuristic used by the current UI (no explicit procedure editor yet):
+ *   - Each ACF flat-rate ("flatrate-*") line starts a new invoice session.
+ *   - Each TMA gesture ("tma-*") line is attached to the nearest ACF flat-rate
+ *     line; ties are resolved in favour of the flat-rate that comes AFTER the TMA,
+ *     because the ACF accordion adds the TMA gesture first and the resulting ACF
+ *     flat-rate line second.
+ *   - Non-ACF/TMA lines keep session number 1.
+ */
+function computeAcfSessionNumbers(lines: InvoiceServiceLine[]): number[] {
+  const n = lines.length;
+  const result = new Array(n).fill(1);
+
+  const flatrateIndices: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (lines[i].serviceId.startsWith("flatrate-")) {
+      flatrateIndices.push(i);
+    }
+  }
+
+  const flatrateSessionNumbers = new Map<number, number>();
+  flatrateIndices.forEach((idx, order) => {
+    const sessionNumber = order + 1;
+    flatrateSessionNumbers.set(idx, sessionNumber);
+    result[idx] = sessionNumber;
+  });
+
+  for (let i = 0; i < n; i++) {
+    if (!lines[i].serviceId.startsWith("tma-")) continue;
+    if (flatrateIndices.length === 0) {
+      result[i] = 1;
+      continue;
+    }
+
+    let nearestIdx = flatrateIndices[0];
+    let nearestDistance = Math.abs(i - nearestIdx);
+    for (const idx of flatrateIndices) {
+      const distance = Math.abs(i - idx);
+      if (distance < nearestDistance || (distance === nearestDistance && idx > i)) {
+        nearestIdx = idx;
+        nearestDistance = distance;
+      }
+    }
+    result[i] = flatrateSessionNumbers.get(nearestIdx) ?? 1;
+  }
+
+  return result;
+}
+
 function generateSwissReference(invoiceId: string): string {
   let numericPart = invoiceId.replace(/\D/g, "");
   if (numericPart.length === 0) {
@@ -3853,23 +3912,25 @@ export default function MedicalConsultationsCard({
                           );
 
                           if (acfLines.length > 0) {
-                            // Build validation request from ACF lines.
-                            // tpValue is the per-invoice ACF TPV multiplier (default 1.00).
-                            // Validate all ACF flat-rate lines in session 1 —
-                            // that is how they are stored on the invoice.
-                            // (TMA gesture codes are grouped via the TMA grouper,
-                            //  not this ACF validator, and are also session 1.)
-                            const acfServicesToValidate = acfLines.map((line) => ({
-                              code: line.serviceId.replace("flatrate-", ""),
-                              tp: line.acfBaseTP ?? line.unitPrice ?? 0,
-                              tpValue: effectiveAcfTpv,
-                              date: scheduledAtIso || new Date().toISOString(),
-                              side: (line.acfSideType ?? 0) as 0 | 1 | 2 | 3,
-                              externalFactor: line.acfExternalFactor ?? 1.0,
-                              quantity: line.quantity > 0 ? line.quantity : 1,
-                              sessionNumber: 1,
-                              referenceCode: line.acfRefCode || "",
-                            }));
+                            // Compute session numbers so that each ACF flat-rate code lives in its
+                            // own session (the Sumex ACF validator rejects two flat-rate codes in the
+                            // same session with error 431). TMA gestures are attached to the nearest
+                            // flat-rate line and therefore share its session.
+                            const acfSessionNumbers = computeAcfSessionNumbers(workingServiceLines);
+                            const acfServicesToValidate = acfLines.map((line) => {
+                              const idx = workingServiceLines.findIndex((l) => l === line);
+                              return {
+                                code: line.serviceId.replace("flatrate-", ""),
+                                tp: line.acfBaseTP ?? line.unitPrice ?? 0,
+                                tpValue: effectiveAcfTpv,
+                                date: scheduledAtIso || new Date().toISOString(),
+                                side: (line.acfSideType ?? 0) as 0 | 1 | 2 | 3,
+                                externalFactor: line.acfExternalFactor ?? 1.0,
+                                quantity: line.quantity > 0 ? line.quantity : 1,
+                                sessionNumber: acfSessionNumbers[idx] ?? 1,
+                                referenceCode: line.acfRefCode || "",
+                              };
+                            });
 
                             try {
                               const validateRes = await fetch("/api/acf/sumex", {
@@ -3966,6 +4027,11 @@ export default function MedicalConsultationsCard({
                           }
                         }
 
+                        // Assign ACF/TMA session numbers before building DB rows.
+                        // Each flat-rate line is a distinct session; TMA gestures are
+                        // attached to the nearest flat-rate line.
+                        const acfSessionNumbers = computeAcfSessionNumbers(workingServiceLines);
+
                         const invoiceLines = workingServiceLines
                           .filter((line) => line.serviceId)
                           .map((line, idx) => {
@@ -4036,10 +4102,11 @@ export default function MedicalConsultationsCard({
                               record_id: tardocRecordId,
                               ref_code: isAcfRelated ? (line.acfRefCode || null) : isTardocLine ? (line.tardocRefCode || null) : (null as string | null),
                               section_code: tardocSection,
-                              // ACF flat-rate (005) and TMA gesture codes share the
-                              // treatment session with the main service; lSessionNumber
-                              // (= "Gr" column) must be 1, not a generated offset.
-                              session_number: 1,
+                              // ACF flat-rate codes each get their own session number
+                              // (the Sumex ACF validator rejects two flat-rate codes in
+                              // the same session). TMA gestures are attached to the
+                              // nearest flat-rate line and share its session number.
+                              session_number: isAcfRelated ? (acfSessionNumbers[idx] ?? 1) : 1,
                               service_attributes: 0,
                               side_type: isAcfRelated ? (line.acfSideType ?? 0) : isTardocLine ? (line.tardocSideType ?? 0) : 0,
                               date_begin: scheduledAtIso || null,

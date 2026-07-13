@@ -287,17 +287,12 @@ export async function POST(request: NextRequest) {
           calculatedAmount = item.total_price || 0;
         }
         
-        // ACF flat-rate (005) and TMA gesture codes are part of the same
-        // treatment session as the main service. The Sumex/insurer "Gr"
-        // column prints lSessionNumber; it must be 1, not a distinct session.
-        const isSameSession = tariffType === "005" || tariffType === "TMA";
-
         return {
           tariffType,
           code: item.code || "",
           referenceCode: item.ref_code || "",
           quantity: item.quantity || 1,
-          sessionNumber: isSameSession ? 1 : (item.session_number ?? 1),
+          sessionNumber: item.session_number ?? 1,
           dateBegin: item.date_begin || treatmentDate,
           providerGln: svcGln,
           responsibleGln: svcRespGln,
@@ -640,16 +635,12 @@ export async function POST(request: NextRequest) {
           calculatedAmount = item.total_price || 0;
         }
         
-        // ACF flat-rate (005) and TMA gesture codes share the treatment
-        // session with the main service, so lSessionNumber must be 1.
-        const isSameSession2 = tariffType === "005" || tariffType === "TMA";
-
         return {
           tariffType,
           code: item.code || "",
           referenceCode: item.ref_code || "",
           quantity: item.quantity || 1,
-          sessionNumber: isSameSession2 ? 1 : (item.session_number ?? 1),
+          sessionNumber: item.session_number ?? 1,
           dateBegin: item.date_begin || treatmentDate,
           providerGln: svcGln,
           responsibleGln: svcRespGln,

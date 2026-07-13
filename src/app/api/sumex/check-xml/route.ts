@@ -238,9 +238,10 @@ export async function POST(request: NextRequest) {
       const unitTT = usesTaxPoints && item.tp_tl !== undefined && item.tp_tl !== null && item.tp_tl > 0 ? item.tp_tl : undefined;
       const unitFactorTT = usesTaxPoints && item.tp_tl_value !== undefined && item.tp_tl_value !== null && item.tp_tl_value > 0 ? item.tp_tl_value : undefined;
 
-      // ACF (005) with ignoreValidate=Yes: use sessionNumber=1 (simple tariff default per docs)
-      const rawSession = item.session_number ?? 1;
-      const sessionNumber = isAcf ? 1 : rawSession;
+      // Use the session number stored on the line. The frontend now assigns
+      // distinct sessions to distinct ACF flat-rate codes and keeps TMA
+      // gestures in the same session as their associated flat-rate code.
+      const sessionNumber = item.session_number ?? 1;
       
       return {
         tariffType,
