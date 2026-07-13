@@ -34,6 +34,8 @@ export default function Home() {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [mentions, setMentions] = useState<any[]>([]);
+  const [mentionsPage, setMentionsPage] = useState(1);
+  const MENTIONS_PER_PAGE = 3;
   const [loading, setLoading] = useState(true);
   const [userFirstName, setUserFirstName] = useState<string | null>(null);
 
@@ -126,7 +128,7 @@ export default function Home() {
               .limit(5)
           : Promise.resolve({ data: [], error: null } as any);
 
-        const mentionsPromise = user
+        const noteMentionsPromise = user
           ? supabaseClient
               .from("patient_note_mentions")
               .select(
@@ -135,7 +137,17 @@ export default function Home() {
               .eq("mentioned_user_id", user.id)
               .is("read_at", null)
               .order("created_at", { ascending: false })
-              .limit(3)
+          : Promise.resolve({ data: [], error: null } as any);
+
+        const taskMentionsPromise = user
+          ? supabaseClient
+              .from("task_comment_mentions")
+              .select(
+                "id, created_at, read_at, task_id, comment:task_comments(id, body, author_name, created_at), task:tasks(id, name, content, status, priority, type, activity_date, created_at, created_by_name, assigned_user_id, assigned_user_name, patient_id, patient:patients(id, first_name, last_name))",
+              )
+              .eq("mentioned_user_id", user.id)
+              .is("read_at", null)
+              .order("created_at", { ascending: false })
           : Promise.resolve({ data: [], error: null } as any);
 
         // Fetch task stats for the past 7 days (productivity chart)
@@ -150,8 +162,14 @@ export default function Home() {
               .gte("created_at", weekStart.toISOString())
           : Promise.resolve({ data: [], error: null } as any);
 
-        const [appointmentsResult, tasksResult, mentionsResult, weekTasksResult] =
-          await Promise.all([appointmentsPromise, tasksPromise, mentionsPromise, weekTasksPromise]);
+        const [appointmentsResult, tasksResult, noteMentionsResult, taskMentionsResult, weekTasksResult] =
+          await Promise.all([
+            appointmentsPromise,
+            tasksPromise,
+            noteMentionsPromise,
+            taskMentionsPromise,
+            weekTasksPromise,
+          ]);
 
         if (cancelled) return;
 
@@ -165,11 +183,23 @@ export default function Home() {
           !tasksResult.error && tasksResult.data ? (tasksResult.data as any[]) : [],
         );
 
+        const noteRows = !noteMentionsResult.error && noteMentionsResult.data
+          ? (noteMentionsResult.data as any[]).map((m) => ({ ...m, type: "note" as const }))
+          : [];
+        const taskRows = !taskMentionsResult.error && taskMentionsResult.data
+          ? (taskMentionsResult.data as any[]).map((m) => ({
+              ...m,
+              type: "task" as const,
+              patient: m.task?.patient || null,
+            }))
+          : [];
+
         setMentions(
-          !mentionsResult.error && mentionsResult.data
-            ? (mentionsResult.data as any[])
-            : [],
+          [...noteRows, ...taskRows].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          ),
         );
+        setMentionsPage(1);
 
         setWeekTasks(
           !weekTasksResult.error && weekTasksResult.data
@@ -210,19 +240,43 @@ export default function Home() {
           return;
         }
 
-        const { data, error } = await supabaseClient
-          .from("patient_note_mentions")
-          .select(
-            "id, created_at, read_at, patient_id, note:patient_notes(id, body, author_name, created_at), patient:patients(id, first_name, last_name)",
-          )
-          .eq("mentioned_user_id", user.id)
-          .is("read_at", null)
-          .order("created_at", { ascending: false })
-          .limit(3);
+        const [{ data: noteData, error: noteError }, { data: taskData, error: taskError }] = await Promise.all([
+          supabaseClient
+            .from("patient_note_mentions")
+            .select(
+              "id, created_at, read_at, patient_id, note:patient_notes(id, body, author_name, created_at), patient:patients(id, first_name, last_name)",
+            )
+            .eq("mentioned_user_id", user.id)
+            .is("read_at", null)
+            .order("created_at", { ascending: false }),
+          supabaseClient
+            .from("task_comment_mentions")
+            .select(
+              "id, created_at, read_at, task_id, comment:task_comments(id, body, author_name, created_at), task:tasks(id, name, content, status, priority, type, activity_date, created_at, created_by_name, assigned_user_id, assigned_user_name, patient_id, patient:patients(id, first_name, last_name))",
+            )
+            .eq("mentioned_user_id", user.id)
+            .is("read_at", null)
+            .order("created_at", { ascending: false }),
+        ]);
 
         if (cancelled) return;
 
-        setMentions(!error && data ? (data as any[]) : []);
+        const noteRows = !noteError && noteData ? (noteData as any[]).map((m) => ({ ...m, type: "note" as const })) : [];
+        const taskRows =
+          !taskError && taskData
+            ? (taskData as any[]).map((m) => ({
+                ...m,
+                type: "task" as const,
+                patient: m.task?.patient || null,
+              }))
+            : [];
+
+        setMentions(
+          [...noteRows, ...taskRows].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          ),
+        );
+        setMentionsPage(1);
       } catch {
         if (!cancelled) {
           setMentions([]);
@@ -924,7 +978,7 @@ export default function Home() {
               href="/comments"
               className="inline-flex items-center rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
             >
-              View inbox
+              Inbox
             </Link>
           </div>
           {loading ? (
@@ -933,43 +987,97 @@ export default function Home() {
             <p className="text-xs text-slate-500">No new mentions.</p>
           ) : (
             <div className="space-y-2 text-sm">
-              {mentions.map((mention) => {
-                const createdLabel = mention.created_at
-                  ? (() => {
-                      const d = new Date(mention.created_at as string);
-                      return Number.isNaN(d.getTime()) ? null : d.toLocaleString();
-                    })()
-                  : null;
-                const patient = mention.patient;
-                const patientName = patient
-                  ? `${patient.first_name} ${patient.last_name}`.trim()
-                  : "Unknown patient";
-                const note = mention.note;
+              {mentions
+                .slice((mentionsPage - 1) * MENTIONS_PER_PAGE, mentionsPage * MENTIONS_PER_PAGE)
+                .map((mention) => {
+                  const createdLabel = mention.created_at
+                    ? (() => {
+                        const d = new Date(mention.created_at as string);
+                        return Number.isNaN(d.getTime()) ? null : d.toLocaleString();
+                      })()
+                    : null;
+                  const patient = mention.patient;
+                  const patientName = patient
+                    ? `${patient.first_name} ${patient.last_name}`.trim()
+                    : "Unknown patient";
 
-                return (
-                  <Link
-                    key={mention.id as string}
-                    href="/comments"
-                    className="flex items-start justify-between rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100"
+                  if (mention.type === "task") {
+                    const comment = mention.comment;
+                    const task = mention.task;
+                    return (
+                      <Link
+                        key={mention.id as string}
+                        href="/comments"
+                        className="flex items-start justify-between rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100"
+                      >
+                        <div className="pr-4">
+                          <p className="text-xs font-medium text-slate-500">
+                            {createdLabel ?? ""} {createdLabel ? "· " : ""}
+                            {patientName} · Task
+                          </p>
+                          <p className="mt-0.5 text-slate-800">
+                            {comment?.author_name ? (
+                              <span className="font-medium">{comment.author_name}: </span>
+                            ) : null}
+                            <span>
+                              {task?.name ? <span className="font-medium">[{task.name}] </span> : null}
+                              {comment?.body ?? "(Comment unavailable)"}
+                            </span>
+                          </p>
+                        </div>
+                        <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-sky-500" />
+                      </Link>
+                    );
+                  }
+
+                  const note = mention.note;
+                  return (
+                    <Link
+                      key={mention.id as string}
+                      href="/comments"
+                      className="flex items-start justify-between rounded-lg bg-slate-50/80 px-3 py-2 hover:bg-slate-100"
+                    >
+                      <div className="pr-4">
+                        <p className="text-xs font-medium text-slate-500">
+                          {createdLabel ?? ""} {createdLabel ? "· " : ""}
+                          {patientName}
+                        </p>
+                        <p className="mt-0.5 text-slate-800">
+                          {note?.author_name ? (
+                            <span className="font-medium">
+                              {note.author_name}:{" "}
+                            </span>
+                          ) : null}
+                          <span>{note?.body ?? "(Note unavailable)"}</span>
+                        </p>
+                      </div>
+                      <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-sky-500" />
+                    </Link>
+                  );
+                })}
+              {mentions.length > MENTIONS_PER_PAGE && (
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    disabled={mentionsPage === 1}
+                    onClick={() => setMentionsPage((p) => Math.max(1, p - 1))}
+                    className="rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:text-slate-300 dark:text-slate-400 dark:hover:bg-slate-800 dark:disabled:text-slate-600"
                   >
-                    <div className="pr-4">
-                      <p className="text-xs font-medium text-slate-500">
-                        {createdLabel ?? ""} {createdLabel ? "· " : ""}
-                        {patientName}
-                      </p>
-                      <p className="mt-0.5 text-slate-800">
-                        {note?.author_name ? (
-                          <span className="font-medium">
-                            {note.author_name}:{" "}
-                          </span>
-                        ) : null}
-                        <span>{note?.body ?? "(Note unavailable)"}</span>
-                      </p>
-                    </div>
-                    <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-sky-500" />
-                  </Link>
-                );
-              })}
+                    Previous
+                  </button>
+                  <span className="text-xs text-slate-500">
+                    Page {mentionsPage} of {Math.ceil(mentions.length / MENTIONS_PER_PAGE)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={mentionsPage >= Math.ceil(mentions.length / MENTIONS_PER_PAGE)}
+                    onClick={() => setMentionsPage((p) => p + 1)}
+                    className="rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:text-slate-300 dark:text-slate-400 dark:hover:bg-slate-800 dark:disabled:text-slate-600"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
