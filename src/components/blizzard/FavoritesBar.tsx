@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ReactNode } from "react";
 
 const FAVORITES = [
   {
@@ -55,6 +56,51 @@ const FAVORITES = [
   },
 ];
 
+function TooltipIcon({
+  href,
+  label,
+  isActive,
+  children,
+}: {
+  href?: string;
+  label: string;
+  isActive?: boolean;
+  children: ReactNode;
+}) {
+  const baseClasses =
+    "flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200";
+  const activeClasses = "border-sky-400/60 bg-sky-500/10 text-sky-400";
+  const inactiveClasses =
+    "border-slate-600/40 text-slate-400 hover:border-sky-400 hover:bg-sky-500/20 hover:text-sky-200 hover:shadow-[0_0_16px_rgba(56,189,248,0.35)] hover:scale-105";
+  const tooltip = (
+    <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+      {label}
+      <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-slate-800" />
+    </div>
+  );
+
+  return (
+    <div className="group relative flex items-center justify-center">
+      {href ? (
+        <Link
+          href={href}
+          className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
+        >
+          {children}
+        </Link>
+      ) : (
+        <button
+          type="button"
+          className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}
+        >
+          {children}
+        </button>
+      )}
+      {tooltip}
+    </div>
+  );
+}
+
 export default function FavoritesBar() {
   const pathname = usePathname();
 
@@ -65,44 +111,33 @@ export default function FavoritesBar() {
 
   return (
     <div className="flex items-center gap-3 border-b border-slate-700/40 bg-[#1a1f2e] px-4 py-2">
-      <span className="text-[10px] font-semibold tracking-widest text-slate-500 uppercase mr-2">
+      <span className="mr-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
         Favorites
       </span>
       <div className="flex items-center gap-2">
         {FAVORITES.map((fav) => (
-          <Link
+          <TooltipIcon
             key={fav.href}
             href={fav.href}
-            title={fav.label}
-            className={`flex h-9 w-9 items-center justify-center rounded-full border transition-all ${
-              isActive(fav.href)
-                ? "border-sky-400/60 bg-sky-500/10 text-sky-400"
-                : "border-slate-600/40 text-slate-400 hover:border-sky-400 hover:bg-sky-500/20 hover:text-sky-200 hover:shadow-[0_0_16px_rgba(56,189,248,0.35)] hover:scale-105 transition-all duration-200"
-            }`}
+            label={fav.label}
+            isActive={isActive(fav.href)}
           >
             {fav.icon}
-          </Link>
+          </TooltipIcon>
         ))}
         {/* Search button */}
-        <Link
-          href="/search"
-          title="Search"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-600/40 text-slate-400 hover:border-sky-400 hover:bg-sky-500/20 hover:text-sky-200 hover:shadow-[0_0_16px_rgba(56,189,248,0.35)] hover:scale-105 transition-all duration-200"
-        >
+        <TooltipIcon href="/search" label="Search">
           <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" />
             <path d="m21 21-4.35-4.35" />
           </svg>
-        </Link>
+        </TooltipIcon>
         {/* Placeholder add button */}
-        <button
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-slate-600/40 text-slate-500 hover:border-slate-500 hover:text-slate-400 transition-colors"
-          title="Add favorite"
-        >
+        <TooltipIcon label="Add favorite">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 5v14M5 12h14" />
           </svg>
-        </button>
+        </TooltipIcon>
       </div>
     </div>
   );
