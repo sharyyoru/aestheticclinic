@@ -842,14 +842,14 @@ export default function AgentsPage() {
                               return (
                                 <div className="text-xs text-slate-600 max-w-[200px]">
                                   {patientName && patientId ? (
-                                    <a href={`/patients/${patientId}`} className="text-violet-600 hover:underline">
+                                    <a href={`/patients/${patientId}?m_tab=crm&crm_sub=call_logs`} className="text-violet-600 hover:underline">
                                       <span className="text-slate-400">name:</span> {patientName}
                                     </a>
                                   ) : patientName ? (
                                     <div><span className="text-slate-400">name:</span> {patientName}</div>
                                   ) : null}
                                   {patientId && !patientName && (
-                                    <a href={`/patients/${patientId}`} className="text-violet-600 hover:underline">
+                                    <a href={`/patients/${patientId}?m_tab=crm&crm_sub=call_logs`} className="text-violet-600 hover:underline">
                                       {patientId.slice(0, 8)}...
                                     </a>
                                   )}
