@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { GoogleTagManager, GoogleTagManagerNoScript } from "@/components/GoogleTagManager";
 import EmbedBackground from "@/components/EmbedBackground";
+import ForceLightMode from "@/components/ForceLightMode";
 
 export const metadata: Metadata = {
   title: "Contact Us | Aesthetics Clinic",
@@ -14,6 +15,7 @@ export default function EmbedContactLayout({
 }) {
   return (
     <>
+      <ForceLightMode />
       <EmbedBackground />
       <GoogleTagManager />
       <GoogleTagManagerNoScript />

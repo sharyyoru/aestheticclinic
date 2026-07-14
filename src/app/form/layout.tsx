@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ForceLightMode from "@/components/ForceLightMode";
 
 export const metadata: Metadata = {
   title: "Patient Form - Aesthetics Clinic",
@@ -12,6 +13,7 @@ export default function FormLayout({
 }) {
   return (
     <div className="min-h-screen bg-slate-50">
+      <ForceLightMode />
       {children}
     </div>
   );
