@@ -702,7 +702,7 @@ function EmbedBookPageContent() {
                   onClick={() => handleDoctorSelect(doc.slug)}
                   className="group bg-white rounded-xl border border-slate-200 overflow-hidden text-left hover:border-slate-400 hover:shadow-md transition-all"
                 >
-                  <div className="relative h-24 bg-slate-100">
+                  <div className="relative h-36 sm:h-44 bg-slate-100">
                     <Image
                       src={doc.image}
                       alt={doc.name}
