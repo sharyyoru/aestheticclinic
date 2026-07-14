@@ -33,6 +33,21 @@ export interface AppointmentRow {
 }
 
 /**
+ * Whether an appointment is a "hard block" — an INDISPO, PAUSE, or similar
+ * unavailability marker that should fully block the slot regardless of the
+ * doctor's multi-capacity setting. A doctor may serve 2 patients concurrently,
+ * but when they mark a slot as INDISPO they are truly unavailable.
+ */
+export function isHardBlock(apt: AppointmentRow): boolean {
+  if (apt.no_patient) return true;
+  if (apt.reason) {
+    const r = apt.reason.toLowerCase();
+    if (r.includes("indispo") || r.startsWith("pause")) return true;
+  }
+  return false;
+}
+
+/**
  * Normalise any free-text / slug location into one of the four canonical
  * booking-location keys, or null when unknown/ambiguous. Used by the
  * "untagged appointment" safeguard so an unattributed block at a clearly

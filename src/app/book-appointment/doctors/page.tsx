@@ -199,7 +199,7 @@ function DoctorsListContent() {
                 href={`/book-appointment/doctors/${doctor.slug}?${doctorQuery}`}
                 className="group bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-400 active:bg-slate-50 transition-all transform hover:-translate-y-1 active:scale-[0.98] w-[calc(50%-0.375rem)] sm:w-[calc(50%-0.5rem)] lg:w-[calc(25%-1.125rem)] touch-manipulation"
               >
-                <div className="relative h-28 sm:h-36 md:h-40 bg-gradient-to-br from-slate-100 to-slate-50 overflow-hidden">
+                <div className="relative h-40 sm:h-48 md:h-56 lg:h-64 bg-gradient-to-br from-slate-100 to-slate-50 overflow-hidden">
                   <Image
                     src={doctor.image}
                     alt={doctor.name}

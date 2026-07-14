@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ForceLightMode from "@/components/ForceLightMode";
 
 export const metadata: Metadata = {
   title: "Consultation Form | Aesthetics Clinic",
@@ -12,5 +13,10 @@ export default function ConsultationsLayout({
 }) {
   // This layout bypasses the main app layout's sidebar/header
   // by rendering children directly without the shell components
-  return <>{children}</>;
+  return (
+    <>
+      <ForceLightMode />
+      {children}
+    </>
+  );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
+import { isHardBlock, type AppointmentRow } from "@/lib/appointmentAvailability";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -430,7 +431,11 @@ export async function POST(request: NextRequest) {
                 return false;
               });
 
-              if (overlapping.length < maxCapacity) {
+              // A hard block (INDISPO/PAUSE) fully blocks regardless of capacity
+              const hasHardBlock = overlapping.some((a) => isHardBlock(a as unknown as AppointmentRow));
+              const effectiveCount = hasHardBlock ? maxCapacity : overlapping.length;
+
+              if (effectiveCount < maxCapacity) {
                 allSlots.push({
                   date: slotTime.toISOString().split("T")[0],
                   time: formatSwissTimeAmPm(slotTime),

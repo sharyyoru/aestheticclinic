@@ -7,6 +7,7 @@ import {
   fetchOverlappingAppointments,
   getBlockingAppointments,
   getMaxCapacity,
+  isHardBlock,
   resolveProviderId,
 } from "@/lib/appointmentAvailability";
 
@@ -498,8 +499,13 @@ export async function POST(request: Request) {
     const blockingDebug = doctorAppointments.map((a) => describeBlocking(a, providerId));
     console.log(`[Booking] Found ${doctorAppointments.length}/${maxCapacity} blocking appointments for ${doctorName}:`, blockingDebug);
 
+    // A hard block (INDISPO/PAUSE/no_patient) means the doctor is truly
+    // unavailable — it fully blocks the slot regardless of multi-capacity.
+    const hasHardBlock = doctorAppointments.some((a) => isHardBlock(a));
+    const effectiveCount = hasHardBlock ? maxCapacity : doctorAppointments.length;
+
     // Only block if the doctor has reached maximum capacity
-    if (doctorAppointments.length >= maxCapacity) {
+    if (effectiveCount >= maxCapacity) {
       console.log(`[Booking] REJECTED: ${doctorAppointments.length} >= ${maxCapacity}`);
 
       // Capture the missed booking attempt and alert the clinic so no lead is

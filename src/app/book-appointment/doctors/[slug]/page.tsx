@@ -633,7 +633,7 @@ function DoctorBookingContent() {
           {/* Doctor Card - Fixed (smaller) */}
           <div className="lg:sticky lg:top-8 h-fit">
             <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden border border-slate-200 flex lg:flex-col">
-              <div className="relative w-24 h-24 sm:w-32 sm:h-32 lg:w-full lg:h-40 bg-gradient-to-br from-slate-100 to-slate-50 flex-shrink-0">
+              <div className="relative w-24 h-24 sm:w-32 sm:h-32 lg:w-full lg:h-56 bg-gradient-to-br from-slate-100 to-slate-50 flex-shrink-0">
                 <Image
                   src={doctor.image}
                   alt={doctor.name}

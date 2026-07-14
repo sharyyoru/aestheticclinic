@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal } from "@/lib/swissTimezone";
 import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
+import { isHardBlock, type AppointmentRow } from "@/lib/appointmentAvailability";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -190,7 +191,11 @@ export async function POST(request: NextRequest) {
       return false;
     });
 
-    if (doctorAppointments.length >= maxCapacity) {
+    // A hard block (INDISPO/PAUSE/no_patient) fully blocks regardless of capacity
+    const hasHardBlock = doctorAppointments.some((a) => isHardBlock(a as AppointmentRow));
+    const effectiveCount = hasHardBlock ? maxCapacity : doctorAppointments.length;
+
+    if (effectiveCount >= maxCapacity) {
       return NextResponse.json(
         { error: "Time slot no longer available", code: "SLOT_UNAVAILABLE" },
         { status: 409 }
