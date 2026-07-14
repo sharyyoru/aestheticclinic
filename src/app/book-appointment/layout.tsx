@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { GoogleTagManager, GoogleTagManagerNoScript } from "@/components/GoogleTagManager";
+import ForceLightMode from "@/components/ForceLightMode";
 
 export const metadata: Metadata = {
   title: "Book Appointment | Aesthetics Clinic",
@@ -15,6 +16,7 @@ export default function BookingLayout({
   // by rendering children directly without the shell components
   return (
     <>
+      <ForceLightMode />
       <GoogleTagManager />
       <GoogleTagManagerNoScript />
       {children}
