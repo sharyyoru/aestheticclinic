@@ -300,7 +300,7 @@ export async function POST(request: Request) {
               body: JSON.stringify({
                 patient_id: patient.id,
                 phone_number: patient.phone || config.phone_number,
-                agent_id: config.agent_id || null,
+                agent_language: config.agent_language || "english",
                 dynamic_variables: {
                   ...config.dynamic_variables,
                   service_interest: config.service_name || "",
