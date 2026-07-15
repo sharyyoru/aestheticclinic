@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { normalizePhone } from "@/lib/retell";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -8,14 +9,11 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER;
 
-// Main agent for outbound calls: the language-switcher ("Outbound Flow")
-// agent that routes the patient to the English or French branch itself.
-// This is ALWAYS used for outbound calls — no env override, no per-call
-// override — so we can never accidentally fall back to an old agent.
-const MAIN_AGENT_ID = "agent_023fdedfe7faf0fae56e51b65c";
-const RETELL_AGENTS = {
-  english: MAIN_AGENT_ID,
-  french: MAIN_AGENT_ID,
+// Clinic outbound AI call agents by language. The workflow can request a
+// language via `agent_language`; if none is provided the English agent is used.
+const OUTBOUND_AGENTS = {
+  english: "agent_eae6c598f3b68c71c9e1ae6aad",
+  french: "agent_b347fa0d08519c114af295671d",
 } as const;
 
 // Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).
@@ -50,19 +48,33 @@ export async function POST(request: NextRequest) {
     const {
       patient_id,
       phone_number,
+      agent_language,
       dynamic_variables,
       metadata,
     } = body;
 
-    // Always use the main language-switcher agent for outbound calls.
-    // Any agent_id passed in the request body is intentionally ignored so the
-    // new agent is always forced.
-    const resolvedAgentId = MAIN_AGENT_ID;
+    // Resolve outbound agent by requested language. A specific `agent_id` in
+    // metadata is intentionally ignored so only the clinic's EN/FR agents run.
+    const lang =
+      typeof agent_language === "string"
+        ? agent_language.toLowerCase()
+        : "english";
+    const resolvedAgentId =
+      OUTBOUND_AGENTS[lang as keyof typeof OUTBOUND_AGENTS] ||
+      OUTBOUND_AGENTS.english;
 
     // Validate required fields
     if (!phone_number) {
       return NextResponse.json(
         { error: "phone_number is required" },
+        { status: 400 }
+      );
+    }
+
+    const normalizedPhone = normalizePhone(phone_number);
+    if (!normalizedPhone || normalizedPhone.length < 8) {
+      return NextResponse.json(
+        { error: "Invalid phone_number" },
         { status: 400 }
       );
     }
@@ -87,55 +99,68 @@ export async function POST(request: NextRequest) {
       patient = data;
     }
 
-    // Prepare the outbound call payload
-    const callPayload: {
-      from_number: string;
-      to_number: string;
-      agent_id: string;
-      webhook_url: string;
-      retell_llm_dynamic_variables?: Record<string, unknown>;
-      metadata?: Record<string, unknown>;
-    } = {
-      from_number: RETELL_FROM_NUMBER || "+41799029555", // Default Switzerland number
-      to_number: phone_number,
-      agent_id: resolvedAgentId,
-      // CRITICAL: webhook_url tells Retell where to send function calls (send_sms, etc.)
-      webhook_url: RETELL_WEBHOOK_URL,
-    };
-
-    // Add dynamic variables for the AI conversation
-    const vars: Record<string, unknown> = {
-      ...dynamic_variables,
-    };
+    // Build dynamic variables (Retell requires string values only)
+    const vars: Record<string, string> = {};
+    if (dynamic_variables && typeof dynamic_variables === "object") {
+      for (const [key, value] of Object.entries(dynamic_variables)) {
+        if (value !== undefined && value !== null) {
+          vars[key] = String(value);
+        }
+      }
+    }
 
     if (patient) {
       vars.customer_name = `${patient.first_name || ""} ${patient.last_name || ""}`.trim();
-      vars.first_name = patient.first_name || "";
-      vars.last_name = patient.last_name || "";
-      vars.email = patient.email || "";
-      vars.phone = patient.phone || phone_number;
-      vars.patient_id = patient.id;
-    }
-
-    if (Object.keys(vars).length > 0) {
-      callPayload.retell_llm_dynamic_variables = vars;
+      if (patient.first_name) vars.first_name = patient.first_name;
+      if (patient.last_name) vars.last_name = patient.last_name;
+      if (patient.email) vars.email = patient.email;
+      vars.phone = patient.phone ? patient.phone : normalizedPhone;
+      if (patient.id) vars.patient_id = patient.id;
     }
 
     // Add metadata for tracking AND for booking/SMS functions to use
     // CRITICAL: These fields are used by the webhook for booking appointments
-    callPayload.metadata = {
-      ...metadata,
+    const callMetadata: Record<string, string> = {
       source: "workflow",
-      patient_id: patient?.id || null,
-      patient_first_name: patient?.first_name || null,
-      patient_last_name: patient?.last_name || null,
-      patient_name: patient ? `${patient.first_name || ""} ${patient.last_name || ""}`.trim() : null,
-      patient_email: patient?.email || null, // CRITICAL: Used for booking confirmation emails
-      patient_phone: patient?.phone || phone_number, // CRITICAL: Used for booking
+      agent_language: lang,
+      patient_id: patient?.id || "",
+      patient_first_name: patient?.first_name || "",
+      patient_last_name: patient?.last_name || "",
+      patient_name: patient ? `${patient.first_name || ""} ${patient.last_name || ""}`.trim() : "",
+      patient_email: patient?.email || "",
+      patient_phone: patient?.phone || normalizedPhone,
       triggered_at: new Date().toISOString(),
+    };
+    if (metadata && typeof metadata === "object") {
+      for (const [key, value] of Object.entries(metadata)) {
+        if (value !== undefined && value !== null) {
+          callMetadata[key] = String(value);
+        }
+      }
+    }
+
+    // Retell v2 create-phone-call expects override_agent_id and places the
+    // webhook configuration inside agent_override.agent. Passing agent_id or
+    // webhook_url at the top level is silently ignored by the current API.
+    const callPayload = {
+      from_number: RETELL_FROM_NUMBER || "+41799029555", // Default Switzerland number
+      to_number: normalizedPhone,
+      override_agent_id: resolvedAgentId,
+      override_agent_version: "latest_published",
+      agent_override: {
+        agent: {
+          // CRITICAL: webhook_url tells Retell where to send call lifecycle events
+          webhook_url: RETELL_WEBHOOK_URL,
+          webhook_events: ["call_started", "call_ended", "call_analyzed"],
+          webhook_timeout_ms: 10000,
+        },
+      },
+      retell_llm_dynamic_variables: vars,
+      metadata: callMetadata,
     };
 
     // Make the call to Retell API
+    console.log("[Retell] create-phone-call payload:", JSON.stringify(callPayload, null, 2));
     const retellResponse = await fetch("https://api.retellai.com/v2/create-phone-call", {
       method: "POST",
       headers: {
@@ -155,12 +180,14 @@ export async function POST(request: NextRequest) {
     }
 
     const callData = await retellResponse.json();
+    console.log("[Retell] create-phone-call response:", JSON.stringify(callData, null, 2));
 
     // Log the call initiation
     console.log("[Retell Workflow] Call initiated:", {
       call_id: callData.call_id,
       patient_id: patient?.id,
-      to_number: phone_number,
+      to_number: normalizedPhone,
+      raw_number: phone_number,
     });
 
     return NextResponse.json({
@@ -193,11 +220,11 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     configured: !!RETELL_API_KEY,
-    default_agent_id: MAIN_AGENT_ID,
+    default_agent_id: OUTBOUND_AGENTS.english,
     from_number: RETELL_FROM_NUMBER || null,
     available_agents: {
-      english: RETELL_AGENTS.english,
-      french: RETELL_AGENTS.french,
+      english: OUTBOUND_AGENTS.english,
+      french: OUTBOUND_AGENTS.french,
     },
     endpoints: {
       initiate_call: "/api/workflows/trigger-retell-call (POST)",
@@ -207,9 +234,10 @@ export async function GET() {
       body: {
         patient_id: "string (optional) - Patient ID from database",
         phone_number: "string (required) - Phone number to call",
+        agent_language: "string (optional) - 'english' | 'french' (defaults to english)",
         dynamic_variables: "object (optional) - Variables for AI conversation",
         metadata: "object (optional) - Additional metadata for tracking",
-        note: "The outbound agent is always the main language-switcher agent; agent_id/agent_language are ignored.",
+        note: "A specific agent_id in metadata is ignored; only the configured EN/FR outbound agents are used.",
       },
     },
   });
