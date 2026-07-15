@@ -256,28 +256,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Patient not found" }, { status: 404 });
     }
 
-    // Fetch provider data if providerId is provided
-    let provider: ProviderData | null = null;
-    if (providerId) {
-      const { data: providerData } = await supabase
-        .from("providers")
-        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, salutation, title")
-        .eq("id", providerId)
-        .single();
-      provider = providerData as ProviderData | null;
-    }
-
-    // If no provider specified, try to get the first provider
-    if (!provider) {
-      const { data: defaultProvider } = await supabase
-        .from("providers")
-        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, salutation, title")
-        .limit(1)
-        .single();
-      provider = defaultProvider as ProviderData | null;
-    }
-
-    // Fetch active medications
+    // Fetch active medications first so we can infer the prescribing provider
+    // from the prescription records when no explicit providerId is supplied.
     const { data: medications, error: medsError } = await supabase
       .from("patient_prescriptions")
       .select("*")
@@ -299,7 +279,7 @@ export async function POST(request: NextRequest) {
       filteredMeds = filteredMeds.filter(
         (med: PatientPrescription) => med.prescription_sheet_id !== null
       );
-      
+
       // If a specific prescriptionSheetId is provided, filter to only that prescription
       if (prescriptionSheetId) {
         filteredMeds = filteredMeds.filter(
@@ -318,6 +298,52 @@ export async function POST(request: NextRequest) {
 
     if (mediplanMeds.length === 0) {
       return NextResponse.json({ error: "No medications found for eMediplan" }, { status: 400 });
+    }
+
+    // Try to infer the prescribing provider from the medication mandator_id.
+    // mandator_id usually references users.id; users.provider_id links to providers.
+    const mandatorIds = [...new Set(mediplanMeds.map((med) => med.mandator_id).filter(Boolean))];
+    const { data: mandatorUsers } = await supabase
+      .from("users")
+      .select("id, provider_id")
+      .in("id", mandatorIds);
+
+    const providerIdCounts: Record<string, number> = {};
+    for (const med of mediplanMeds) {
+      if (!med.mandator_id) continue;
+      const user = mandatorUsers?.find((u) => u.id === med.mandator_id);
+      if (user?.provider_id) {
+        providerIdCounts[user.provider_id] = (providerIdCounts[user.provider_id] || 0) + 1;
+      }
+    }
+
+    const inferredProviderId = Object.entries(providerIdCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    // Fetch provider data if providerId is provided or can be inferred
+    let resolvedProviderId = providerId || inferredProviderId;
+    let provider: ProviderData | null = null;
+    if (resolvedProviderId) {
+      const { data: providerData } = await supabase
+        .from("providers")
+        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, salutation, title")
+        .eq("id", resolvedProviderId)
+        .single();
+      provider = providerData as ProviderData | null;
+    }
+
+    // If no provider specified or inferred, use the first active doctor (avoid
+    // falling back to a billing_entity or demo row, which puts the wrong
+    // name/address on the prescription PDF).
+    if (!provider) {
+      const { data: defaultProvider } = await supabase
+        .from("providers")
+        .select("id, name, specialty, email, phone, gln, zsr, street, street_no, zip_code, city, canton, salutation, title")
+        .eq("role", "doctor")
+        .eq("is_active", true)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .single();
+      provider = defaultProvider as ProviderData | null;
     }
 
     // Fetch clinic settings (as fallback)
