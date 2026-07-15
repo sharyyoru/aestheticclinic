@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useAuth } from "@/components/AuthContext";
 import {
   TARDOC_MEDICINES,
   TARDOC_TARIFF_ITEMS,
@@ -441,6 +442,7 @@ export default function MedicalConsultationsCard({
   patientEmail?: string | null;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
 
   // Sub-tab state for Consultations vs Medical Records view
   const [activeSubTab, setActiveSubTab] = useState<ConsultationSubTab>("consultations");
@@ -660,6 +662,7 @@ export default function MedicalConsultationsCard({
   const [medDecisionSummary, setMedDecisionSummary] = useState("");
   const [medShowInMediplan, setMedShowInMediplan] = useState(true);
   const [medIsPrescription, setMedIsPrescription] = useState(true);
+  const [medDoctorProviderId, setMedDoctorProviderId] = useState<string>("");
 
   // Medication template state
   const [medTemplates, setMedTemplates] = useState<{
@@ -885,6 +888,22 @@ export default function MedicalConsultationsCard({
     () => userOptions.filter(isAllowedDoctor),
     [userOptions],
   );
+
+  // Active doctors shown in the medication/prescription form.
+  const doctorProviderOptions = useMemo(
+    () => medicalStaffOptions.filter((p) => p.role === "doctor"),
+    [medicalStaffOptions],
+  );
+
+  // Prefill the medication doctor selector from the consultation's selected
+  // doctor (top-level dropdown) whenever it changes or options load.
+  useEffect(() => {
+    if (!consultationDoctorId) return;
+    const user = userOptions.find((u) => u.id === consultationDoctorId);
+    if (user?.provider_id && doctorProviderOptions.some((p) => p.id === user.provider_id)) {
+      setMedDoctorProviderId(user.provider_id);
+    }
+  }, [consultationDoctorId, userOptions, doctorProviderOptions]);
 
   useEffect(() => {
     let isMounted = true;
@@ -3271,6 +3290,7 @@ export default function MedicalConsultationsCard({
                     setMedIntakeNote("");
                     setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
                     setMedDecisionSummary("");
+                    setMedDoctorProviderId("");
                     setMedShowInMediplan(true);
                     setMedIsPrescription(true);
                     setMedSelectedTemplateId("");
@@ -3790,12 +3810,22 @@ export default function MedicalConsultationsCard({
                       const validProducts = medProducts.filter((p) => p.productName.trim());
                       const sharedTherapyId = crypto.randomUUID();
                       const sharedPrescriptionSheetId = medIsPrescription ? crypto.randomUUID() : null;
-                      const mandatorId = consultationDoctorId || crypto.randomUUID();
+
+                      // Resolve the selected medication doctor (provider id) back to a user id
+                      // for mandator_id. Fall back to the top-level consultation doctor if needed.
+                      let mandatorUserId = consultationDoctorId || null;
+                      if (medDoctorProviderId) {
+                        const mappedUser = userOptions.find(
+                          (u) => u.provider_id === medDoctorProviderId,
+                        );
+                        if (mappedUser?.id) mandatorUserId = mappedUser.id;
+                      }
 
                       const medPayloads = validProducts.map((product) => ({
                         patient_id: patientId,
                         journal_entry_id: crypto.randomUUID(),
-                        mandator_id: mandatorId,
+                        mandator_id: mandatorUserId,
+                        created_by: user?.id || null,
                         therapy_id: sharedTherapyId,
                         product_name: product.productName.trim(),
                         product_type: product.productType,
@@ -3869,6 +3899,7 @@ export default function MedicalConsultationsCard({
                       setMedIntakeNote("");
                       setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
                       setMedDecisionSummary("");
+                      setMedDoctorProviderId("");
                       setMedSelectedTemplateId("");
                       setMedTemplateServiceFilter("");
                       setMedTemplateFilter("all");
@@ -6925,6 +6956,22 @@ export default function MedicalConsultationsCard({
 
                   <div className="space-y-1">
                     <label className="block text-[11px] font-medium text-slate-700">
+                      Doctor
+                    </label>
+                    <SearchableSelect
+                      value={medDoctorProviderId}
+                      onChange={setMedDoctorProviderId}
+                      placeholder="Select doctor"
+                      options={doctorProviderOptions.map((doctor) => ({
+                        value: doctor.id,
+                        label: `${doctor.name}${doctor.specialty ? ` (${doctor.specialty})` : ""}`,
+                      }))}
+                      className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-medium text-slate-700">
                       Decision Summary / Reason
                     </label>
                     <input
@@ -7038,6 +7085,7 @@ export default function MedicalConsultationsCard({
                     setMedIntakeNote("");
                     setMedIntakeFromDate(formatLocalDateInputValue(new Date()));
                     setMedDecisionSummary("");
+                    setMedDoctorProviderId("");
                     setMedShowInMediplan(true);
                     setMedIsPrescription(true);
                     setMedSelectedTemplateId("");
