@@ -2044,13 +2044,19 @@ export default function CalendarPage() {
         let matchesAnyCalendar = false;
         
         // Check location-based calendars first - filter by appointment.location
+        // or by the [Doctor: ...] tag in the reason when it contains a location
+        // name (legacy data often stores the location as the doctor name).
         if (selectedLocationCalendars.length > 0) {
+          const doctorFromReasonLower = doctorFromReason?.trim().toLowerCase() ?? "";
           const matchesByLocation = appointmentLocation.length > 0 && selectedLocationNames.some((locName) => {
             // Match appointment location to selected location calendar
             // e.g., "Gstaad" calendar should match appointments with location containing "gstaad"
             return appointmentLocation.includes(locName) || locName.includes(appointmentLocation);
           });
-          if (matchesByLocation) matchesAnyCalendar = true;
+          const matchesByReasonLocation = doctorFromReasonLower.length > 0 && selectedLocationNames.some((locName) =>
+            doctorFromReasonLower.includes(locName) || locName.includes(doctorFromReasonLower)
+          );
+          if (matchesByLocation || matchesByReasonLocation) matchesAnyCalendar = true;
         }
         
         // Check doctor-based calendars
@@ -2083,10 +2089,14 @@ export default function CalendarPage() {
         // Filter by active tab if one is selected
         if (activeTabCalendar) {
           if (activeTabIsLocation) {
-            // Location tab: filter by appointment location
-            const matchesActiveLocation = activeTabDoctorName && appointmentLocation.length > 0 &&
+            // Location tab: filter by appointment location or reason doctor tag
+            // when it stores a location name (legacy data).
+            const doctorFromReasonLower = doctorFromReason?.trim().toLowerCase() ?? "";
+            const matchesActiveByLocation = activeTabDoctorName && appointmentLocation.length > 0 &&
               (appointmentLocation.includes(activeTabDoctorName) || activeTabDoctorName.includes(appointmentLocation));
-            if (!matchesActiveLocation) return;
+            const matchesActiveByReasonLocation = activeTabDoctorName && doctorFromReasonLower.length > 0 &&
+              (doctorFromReasonLower.includes(activeTabDoctorName) || activeTabDoctorName.includes(doctorFromReasonLower));
+            if (!matchesActiveByLocation && !matchesActiveByReasonLocation) return;
           } else {
             // Doctor tab: filter by doctor
             const matchesActiveTabById = (appt.doctor_user_id && appt.doctor_user_id === activeTabProviderId) ||
