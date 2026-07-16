@@ -163,6 +163,7 @@ type Provider = {
   gln: string | null;
   zsr: string | null;
   canton: string | null;
+  role: string | null;
   iban: string | null;
 };
 
