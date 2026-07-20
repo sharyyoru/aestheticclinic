@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 // ── Recommendation engine based on docs/MEDIDATA_PATTERNS_AND_LEARNINGS.md ──
 
@@ -178,6 +179,9 @@ export async function GET(request: Request) {
   const to = searchParams.get("to") || new Date().toISOString().slice(0, 10);
   const agingMinDays = parseInt(searchParams.get("agingMinDays") || "0", 10);
 
+  // Use larger batch size (Supabase supports up to 1000 in `in()`)
+  const BATCH = 200;
+
   // ── 1. Get all insurance invoices in date range ──
   const { data: invoices } = await supabaseAdmin
     .from("invoices")
@@ -202,28 +206,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ rows: [], summary: {}, agingBuckets: {} });
   }
 
-  // ── 2. Get patients ──
+  // ── 2. Get patients (single batch, usually < 200) ──
   const patientIds = [...new Set(insuranceInvoices.map((i) => i.patient_id).filter(Boolean))];
   const patientMap: Record<string, { first_name: string; last_name: string }> = {};
-  for (let i = 0; i < patientIds.length; i += 100) {
+  for (let i = 0; i < patientIds.length; i += BATCH) {
     const { data } = await supabaseAdmin
       .from("patients")
       .select("id, first_name, last_name")
-      .in("id", patientIds.slice(i, i + 100));
+      .in("id", patientIds.slice(i, i + BATCH));
     for (const p of data || []) {
       patientMap[p.id] = { first_name: p.first_name, last_name: p.last_name };
     }
   }
 
-  // ── 3. Get ALL submissions for these invoices ──
+  // ── 3. Get submissions for these invoices (WITHOUT xml_content — fetched separately) ──
   const subsByInvoice: Record<string, any[]> = {};
-  for (let i = 0; i < invoiceIds.length; i += 20) {
+  for (let i = 0; i < invoiceIds.length; i += BATCH) {
     const { data } = await supabaseAdmin
       .from("medidata_submissions")
       .select(
-        "id, invoice_id, invoice_number, status, created_at, is_storno, storno_reason, insurance_response_code, insurance_response_message, medidata_response_code, medidata_message_id, xml_content",
+        "id, invoice_id, invoice_number, status, created_at, is_storno, storno_reason, insurance_response_code, insurance_response_message, medidata_response_code, medidata_message_id",
       )
-      .in("invoice_id", invoiceIds.slice(i, i + 20))
+      .in("invoice_id", invoiceIds.slice(i, i + BATCH))
       .order("created_at", { ascending: true });
     for (const s of data || []) {
       if (!subsByInvoice[s.invoice_id]) subsByInvoice[s.invoice_id] = [];
@@ -231,54 +235,98 @@ export async function GET(request: Request) {
     }
   }
 
+  // ── 3b. Fetch xml_content ONLY for invoices that have non-storno submissions (for routing check) ──
+  const invoicesWithSubs = invoiceIds.filter((id) => {
+    const subs = subsByInvoice[id] || [];
+    return subs.some((s) => !s.is_storno);
+  });
+  const xmlByInvoice: Record<string, string> = {};
+  for (let i = 0; i < invoicesWithSubs.length; i += BATCH) {
+    const batchIds = invoicesWithSubs.slice(i, i + BATCH);
+    const { data } = await supabaseAdmin
+      .from("medidata_submissions")
+      .select("invoice_id, xml_content, is_storno, created_at")
+      .in("invoice_id", batchIds)
+      .eq("is_storno", false)
+      .order("created_at", { ascending: true })
+      .limit(batchIds.length * 2); // Usually 1 per invoice, but allow for retries
+    for (const s of data || []) {
+      // Only keep the first non-storno submission's XML per invoice
+      if (!xmlByInvoice[s.invoice_id] && s.xml_content) {
+        xmlByInvoice[s.invoice_id] = s.xml_content;
+      }
+    }
+  }
+
   // ── 4. Get bank payments ──
   const bpByInvoice: Record<string, any[]> = {};
-  for (let i = 0; i < invoiceIds.length; i += 20) {
+  for (let i = 0; i < invoiceIds.length; i += BATCH) {
     const { data } = await supabaseAdmin
       .from("bank_payment_import_items")
       .select("matched_invoice_id, amount, booking_date, debtor_name, ultimate_debtor_name")
-      .in("matched_invoice_id", invoiceIds.slice(i, i + 20));
+      .in("matched_invoice_id", invoiceIds.slice(i, i + BATCH));
     for (const bp of data || []) {
       if (!bpByInvoice[bp.matched_invoice_id]) bpByInvoice[bp.matched_invoice_id] = [];
       bpByInvoice[bp.matched_invoice_id].push(bp);
     }
   }
 
-  // ── 5. Get ALL invoices for these patients (for duplicate detection) ──
+  // ── 5. Duplicate + replacement detection ──
+  // Instead of fetching ALL invoices for ALL patients, use targeted queries:
+  // a) For duplicates: same patient + same insurer_gln + similar amount + within 1 day
+  // b) For storno replacements: same patient + same insurer_gln + similar amount + after storno date
+
+  // First, collect all unique (patient_id, insurance_gln) pairs
+  const patientInsurerPairs = new Set<string>();
+  for (const inv of insuranceInvoices) {
+    if (inv.patient_id && inv.insurance_gln) {
+      patientInsurerPairs.add(`${inv.patient_id}|${inv.insurance_gln}`);
+    }
+  }
+
+  // Fetch ALL invoices for these patient+insurer combos (much smaller set than all patient invoices)
   const allPatientInvoices: Record<string, any[]> = {};
-  for (let i = 0; i < patientIds.length; i += 50) {
+  const pairArr = [...patientInsurerPairs];
+  for (let i = 0; i < pairArr.length; i += BATCH) {
+    const batchPairs = pairArr.slice(i, i + BATCH);
+    // Query by patient_id IN (...) — we'll filter by insurer_gln in JS
+    const batchPatientIds = [...new Set(batchPairs.map(p => p.split("|")[0]))];
     const { data } = await supabaseAdmin
       .from("invoices")
       .select(
         "id, invoice_number, patient_id, invoice_date, total_amount, status, billing_type, insurance_gln, insurance_name, insurance_paid_amount, paid_amount",
       )
-      .in("patient_id", patientIds.slice(i, i + 50))
+      .in("patient_id", batchPatientIds)
       .order("invoice_date", { ascending: true });
     for (const inv of data || []) {
-      if (!allPatientInvoices[inv.patient_id]) allPatientInvoices[inv.patient_id] = [];
-      allPatientInvoices[inv.patient_id].push(inv);
+      // Only keep invoices matching one of our patient+insurer pairs
+      const key = `${inv.patient_id}|${inv.insurance_gln}`;
+      if (patientInsurerPairs.has(key)) {
+        if (!allPatientInvoices[inv.patient_id]) allPatientInvoices[inv.patient_id] = [];
+        allPatientInvoices[inv.patient_id].push(inv);
+      }
     }
   }
 
-  // Get submissions + bank payments for ALL patient invoices (for duplicate detection)
+  // Get submissions + bank payments ONLY for the patient invoices we actually fetched
   const allPatientInvoiceIds = [...new Set(Object.values(allPatientInvoices).flat().map((i: any) => i.id))];
   const allSubsByInv: Record<string, any[]> = {};
-  for (let i = 0; i < allPatientInvoiceIds.length; i += 20) {
+  for (let i = 0; i < allPatientInvoiceIds.length; i += BATCH) {
     const { data } = await supabaseAdmin
       .from("medidata_submissions")
       .select("id, invoice_id, status, is_storno")
-      .in("invoice_id", allPatientInvoiceIds.slice(i, i + 20));
+      .in("invoice_id", allPatientInvoiceIds.slice(i, i + BATCH));
     for (const s of data || []) {
       if (!allSubsByInv[s.invoice_id]) allSubsByInv[s.invoice_id] = [];
       allSubsByInv[s.invoice_id].push(s);
     }
   }
   const allBpByInv: Record<string, any[]> = {};
-  for (let i = 0; i < allPatientInvoiceIds.length; i += 20) {
+  for (let i = 0; i < allPatientInvoiceIds.length; i += BATCH) {
     const { data } = await supabaseAdmin
       .from("bank_payment_import_items")
       .select("matched_invoice_id, amount, debtor_name, ultimate_debtor_name")
-      .in("matched_invoice_id", allPatientInvoiceIds.slice(i, i + 20));
+      .in("matched_invoice_id", allPatientInvoiceIds.slice(i, i + BATCH));
     for (const bp of data || []) {
       if (!allBpByInv[bp.matched_invoice_id]) allBpByInv[bp.matched_invoice_id] = [];
       allBpByInv[bp.matched_invoice_id].push(bp);
@@ -409,15 +457,15 @@ export async function GET(request: Request) {
       }
     }
 
-    // Routing check (from XML)
+    // Routing check (from XML — fetched separately for performance)
     let routingCorrect: "YES" | "NO" | "N/A" = "N/A";
     let routedToGln = "";
     let routedToName = "";
-    const firstSub = nonStorno[0];
-    if (firstSub?.xml_content) {
-      const tm = firstSub.xml_content.match(/<invoice:transport\s+from="([^"]+)"\s+to="([^"]+)"/);
+    const xmlContent = xmlByInvoice[inv.id];
+    if (xmlContent) {
+      const tm = xmlContent.match(/<invoice:transport\s+from="([^"]+)"\s+to="([^"]+)"/);
       routedToGln = tm?.[2] || "";
-      const dm = firstSub.xml_content.match(/<invoice:debitor\s+gln="([^"]+)">[\s\S]*?<invoice:companyname>([^<]+)<\/invoice:companyname>/);
+      const dm = xmlContent.match(/<invoice:debitor\s+gln="([^"]+)">[\s\S]*?<invoice:companyname>([^<]+)<\/invoice:companyname>/);
       routedToName = dm?.[2] || "";
       if (routedToGln && inv.insurance_gln) {
         routingCorrect = routedToGln === inv.insurance_gln ? "YES" : "NO";
