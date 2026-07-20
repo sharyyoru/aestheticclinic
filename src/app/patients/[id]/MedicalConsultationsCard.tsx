@@ -432,12 +432,14 @@ type ConsultationSubTab = "consultations" | "medical_records";
 export default function MedicalConsultationsCard({
   patientId,
   recordTypeFilter,
+  invoiceStatusFilter,
   patientFirstName,
   patientLastName,
   patientEmail,
 }: {
   patientId: string;
   recordTypeFilter?: ConsultationRecordType;
+  invoiceStatusFilter?: InvoiceStatus | "COMPLIMENTARY" | null;
   patientFirstName?: string;
   patientLastName?: string;
   patientEmail?: string | null;
@@ -864,6 +866,16 @@ export default function MedicalConsultationsCard({
         if (row.record_type === "invoice") return false;
       }
 
+      // Apply invoice status filter (from clickable summary boxes on invoices tab)
+      if (invoiceStatusFilter && recordTypeFilter === "invoice") {
+        if (invoiceStatusFilter === "COMPLIMENTARY") {
+          if (!row.invoice_is_complimentary) return false;
+        } else {
+          const effectiveStatus: InvoiceStatus = row.invoice_status || (row.invoice_is_paid ? "PAID" : "OPEN");
+          if (effectiveStatus !== invoiceStatusFilter) return false;
+        }
+      }
+
       if (fromDate && scheduled < fromDate) return false;
       if (toDate) {
         const toInclusive = new Date(toDate);
@@ -882,7 +894,7 @@ export default function MedicalConsultationsCard({
         if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0;
         return sortOrder === "desc" ? bTime - aTime : aTime - bTime;
       });
-  }, [consultations, dateFrom, dateTo, sortOrder, recordTypeFilter]);
+  }, [consultations, dateFrom, dateTo, sortOrder, recordTypeFilter, invoiceStatusFilter]);
 
   // Doctor dropdown is restricted to the allowed doctors only.
   const doctorUserOptions = useMemo(

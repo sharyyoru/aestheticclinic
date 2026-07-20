@@ -73,6 +73,25 @@ async function getPatientWithDetails(id: string) {
 
 type InvoiceStatus = "OPEN" | "PAID" | "CANCELLED" | "OVERPAID" | "PARTIAL_LOSS" | "PARTIAL_PAID";
 
+// Build a URL for the current page that toggles the invoice_status filter.
+// When the status matches the current filter, clicking clears it.
+function buildStatusFilterUrl(
+  patientId: string,
+  currentFilter: string | null,
+  paymentMethodFilter: string | null,
+  status: string,
+): string {
+  const params = new URLSearchParams();
+  params.set("m_tab", "invoice");
+  if (paymentMethodFilter) params.set("payment_method", paymentMethodFilter);
+  if (currentFilter === status) {
+    // Clicking the active filter clears it
+  } else {
+    params.set("invoice_status", status);
+  }
+  return `/patients/${patientId}?${params.toString()}`;
+}
+
 type InvoiceSummary = {
   totalAmount: number;
   totalComplimentary: number;
@@ -261,6 +280,23 @@ export default async function PatientPage({
       rawPaymentMethodFilter === "Bank transfer" ||
       rawPaymentMethodFilter === "Insurance"
       ? rawPaymentMethodFilter
+      : null;
+
+  const rawInvoiceStatusFilter = (() => {
+    const value = resolvedSearchParams?.invoice_status;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value) && value.length > 0) return value[0];
+    return undefined;
+  })();
+  const invoiceStatusFilter: InvoiceStatus | "COMPLIMENTARY" | null =
+    rawInvoiceStatusFilter === "OPEN" ||
+      rawInvoiceStatusFilter === "PAID" ||
+      rawInvoiceStatusFilter === "CANCELLED" ||
+      rawInvoiceStatusFilter === "OVERPAID" ||
+      rawInvoiceStatusFilter === "PARTIAL_LOSS" ||
+      rawInvoiceStatusFilter === "PARTIAL_PAID" ||
+      rawInvoiceStatusFilter === "COMPLIMENTARY"
+      ? (rawInvoiceStatusFilter as InvoiceStatus | "COMPLIMENTARY")
       : null;
 
   const invoiceSummary = await getInvoiceSummary(id, paymentMethodFilter);
@@ -588,15 +624,21 @@ export default async function PatientPage({
               </div>
 
               <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-                <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                <Link
+                  href={`/patients/${patient.id}?m_tab=invoice${paymentMethodFilter ? `&payment_method=${paymentMethodFilter}` : ""}`}
+                  className={`rounded-lg border p-3 transition-all hover:shadow-md ${invoiceStatusFilter === null ? "border-slate-300 bg-slate-100 ring-1 ring-slate-300" : "border-slate-100 bg-slate-50/80"}`}
+                >
                   <p className="text-[11px] font-medium text-slate-500">
                     Total Amount
                   </p>
                   <p className="mt-1 text-base font-semibold text-slate-900">
                     {invoiceSummary.totalAmount.toFixed(2)} CHF
                   </p>
-                </div>
-                <div className="rounded-lg border border-emerald-100 bg-emerald-50/80 p-3">
+                </Link>
+                <Link
+                  href={buildStatusFilterUrl(patient.id, invoiceStatusFilter, paymentMethodFilter, "PAID")}
+                  className={`rounded-lg border p-3 transition-all hover:shadow-md ${invoiceStatusFilter === "PAID" ? "border-emerald-300 bg-emerald-100 ring-1 ring-emerald-300" : "border-emerald-100 bg-emerald-50/80"}`}
+                >
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-emerald-600">
                       Total Paid
@@ -610,8 +652,11 @@ export default async function PatientPage({
                   <p className="mt-1 text-base font-semibold text-emerald-700">
                     {invoiceSummary.totalPaid.toFixed(2)} CHF
                   </p>
-                </div>
-                <div className="rounded-lg border border-red-100 bg-red-50/80 p-3">
+                </Link>
+                <Link
+                  href={buildStatusFilterUrl(patient.id, invoiceStatusFilter, paymentMethodFilter, "OPEN")}
+                  className={`rounded-lg border p-3 transition-all hover:shadow-md ${invoiceStatusFilter === "OPEN" ? "border-red-300 bg-red-100 ring-1 ring-red-300" : "border-red-100 bg-red-50/80"}`}
+                >
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-red-600">
                       Total Unpaid
@@ -625,8 +670,11 @@ export default async function PatientPage({
                   <p className="mt-1 text-base font-semibold text-red-700">
                     {invoiceSummary.totalUnpaid.toFixed(2)} CHF
                   </p>
-                </div>
-                <div className="rounded-lg border border-amber-100 bg-amber-50/80 p-3">
+                </Link>
+                <Link
+                  href={buildStatusFilterUrl(patient.id, invoiceStatusFilter, paymentMethodFilter, "PARTIAL_PAID")}
+                  className={`rounded-lg border p-3 transition-all hover:shadow-md ${invoiceStatusFilter === "PARTIAL_PAID" ? "border-amber-300 bg-amber-100 ring-1 ring-amber-300" : "border-amber-100 bg-amber-50/80"}`}
+                >
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-amber-600">
                       Partial Paid
@@ -640,8 +688,11 @@ export default async function PatientPage({
                   <p className="mt-1 text-base font-semibold text-amber-700">
                     {invoiceSummary.totalPartialPaid.toFixed(2)} CHF
                   </p>
-                </div>
-                <div className="rounded-lg border border-orange-100 bg-orange-50/80 p-3">
+                </Link>
+                <Link
+                  href={buildStatusFilterUrl(patient.id, invoiceStatusFilter, paymentMethodFilter, "PARTIAL_LOSS")}
+                  className={`rounded-lg border p-3 transition-all hover:shadow-md ${invoiceStatusFilter === "PARTIAL_LOSS" ? "border-orange-300 bg-orange-100 ring-1 ring-orange-300" : "border-orange-100 bg-orange-50/80"}`}
+                >
                   <div className="flex items-center justify-between">
                     <p className="text-[11px] font-medium text-orange-600">
                       Partial Loss
@@ -655,19 +706,36 @@ export default async function PatientPage({
                   <p className="mt-1 text-base font-semibold text-orange-700">
                     {invoiceSummary.totalPartialLoss.toFixed(2)} CHF
                   </p>
-                </div>
-                <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+                </Link>
+                <Link
+                  href={buildStatusFilterUrl(patient.id, invoiceStatusFilter, paymentMethodFilter, "COMPLIMENTARY")}
+                  className={`rounded-lg border p-3 transition-all hover:shadow-md ${invoiceStatusFilter === "COMPLIMENTARY" ? "border-purple-300 bg-purple-100 ring-1 ring-purple-300" : "border-slate-100 bg-slate-50/80"}`}
+                >
                   <p className="text-[11px] font-medium text-slate-500">
                     Complimentary
                   </p>
                   <p className="mt-1 text-base font-semibold text-slate-900">
                     {invoiceSummary.totalComplimentary.toFixed(2)} CHF
                   </p>
-                </div>
+                </Link>
               </div>
             </div>
 
-            <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="invoice" patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
+            {invoiceStatusFilter && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                <span className="font-medium text-slate-700">
+                  Filtered by: {invoiceStatusFilter === "OPEN" ? "Unpaid" : invoiceStatusFilter === "PAID" ? "Paid" : invoiceStatusFilter === "PARTIAL_PAID" ? "Partial Paid" : invoiceStatusFilter === "PARTIAL_LOSS" ? "Partial Loss" : invoiceStatusFilter === "COMPLIMENTARY" ? "Complimentary" : invoiceStatusFilter}
+                </span>
+                <Link
+                  href={`/patients/${patient.id}?m_tab=invoice${paymentMethodFilter ? `&payment_method=${paymentMethodFilter}` : ""}`}
+                  className="rounded border border-slate-300 bg-white px-2 py-0.5 font-medium text-slate-600 transition-colors hover:bg-slate-100"
+                >
+                  Clear filter
+                </Link>
+              </div>
+            )}
+
+            <MedicalConsultationsCard patientId={patient.id} recordTypeFilter="invoice" invoiceStatusFilter={invoiceStatusFilter} patientFirstName={patient.first_name} patientLastName={patient.last_name} patientEmail={(patient as any).email ?? null} />
           </>
         ) : null}
 
