@@ -4,8 +4,10 @@ import {
   fmtChf,
   makeFilename,
 } from "@/lib/statisticsExcel";
+import { fetchMediDataStatus } from "@/lib/medidataStatusData";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,14 +16,8 @@ export async function GET(req: NextRequest) {
     const to = url.searchParams.get("to") || new Date().toISOString().slice(0, 10);
     const agingMinDays = parseInt(url.searchParams.get("agingMinDays") || "0", 10);
 
-    // Fetch data from the main API route (internal fetch)
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const apiUrl = `${baseUrl}/api/statistics/medidata-status?from=${from}&to=${to}&agingMinDays=${agingMinDays}`;
-    const resp = await fetch(apiUrl, { cache: "no-store" });
-    if (!resp.ok) {
-      return NextResponse.json({ error: `Failed to fetch data: ${resp.status}` }, { status: 500 });
-    }
-    const data = await resp.json();
+    // Call shared data module directly (no HTTP fetch — avoids timeout)
+    const data = await fetchMediDataStatus(from, to, agingMinDays);
 
     const s = data.summary || {};
     const ab = data.agingBuckets || {};
