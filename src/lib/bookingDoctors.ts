@@ -7,6 +7,8 @@ export const BOOKING_DOCTORS: { slug: string; name: string }[] = [
   { slug: "yulia-raspertova", name: "Dr. Yulia Raspertova" },
   { slug: "clinic", name: "Laser & Treatments" },
   { slug: "lily-radionova", name: "Nurse Lily Radionova" },
+  { slug: "yosra", name: "Yosra" },
+  { slug: "sofien-seneina", name: "Sofien Seneina" },
 ];
 
 // Weekday numbers follow JS Date.getDay() / getSwissDayOfWeek(): 0 = Sunday.

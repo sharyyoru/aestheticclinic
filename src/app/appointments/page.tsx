@@ -414,6 +414,8 @@ const PRIORITY_DOCTOR_NAMES = [
   "laser",
   "monia khedir",
   "lily radionova",
+  "yosra",
+  "sofien",
 ];
 
 type ProviderOption = {

@@ -67,6 +67,21 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       6: { start: "10:00", end: "18:30" }, // Saturday 10am-6:30pm
     },
   },
+  "yosra": {
+    champel: {
+      2: { start: "08:00", end: "13:00" }, // Tuesday 8am-1pm
+      4: { start: "08:00", end: "19:00" }, // Thursday 8am-7pm
+    },
+  },
+  "sofien-seneina": {
+    champel: {
+      1: { start: "08:00", end: "17:00" }, // Monday 8am-5pm
+      2: { start: "14:00", end: "17:00" }, // Tuesday 2pm-5pm
+      3: { start: "15:00", end: "17:00" }, // Wednesday 3pm-5pm
+      4: { start: "08:00", end: "17:00" }, // Thursday 8am-5pm
+      5: { start: "14:00", end: "17:00" }, // Friday 2pm-5pm
+    },
+  },
 };
 
 const ALL_DOCTORS = [
@@ -104,6 +119,20 @@ const ALL_DOCTORS = [
     specialty: "Aesthetic Nurse Specialist",
     image: "/doctors/lily-radionova.jpeg",
     description: "Expert aesthetic nurse specializing in non-invasive treatments at Gstaad.",
+  },
+  {
+    slug: "yosra",
+    name: "Yosra",
+    specialty: "Esthéticienne | Laser Specialist",
+    image: "/doctors/yosra.jpeg",
+    description: "Expert aesthetician specializing in laser treatments and skin care.",
+  },
+  {
+    slug: "sofien-seneina",
+    name: "Sofien Seneina",
+    specialty: "Infirmier | IV Drip Therapy",
+    image: "/doctors/sofien-seneina.jpeg",
+    description: "Registered nurse specializing in IV drip therapy and wellness treatments.",
   },
 ];
 
