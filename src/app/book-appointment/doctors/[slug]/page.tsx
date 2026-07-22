@@ -668,9 +668,9 @@ function DoctorBookingContent() {
                   alt={doctor.name}
                   fill
                   className={`object-cover ${
-                    doctor.slug === "lily-radionova"
+                    slug === "lily-radionova"
                       ? "object-[center_15%]"
-                      : doctor.slug === "yosra" || doctor.slug === "sofien-seneina"
+                      : slug === "yosra" || slug === "sofien-seneina"
                         ? "object-[center_30%]"
                         : "object-top"
                   }`}
