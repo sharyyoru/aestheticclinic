@@ -667,7 +667,13 @@ function DoctorBookingContent() {
                   src={doctor.image}
                   alt={doctor.name}
                   fill
-                  className="object-cover object-top"
+                  className={`object-cover ${
+                    doctor.slug === "lily-radionova"
+                      ? "object-[center_15%]"
+                      : doctor.slug === "yosra" || doctor.slug === "sofien-seneina"
+                        ? "object-[center_30%]"
+                        : "object-top"
+                  }`}
                 />
               </div>
               <div className="p-3 sm:p-4 flex-1">

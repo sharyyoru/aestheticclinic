@@ -737,7 +737,11 @@ function EmbedBookPageContent() {
                       alt={doc.name}
                       fill
                       className={`object-cover group-hover:scale-105 transition-transform ${
-                        doc.slug === "lily-radionova" ? "object-[center_15%]" : "object-top"
+                        doc.slug === "lily-radionova"
+                          ? "object-[center_15%]"
+                          : doc.slug === "yosra" || doc.slug === "sofien-seneina"
+                            ? "object-[center_30%]"
+                            : "object-top"
                       }`}
                     />
                   </div>

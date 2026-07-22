@@ -234,7 +234,11 @@ function DoctorsListContent() {
                     alt={doctor.name}
                     fill
                     className={`object-cover group-hover:scale-105 transition-transform duration-300 ${
-                      doctor.slug === "lily-radionova" ? "object-[center_15%]" : "object-top"
+                      doctor.slug === "lily-radionova"
+                        ? "object-[center_15%]"
+                        : doctor.slug === "yosra" || doctor.slug === "sofien-seneina"
+                          ? "object-[center_30%]"
+                          : "object-top"
                     }`}
                   />
                 </div>
