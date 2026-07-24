@@ -219,21 +219,24 @@ function convertPlaceholdersToContentControls(xmlDoc: Document): void {
     if (runs.length === 0) continue;
 
     const fullText = runs.map(getRunText).join("");
-    if (!fullText.includes("${")) continue;
+    // Some older Axenita templates use DateNaiss as an unwrapped merge token.
+    // Normalize it to the canonical placeholder before processing the paragraph.
+    const placeholderText = fullText.replace(/\bDateNaiss\b/g, "${patientInfo.birthdate}");
+    if (!placeholderText.includes("${")) continue;
 
     const placeholderRegex = /\$\{([^}]+)\}/g;
     const parts: { type: "text" | "field"; value: string }[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = placeholderRegex.exec(fullText)) !== null) {
+    while ((match = placeholderRegex.exec(placeholderText)) !== null) {
       if (match.index > lastIndex) {
-        parts.push({ type: "text", value: fullText.slice(lastIndex, match.index) });
+        parts.push({ type: "text", value: placeholderText.slice(lastIndex, match.index) });
       }
       parts.push({ type: "field", value: match[1] });
       lastIndex = match.index + match[0].length;
     }
-    if (lastIndex < fullText.length) {
-      parts.push({ type: "text", value: fullText.slice(lastIndex) });
+    if (lastIndex < placeholderText.length) {
+      parts.push({ type: "text", value: placeholderText.slice(lastIndex) });
     }
 
     const firstRun = runs[0];
