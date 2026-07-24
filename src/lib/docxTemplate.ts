@@ -338,6 +338,18 @@ function resolveFieldValue(
     guarantorinfopatientinsurancenumber: "insuranceCardNumber",
   };
 
+  if (normalized === "patientinfoaddressblock") {
+    const hasCompleteAddress = Boolean(
+      patientData?.street?.trim() &&
+      patientData?.zip?.trim() &&
+      patientData?.city?.trim()
+    );
+    if (!hasCompleteAddress) {
+      return { value: "", missing: true };
+    }
+    return { value: patientData?.addressBlock || "", missing: !patientData?.addressBlock };
+  }
+
   if (normalized in patientMap && patientData) {
     const value = patientData[patientMap[normalized]];
     const optionalEmptyFields = new Set([

@@ -386,6 +386,15 @@ function resolveFieldValue(
     guarantorinfopatientinsurancenumber: 'insuranceCardNumber',
   };
 
+  if (normalized === 'patientinfoaddressblock') {
+    const hasCompleteAddress = Boolean(
+      patientData?.street?.trim() &&
+      patientData?.zip?.trim() &&
+      patientData?.city?.trim()
+    );
+    return hasCompleteAddress ? patientData?.addressBlock || '' : '';
+  }
+
   if (normalized in patientMap) {
     const value = patientData?.[patientMap[normalized]];
     if ((normalized.includes('birthdate') || normalized.includes('date')) && value) {
@@ -1406,6 +1415,14 @@ export default function DocxPreviewEditor({
             <div className="mt-4 space-y-4">
               {requiredDocumentFields.map((field) => {
                 const isEmpty = !field.value.trim();
+                const isMultiline =
+                  field.tag.toLowerCase().includes('addressblock') ||
+                  field.tag.toLowerCase().includes('address.block');
+                const fieldClassName = `w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 ${
+                  isEmpty
+                    ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
+                    : 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-200'
+                }`;
                 return (
                   <div key={field.id}>
                     <label
@@ -1414,19 +1431,27 @@ export default function DocxPreviewEditor({
                     >
                       {field.label} <span aria-hidden="true">*</span>
                     </label>
-                    <input
-                      id={`required-document-field-${field.id}`}
-                      type={field.type}
-                      value={field.value}
-                      required
-                      aria-invalid={isEmpty}
-                      onChange={(event) => handleFieldChange(field.id, event.target.value)}
-                      className={`w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 ${
-                        isEmpty
-                          ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
-                          : 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-200'
-                      }`}
-                    />
+                    {isMultiline ? (
+                      <textarea
+                        id={`required-document-field-${field.id}`}
+                        value={field.value}
+                        required
+                        rows={4}
+                        aria-invalid={isEmpty}
+                        onChange={(event) => handleFieldChange(field.id, event.target.value)}
+                        className={`${fieldClassName} resize-y`}
+                      />
+                    ) : (
+                      <input
+                        id={`required-document-field-${field.id}`}
+                        type={field.type}
+                        value={field.value}
+                        required
+                        aria-invalid={isEmpty}
+                        onChange={(event) => handleFieldChange(field.id, event.target.value)}
+                        className={fieldClassName}
+                      />
+                    )}
                     {isEmpty && (
                       <p className="mt-1 text-[11px] text-red-700">This field is required.</p>
                     )}
