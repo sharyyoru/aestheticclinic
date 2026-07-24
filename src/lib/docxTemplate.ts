@@ -341,7 +341,6 @@ function resolveFieldValue(
   if (normalized in patientMap && patientData) {
     const value = patientData[patientMap[normalized]];
     const optionalEmptyFields = new Set([
-      "patientinfosalutation",
       "patientinfostreetno",
       "patientinfoaddressaddition",
       "patientinfopobox",

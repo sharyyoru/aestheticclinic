@@ -446,6 +446,10 @@ export default function DocxPreviewEditor({
   });
   const [currentFontSize, setCurrentFontSize] = useState<string>('11');
   const [currentAlignment, setCurrentAlignment] = useState<string>('left');
+  const requiredFieldTags = new Set((missingFieldsProp || []).map((field) => field.tag));
+  const requiredDocumentFields = documentFields.filter((field) => requiredFieldTags.has(field.tag));
+  const emptyRequiredFields = requiredDocumentFields.filter((field) => !field.value.trim());
+  const hasMissingRequiredFields = emptyRequiredFields.length > 0;
 
   // Font size options (in points)
   const fontSizeOptions = ['8', '9', '10', '11', '12', '14', '16', '18', '20', '24', '28', '32', '36', '48', '72'];
@@ -901,6 +905,10 @@ export default function DocxPreviewEditor({
       console.error('[DocxEditor] No working blob to save');
       return;
     }
+    if (hasMissingRequiredFields) {
+      alert('Please fill in all required document fields before saving.');
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -1148,9 +1156,9 @@ export default function DocxPreviewEditor({
           </button>
           <button
             onClick={handleSave}
-            disabled={isSaving || !hasChanges}
+            disabled={isSaving || !hasChanges || hasMissingRequiredFields}
             className={`px-4 py-2 rounded flex items-center gap-2 ${
-              hasChanges 
+              hasChanges && !hasMissingRequiredFields
                 ? 'bg-blue-500 text-white hover:bg-blue-600' 
                 : 'bg-blue-400 text-white/70 cursor-not-allowed'
             } disabled:opacity-50`}
@@ -1389,6 +1397,46 @@ export default function DocxPreviewEditor({
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
+        {requiredDocumentFields.length > 0 && !isLoading && (
+          <aside className="w-80 shrink-0 overflow-y-auto border-r border-red-200 bg-red-50 p-4">
+            <h3 className="font-semibold text-red-900">Required document fields</h3>
+            <p className="mt-1 text-xs text-red-700">
+              Complete every field below before saving this document.
+            </p>
+            <div className="mt-4 space-y-4">
+              {requiredDocumentFields.map((field) => {
+                const isEmpty = !field.value.trim();
+                return (
+                  <div key={field.id}>
+                    <label
+                      htmlFor={`required-document-field-${field.id}`}
+                      className="mb-1 block text-xs font-medium text-red-900"
+                    >
+                      {field.label} <span aria-hidden="true">*</span>
+                    </label>
+                    <input
+                      id={`required-document-field-${field.id}`}
+                      type={field.type}
+                      value={field.value}
+                      required
+                      aria-invalid={isEmpty}
+                      onChange={(event) => handleFieldChange(field.id, event.target.value)}
+                      className={`w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 ${
+                        isEmpty
+                          ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
+                          : 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-200'
+                      }`}
+                    />
+                    {isEmpty && (
+                      <p className="mt-1 text-[11px] text-red-700">This field is required.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </aside>
+        )}
+
         {/* Document preview */}
         <div className="flex-1 overflow-auto bg-gray-100 p-8">
           {isLoading && (
@@ -1400,15 +1448,21 @@ export default function DocxPreviewEditor({
             </div>
           )}
           {/* Missing patient data warning */}
-          {missingFieldsProp && missingFieldsProp.length > 0 && !isLoading && (
+          {requiredDocumentFields.length > 0 && !isLoading && (
             <div className="mb-4 mx-auto max-w-[850px] bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-start gap-2 text-red-800 text-sm">
               <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <p className="font-medium">Some patient fields are missing</p>
+                <p className="font-medium">
+                  {hasMissingRequiredFields
+                    ? `${emptyRequiredFields.length} required document field${emptyRequiredFields.length === 1 ? '' : 's'} missing`
+                    : 'All required document fields are complete'}
+                </p>
                 <p className="text-xs text-red-700 mt-0.5">
-                  Missing values are highlighted in red inside the document. Please fill them in the patient record or edit the document directly.
+                  {hasMissingRequiredFields
+                    ? 'Complete the required fields in the left panel before saving.'
+                    : 'You can now save the document.'}
                 </p>
               </div>
             </div>
