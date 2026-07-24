@@ -516,11 +516,14 @@ export default function DocxPreviewEditor({
           if (seenTags.has(control.tag)) return;
           seenTags.add(control.tag);
           const resolved = resolveFieldValue(control.tag, patientData, userData);
+          const isRequiredMissing = Boolean(
+            missingFieldsProp?.some((field) => field.tag === control.tag)
+          );
           fields.push({
             id: control.tag,
             tag: control.tag,
             label: formatFieldLabel(control.tag),
-            value: resolved ?? control.value,
+            value: isRequiredMissing ? resolved || '' : resolved ?? control.value,
             type: control.tag.toLowerCase().includes('date') ? 'date' : 'text',
             source: 'content-control',
           });
@@ -529,8 +532,13 @@ export default function DocxPreviewEditor({
         // Update content controls with resolved values
         controls.forEach((control) => {
           const resolved = resolveFieldValue(control.tag, patientData, userData);
+          const isRequiredMissing = Boolean(
+            missingFieldsProp?.some((field) => field.tag === control.tag)
+          );
           if (resolved !== undefined) {
             updateContentControl(xmlDoc, control.tag, resolved);
+          } else if (isRequiredMissing) {
+            updateContentControl(xmlDoc, control.tag, '');
           }
         });
 
@@ -585,7 +593,7 @@ export default function DocxPreviewEditor({
     return () => {
       cancelled = true;
     };
-  }, [documentBlob, patientData, userData]);
+  }, [documentBlob, patientData, userData, missingFieldsProp]);
 
   function formatFieldLabel(tag: string): string {
     // Convert axenita:documentRecipient.firstName or patientInfo.firstName into readable label

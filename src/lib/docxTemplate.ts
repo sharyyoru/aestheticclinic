@@ -352,14 +352,8 @@ function resolveFieldValue(
 
   if (normalized in patientMap && patientData) {
     const value = patientData[patientMap[normalized]];
-    const optionalEmptyFields = new Set([
-      "patientinfostreetno",
-      "patientinfoaddressaddition",
-      "patientinfopobox",
-      "patientinfocountryname",
-    ]);
     if (!value) {
-      return { value: "", missing: !optionalEmptyFields.has(normalized) };
+      return { value: "", missing: true };
     }
     if ((normalized.includes("birthdate") || normalized.includes("date")) && value) {
       return { value: formatDate(value), missing: false };
