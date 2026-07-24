@@ -10,6 +10,8 @@ type GeneratePatientEmailRequestBody = {
   patientId?: string;
   description?: string;
   tone?: string;
+  recipientType?: "patient" | "insurance" | "both";
+  recipientName?: string;
   knowledgebaseTopicIds?: string[]; // Optional: knowledgebase topics to include as context
 };
 
@@ -27,6 +29,8 @@ export async function POST(request: Request) {
     const patientId = body.patientId?.trim();
     const description = (body.description || "").trim();
     const tone = (body.tone || "professional and reassuring").trim();
+    const recipientType = body.recipientType || "patient";
+    const recipientName = (body.recipientName || "").trim();
     const knowledgebaseTopicIds = body.knowledgebaseTopicIds || [];
 
     if (!patientId || !description) {
@@ -74,11 +78,19 @@ export async function POST(request: Request) {
         : {},
     );
 
+    const isInsuranceRecipient = recipientType === "insurance";
+    const recipientLabel = isInsuranceRecipient
+      ? `the insurance company${recipientName ? ` ${recipientName}` : ""}`
+      : "this specific patient";
+    const greeting = isInsuranceRecipient
+      ? "Dear Sir or Madam,"
+      : `Dear ${firstName || "patient"},`;
+
     const systemPrompt =
-      "You are an email assistant for Aesthetics Clinic. You write concise, empathetic, medically appropriate emails to a single patient. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML). All prices must be in CHF (Swiss Francs), not any other currency. When the clinic's AI Knowledge Base is provided, treat it as the PRIMARY source of truth for clinic-specific facts, services, policies, pricing guidance, and tone of voice.";
+      "You are an email assistant for Aesthetics Clinic. You write concise, empathetic, medically appropriate emails. Always output strict JSON with keys 'subject' and 'body' (plain text, no HTML). All prices must be in CHF (Swiss Francs), not any other currency. When the clinic's AI Knowledge Base is provided, treat it as the PRIMARY source of truth for clinic-specific facts, services, policies, pricing guidance, and tone of voice.";
 
     const userPrompt = `
-We are composing a one-off email to this specific patient.
+We are composing a one-off email to ${recipientLabel} about this patient.
 
 Patient details:
 ${patientSummary}
@@ -91,7 +103,7 @@ ${knowledgeBaseSection}
 Requirements:
 - Output STRICT JSON only, no markdown, with shape: {"subject": string, "body": string}.
 - 'body' must be plain text suitable for pasting into an email textarea; use paragraphs separated by blank lines.
-- Start with a natural greeting to the patient (for example, "Dear ${firstName || "patient"},").
+- Start with this greeting: "${greeting}".
 - All prices must be in CHF (Swiss Francs).
 - After the main content, include this contact footer:
 
@@ -112,7 +124,7 @@ Book an appointment: https://aestheticclinic.vercel.app/book-appointment/locatio
     const rawContent = result.response.text() || "";
 
     let subject = "Clinic update";
-    let bodyText = "Dear patient,\n\nThank you for your message.";
+    let bodyText = `${greeting}\n\nThank you for your message.`;
 
     try {
       // Remove markdown code blocks if present

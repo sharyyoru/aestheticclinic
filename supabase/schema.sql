@@ -725,12 +725,14 @@ create table if not exists swiss_insurers (
   address_postal_code text,
   address_city text,
   address_canton text,
+  contact_email text,
   is_active boolean default true,
   created_at timestamptz default now()
 );
 
 create index if not exists swiss_insurers_gln_idx on swiss_insurers(gln);
 create index if not exists swiss_insurers_bag_number_idx on swiss_insurers(bag_number);
+create index if not exists swiss_insurers_contact_email_idx on swiss_insurers(contact_email) where contact_email is not null;
 
 -- Swiss Insurer Laws (many-to-many relationship)
 create table if not exists swiss_insurer_laws (

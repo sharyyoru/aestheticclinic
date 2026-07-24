@@ -8,12 +8,14 @@ import { SwissLawType, SwissInsurer } from "@/lib/medidata";
 type ManageableInsurer = SwissInsurer & {
     isActive: boolean;
     createdAt: string;
+    contactEmail?: string | null;
 };
 
 // Form state type
 type InsurerForm = {
     name: string;
     nameFr: string;
+    contactEmail: string;
     gln: string;
     receiverGln: string;
     tpAllowed: boolean;
@@ -27,6 +29,7 @@ type InsurerForm = {
 const INITIAL_FORM: InsurerForm = {
     name: "",
     nameFr: "",
+    contactEmail: "",
     gln: "",
     receiverGln: "",
     tpAllowed: false,
@@ -304,6 +307,7 @@ export default function InsurersPage() {
                 bagNumber: row.bag_number,
                 name: row.name,
                 nameFr: row.name_fr,
+                contactEmail: row.contact_email,
                 lawTypes: lawsMap.get(row.id) || [],
                 receiverGln: row.receiver_gln,
                 tpAllowed: row.tp_allowed,
@@ -338,6 +342,7 @@ export default function InsurersPage() {
         setFormData({
             name: insurer.name,
             nameFr: insurer.nameFr || "",
+            contactEmail: insurer.contactEmail || "",
             gln: insurer.gln,
             receiverGln: insurer.receiverGln || "",
             tpAllowed: insurer.tpAllowed || false,
@@ -375,6 +380,7 @@ export default function InsurersPage() {
             const insurerData = {
                 name: formData.name,
                 name_fr: formData.nameFr || null,
+                contact_email: formData.contactEmail || null,
                 gln: formData.gln,
                 receiver_gln: formData.receiverGln || null,
                 tp_allowed: formData.tpAllowed,
@@ -544,6 +550,9 @@ export default function InsurersPage() {
                                                 {insurer.nameFr && insurer.nameFr !== insurer.name && (
                                                     <span className="text-xs text-slate-500">{insurer.nameFr}</span>
                                                 )}
+                                                {insurer.contactEmail && (
+                                                    <span className="mt-1 text-xs text-sky-600">{insurer.contactEmail}</span>
+                                                )}
                                                 <span className="mt-1 text-xs text-slate-400">
                                                     {[insurer.address.city, insurer.address.canton].filter(Boolean).join(", ")}
                                                 </span>
@@ -711,6 +720,16 @@ export default function InsurersPage() {
                                         placeholder="Optional"
                                     />
                                 </div>
+                            </div>
+                            <div>
+                                <label className="mb-1 block text-sm font-medium text-slate-700">Contact Email</label>
+                                <input
+                                    type="email"
+                                    value={formData.contactEmail}
+                                    onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                    placeholder="claims@example.ch"
+                                />
                             </div>
 
                             {/* Identifiers */}

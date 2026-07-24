@@ -9,6 +9,7 @@ import ThemeToggle from "../ThemeToggle";
 import HeaderNotificationsButton from "../HeaderNotificationsButton";
 import HeaderDealNotificationsButton from "../HeaderDealNotificationsButton";
 import HeaderEmailReportsButton from "../HeaderEmailReportsButton";
+import HeaderInsuranceEmailButton from "../HeaderInsuranceEmailButton";
 import HeaderCommentsButton from "../HeaderCommentsButton";
 import HeaderTasksButton from "../HeaderTasksButton";
 import HeaderWhatsAppButton from "../HeaderWhatsAppButton";
@@ -111,6 +112,7 @@ export default function TopBar() {
         <HeaderTasksButton />
         <HeaderDealNotificationsButton />
         <HeaderEmailReportsButton />
+        <HeaderInsuranceEmailButton />
         <HeaderNotificationsButton />
         <HeaderCommentsButton />
         <HeaderWhatsAppButton />

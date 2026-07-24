@@ -284,6 +284,7 @@ export default function PatientActivityCard({
   const [emailSaveError, setEmailSaveError] = useState<string | null>(null);
 
   const [emailAiDescription, setEmailAiDescription] = useState("");
+  const [emailAiRecipientName, setEmailAiRecipientName] = useState("");
   const [emailAiTone, setEmailAiTone] = useState("professional and reassuring");
   const [emailAiLoading, setEmailAiLoading] = useState(false);
   const [emailAiError, setEmailAiError] = useState<string | null>(null);
@@ -947,15 +948,21 @@ export default function PatientActivityCard({
       searchParams.get("composeEmail") ?? searchParams.get("compose");
     if (!composeParam || emailModalOpen) return;
 
-    if (composeParam === "1" || composeParam === "true" || composeParam === "email") {
+    if (composeParam === "1" || composeParam === "true" || composeParam === "email" || composeParam === "insurance") {
+      const insurerEmail = searchParams.get("insurerEmail") || "";
+      const insurerName = searchParams.get("insurerName") || "";
+      const isInsuranceEmail = composeParam === "insurance";
       setActiveTab("emails");
       setEmailFilter("inbound");
       setEmailSaveError(null);
-      setEmailTo((prev) => prev || defaultEmailTo);
+      setEmailRecipientType(isInsuranceEmail ? "insurance" : "patient");
+      setEmailTo(isInsuranceEmail ? insurerEmail : defaultEmailTo);
+      setEmailCc(isInsuranceEmail ? patientEmail || "" : "");
+      setEmailAiRecipientName(isInsuranceEmail ? insurerName : "");
       setEmailModalOpen(true);
       setComposeFromQueryHandled(true);
     }
-  }, [searchParams, defaultEmailTo, emailModalOpen, composeFromQueryHandled]);
+  }, [searchParams, defaultEmailTo, patientEmail, emailModalOpen, composeFromQueryHandled]);
 
   useEffect(() => {
     if (createTaskFromQueryHandled) return;
@@ -2638,6 +2645,8 @@ export default function PatientActivityCard({
           patientId,
           description,
           tone: emailAiTone,
+          recipientType: emailRecipientType,
+          recipientName: emailAiRecipientName,
           knowledgebaseTopicIds: selectedEmailAiTopics.length > 0 ? selectedEmailAiTopics : undefined,
         }),
       });
@@ -2689,7 +2698,7 @@ export default function PatientActivityCard({
       toAddress = emailTo.trim() || patientEmail?.trim() || "";
       ccAddress = emailCc.trim();
     } else if (emailRecipientType === "insurance") {
-      toAddress = patientInsurance?.email?.trim() || emailTo.trim() || "";
+      toAddress = emailTo.trim() || patientInsurance?.email?.trim() || "";
       // If sending to insurance only, CC can still be used for the patient or internal copy
       ccAddress = emailCc.trim();
     } else if (emailRecipientType === "both") {
@@ -5533,7 +5542,7 @@ export default function PatientActivityCard({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium text-slate-800">Generate with AI</span>
                   <span className="text-[10px] text-slate-400">
-                    Describe the email you want to send. The patient's details are included automatically.
+                    Describe the email you want to send. Patient details are included automatically.
                   </span>
                 </div>
                 <textarea
