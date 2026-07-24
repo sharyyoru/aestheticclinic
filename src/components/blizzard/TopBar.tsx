@@ -8,6 +8,7 @@ import LogoDropdown from "./LogoDropdown";
 import ThemeToggle from "../ThemeToggle";
 import HeaderNotificationsButton from "../HeaderNotificationsButton";
 import HeaderDealNotificationsButton from "../HeaderDealNotificationsButton";
+import HeaderEmailReportsButton from "../HeaderEmailReportsButton";
 import HeaderCommentsButton from "../HeaderCommentsButton";
 import HeaderTasksButton from "../HeaderTasksButton";
 import HeaderWhatsAppButton from "../HeaderWhatsAppButton";
@@ -109,6 +110,7 @@ export default function TopBar() {
       <div className="flex items-center gap-1">
         <HeaderTasksButton />
         <HeaderDealNotificationsButton />
+        <HeaderEmailReportsButton />
         <HeaderNotificationsButton />
         <HeaderCommentsButton />
         <HeaderWhatsAppButton />
