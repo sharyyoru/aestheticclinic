@@ -1,14 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/AuthContext";
 
 export default function HeaderEmailReportsButton() {
   const router = useRouter();
+  const { user } = useAuth();
 
   return (
     <button
       type="button"
-      onClick={() => router.push("/email-reports")}
+      onClick={() => {
+        const params = new URLSearchParams();
+        if (user?.email) params.set("doctor_email", user.email);
+        const query = params.toString();
+        router.push(query ? `/email-reports?${query}` : "/email-reports");
+      }}
       className="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 text-slate-500 shadow-sm hover:bg-slate-50"
       title="All patient emails"
     >

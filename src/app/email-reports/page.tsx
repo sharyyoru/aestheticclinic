@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 type Email = {
   id: string;
@@ -16,6 +17,7 @@ type Email = {
   sent_at: string | null;
   read_at: string | null;
   created_at: string;
+  body?: string | null;
 };
 
 type Patient = {
@@ -63,6 +65,8 @@ function truncate(text: string, maxLength: number) {
 const ITEMS_PER_PAGE = 25;
 
 export default function EmailReportsPage() {
+  const searchParams = useSearchParams();
+  const doctorEmail = searchParams.get("doctor_email") || "";
   const [emails, setEmails] = useState<Email[]>([]);
   const [patients, setPatients] = useState<Record<string, Patient>>({});
   const [loading, setLoading] = useState(true);
@@ -72,6 +76,7 @@ export default function EmailReportsPage() {
   const [stats, setStats] = useState<EmailStats>({
     total: 0, sent: 0, failed: 0, read: 0, inbound: 0, outbound: 0, automation: 0, manual: 0,
   });
+  const [statsLoading, setStatsLoading] = useState(true);
 
   const [filters, setFilters] = useState<FilterState>({
     direction: "all",
@@ -83,6 +88,7 @@ export default function EmailReportsPage() {
   });
 
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [emailBodyLoading, setEmailBodyLoading] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -98,6 +104,19 @@ export default function EmailReportsPage() {
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
   }, [filters.searchQuery]);
 
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (doctorEmail) params.set("doctor_email", doctorEmail);
+      const res = await fetch(`/api/email-reports?${params.toString()}`);
+      const data = await res.json();
+      if (res.ok && data.stats) setStats(data.stats);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [doctorEmail]);
+
   const fetchEmails = useCallback(async () => {
     try {
       setLoading(true);
@@ -106,12 +125,14 @@ export default function EmailReportsPage() {
       const params = new URLSearchParams();
       params.set("page", String(currentPage));
       params.set("per_page", String(ITEMS_PER_PAGE));
+      params.set("include_stats", "false");
       if (filters.direction !== "all") params.set("direction", filters.direction);
       if (filters.status !== "all") params.set("status", filters.status);
       if (filters.source !== "all") params.set("source", filters.source);
       if (debouncedSearch) params.set("search", debouncedSearch);
       if (filters.dateFrom) params.set("date_from", filters.dateFrom);
       if (filters.dateTo) params.set("date_to", filters.dateTo);
+      if (doctorEmail) params.set("doctor_email", doctorEmail);
 
       const res = await fetch(`/api/email-reports?${params.toString()}`);
       const data = await res.json();
@@ -126,13 +147,13 @@ export default function EmailReportsPage() {
       setPatients(data.patients || {});
       setTotalEmails(data.total || 0);
       setTotalPages(data.total_pages || 1);
-      setStats(data.stats || { total: 0, sent: 0, failed: 0, read: 0, inbound: 0, outbound: 0, automation: 0, manual: 0 });
       setLoading(false);
+      void fetchStats();
     } catch {
       setError("Failed to load email data.");
       setLoading(false);
     }
-  }, [currentPage, filters.direction, filters.status, filters.source, filters.dateFrom, filters.dateTo, debouncedSearch]);
+  }, [currentPage, filters.direction, filters.status, filters.source, filters.dateFrom, filters.dateTo, debouncedSearch, doctorEmail, fetchStats]);
 
   useEffect(() => {
     fetchEmails();
@@ -143,9 +164,22 @@ export default function EmailReportsPage() {
     setCurrentPage(1);
   }, [filters.direction, filters.status, filters.source, filters.dateFrom, filters.dateTo, debouncedSearch]);
 
-  function handleViewEmail(email: Email) {
+  async function handleViewEmail(email: Email) {
     setSelectedEmail(email);
     setViewModalOpen(true);
+    setEmailBodyLoading(true);
+
+    try {
+      const res = await fetch(`/api/email-reports?email_id=${encodeURIComponent(email.id)}`);
+      const data = await res.json();
+      if (res.ok && data.email) {
+        setSelectedEmail((current) => current?.id === email.id ? { ...current, body: data.email.body } : current);
+      }
+    } catch {
+      setSelectedEmail((current) => current?.id === email.id ? { ...current, body: null } : current);
+    } finally {
+      setEmailBodyLoading(false);
+    }
   }
 
   function resetFilters() {
@@ -192,7 +226,7 @@ export default function EmailReportsPage() {
               </svg>
             </div>
             <div>
-              <p className="text-2xl font-semibold text-slate-900">{stats.total}</p>
+              <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.total}</p>
               <p className="text-xs text-slate-500">Total Emails</p>
             </div>
           </div>
@@ -207,7 +241,7 @@ export default function EmailReportsPage() {
               </svg>
             </div>
             <div>
-              <p className="text-2xl font-semibold text-slate-900">{stats.sent}</p>
+              <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.sent}</p>
               <p className="text-xs text-slate-500">Sent Successfully</p>
             </div>
           </div>
@@ -221,7 +255,7 @@ export default function EmailReportsPage() {
               </svg>
             </div>
             <div>
-              <p className="text-2xl font-semibold text-slate-900">{stats.read}</p>
+              <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.read}</p>
               <p className="text-xs text-slate-500">Read (Opened)</p>
             </div>
           </div>
@@ -237,7 +271,7 @@ export default function EmailReportsPage() {
               </svg>
             </div>
             <div>
-              <p className="text-2xl font-semibold text-slate-900">{stats.failed}</p>
+              <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.failed}</p>
               <p className="text-xs text-slate-500">Failed</p>
             </div>
           </div>
@@ -251,11 +285,11 @@ export default function EmailReportsPage() {
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-sky-500"></div>
-              <span className="text-sm text-slate-600">Outbox: <span className="font-semibold text-slate-900">{stats.outbound}</span></span>
+              <span className="text-sm text-slate-600">Outbox: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.outbound}</span></span>
             </div>
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-emerald-500"></div>
-              <span className="text-sm text-slate-600">Inbox: <span className="font-semibold text-slate-900">{stats.inbound}</span></span>
+              <span className="text-sm text-slate-600">Inbox: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.inbound}</span></span>
             </div>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
@@ -277,11 +311,11 @@ export default function EmailReportsPage() {
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-violet-500"></div>
-              <span className="text-sm text-slate-600">Automation: <span className="font-semibold text-slate-900">{stats.automation}</span></span>
+              <span className="text-sm text-slate-600">Automation: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.automation}</span></span>
             </div>
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full bg-amber-500"></div>
-              <span className="text-sm text-slate-600">Manual: <span className="font-semibold text-slate-900">{stats.manual}</span></span>
+              <span className="text-sm text-slate-600">Manual: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.manual}</span></span>
             </div>
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
@@ -584,14 +618,28 @@ export default function EmailReportsPage() {
           <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <h2 className="text-lg font-semibold text-slate-900">Email Details</h2>
-              <button
-                onClick={() => setViewModalOpen(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-1">
+                {selectedEmail.patient_id && (
+                  <Link
+                    href={`/patients/${selectedEmail.patient_id}?tab=emails`}
+                    title="Open in patient email tab"
+                    className="rounded-lg p-1.5 text-sky-600 hover:bg-sky-50 hover:text-sky-700"
+                  >
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+                    </svg>
+                    <span className="sr-only">Open in patient email tab</span>
+                  </Link>
+                )}
+                <button
+                  onClick={() => setViewModalOpen(false)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div className="max-h-[70vh] overflow-y-auto px-6 py-4">
               <div className="space-y-4">
@@ -680,8 +728,22 @@ export default function EmailReportsPage() {
                 </div>
 
                 <div className="rounded-lg border border-slate-100 bg-white p-4">
-                  <h3 className="mb-2 text-xs font-medium text-slate-500">Email ID</h3>
-                  <p className="text-xs text-slate-500 font-mono">{selectedEmail.id}</p>
+                  <h3 className="mb-2 text-xs font-medium text-slate-500">Email Content</h3>
+                  {emailBodyLoading ? (
+                    <div className="flex items-center gap-2 py-8 text-sm text-slate-500">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
+                      Loading email content...
+                    </div>
+                  ) : selectedEmail.body ? (
+                    <iframe
+                      title={`Email content: ${selectedEmail.subject || selectedEmail.id}`}
+                      sandbox=""
+                      srcDoc={selectedEmail.body}
+                      className="h-80 w-full rounded border border-slate-100 bg-white"
+                    />
+                  ) : (
+                    <p className="py-8 text-sm text-slate-500">Email content is unavailable.</p>
+                  )}
                 </div>
               </div>
             </div>

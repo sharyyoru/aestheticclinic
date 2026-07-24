@@ -20,6 +20,25 @@ export async function GET(req: NextRequest) {
     const search = (url.searchParams.get("search") || "").trim();
     const dateFrom = url.searchParams.get("date_from") || "";
     const dateTo = url.searchParams.get("date_to") || "";
+    const doctorEmail = (url.searchParams.get("doctor_email") || "").trim().toLowerCase();
+    const emailId = url.searchParams.get("email_id");
+    const includeStats = url.searchParams.get("include_stats") !== "false";
+
+    if (emailId) {
+      const { data: email, error } = await supabaseAdmin
+        .from("emails")
+        .select("id, body")
+        .eq("id", emailId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[email-reports] Email detail query error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      if (!email) return NextResponse.json({ error: "Email not found" }, { status: 404 });
+
+      return NextResponse.json({ email });
+    }
 
     // Build the query for emails (without body for performance)
     let query = supabaseAdmin
@@ -30,7 +49,14 @@ export async function GET(req: NextRequest) {
       )
       .order("created_at", { ascending: false });
 
+    const doctorEmailFilter = doctorEmail
+      ? `from_address.ilike.%${doctorEmail}%,to_address.ilike.%${doctorEmail}%`
+      : null;
+
     // Apply filters
+    if (doctorEmailFilter) {
+      query = query.or(doctorEmailFilter);
+    }
     if (direction !== "all") {
       query = query.eq("direction", direction);
     }
@@ -74,25 +100,60 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch stats separately (lightweight count queries)
-    const [
-      { count: totalCount },
-      { count: sentCount },
-      { count: failedCount },
-      { count: readCount },
-      { count: outboundCount },
-      { count: inboundCount },
-      { count: automationCount },
-      { count: manualCount },
-    ] = await Promise.all([
-      supabaseAdmin.from("emails").select("id", { count: "exact", head: true }),
-      supabaseAdmin.from("emails").select("id", { count: "exact", head: true }).eq("status", "sent"),
-      supabaseAdmin.from("emails").select("id", { count: "exact", head: true }).eq("status", "failed"),
-      supabaseAdmin.from("emails").select("id", { count: "exact", head: true }).not("read_at", "is", null),
-      supabaseAdmin.from("emails").select("id", { count: "exact", head: true }).eq("direction", "outbound"),
-      supabaseAdmin.from("emails").select("id", { count: "exact", head: true }).eq("direction", "inbound"),
-      supabaseAdmin.from("emails").select("id", { count: "exact", head: true }).eq("source", "automation"),
-      supabaseAdmin.from("emails").select("id", { count: "exact", head: true }).or("source.eq.manual,source.is.null"),
-    ]);
+    let stats: {
+      total: number;
+      sent: number;
+      failed: number;
+      read: number;
+      outbound: number;
+      inbound: number;
+      automation: number;
+      manual: number;
+    } | null = null;
+    if (includeStats) {
+      const countEmails = () => {
+        const countQuery = supabaseAdmin.from("emails").select("id", { count: "exact", head: true });
+        return doctorEmailFilter ? countQuery.or(doctorEmailFilter) : countQuery;
+      };
+      const countManualEmails = () => {
+        const countQuery = supabaseAdmin.from("emails").select("id", { count: "exact", head: true });
+        const manualEmailFilter = doctorEmailFilter
+          ? `and(or(${doctorEmailFilter}),or(source.eq.manual,source.is.null))`
+          : "source.eq.manual,source.is.null";
+        return countQuery.or(manualEmailFilter);
+      };
+
+      const [
+        { count: totalCount },
+        { count: sentCount },
+        { count: failedCount },
+        { count: readCount },
+        { count: outboundCount },
+        { count: inboundCount },
+        { count: automationCount },
+        { count: manualCount },
+      ] = await Promise.all([
+        countEmails(),
+        countEmails().eq("status", "sent"),
+        countEmails().eq("status", "failed"),
+        countEmails().not("read_at", "is", null),
+        countEmails().eq("direction", "outbound"),
+        countEmails().eq("direction", "inbound"),
+        countEmails().eq("source", "automation"),
+        countManualEmails(),
+      ]);
+
+      stats = {
+        total: totalCount || 0,
+        sent: sentCount || 0,
+        failed: failedCount || 0,
+        read: readCount || 0,
+        outbound: outboundCount || 0,
+        inbound: inboundCount || 0,
+        automation: automationCount || 0,
+        manual: manualCount || 0,
+      };
+    }
 
     // Get patient info for displayed emails
     const patientIds = [...new Set((emails || []).map((e: any) => e.patient_id).filter(Boolean))];
@@ -118,16 +179,7 @@ export async function GET(req: NextRequest) {
       page,
       per_page: perPage,
       total_pages: Math.ceil((count || 0) / perPage),
-      stats: {
-        total: totalCount || 0,
-        sent: sentCount || 0,
-        failed: failedCount || 0,
-        read: readCount || 0,
-        outbound: outboundCount || 0,
-        inbound: inboundCount || 0,
-        automation: automationCount || 0,
-        manual: manualCount || 0,
-      },
+      stats,
     });
   } catch (err: any) {
     console.error("[email-reports] Error:", err);
