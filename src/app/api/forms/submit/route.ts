@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getFormById } from "@/lib/formDefinitions";
+import { getUnansweredPatientFormFields } from "@/lib/patientFormValidation";
 
 // POST /api/forms/submit - Submit form data using token
 export async function POST(request: Request) {
@@ -48,6 +50,25 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "This form has already been submitted" },
         { status: 409 }
+      );
+    }
+
+    const form = getFormById(submission.form_id);
+    if (!form) {
+      return NextResponse.json(
+        { error: "Form definition not found" },
+        { status: 404 }
+      );
+    }
+
+    const unansweredFields = getUnansweredPatientFormFields(form, submissionData);
+    if (unansweredFields.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Please complete every field before submitting the form",
+          missingFields: unansweredFields.map((field) => field.id),
+        },
+        { status: 400 }
       );
     }
 

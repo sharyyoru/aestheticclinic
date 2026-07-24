@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { getAlternateLanguageFormId, getFormById, FormDefinition, FormField, FormSection, FormContentBlock } from "@/lib/formDefinitions";
+import { getUnansweredPatientFormFields } from "@/lib/patientFormValidation";
 import Image from "next/image";
 
 type FormData = Record<string, string | boolean | string[]>;
@@ -242,6 +243,7 @@ function FormFieldComponent({
 }) {
   const label = language === "fr" && field.labelFr ? field.labelFr : field.label;
   const placeholder = language === "fr" && field.placeholderFr ? field.placeholderFr : field.placeholder;
+  const isRequired = field.type !== "checkbox" || field.required === true;
 
   switch (field.type) {
     case "text":
@@ -251,7 +253,7 @@ function FormFieldComponent({
         <div className="space-y-1">
           <label htmlFor={field.id} className="block text-sm font-medium text-slate-700">
             {label}
-            {field.required && <span className="ml-1 text-red-500">*</span>}
+            {isRequired && <span className="ml-1 text-red-500">*</span>}
           </label>
           <input
             type={field.type === "phone" ? "tel" : field.type}
@@ -259,7 +261,7 @@ function FormFieldComponent({
             value={value as string || ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            required={field.required}
+            required={isRequired}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
           />
         </div>
@@ -270,7 +272,7 @@ function FormFieldComponent({
         <div className="space-y-1">
           <label htmlFor={field.id} className="block text-sm font-medium text-slate-700">
             {label}
-            {field.required && <span className="ml-1 text-red-500">*</span>}
+            {isRequired && <span className="ml-1 text-red-500">*</span>}
           </label>
           <input
             type="number"
@@ -278,7 +280,7 @@ function FormFieldComponent({
             value={value as string || ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            required={field.required}
+            required={isRequired}
             min={field.validation?.min}
             max={field.validation?.max}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
@@ -291,14 +293,14 @@ function FormFieldComponent({
         <div className="space-y-1">
           <label htmlFor={field.id} className="block text-sm font-medium text-slate-700">
             {label}
-            {field.required && <span className="ml-1 text-red-500">*</span>}
+            {isRequired && <span className="ml-1 text-red-500">*</span>}
           </label>
           <input
             type="date"
             id={field.id}
             value={value as string || ""}
             onChange={(e) => onChange(e.target.value)}
-            required={field.required}
+            required={isRequired}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
           />
         </div>
@@ -309,14 +311,14 @@ function FormFieldComponent({
         <div className="space-y-1">
           <label htmlFor={field.id} className="block text-sm font-medium text-slate-700">
             {label}
-            {field.required && <span className="ml-1 text-red-500">*</span>}
+            {isRequired && <span className="ml-1 text-red-500">*</span>}
           </label>
           <textarea
             id={field.id}
             value={value as string || ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            required={field.required}
+            required={isRequired}
             rows={3}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
           />
@@ -331,12 +333,12 @@ function FormFieldComponent({
             id={field.id}
             checked={value as boolean || false}
             onChange={(e) => onChange(e.target.checked)}
-            required={field.required}
+            required={isRequired}
             className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
           />
           <label htmlFor={field.id} className="text-sm text-slate-700">
             {label}
-            {field.required && <span className="ml-1 text-red-500">*</span>}
+            {isRequired && <span className="ml-1 text-red-500">*</span>}
           </label>
         </div>
       );
@@ -346,7 +348,7 @@ function FormFieldComponent({
         <div className="space-y-2">
           <p className="text-sm font-medium text-slate-700">
             {label}
-            {field.required && <span className="ml-1 text-red-500">*</span>}
+            {isRequired && <span className="ml-1 text-red-500">*</span>}
           </p>
           <div className="space-y-2">
             {field.options?.map((option) => {
@@ -359,7 +361,7 @@ function FormFieldComponent({
                     value={option.value}
                     checked={value === option.value}
                     onChange={(e) => onChange(e.target.value)}
-                    required={field.required}
+                    required={isRequired}
                     className="h-4 w-4 border-slate-300 text-sky-600 focus:ring-sky-500"
                   />
                   {optionLabel}
@@ -375,13 +377,13 @@ function FormFieldComponent({
         <div className="space-y-1">
           <label htmlFor={field.id} className="block text-sm font-medium text-slate-700">
             {label}
-            {field.required && <span className="ml-1 text-red-500">*</span>}
+            {isRequired && <span className="ml-1 text-red-500">*</span>}
           </label>
           <select
             id={field.id}
             value={value as string || ""}
             onChange={(e) => onChange(e.target.value)}
-            required={field.required}
+            required={isRequired}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-100"
           >
             <option value="">{language === "fr" ? "Sélectionner..." : "Select..."}</option>
@@ -402,7 +404,7 @@ function FormFieldComponent({
         <SignatureCanvas
           value={value as string || ""}
           onChange={(v) => onChange(v)}
-          label={`${label}${field.required ? " *" : ""}`}
+          label={`${label} *`}
         />
       );
 
@@ -1205,6 +1207,7 @@ export default function PublicFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [patientInfo, setPatientInfo] = useState<PatientInfo | null>(null);
 
   useEffect(() => {
@@ -1278,6 +1281,7 @@ export default function PublicFormPage() {
   }, [formId, token]);
 
   const handleFieldChange = (fieldId: string, value: string | boolean | string[]) => {
+    setValidationError(null);
     setFormData((prev) => ({
       ...prev,
       [fieldId]: value,
@@ -1289,6 +1293,24 @@ export default function PublicFormPage() {
     
     if (!token) {
       setError("Invalid form link - no token provided");
+      return;
+    }
+
+    if (!form) {
+      return;
+    }
+
+    const unansweredFields = getUnansweredPatientFormFields(form, formData);
+    if (unansweredFields.length > 0) {
+      const firstField = unansweredFields[0];
+      const firstFieldLabel =
+        form.language === "fr" && firstField.labelFr ? firstField.labelFr : firstField.label;
+      setValidationError(
+        form.language === "fr"
+          ? `Veuillez remplir tous les champs avant de soumettre le formulaire. Premier champ manquant : ${firstFieldLabel}.`
+          : `Please complete every field before submitting the form. First missing field: ${firstFieldLabel}.`
+      );
+      document.getElementById(firstField.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
@@ -1428,6 +1450,14 @@ export default function PublicFormPage() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
+          {validationError && (
+            <div
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+            >
+              {validationError}
+            </div>
+          )}
           {isAnesthesiaQuestionnaire ? (
             <AnesthesiaQuestionnairePdfForm
               language={form.language}
