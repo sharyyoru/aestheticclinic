@@ -182,19 +182,27 @@ export async function POST(request: NextRequest) {
 
     const patientData = patient as unknown as PatientData;
 
-    // Get insurance data if available
+    // Get insurance data if available — prefer the record matching the user's selected GLN
+    // (insurerGln / invoiceRecord.insurance_gln), falling back to is_primary ordering.
+    const preferredInsurerGln = insurerGln || invoiceRecord?.insurance_gln;
     let insuranceData: InsuranceData | null = null;
     const { data: insurances } = await supabaseAdmin
       .from("patient_insurances")
       .select("*")
       .eq("patient_id", patientId)
-      .limit(1);
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true });
 
     if (insurances && insurances.length > 0) {
-      insuranceData = insurances[0] as unknown as InsuranceData;
+      if (preferredInsurerGln) {
+        insuranceData = (insurances.find(i => i.gln === preferredInsurerGln) || insurances[0]) as unknown as InsuranceData;
+      } else {
+        insuranceData = insurances[0] as unknown as InsuranceData;
+      }
     }
 
-    // Get detailed Swiss insurer data if available
+    // Get detailed Swiss insurer data — look up by the USER'S SELECTED GLN (authoritative),
+    // not by an arbitrary insurer_id from patient_insurances.
     let swissInsurer: {
       receiver_gln: string | null;
       tp_allowed: boolean | null;
@@ -205,30 +213,16 @@ export async function POST(request: NextRequest) {
       address_canton: string | null;
     } | null = null;
 
-    const resolvedInsurerId = invoiceRecord?.insurer_id || insuranceData?.insurer_id;
-    if (resolvedInsurerId) {
+    const lookupGln = preferredInsurerGln || insuranceData?.gln;
+    if (lookupGln) {
       const { data } = await supabaseAdmin
         .from("swiss_insurers")
         .select("name, receiver_gln, tp_allowed, address_street, address_postal_code, address_city, address_canton")
-        .eq("id", resolvedInsurerId)
-        .single();
+        .eq("gln", lookupGln)
+        .limit(1)
+        .maybeSingle();
 
       if (data) swissInsurer = data;
-    }
-
-    // Fallback: look up swiss_insurers by GLN if no insurer_id resolved
-    if (!swissInsurer) {
-      const lookupGln = insurerGln || invoiceRecord?.insurance_gln || insuranceData?.gln;
-      if (lookupGln) {
-        const { data } = await supabaseAdmin
-          .from("swiss_insurers")
-          .select("name, receiver_gln, tp_allowed, address_street, address_postal_code, address_city, address_canton")
-          .eq("gln", lookupGln)
-          .limit(1)
-          .single();
-
-        if (data) swissInsurer = data;
-      }
     }
 
     // Get sender GLN from medidata_config (only field needed from config)
@@ -415,8 +409,11 @@ export async function POST(request: NextRequest) {
     const subtotal = services.reduce((sum, s) => sum + s.total, 0);
     const total = invoiceRecord?.total_amount || consultationData?.invoice_total_amount || subtotal;
     const resolvedInsurerGln = insurerGln || invoiceRecord?.insurance_gln || insuranceData?.gln || '7601003000016';
-    const resolvedReceiverGln = swissInsurer?.receiver_gln || resolvedInsurerGln;
-    const resolvedInsurerName = insurerName || invoiceRecord?.insurance_name || insuranceData?.provider_name || 'Unknown Insurer';
+    // Use the user's selected GLN for transport routing — NOT swissInsurer.receiver_gln,
+    // which may come from a different insurer due to stale/wrong swiss_insurers data.
+    // The GLN from MediData participants is the authoritative routing target.
+    const resolvedReceiverGln = resolvedInsurerGln;
+    const resolvedInsurerName = insurerName || invoiceRecord?.insurance_name || insuranceData?.provider_name || swissInsurer?.name || 'Unknown Insurer';
 
     // Build Sumex1 input — Sumex1 server is the ONLY XML generation path
     const sumexServices: SumexServiceInput[] = services.map(s => {
@@ -548,7 +545,7 @@ export async function POST(request: NextRequest) {
       },
       insuranceGln: resolvedInsurerGln,
       insuranceAddress: resolvedInsurerGln ? {
-        companyName: swissInsurer?.name || resolvedInsurerName,
+        companyName: resolvedInsurerName,
         street: bodyInsurerAddress?.street || swissInsurer?.address_street || "N/A",
         zip: bodyInsurerAddress?.zip || swissInsurer?.address_postal_code || "0000",
         city: bodyInsurerAddress?.city || swissInsurer?.address_city || "N/A",

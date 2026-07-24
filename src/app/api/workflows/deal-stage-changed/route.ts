@@ -1436,17 +1436,14 @@ export async function POST(request: Request) {
             call_purpose?: string;
           };
 
-          // Main agent for outbound calls: the language-switcher ("Outbound
-          // Flow") agent that routes the patient to English or French itself,
-          // so both language keys point to it.
-          const MAIN_AGENT_ID = "agent_023fdedfe7faf0fae56e51b65c";
-          const RETELL_AGENTS = {
-            english: MAIN_AGENT_ID,
-            french: MAIN_AGENT_ID,
+          // Clinic outbound AI call agents by language.
+          const OUTBOUND_AGENTS = {
+            english: "agent_eae6c598f3b68c71c9e1ae6aad",
+            french: "agent_b347fa0d08519c114af295671d",
           };
 
           const agentLanguage = config.agent_language || "english";
-          const agentId = RETELL_AGENTS[agentLanguage];
+          const agentId = OUTBOUND_AGENTS[agentLanguage] || OUTBOUND_AGENTS.english;
 
           // Get patient phone number
           const patientPhone = safePatient.phone;
@@ -1498,12 +1495,21 @@ export async function POST(request: Request) {
             dynamicVariables.call_purpose = config.call_purpose;
           }
 
-          // Prepare the call payload
+          // Prepare the call payload for Retell v2 create-phone-call.
+          // Use override_agent_id and place webhook config inside agent_override.agent
+          // so it is actually honored by the API.
           const callPayload = {
             from_number: RETELL_FROM_NUMBER || "+41799029555",
             to_number: normalizedPhone,
-            agent_id: agentId,
-            webhook_url: RETELL_WEBHOOK_URL,
+            override_agent_id: agentId,
+            override_agent_version: "latest_published",
+            agent_override: {
+              agent: {
+                webhook_url: RETELL_WEBHOOK_URL,
+                webhook_events: ["call_started", "call_ended", "call_analyzed"],
+                webhook_timeout_ms: 10000,
+              },
+            },
             retell_llm_dynamic_variables: dynamicVariables,
             metadata: {
               source: "workflow",

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams, useParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useAuth } from "@/components/AuthContext";
+import SearchableSelect from "@/components/SearchableSelect";
 
 type MedicationSubTab = "medicine" | "prescription";
 
@@ -30,6 +32,12 @@ type PatientPrescription = {
     show_in_mediplan: boolean | null;
     active: boolean | null;
     last_emailed_at: string | null;
+};
+
+type DoctorProvider = {
+    id: string;
+    name: string;
+    specialty: string | null;
 };
 
 type NewPrescriptionProduct = {
@@ -81,7 +89,8 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
     const router = useRouter();
     const searchParams = useSearchParams();
     const params = useParams();
-    
+    const { user } = useAuth();
+
     // Use patientId from URL params (more reliable) or fall back to prop
     const patientId = (params?.id as string) || propPatientId;
     
@@ -107,12 +116,51 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
     const [newPrescriptionDecisionSummary, setNewPrescriptionDecisionSummary] = useState("");
     const [newPrescriptionShowInMediplan, setNewPrescriptionShowInMediplan] = useState(true);
     const [newPrescriptionIsPrescription, setNewPrescriptionIsPrescription] = useState(true);
+    const [doctorOptions, setDoctorOptions] = useState<DoctorProvider[]>([]);
+    const [newPrescriptionDoctorProviderId, setNewPrescriptionDoctorProviderId] = useState<string>("");
     const searchTimeoutRefs = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
 
     useEffect(() => {
         loadMedications();
         loadPatientEmail();
     }, [patientId]);
+
+    // Load active doctors for the prescription creator dropdown and prefill with
+    // the current user's associated provider.
+    useEffect(() => {
+        async function loadDoctorsAndDefault() {
+            const { data: providers } = await supabaseClient
+                .from("providers")
+                .select("id, name, specialty")
+                .eq("role", "doctor")
+                .eq("is_active", true)
+                .order("name", { ascending: true });
+
+            const activeDoctors = (providers || []) as DoctorProvider[];
+            setDoctorOptions(activeDoctors);
+
+            let defaultProviderId = "";
+            if (user?.id) {
+                const { data: userRow } = await supabaseClient
+                    .from("users")
+                    .select("provider_id")
+                    .eq("id", user.id)
+                    .single();
+                if (userRow?.provider_id && activeDoctors.some((d) => d.id === userRow.provider_id)) {
+                    defaultProviderId = userRow.provider_id;
+                }
+            }
+
+            // Fall back to the first active doctor if no user/provider mapping.
+            if (!defaultProviderId && activeDoctors.length > 0) {
+                defaultProviderId = activeDoctors[0].id;
+            }
+
+            setNewPrescriptionDoctorProviderId(defaultProviderId);
+        }
+
+        void loadDoctorsAndDefault();
+    }, [user?.id]);
 
     async function loadPatientEmail() {
         const { data } = await supabaseClient
@@ -306,10 +354,23 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
             const sharedTherapyId = crypto.randomUUID();
             const sharedPrescriptionSheetId = newPrescriptionIsPrescription ? crypto.randomUUID() : null;
 
+            // Resolve the selected provider to its user's id for mandator_id.
+            // Fall back to the current auth user if no mapping exists.
+            let selectedDoctorUserId = user?.id || null;
+            if (newPrescriptionDoctorProviderId && user?.id) {
+                const { data: mappedUser } = await supabaseClient
+                    .from("users")
+                    .select("id")
+                    .eq("provider_id", newPrescriptionDoctorProviderId)
+                    .maybeSingle();
+                if (mappedUser?.id) selectedDoctorUserId = mappedUser.id;
+            }
+
             const medPayloads = validProducts.map((product) => ({
                 patient_id: patientId,
                 journal_entry_id: crypto.randomUUID(),
-                mandator_id: crypto.randomUUID(),
+                mandator_id: selectedDoctorUserId,
+                created_by: user?.id || null,
                 therapy_id: sharedTherapyId,
                 product_name: product.productName.trim(),
                 product_type: product.productType,
@@ -832,6 +893,20 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                             ))}
 
                             {/* Shared fields */}
+                            <div>
+                                <label className="mb-1 block text-[11px] font-medium text-slate-700">Doctor</label>
+                                <SearchableSelect
+                                    value={newPrescriptionDoctorProviderId}
+                                    onChange={setNewPrescriptionDoctorProviderId}
+                                    placeholder="Select doctor"
+                                    options={doctorOptions.map((doctor) => ({
+                                        value: doctor.id,
+                                        label: `${doctor.name}${doctor.specialty ? ` (${doctor.specialty})` : ""}`,
+                                    }))}
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                />
+                            </div>
+
                             <div>
                                 <label className="mb-1 block text-[11px] font-medium text-slate-700">Decision Summary / Reason</label>
                                 <input

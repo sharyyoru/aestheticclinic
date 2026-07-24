@@ -82,6 +82,20 @@ const DOCTORS: Record<string, {
     email: "lily@aesthetics-ge.ch",
     description: "Expert aesthetic nurse at Gstaad.",
   },
+  "yosra": {
+    name: "Yosra",
+    specialty: "Esthéticienne | Laser Specialist",
+    image: "/doctors/yosra.jpeg",
+    email: "yosra@aesthetics-ge.ch",
+    description: "Expert aesthetician specializing in laser treatments and skin care.",
+  },
+  "sofien-seneina": {
+    name: "Sofien Seneina",
+    specialty: "Infirmier | IV Drip Therapy",
+    image: "/doctors/sofien-seneina.jpeg",
+    email: "sofien.seneina@aesthetics-ge.ch",
+    description: "Registered nurse specializing in IV drip therapy and wellness treatments.",
+  },
 };
 
 // Doctor availability by location
@@ -141,6 +155,21 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       4: { start: "10:00", end: "18:30" },
       5: { start: "10:00", end: "18:30" },
       6: { start: "10:00", end: "18:30" },
+    },
+  },
+  "yosra": {
+    champel: {
+      2: { start: "08:00", end: "13:00" },
+      4: { start: "08:00", end: "19:00" },
+    },
+  },
+  "sofien-seneina": {
+    champel: {
+      1: { start: "08:00", end: "17:00" },
+      2: { start: "14:00", end: "17:00" },
+      3: { start: "15:00", end: "17:00" },
+      4: { start: "08:00", end: "17:00" },
+      5: { start: "14:00", end: "17:00" },
     },
   },
 };
@@ -702,13 +731,17 @@ function EmbedBookPageContent() {
                   onClick={() => handleDoctorSelect(doc.slug)}
                   className="group bg-white rounded-xl border border-slate-200 overflow-hidden text-left hover:border-slate-400 hover:shadow-md transition-all"
                 >
-                  <div className="relative h-24 bg-slate-100">
+                  <div className="relative h-36 sm:h-44 bg-slate-100">
                     <Image
                       src={doc.image}
                       alt={doc.name}
                       fill
                       className={`object-cover group-hover:scale-105 transition-transform ${
-                        doc.slug === "lily-radionova" ? "object-[center_15%]" : "object-top"
+                        doc.slug === "lily-radionova"
+                          ? "object-[center_15%]"
+                          : doc.slug === "yosra" || doc.slug === "sofien-seneina"
+                            ? "object-[center_30%]"
+                            : "object-top"
                       }`}
                     />
                   </div>

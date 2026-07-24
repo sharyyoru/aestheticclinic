@@ -51,6 +51,20 @@ const DOCTORS: Record<string, {
     email: "lily@aesthetics-ge.ch",
     description: "Expert aesthetic nurse specializing in non-invasive treatments and patient care at our Gstaad location.",
   },
+  "yosra": {
+    name: "Yosra",
+    specialty: "Esthéticienne | Laser Specialist",
+    image: "/doctors/yosra.jpeg",
+    email: "yosra@aesthetics-ge.ch",
+    description: "Expert aesthetician specializing in laser treatments and skin care.",
+  },
+  "sofien-seneina": {
+    name: "Sofien Seneina",
+    specialty: "Infirmier | IV Drip Therapy",
+    image: "/doctors/sofien-seneina.jpeg",
+    email: "sofien.seneina@aesthetics-ge.ch",
+    description: "Registered nurse specializing in IV drip therapy and wellness treatments.",
+  },
 };
 
 // Doctor availability by location
@@ -112,6 +126,21 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       4: { start: "10:00", end: "18:30" }, // Thursday 10am-6:30pm
       5: { start: "10:00", end: "18:30" }, // Friday 10am-6:30pm
       6: { start: "10:00", end: "18:30" }, // Saturday 10am-6:30pm
+    },
+  },
+  "yosra": {
+    champel: {
+      2: { start: "08:00", end: "13:00" }, // Tuesday 8am-1pm
+      4: { start: "08:00", end: "19:00" }, // Thursday 8am-7pm
+    },
+  },
+  "sofien-seneina": {
+    champel: {
+      1: { start: "08:00", end: "17:00" }, // Monday 8am-5pm
+      2: { start: "14:00", end: "17:00" }, // Tuesday 2pm-5pm
+      3: { start: "15:00", end: "17:00" }, // Wednesday 3pm-5pm
+      4: { start: "08:00", end: "17:00" }, // Thursday 8am-5pm
+      5: { start: "14:00", end: "17:00" }, // Friday 2pm-5pm
     },
   },
 };
@@ -633,12 +662,18 @@ function DoctorBookingContent() {
           {/* Doctor Card - Fixed (smaller) */}
           <div className="lg:sticky lg:top-8 h-fit">
             <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden border border-slate-200 flex lg:flex-col">
-              <div className="relative w-24 h-24 sm:w-32 sm:h-32 lg:w-full lg:h-40 bg-gradient-to-br from-slate-100 to-slate-50 flex-shrink-0">
+              <div className="relative w-24 h-24 sm:w-32 sm:h-32 lg:w-full lg:h-56 bg-gradient-to-br from-slate-100 to-slate-50 flex-shrink-0">
                 <Image
                   src={doctor.image}
                   alt={doctor.name}
                   fill
-                  className="object-cover object-top"
+                  className={`object-cover ${
+                    slug === "lily-radionova"
+                      ? "object-[center_15%]"
+                      : slug === "yosra" || slug === "sofien-seneina"
+                        ? "object-[center_30%]"
+                        : "object-top"
+                  }`}
                 />
               </div>
               <div className="p-3 sm:p-4 flex-1">

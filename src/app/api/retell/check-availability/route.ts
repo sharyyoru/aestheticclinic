@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
+import { isHardBlock, type AppointmentRow } from "@/lib/appointmentAvailability";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -80,6 +81,21 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       6: { start: "10:00", end: "18:30" },
     },
   },
+  "yosra": {
+    champel: {
+      2: { start: "08:00", end: "13:00" },
+      4: { start: "08:00", end: "19:00" },
+    },
+  },
+  "sofien-seneina": {
+    champel: {
+      1: { start: "08:00", end: "17:00" },
+      2: { start: "14:00", end: "17:00" },
+      3: { start: "15:00", end: "17:00" },
+      4: { start: "08:00", end: "17:00" },
+      5: { start: "14:00", end: "17:00" },
+    },
+  },
 };
 
 /**
@@ -108,14 +124,14 @@ const SERVICE_DOCTOR_MAPPING: Record<string, string[]> = {
   wrinkle: ["yulia-raspertova", "lily-radionova"],
 
   // Laser and clinic treatments
-  laser: ["clinic", "lily-radionova"],
-  "iv therapy": ["clinic"],
+  laser: ["yosra", "clinic"],
+  "iv therapy": ["sofien-seneina", "clinic"],
   hyperbaric: ["clinic"],
   hbot: ["clinic"],
 
   // General consultation - all doctors
-  consultation: ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova", "clinic", "lily-radionova"],
-  general: ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova", "clinic", "lily-radionova"],
+  consultation: ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova", "clinic", "lily-radionova", "yosra", "sofien-seneina"],
+  general: ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova", "clinic", "lily-radionova", "yosra", "sofien-seneina"],
 };
 
 const DOCTOR_NAMES: Record<string, string> = {
@@ -124,6 +140,8 @@ const DOCTOR_NAMES: Record<string, string> = {
   "yulia-raspertova": "Dr. Yulia Raspertova",
   clinic: "Laser & Treatments",
   "lily-radionova": "Nurse Lily Radionova",
+  "yosra": "Yosra",
+  "sofien-seneina": "Sofien Seneina",
 };
 
 // Maps doctor slugs to keywords that appear in provider names
@@ -133,6 +151,8 @@ const DOCTOR_NAME_KEYWORDS: Record<string, string[]> = {
   "yulia-raspertova": ["raspertova", "yulia"],
   clinic: ["clinic", "laser"],
   "lily-radionova": ["radionova", "lily"],
+  "yosra": ["yosra"],
+  "sofien-seneina": ["sofien", "seneina"],
 };
 
 const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova"];
@@ -430,7 +450,11 @@ export async function POST(request: NextRequest) {
                 return false;
               });
 
-              if (overlapping.length < maxCapacity) {
+              // A hard block (INDISPO/PAUSE) fully blocks regardless of capacity
+              const hasHardBlock = overlapping.some((a) => isHardBlock(a as unknown as AppointmentRow));
+              const effectiveCount = hasHardBlock ? maxCapacity : overlapping.length;
+
+              if (effectiveCount < maxCapacity) {
                 allSlots.push({
                   date: slotTime.toISOString().split("T")[0],
                   time: formatSwissTimeAmPm(slotTime),

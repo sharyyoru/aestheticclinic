@@ -5,13 +5,10 @@ export const runtime = "nodejs";
 const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER;
 
-// Main agent for outbound + test calls. This is the language-switcher
-// ("Outbound Flow") agent that greets the patient and routes them to the
-// English or French branch itself, so both language keys point to it.
-const MAIN_AGENT_ID = "agent_023fdedfe7faf0fae56e51b65c";
-const RETELL_AGENTS = {
-  english: MAIN_AGENT_ID,
-  french: MAIN_AGENT_ID,
+// Clinic outbound AI call agents by language.
+const OUTBOUND_AGENTS = {
+  english: "agent_eae6c598f3b68c71c9e1ae6aad",
+  french: "agent_b347fa0d08519c114af295671d",
 } as const;
 
 // Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).
@@ -71,7 +68,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const agentId = RETELL_AGENTS[agent_language as keyof typeof RETELL_AGENTS] || RETELL_AGENTS.english;
+    const agentId = OUTBOUND_AGENTS[agent_language as keyof typeof OUTBOUND_AGENTS] || OUTBOUND_AGENTS.english;
 
     // Build dynamic variables - use provided values or leave empty for AI to ask
     // Per Retell best practices: if empty, AI will ask for the info during the call
@@ -104,18 +101,25 @@ export async function POST(request: NextRequest) {
     const callPayload = {
       from_number: RETELL_FROM_NUMBER || "+41799029555",
       to_number: normalizedPhone,
-      agent_id: agentId,
+      override_agent_id: agentId,
+      override_agent_version: "latest_published",
+      agent_override: {
+        agent: {
+          webhook_url: RETELL_WEBHOOK_URL,
+          webhook_events: ["call_started", "call_ended", "call_analyzed"],
+          webhook_timeout_ms: 10000,
+        },
+      },
       retell_llm_dynamic_variables: dynamicVariables,
-      webhook_url: RETELL_WEBHOOK_URL,
       metadata: {
         source: "test",
-        patient_id: patient_id || null,
+        patient_id: patient_id || "",
         patient_phone: normalizedPhone,
-        patient_name: user_name || null,
+        patient_name: user_name || "",
         agent_language,
         triggered_at: new Date().toISOString(),
-        user_name_provided: !!user_name,
-        service_name_provided: !!service_name,
+        user_name_provided: String(!!user_name),
+        service_name_provided: String(!!service_name),
       },
     };
 
@@ -171,7 +175,7 @@ export async function GET() {
   let agentInfo = null;
   if (RETELL_API_KEY) {
     try {
-      const agentResponse = await fetch(`https://api.retellai.com/get-agent/${RETELL_AGENTS.english}`, {
+      const agentResponse = await fetch(`https://api.retellai.com/get-agent/${OUTBOUND_AGENTS.english}`, {
         headers: {
           "Authorization": `Bearer ${RETELL_API_KEY}`,
         },
@@ -194,7 +198,7 @@ export async function GET() {
     configured: !!RETELL_API_KEY,
     from_number: RETELL_FROM_NUMBER || "+41799029555",
     webhook_url: RETELL_WEBHOOK_URL,
-    agents: RETELL_AGENTS,
+    agents: OUTBOUND_AGENTS,
     agent_info: agentInfo,
     usage: {
       method: "POST",

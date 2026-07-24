@@ -9,6 +9,8 @@ import HeaderUser from "@/components/HeaderUser";
 import HeaderCommentsButton from "@/components/HeaderCommentsButton";
 import HeaderNotificationsButton from "@/components/HeaderNotificationsButton";
 import HeaderDealNotificationsButton from "@/components/HeaderDealNotificationsButton";
+import HeaderEmailReportsButton from "@/components/HeaderEmailReportsButton";
+import HeaderInsuranceEmailButton from "@/components/HeaderInsuranceEmailButton";
 import HeaderTasksButton from "@/components/HeaderTasksButton";
 import HeaderPromptButton from "@/components/HeaderPromptButton";
 import HeaderWhatsAppButton from "@/components/HeaderWhatsAppButton";
@@ -622,6 +624,8 @@ export default function RootLayout({
                       <HeaderTasksButton />
                       <HeaderPromptButton />
                       <HeaderDealNotificationsButton />
+                      <HeaderEmailReportsButton />
+                      <HeaderInsuranceEmailButton />
                       <HeaderNotificationsButton />
                       <HeaderCommentsButton />
                       <HeaderWhatsAppButton />

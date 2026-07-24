@@ -6,6 +6,7 @@ import {
   describeBlocking,
   fetchOverlappingAppointments,
   getMaxCapacity,
+  isHardBlock,
   resolveProviderId,
 } from "@/lib/appointmentAvailability";
 
@@ -70,7 +71,10 @@ export async function GET(request: NextRequest) {
       const blocking = doctorAppts.filter((da) => da.start < slotEndMs && da.end > slotStartMs);
       if (blocking.length > 0) {
         const iso = new Date(slotStartMs).toISOString();
-        slotCounts[iso] = blocking.length;
+        // A hard block (INDISPO/PAUSE/no_patient) fully blocks the slot regardless
+        // of multi-capacity — the doctor is truly unavailable, not just with a patient.
+        const hasHardBlock = blocking.some((da) => isHardBlock(da.apt));
+        slotCounts[iso] = hasHardBlock ? maxCapacity : blocking.length;
         if (debug) slotDebug[iso] = blocking.map((da) => describeBlocking(da.apt, providerId));
       }
     }

@@ -9,6 +9,7 @@ import InvoicedServicesTab from "./tabs/InvoicedServicesTab";
 import PaidServicesTab from "./tabs/PaidServicesTab";
 import FirstConsultationsTab from "./tabs/FirstConsultationsTab";
 import AgendaPatientsPaymentsTab from "./tabs/AgendaPatientsPaymentsTab";
+import MediDataStatusTab from "./tabs/MediDataStatusTab";
 
 type TabKey =
   | "debiteurs"
@@ -18,6 +19,7 @@ type TabKey =
   | "paid_services"
   | "first_consultations"
   | "agenda_patients_payments"
+  | "medidata_status"
   | "services_apercu"
   | "non_invoiced"
   | "cash_collection"
@@ -63,6 +65,11 @@ const TABS: {
     key: "agenda_patients_payments",
     label: "Agenda Patients Payments",
     description: "Patients from specific agenda/location and their payments during period",
+  },
+  {
+    key: "medidata_status",
+    label: "MediData Status",
+    description: "Insurance invoice status — sent, paid, rejected, transmitted, stornoed, duplicates, aging, routing",
   },
   {
     key: "services_apercu",
@@ -188,6 +195,10 @@ export default function StatisticsPage() {
                 if (t.key === "first_consultations") {
                   setFilters((f) => ({ ...f, from: sixMonthsAgo(), to: today() }));
                 }
+                // Auto-set from April 1 when opening the MediData Status tab
+                if (t.key === "medidata_status") {
+                  setFilters((f) => ({ ...f, from: "2026-04-01", to: today() }));
+                }
               }}
               className={
                 "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors " +
@@ -258,6 +269,9 @@ export default function StatisticsPage() {
         )}
         {activeTab === "agenda_patients_payments" && (
           <AgendaPatientsPaymentsTab filters={filters} entities={entities} doctors={doctors} />
+        )}
+        {activeTab === "medidata_status" && (
+          <MediDataStatusTab filters={filters} entities={entities} doctors={doctors} />
         )}
       </div>
     </div>

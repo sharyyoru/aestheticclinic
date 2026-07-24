@@ -11,9 +11,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   createRetellCall,
-  RETELL_AGENT_ID,
+  normalizePhone,
   RETELL_FROM_NUMBER,
 } from "@/lib/retell";
+
+// Clinic outbound AI call agents by language. Scheduled calls that store an
+// explicit `agent_id` use that value; otherwise the English agent is the default.
+const OUTBOUND_AGENTS = {
+  english: "agent_eae6c598f3b68c71c9e1ae6aad",
+  french: "agent_b347fa0d08519c114af295671d",
+} as const;
 
 // Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).
 // MUST be /api/webhooks/retell-agent — the only endpoint that records the call
@@ -33,9 +40,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!RETELL_AGENT_ID || !RETELL_FROM_NUMBER) {
+  if (!RETELL_FROM_NUMBER) {
     return NextResponse.json(
-      { error: "RETELL_AGENT_ID or RETELL_FROM_NUMBER not configured" },
+      { error: "RETELL_FROM_NUMBER not configured" },
       { status: 500 },
     );
   }
@@ -64,6 +71,20 @@ export async function GET(req: NextRequest) {
 
   for (const call of dueCalls) {
     try {
+      const callAgentId = (call.agent_id as string) || OUTBOUND_AGENTS.english;
+      const rawToNumber = (call.to_number as string) || "";
+      const normalizedToNumber = normalizePhone(rawToNumber);
+
+      if (!normalizedToNumber || normalizedToNumber.length < 8) {
+        throw new Error(`Invalid to_number for scheduled_call ${call.id}: ${rawToNumber}`);
+      }
+
+      // Build string-only dynamic variables
+      const dynamicVariables: Record<string, string> = {};
+      if (call.user_name) dynamicVariables.user_name = call.user_name as string;
+      if (call.service_name) dynamicVariables.service_name = call.service_name as string;
+      if (call.prompt) dynamicVariables.prompt = call.prompt as string;
+
       // Mark as dispatched immediately to prevent double-fire
       await supabaseAdmin
         .from("retell_scheduled_calls")
@@ -79,19 +100,14 @@ export async function GET(req: NextRequest) {
       }
 
       // Fire the Retell call (use per-call agent_id if set, otherwise env default)
-      const callAgentId = (call.agent_id as string) || RETELL_AGENT_ID;
       const retellResponse = await createRetellCall({
         from_number: RETELL_FROM_NUMBER,
-        to_number: call.to_number as string,
+        to_number: normalizedToNumber,
         agent_id: callAgentId,
         webhook_url: RETELL_WEBHOOK_URL,
-        retell_llm_dynamic_variables: {
-          user_name: call.user_name as string,
-          service_name: call.service_name as string,
-          ...(call.prompt ? { prompt: call.prompt as string } : {}),
-        },
+        retell_llm_dynamic_variables: dynamicVariables,
         metadata: {
-          patient_id: call.patient_id as string,
+          patient_id: (call.patient_id as string) || "",
           deal_id: (call.deal_id as string) ?? "",
           scheduled_call_id: call.id as string,
         },

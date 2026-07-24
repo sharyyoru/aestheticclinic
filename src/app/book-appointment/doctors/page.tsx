@@ -67,6 +67,21 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       6: { start: "10:00", end: "18:30" }, // Saturday 10am-6:30pm
     },
   },
+  "yosra": {
+    champel: {
+      2: { start: "08:00", end: "13:00" }, // Tuesday 8am-1pm
+      4: { start: "08:00", end: "19:00" }, // Thursday 8am-7pm
+    },
+  },
+  "sofien-seneina": {
+    champel: {
+      1: { start: "08:00", end: "17:00" }, // Monday 8am-5pm
+      2: { start: "14:00", end: "17:00" }, // Tuesday 2pm-5pm
+      3: { start: "15:00", end: "17:00" }, // Wednesday 3pm-5pm
+      4: { start: "08:00", end: "17:00" }, // Thursday 8am-5pm
+      5: { start: "14:00", end: "17:00" }, // Friday 2pm-5pm
+    },
+  },
 };
 
 const ALL_DOCTORS = [
@@ -104,6 +119,20 @@ const ALL_DOCTORS = [
     specialty: "Aesthetic Nurse Specialist",
     image: "/doctors/lily-radionova.jpeg",
     description: "Expert aesthetic nurse specializing in non-invasive treatments at Gstaad.",
+  },
+  {
+    slug: "yosra",
+    name: "Yosra",
+    specialty: "Esthéticienne | Laser Specialist",
+    image: "/doctors/yosra.jpeg",
+    description: "Expert aesthetician specializing in laser treatments and skin care.",
+  },
+  {
+    slug: "sofien-seneina",
+    name: "Sofien Seneina",
+    specialty: "Infirmier | IV Drip Therapy",
+    image: "/doctors/sofien-seneina.jpeg",
+    description: "Registered nurse specializing in IV drip therapy and wellness treatments.",
   },
 ];
 
@@ -199,13 +228,17 @@ function DoctorsListContent() {
                 href={`/book-appointment/doctors/${doctor.slug}?${doctorQuery}`}
                 className="group bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-400 active:bg-slate-50 transition-all transform hover:-translate-y-1 active:scale-[0.98] w-[calc(50%-0.375rem)] sm:w-[calc(50%-0.5rem)] lg:w-[calc(25%-1.125rem)] touch-manipulation"
               >
-                <div className="relative h-28 sm:h-36 md:h-40 bg-gradient-to-br from-slate-100 to-slate-50 overflow-hidden">
+                <div className="relative h-40 sm:h-48 md:h-56 lg:h-64 bg-gradient-to-br from-slate-100 to-slate-50 overflow-hidden">
                   <Image
                     src={doctor.image}
                     alt={doctor.name}
                     fill
                     className={`object-cover group-hover:scale-105 transition-transform duration-300 ${
-                      doctor.slug === "lily-radionova" ? "object-[center_15%]" : "object-top"
+                      doctor.slug === "lily-radionova"
+                        ? "object-[center_15%]"
+                        : doctor.slug === "yosra" || doctor.slug === "sofien-seneina"
+                          ? "object-[center_30%]"
+                          : "object-top"
                     }`}
                   />
                 </div>

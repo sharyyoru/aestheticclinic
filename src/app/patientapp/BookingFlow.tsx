@@ -27,6 +27,8 @@ const DOCTORS: Record<string, Doctor> = {
   "yulia-raspertova": { slug: "yulia-raspertova", name: "Dr. Yulia Raspertova", specialty: "Dermatology & Aesthetic Medicine", email: "yulia@aesthetics-ge.ch" },
   "clinic": { slug: "clinic", name: "Laser & Treatments", specialty: "Aesthetics Clinic Services", email: "treatments@aesthetics-ge.ch" },
   "lily-radionova": { slug: "lily-radionova", name: "Nurse Lily Radionova", specialty: "Aesthetic Nurse Specialist", email: "lily@aesthetics-ge.ch" },
+  "yosra": { slug: "yosra", name: "Yosra", specialty: "Esthéticienne | Laser Specialist", email: "yosra@aesthetics-ge.ch" },
+  "sofien-seneina": { slug: "sofien-seneina", name: "Sofien Seneina", specialty: "Infirmier | IV Drip Therapy", email: "sofien.seneina@aesthetics-ge.ch" },
 };
 
 const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start: string; end: string }>>> = {
@@ -49,6 +51,12 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
   },
   "lily-radionova": {
     gstaad: { 1: { start: "10:00", end: "18:30" }, 2: { start: "10:00", end: "18:30" }, 3: { start: "10:00", end: "18:30" }, 4: { start: "10:00", end: "18:30" }, 5: { start: "10:00", end: "18:30" }, 6: { start: "10:00", end: "18:30" } },
+  },
+  "yosra": {
+    champel: { 2: { start: "08:00", end: "13:00" }, 4: { start: "08:00", end: "19:00" } },
+  },
+  "sofien-seneina": {
+    champel: { 1: { start: "08:00", end: "17:00" }, 2: { start: "14:00", end: "17:00" }, 3: { start: "15:00", end: "17:00" }, 4: { start: "08:00", end: "17:00" }, 5: { start: "14:00", end: "17:00" } },
   },
 };
 
