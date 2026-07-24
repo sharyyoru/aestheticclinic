@@ -101,27 +101,27 @@ function serializeXml(doc: Document): string {
 }
 
 function getTagValue(sdt: Element): string | null {
-  const tag = sdt.querySelector('sdtPr > tag');
+  const tag = sdt.getElementsByTagNameNS(W_NS, 'tag')[0];
   if (!tag) return null;
   return tag.getAttributeNS(W_NS, 'val') || tag.getAttribute('w:val') || null;
 }
 
 function getSdtText(sdt: Element): string {
-  const content = sdt.querySelector('sdtContent');
+  const content = sdt.getElementsByTagNameNS(W_NS, 'sdtContent')[0];
   if (!content) return '';
-  const textNodes = content.querySelectorAll('t');
+  const textNodes = content.getElementsByTagNameNS(W_NS, 't');
   return Array.from(textNodes).map((t) => t.textContent || '').join('');
 }
 
 function setSdtText(sdt: Element, value: string): void {
-  const content = sdt.querySelector('sdtContent');
+  const content = sdt.getElementsByTagNameNS(W_NS, 'sdtContent')[0];
   if (!content) return;
-  const existingRuns = content.querySelectorAll('r');
+  const existingRuns = content.getElementsByTagNameNS(W_NS, 'r');
   const firstRun = existingRuns[0];
 
   if (firstRun) {
     // Keep the first run's formatting and replace its text
-    const existingT = firstRun.querySelector('t');
+    const existingT = firstRun.getElementsByTagNameNS(W_NS, 't')[0];
     if (existingT) {
       existingT.textContent = value;
       if (value.endsWith(' ') || value.startsWith(' ')) {
@@ -167,7 +167,7 @@ function createContentControl(doc: Document, tag: string, value: string, formatR
   let r: Element;
   if (formatRun) {
     r = formatRun.cloneNode(true) as Element;
-    clearRunFormatting(r);
+    clearRunContent(r);
   } else {
     r = doc.createElementNS(W_NS, 'w:r');
   }
@@ -255,10 +255,16 @@ function setRunText(run: Element, value: string): void {
   }
 }
 
-function clearRunFormatting(run: Element): void {
+/**
+ * Clear a cloned run's visible content while preserving its formatting.
+ *
+ * A cloned run already contains <w:t> nodes. Keeping them and then appending
+ * replacement text produces output such as "RJpatientInfo.firstName".
+ */
+function clearRunContent(run: Element): void {
   const children = Array.from(run.children);
   for (const child of children) {
-    if (child.localName !== 't') {
+    if (child.localName !== 'rPr') {
       child.remove();
     }
   }
@@ -305,7 +311,7 @@ function convertPlaceholdersToContentControls(xmlDoc: Document): void {
       if (part.type === 'text') {
         if (!part.value) return;
         const run = firstRun.cloneNode(true) as Element;
-        clearRunFormatting(run);
+        clearRunContent(run);
         setRunText(run, part.value);
         paragraph.appendChild(run);
       } else {
@@ -337,7 +343,7 @@ function resolveFieldValue(
   key: string,
   patientData?: PatientData,
   userData?: UserData
-): string {
+): string | undefined {
   const normalized = normalizeFieldKey(key);
   const today = new Date().toISOString().split('T')[0];
   const formatDate = (d: string | undefined) => {
@@ -373,8 +379,8 @@ function resolveFieldValue(
     patientinfoaddressblock: 'addressBlock',
   };
 
-  if (normalized in patientMap && patientData) {
-    const value = patientData[patientMap[normalized]];
+  if (normalized in patientMap) {
+    const value = patientData?.[patientMap[normalized]];
     if ((normalized.includes('birthdate') || normalized.includes('date')) && value) {
       return formatDate(value);
     }
@@ -396,11 +402,11 @@ function resolveFieldValue(
     mandatorinfoaddressblock: 'addressBlock',
   };
 
-  if (normalized in userMap && userData) {
-    return userData[userMap[normalized]] || '';
+  if (normalized in userMap) {
+    return userData?.[userMap[normalized]] || '';
   }
 
-  return '';
+  return undefined;
 }
 
 export default function DocxPreviewEditor({
@@ -494,7 +500,7 @@ export default function DocxPreviewEditor({
             id: control.tag,
             tag: control.tag,
             label: formatFieldLabel(control.tag),
-            value: resolved || control.value,
+            value: resolved ?? control.value,
             type: control.tag.toLowerCase().includes('date') ? 'date' : 'text',
             source: 'content-control',
           });
@@ -503,7 +509,7 @@ export default function DocxPreviewEditor({
         // Update content controls with resolved values
         controls.forEach((control) => {
           const resolved = resolveFieldValue(control.tag, patientData, userData);
-          if (resolved) {
+          if (resolved !== undefined) {
             updateContentControl(xmlDoc, control.tag, resolved);
           }
         });
