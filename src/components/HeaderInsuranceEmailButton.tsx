@@ -111,12 +111,20 @@ export default function HeaderInsuranceEmailButton() {
     patientSearchTimer.current = setTimeout(async () => {
       const search = patientQuery.trim().replace(/[%_]/g, "");
       if (!search) return;
-      const { data } = await supabaseClient
+      // Split into words and search each word across all fields (AND between words, OR between fields)
+      const words = search.split(/\s+/).filter((w) => w.length >= 2);
+      if (words.length === 0) {
+        setPatients([]);
+        setPatientsLoading(false);
+        return;
+      }
+      let query = supabaseClient
         .from("patients")
-        .select("id, first_name, last_name, email")
-        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`)
-        .order("last_name")
-        .limit(10);
+        .select("id, first_name, last_name, email");
+      for (const word of words) {
+        query = query.or(`first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%`);
+      }
+      const { data } = await query.order("last_name").limit(10);
       setPatients(data || []);
       setPatientsLoading(false);
     }, 250);
