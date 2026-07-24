@@ -294,7 +294,7 @@ export default function PatientActivityCard({
   const [selectedEmailAiTopics, setSelectedEmailAiTopics] = useState<string[]>([]);
   const [emailAiTopicsDropdownOpen, setEmailAiTopicsDropdownOpen] = useState(false);
 
-  const [emailFilter, setEmailFilter] = useState<EmailFilter>("inbound");
+  const [emailFilter, setEmailFilter] = useState<EmailFilter>("all");
   const [emailPage, setEmailPage] = useState(1);
   const EMAILS_PER_PAGE = 12;
   const [viewEmail, setViewEmail] = useState<PatientEmail | null>(null);
