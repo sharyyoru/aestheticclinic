@@ -444,6 +444,7 @@ export default function DocxPreviewEditor({
   const [isEditing, setIsEditing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [userData, setUserData] = useState<UserData>({});
+  const [detectedRequiredFieldTags, setDetectedRequiredFieldTags] = useState<string[]>([]);
   const originalTextRef = useRef<string>('');
   const textNodeMapRef = useRef<Map<number, string>>(new Map()); // Maps text index to original content
   
@@ -455,7 +456,10 @@ export default function DocxPreviewEditor({
   });
   const [currentFontSize, setCurrentFontSize] = useState<string>('11');
   const [currentAlignment, setCurrentAlignment] = useState<string>('left');
-  const requiredFieldTags = new Set((missingFieldsProp || []).map((field) => field.tag));
+  const requiredFieldTags = new Set([
+    ...(missingFieldsProp || []).map((field) => field.tag),
+    ...detectedRequiredFieldTags,
+  ]);
   const requiredDocumentFields = documentFields.filter((field) => requiredFieldTags.has(field.tag));
   const emptyRequiredFields = requiredDocumentFields.filter((field) => !field.value.trim());
   const hasMissingRequiredFields = emptyRequiredFields.length > 0;
@@ -508,6 +512,26 @@ export default function DocxPreviewEditor({
 
         // Find all content controls (both original and converted)
         const controls = findContentControls(xmlDoc);
+        const requiredTags = new Set((missingFieldsProp || []).map((field) => field.tag));
+
+        // Detect missing values from the document itself. This is required when
+        // reopening a saved document because the create-template API response
+        // (and its missingFields array) is no longer available.
+        controls.forEach((control) => {
+          const resolved = resolveFieldValue(control.tag, patientData, userData);
+          const currentValue = control.value.trim();
+          const hasPlaceholderValue =
+            !currentValue ||
+            currentValue === control.tag ||
+            currentValue.startsWith('[Missing:');
+
+          if (
+            (resolved !== undefined && !resolved.trim()) ||
+            (resolved === undefined && hasPlaceholderValue)
+          ) {
+            requiredTags.add(control.tag);
+          }
+        });
 
         // Build editable fields with resolved initial values (deduplicate by tag)
         const seenTags = new Set<string>();
@@ -516,9 +540,7 @@ export default function DocxPreviewEditor({
           if (seenTags.has(control.tag)) return;
           seenTags.add(control.tag);
           const resolved = resolveFieldValue(control.tag, patientData, userData);
-          const isRequiredMissing = Boolean(
-            missingFieldsProp?.some((field) => field.tag === control.tag)
-          );
+          const isRequiredMissing = requiredTags.has(control.tag);
           fields.push({
             id: control.tag,
             tag: control.tag,
@@ -532,9 +554,7 @@ export default function DocxPreviewEditor({
         // Update content controls with resolved values
         controls.forEach((control) => {
           const resolved = resolveFieldValue(control.tag, patientData, userData);
-          const isRequiredMissing = Boolean(
-            missingFieldsProp?.some((field) => field.tag === control.tag)
-          );
+          const isRequiredMissing = requiredTags.has(control.tag);
           if (resolved !== undefined) {
             updateContentControl(xmlDoc, control.tag, resolved);
           } else if (isRequiredMissing) {
@@ -549,6 +569,7 @@ export default function DocxPreviewEditor({
 
         setWorkingBlob(processedBlob);
         setDocumentFields(fields);
+        setDetectedRequiredFieldTags(Array.from(requiredTags));
 
         renderAsync(processedBlob, containerRef.current!, undefined, {
           className: 'docx-preview',
