@@ -279,14 +279,14 @@ export default function HeaderInsuranceEmailButton() {
       </button>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4" onClick={closeModal}>
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 dark:bg-black/60" onClick={closeModal}>
+          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-2xl dark:border dark:border-slate-700 dark:bg-slate-800" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-base font-semibold text-slate-900">Email insurance company</h2>
-                <p className="mt-1 text-xs text-slate-500">Select an insurer and patient. The patient will be added in CC.</p>
+                <h2 className="text-base font-semibold text-slate-900 dark:text-white">Email insurance company</h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Select an insurer and patient. The patient will be added in CC.</p>
               </div>
-              <button type="button" onClick={closeModal} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="Close">
+              <button type="button" onClick={closeModal} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-200" title="Close">
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="m6 6 12 12M18 6 6 18" />
                 </svg>
@@ -296,14 +296,14 @@ export default function HeaderInsuranceEmailButton() {
             <div className="mt-5 space-y-4">
               {/* Insurer searchable dropdown */}
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Insurance company</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Insurance company</label>
                 {selectedInsurer ? (
-                  <div className="flex items-center justify-between rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+                  <div className="flex items-center justify-between rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 dark:border-sky-700 dark:bg-sky-900/30">
                     <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-sky-900">{selectedInsurer.name}</span>
-                      <span className="block truncate text-xs text-sky-700">{selectedInsurer.contact_email}</span>
+                      <span className="block truncate text-sm font-medium text-sky-900 dark:text-sky-100">{selectedInsurer.name}</span>
+                      <span className="block truncate text-xs text-sky-700 dark:text-sky-300">{selectedInsurer.contact_email}</span>
                     </div>
-                    <button type="button" onClick={() => { setSelectedInsurer(null); setInsurerQuery(""); setInsurerDropdownOpen(true); }} className="ml-2 flex-shrink-0 text-xs font-medium text-sky-700 hover:text-sky-800">
+                    <button type="button" onClick={() => { setSelectedInsurer(null); setInsurerQuery(""); setInsurerDropdownOpen(true); }} className="ml-2 flex-shrink-0 text-xs font-medium text-sky-700 hover:text-sky-800 dark:text-sky-300 dark:hover:text-sky-200">
                       Change
                     </button>
                   </div>
@@ -316,28 +316,27 @@ export default function HeaderInsuranceEmailButton() {
                         onChange={(e) => { setInsurerQuery(e.target.value); setInsurerDropdownOpen(true); }}
                         onFocus={() => setInsurerDropdownOpen(true)}
                         onKeyDown={handleInsurerKeyDown}
-                        placeholder={insurersLoading ? "Loading insurers..." : "Search by name, GLN, or email..."}
                         disabled={insurersLoading}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pl-9 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-slate-50"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pl-9 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500 dark:disabled:bg-slate-700/50"
                       />
-                      <svg className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
                       </svg>
                       {insurerQuery && (
-                        <button type="button" onClick={() => { setInsurerQuery(""); setInsurerDropdownOpen(true); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <button type="button" onClick={() => { setInsurerQuery(""); setInsurerDropdownOpen(true); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                       )}
                     </div>
                     {insurerDropdownOpen && (
-                      <div className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                      <div className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-700">
                         {insurersLoading ? (
-                          <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-500">
-                            <svg className="h-3.5 w-3.5 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" className="opacity-75" /></svg>
+                          <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
+                            <svg className="h-3.5 w-3.5 animate-spin text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" className="opacity-75" /></svg>
                             Loading insurers...
                           </div>
                         ) : filteredInsurers.length === 0 ? (
-                          <div className="px-3 py-3 text-xs text-slate-500">No insurers found</div>
+                          <div className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">No insurers found</div>
                         ) : (
                           <>
                             {filteredInsurers.slice(0, 50).map((insurer, index) => {
@@ -356,20 +355,20 @@ export default function HeaderInsuranceEmailButton() {
                                   }}
                                   onMouseEnter={() => hasEmail && setInsurerActiveIndex(index)}
                                   className={`flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors ${
-                                    isActive && hasEmail ? "bg-sky-50" : ""
-                                  } ${!hasEmail ? "cursor-not-allowed opacity-50" : "hover:bg-slate-50"}`}
+                                    isActive && hasEmail ? "bg-sky-50 dark:bg-sky-900/40" : ""
+                                  } ${!hasEmail ? "cursor-not-allowed opacity-50" : "hover:bg-slate-50 dark:hover:bg-slate-600"}`}
                                 >
-                                  <span className={`mt-0.5 flex h-2 w-2 flex-shrink-0 rounded-full ${hasEmail ? "bg-green-500" : "bg-slate-300"}`} />
+                                  <span className={`mt-0.5 flex h-2 w-2 flex-shrink-0 rounded-full ${hasEmail ? "bg-green-500" : "bg-slate-300 dark:bg-slate-500"}`} />
                                   <div className="min-w-0 flex-1">
-                                    <div className="truncate text-sm font-medium text-slate-900">
+                                    <div className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                                       {highlightMatch(insurer.name, insurerQuery)}
                                     </div>
-                                    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                                       <span className="font-mono">{highlightMatch(insurer.gln, insurerQuery)}</span>
                                       {hasEmail ? (
-                                        <span className="truncate text-green-600">{highlightMatch(insurer.contact_email!, insurerQuery)}</span>
+                                        <span className="truncate text-green-600 dark:text-green-400">{highlightMatch(insurer.contact_email!, insurerQuery)}</span>
                                       ) : (
-                                        <span className="text-amber-500">No email configured</span>
+                                        <span className="text-amber-500 dark:text-amber-400">No email configured</span>
                                       )}
                                     </div>
                                   </div>
@@ -377,7 +376,7 @@ export default function HeaderInsuranceEmailButton() {
                               );
                             })}
                             {filteredInsurers.length > 50 && (
-                              <div className="border-t border-slate-100 px-3 py-1.5 text-center text-[10px] text-slate-400">
+                              <div className="border-t border-slate-100 px-3 py-1.5 text-center text-[10px] text-slate-400 dark:border-slate-600 dark:text-slate-500">
                                 {filteredInsurers.length} results — refine search to narrow down
                               </div>
                             )}
@@ -391,14 +390,14 @@ export default function HeaderInsuranceEmailButton() {
 
               {/* Patient searchable dropdown */}
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Patient</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Patient</label>
                 {selectedPatient ? (
-                  <div className="flex items-center justify-between rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+                  <div className="flex items-center justify-between rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 dark:border-sky-700 dark:bg-sky-900/30">
                     <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-sky-900">{formatPatientName(selectedPatient)}</span>
-                      <span className="block truncate text-xs text-sky-700">{selectedPatient.email || "No email address"}</span>
+                      <span className="block truncate text-sm font-medium text-sky-900 dark:text-sky-100">{formatPatientName(selectedPatient)}</span>
+                      <span className="block truncate text-xs text-sky-700 dark:text-sky-300">{selectedPatient.email || "No email address"}</span>
                     </div>
-                    <button type="button" onClick={() => { setSelectedPatient(null); setPatientQuery(""); setPatientDropdownOpen(true); }} className="ml-2 flex-shrink-0 text-xs font-medium text-sky-700 hover:text-sky-800">
+                    <button type="button" onClick={() => { setSelectedPatient(null); setPatientQuery(""); setPatientDropdownOpen(true); }} className="ml-2 flex-shrink-0 text-xs font-medium text-sky-700 hover:text-sky-800 dark:text-sky-300 dark:hover:text-sky-200">
                       Change
                     </button>
                   </div>
@@ -411,27 +410,26 @@ export default function HeaderInsuranceEmailButton() {
                         onChange={(e) => { setPatientQuery(e.target.value); setPatientDropdownOpen(true); }}
                         onFocus={() => patientQuery.trim().length >= 2 && setPatientDropdownOpen(true)}
                         onKeyDown={handlePatientKeyDown}
-                        placeholder="Search by patient name or email..."
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pl-9 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pl-9 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
-                      <svg className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <svg className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
                       </svg>
                       {patientQuery && (
-                        <button type="button" onClick={() => { setPatientQuery(""); setPatients([]); setPatientDropdownOpen(false); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <button type="button" onClick={() => { setPatientQuery(""); setPatients([]); setPatientDropdownOpen(false); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                       )}
                     </div>
                     {patientDropdownOpen && patientQuery.trim().length >= 2 && (
-                      <div className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                      <div className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-700">
                         {patientsLoading ? (
-                          <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-500">
-                            <svg className="h-3.5 w-3.5 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" className="opacity-75" /></svg>
+                          <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
+                            <svg className="h-3.5 w-3.5 animate-spin text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" /><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" className="opacity-75" /></svg>
                             Searching patients...
                           </div>
                         ) : patients.length === 0 ? (
-                          <div className="px-3 py-3 text-xs text-slate-500">No patients found</div>
+                          <div className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">No patients found</div>
                         ) : (
                           patients.map((patient, index) => {
                             const isActive = index === patientActiveIndex;
@@ -442,15 +440,15 @@ export default function HeaderInsuranceEmailButton() {
                                 type="button"
                                 onClick={() => { setSelectedPatient(patient); setPatientQuery(""); setPatientDropdownOpen(false); }}
                                 onMouseEnter={() => setPatientActiveIndex(index)}
-                                className={`flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors ${isActive ? "bg-sky-50" : "hover:bg-slate-50"}`}
+                                className={`flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors ${isActive ? "bg-sky-50 dark:bg-sky-900/40" : "hover:bg-slate-50 dark:hover:bg-slate-600"}`}
                               >
                                 <span className={`mt-0.5 flex h-2 w-2 flex-shrink-0 rounded-full ${hasEmail ? "bg-green-500" : "bg-amber-400"}`} />
                                 <div className="min-w-0 flex-1">
-                                  <div className="truncate text-sm font-medium text-slate-900">
+                                  <div className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                                     {highlightMatch(formatPatientName(patient), patientQuery)}
                                   </div>
-                                  <div className="truncate text-[11px] text-slate-500">
-                                    {hasEmail ? highlightMatch(patient.email!, patientQuery) : <span className="text-amber-600">No email — patient cannot be CC&apos;d</span>}
+                                  <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                                    {hasEmail ? highlightMatch(patient.email!, patientQuery) : <span className="text-amber-600 dark:text-amber-400">No email — patient cannot be CC&apos;d</span>}
                                   </div>
                                 </div>
                               </button>
@@ -464,21 +462,21 @@ export default function HeaderInsuranceEmailButton() {
               </div>
 
               {selectedPatient && !selectedPatient.email && (
-                <p className="flex items-center gap-1.5 text-xs text-amber-600">
+                <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
                   <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
                   This patient needs an email address to be included in CC.
                 </p>
               )}
               {unreadReplyCount > 0 && (
-                <p className="flex items-center gap-1.5 text-xs text-rose-600">
+                <p className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400">
                   <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
                   {unreadReplyCount} unread insurance {unreadReplyCount === 1 ? "reply" : "replies"} in email notifications.
                 </p>
               )}
             </div>
 
-            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4">
-              <button type="button" onClick={closeModal} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-700">
+              <button type="button" onClick={closeModal} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">Cancel</button>
               <button
                 type="button"
                 onClick={openComposer}
