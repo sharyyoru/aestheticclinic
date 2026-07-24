@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
           street_address,
           postal_code,
           town,
+          country,
           patient_insurances (
             card_number,
             avs_number,
@@ -93,6 +94,9 @@ export async function POST(request: NextRequest) {
           city: data.town || "",
           socialSecurityNumber: patientInsurance?.avs_number || "",
           insuranceCardNumber: patientInsurance?.card_number || "",
+          addressAddition: "",
+          poBox: "",
+          countryName: data.country || "",
           addressBlock: [
             `${data.first_name || ""} ${data.last_name || ""}`.trim(),
             data.street_address || "",

@@ -380,6 +380,9 @@ function resolveFieldValue(
     patientinfosocialsecuritynumber: 'socialSecurityNumber',
     patientinfoinsurancecardnumber: 'insuranceCardNumber',
     patientinfoaddressblock: 'addressBlock',
+    patientinfoaddressaddition: 'addressAddition',
+    patientinfopobox: 'poBox',
+    patientinfocountryname: 'countryName',
     guarantorinfopatientinsurancenumber: 'insuranceCardNumber',
   };
 

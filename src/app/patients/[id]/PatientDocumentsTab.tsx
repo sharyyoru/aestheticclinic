@@ -166,6 +166,9 @@ export default function PatientDocumentsTab({
     socialSecurityNumber: string;
     insuranceCardNumber: string;
     addressBlock: string;
+    addressAddition: string;
+    poBox: string;
+    countryName: string;
   } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [renamingFile, setRenamingFile] = useState<ListedItem | null>(null);
@@ -229,6 +232,7 @@ export default function PatientDocumentsTab({
             street_address,
             postal_code,
             town,
+            country,
             patient_insurances (
               card_number,
               avs_number,
@@ -267,6 +271,9 @@ export default function PatientDocumentsTab({
           city,
           socialSecurityNumber: patientInsurance?.avs_number || '',
           insuranceCardNumber: patientInsurance?.card_number || '',
+          addressAddition: '',
+          poBox: '',
+          countryName: data.country || '',
           addressBlock: [`${data.first_name || ''} ${data.last_name || ''}`.trim(), `${street} ${streetNo}`.trim(), `${zip} ${city}`.trim()]
             .filter(Boolean)
             .join('\n'),
@@ -1976,6 +1983,9 @@ async function handleSendEmail(event: React.FormEvent) {
             socialSecurityNumber: '',
             insuranceCardNumber: '',
             addressBlock: '',
+            addressAddition: '',
+            poBox: '',
+            countryName: '',
           }}
           onSave={handleSaveEditedDocx}
           onClose={() => {

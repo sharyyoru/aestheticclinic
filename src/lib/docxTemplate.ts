@@ -18,6 +18,9 @@ export interface PatientDataForTemplate {
   socialSecurityNumber?: string;
   insuranceCardNumber?: string;
   addressBlock?: string;
+  addressAddition?: string;
+  poBox?: string;
+  countryName?: string;
 }
 
 export interface UserDataForTemplate {
@@ -329,12 +332,24 @@ function resolveFieldValue(
     patientinfosocialsecuritynumber: "socialSecurityNumber",
     patientinfoinsurancecardnumber: "insuranceCardNumber",
     patientinfoaddressblock: "addressBlock",
+    patientinfoaddressaddition: "addressAddition",
+    patientinfopobox: "poBox",
+    patientinfocountryname: "countryName",
     guarantorinfopatientinsurancenumber: "insuranceCardNumber",
   };
 
   if (normalized in patientMap && patientData) {
     const value = patientData[patientMap[normalized]];
-    if (!value) return { value: "", missing: true };
+    const optionalEmptyFields = new Set([
+      "patientinfosalutation",
+      "patientinfostreetno",
+      "patientinfoaddressaddition",
+      "patientinfopobox",
+      "patientinfocountryname",
+    ]);
+    if (!value) {
+      return { value: "", missing: !optionalEmptyFields.has(normalized) };
+    }
     if ((normalized.includes("birthdate") || normalized.includes("date")) && value) {
       return { value: formatDate(value), missing: false };
     }
@@ -391,7 +406,7 @@ export async function substituteDocxTemplate(
     seenTags.add(control.tag);
 
     const resolved = resolveFieldValue(control.tag, patientData, userData);
-    if (resolved.missing || !resolved.value) {
+    if (resolved.missing) {
       const placeholder = formatMissingPlaceholder(control.tag);
       missingFields.push({ tag: control.tag, placeholder });
       // Update every occurrence of this tag with the red placeholder

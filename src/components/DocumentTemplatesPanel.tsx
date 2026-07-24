@@ -82,6 +82,9 @@ export default function DocumentTemplatesPanel({
     socialSecurityNumber: string;
     insuranceCardNumber: string;
     addressBlock: string;
+    addressAddition: string;
+    poBox: string;
+    countryName: string;
   } | null>(null);
 
   // Fetch templates
@@ -135,6 +138,7 @@ export default function DocumentTemplatesPanel({
             street_address,
             postal_code,
             town,
+            country,
             patient_insurances (
               card_number,
               avs_number,
@@ -173,6 +177,9 @@ export default function DocumentTemplatesPanel({
           city,
           socialSecurityNumber: patientInsurance?.avs_number || '',
           insuranceCardNumber: patientInsurance?.card_number || '',
+          addressAddition: '',
+          poBox: '',
+          countryName: data.country || '',
           addressBlock: [`${data.first_name || ''} ${data.last_name || ''}`.trim(), `${street} ${streetNo}`.trim(), `${zip} ${city}`.trim()]
             .filter(Boolean)
             .join('\n'),
@@ -359,6 +366,9 @@ export default function DocumentTemplatesPanel({
       socialSecurityNumber: '',
       insuranceCardNumber: '',
       addressBlock: '',
+      addressAddition: '',
+      poBox: '',
+      countryName: '',
     };
 
     return (
