@@ -1436,29 +1436,37 @@ export default function DocxPreviewEditor({
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
         {requiredDocumentFields.length > 0 && !isLoading && (
-          <aside className="w-80 shrink-0 overflow-y-auto border-r border-red-200 bg-red-50 p-4">
-            <h3 className="font-semibold text-red-900">Required document fields</h3>
-            <p className="mt-1 text-xs text-red-700">
+          <aside className="w-80 shrink-0 overflow-y-auto border-r !border-slate-300 !bg-white p-5 shadow-lg">
+            <div className="rounded-lg border !border-red-300 !bg-red-50 p-3">
+              <h3 className="font-semibold !text-red-950">Required document fields</h3>
+              <p className="mt-1 text-xs leading-5 !text-red-800">
               Complete every field below before saving this document.
-            </p>
+              </p>
+            </div>
             <div className="mt-4 space-y-4">
               {requiredDocumentFields.map((field) => {
                 const isEmpty = !field.value.trim();
                 const isMultiline =
                   field.tag.toLowerCase().includes('addressblock') ||
                   field.tag.toLowerCase().includes('address.block');
-                const fieldClassName = `w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 ${
+                const normalizedTag = normalizeFieldKey(field.tag);
+                const fieldPlaceholder = isMultiline
+                  ? 'Patient full name\nStreet and house number\nPostal code and city\nCountry'
+                  : normalizedTag.includes('salutation')
+                    ? 'e.g. Mr, Mrs, Ms, Dr'
+                    : `Enter ${field.label.toLowerCase()}`;
+                const fieldClassName = `w-full rounded-md border !bg-white px-3 py-2 text-sm !text-slate-950 placeholder:!text-slate-400 outline-none focus:ring-2 ${
                   isEmpty
-                    ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
-                    : 'border-emerald-400 focus:border-emerald-500 focus:ring-emerald-200'
+                    ? '!border-red-500 focus:!border-red-600 focus:!ring-red-200'
+                    : '!border-emerald-500 focus:!border-emerald-600 focus:!ring-emerald-200'
                 }`;
                 return (
-                  <div key={field.id}>
+                  <div key={field.id} className="rounded-lg border !border-slate-200 !bg-slate-50 p-3">
                     <label
                       htmlFor={`required-document-field-${field.id}`}
-                      className="mb-1 block text-xs font-medium text-red-900"
+                      className="mb-1.5 block text-sm font-semibold !text-slate-950"
                     >
-                      {field.label} <span aria-hidden="true">*</span>
+                      {field.label} <span className="!text-red-600" aria-hidden="true">*</span>
                     </label>
                     {isMultiline ? (
                       <textarea
@@ -1467,6 +1475,7 @@ export default function DocxPreviewEditor({
                         required
                         rows={4}
                         aria-invalid={isEmpty}
+                        placeholder={fieldPlaceholder}
                         onChange={(event) => handleFieldChange(field.id, event.target.value)}
                         className={`${fieldClassName} resize-y`}
                       />
@@ -1477,12 +1486,21 @@ export default function DocxPreviewEditor({
                         value={field.value}
                         required
                         aria-invalid={isEmpty}
+                        placeholder={fieldPlaceholder}
                         onChange={(event) => handleFieldChange(field.id, event.target.value)}
                         className={fieldClassName}
                       />
                     )}
+                    {isMultiline && (
+                      <p className="mt-2 text-xs leading-5 !text-slate-600">
+                        Enter one line each for the patient name, street and house number,
+                        postal code and city, then country.
+                      </p>
+                    )}
                     {isEmpty && (
-                      <p className="mt-1 text-[11px] text-red-700">This field is required.</p>
+                      <p className="mt-2 text-xs font-medium !text-red-700">
+                        This field is required.
+                      </p>
                     )}
                   </div>
                 );
@@ -1503,17 +1521,17 @@ export default function DocxPreviewEditor({
           )}
           {/* Missing patient data warning */}
           {requiredDocumentFields.length > 0 && !isLoading && (
-            <div className="mb-4 mx-auto max-w-[850px] bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-start gap-2 text-red-800 text-sm">
-              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="mb-4 mx-auto flex max-w-[850px] items-start gap-3 rounded-lg border !border-amber-400 !bg-amber-50 px-4 py-3 text-sm !text-amber-950 shadow-sm">
+              <svg className="mt-0.5 h-5 w-5 shrink-0 !text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <p className="font-medium">
+                <p className="font-semibold !text-amber-950">
                   {hasMissingRequiredFields
                     ? `${emptyRequiredFields.length} required document field${emptyRequiredFields.length === 1 ? '' : 's'} missing`
                     : 'All required document fields are complete'}
                 </p>
-                <p className="text-xs text-red-700 mt-0.5">
+                <p className="mt-1 text-xs !text-amber-900">
                   {hasMissingRequiredFields
                     ? 'Complete the required fields in the left panel before saving.'
                     : 'You can now save the document.'}
