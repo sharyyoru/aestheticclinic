@@ -326,6 +326,7 @@ function resolveFieldValue(
     patientinfosocialsecuritynumber: "socialSecurityNumber",
     patientinfoinsurancecardnumber: "insuranceCardNumber",
     patientinfoaddressblock: "addressBlock",
+    guarantorinfopatientinsurancenumber: "insuranceCardNumber",
   };
 
   if (normalized in patientMap && patientData) {
