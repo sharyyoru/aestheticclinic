@@ -317,6 +317,10 @@ export default function HeaderInsuranceEmailButton() {
                         onFocus={() => setInsurerDropdownOpen(true)}
                         onKeyDown={handleInsurerKeyDown}
                         disabled={insurersLoading}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pl-9 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500 dark:disabled:bg-slate-700/50"
                       />
                       <svg className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -410,6 +414,10 @@ export default function HeaderInsuranceEmailButton() {
                         onChange={(e) => { setPatientQuery(e.target.value); setPatientDropdownOpen(true); }}
                         onFocus={() => patientQuery.trim().length >= 2 && setPatientDropdownOpen(true)}
                         onKeyDown={handlePatientKeyDown}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pl-9 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500"
                       />
                       <svg className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
