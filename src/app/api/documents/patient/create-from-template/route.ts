@@ -51,50 +51,53 @@ export async function POST(request: NextRequest) {
         .select(`
           first_name,
           last_name,
-          title,
-          salutation,
-          date_of_birth,
+          dob,
           email,
           phone,
-          mobile,
-          street,
-          street_no,
+          street_address,
           postal_code,
-          zip,
-          city,
-          social_security_number,
-          insurance_card_number,
-          patient_insurances:social_security_number,
-          patient_insurances_2:card_number
+          town,
+          patient_insurances (
+            card_number,
+            avs_number,
+            is_primary
+          )
         `)
         .eq("id", patientId)
         .single();
 
-      if (!error && data) {
-        const patientInsurance = Array.isArray((data as any).patient_insurances) && (data as any).patient_insurances.length > 0
-          ? (data as any).patient_insurances[0]
-          : null;
+      if (error) {
+        throw new Error(`Failed to load patient data: ${error.message}`);
+      }
 
-        const street = (data as any).street || "";
-        const streetNo = (data as any).street_no || "";
-        const zip = (data as any).postal_code || (data as any).zip || "";
-        const city = (data as any).city || "";
+      if (data) {
+        const patientInsurances = Array.isArray((data as any).patient_insurances)
+          ? (data as any).patient_insurances
+          : [];
+        const patientInsurance =
+          patientInsurances.find((insurance: any) => insurance.is_primary) ||
+          patientInsurances[0] ||
+          null;
 
         patientData = {
           firstName: data.first_name || "",
           lastName: data.last_name || "",
-          salutation: data.title || data.salutation || "",
-          birthdate: data.date_of_birth || "",
+          salutation: "",
+          birthdate: data.dob || "",
           email: data.email || "",
           phone: data.phone || "",
-          mobile: data.mobile || data.phone || "",
-          street,
-          streetNo,
-          zip,
-          city,
-          socialSecurityNumber: patientInsurance?.social_security_number || (data as any).social_security_number || "",
-          insuranceCardNumber: patientInsurance?.card_number || (data as any).insurance_card_number || "",
-          addressBlock: [data.salutation || data.title, `${data.first_name || ""} ${data.last_name || ""}`.trim(), `${street} ${streetNo}`.trim(), `${zip} ${city}`.trim()]
+          mobile: data.phone || "",
+          street: data.street_address || "",
+          streetNo: "",
+          zip: data.postal_code || "",
+          city: data.town || "",
+          socialSecurityNumber: patientInsurance?.avs_number || "",
+          insuranceCardNumber: patientInsurance?.card_number || "",
+          addressBlock: [
+            `${data.first_name || ""} ${data.last_name || ""}`.trim(),
+            data.street_address || "",
+            `${data.postal_code || ""} ${data.town || ""}`.trim(),
+          ]
             .filter(Boolean)
             .join("\n"),
         };
