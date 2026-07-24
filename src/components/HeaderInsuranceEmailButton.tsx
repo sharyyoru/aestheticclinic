@@ -179,6 +179,7 @@ export default function HeaderInsuranceEmailButton() {
   function openComposer() {
     if (!selectedInsurer?.contact_email || !selectedPatient?.email) return;
     const params = new URLSearchParams({
+      m_tab: "crm",
       composeEmail: "insurance",
       insurerEmail: selectedInsurer.contact_email,
       insurerName: selectedInsurer.name,
