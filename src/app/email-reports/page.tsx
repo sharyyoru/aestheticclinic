@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { supabaseClient } from "@/lib/supabaseClient";
 
 type Email = {
   id: string;
@@ -24,6 +25,12 @@ type Patient = {
   first_name: string;
   last_name: string;
   email: string | null;
+};
+
+type DoctorInfo = {
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
 };
 
 type FilterState = {
@@ -57,9 +64,10 @@ function formatDate(dateString: string | null) {
   });
 }
 
-function truncate(text: string, maxLength: number) {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + "...";
+function formatDoctorName(info: DoctorInfo | null): string {
+  if (!info) return "";
+  const name = [info.first_name, info.last_name].filter(Boolean).join(" ");
+  return name || info.email.split("@")[0];
 }
 
 const ITEMS_PER_PAGE = 25;
@@ -77,6 +85,8 @@ export default function EmailReportsPage() {
     total: 0, sent: 0, failed: 0, read: 0, inbound: 0, outbound: 0, automation: 0, manual: 0,
   });
   const [statsLoading, setStatsLoading] = useState(true);
+  const [doctorInfo, setDoctorInfo] = useState<DoctorInfo | null>(null);
+  const isDoctorInbox = !!doctorEmail;
 
   const [filters, setFilters] = useState<FilterState>({
     direction: "all",
@@ -103,6 +113,27 @@ export default function EmailReportsPage() {
     }, 400);
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
   }, [filters.searchQuery]);
+
+  // Fetch doctor info when doctorEmail is present
+  useEffect(() => {
+    if (!doctorEmail) {
+      setDoctorInfo(null);
+      return;
+    }
+    supabaseClient
+      .from("users")
+      .select("first_name, last_name, email")
+      .eq("email", doctorEmail)
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setDoctorInfo({ first_name: data.first_name, last_name: data.last_name, email: data.email });
+        } else {
+          setDoctorInfo({ first_name: null, last_name: null, email: doctorEmail });
+        }
+      });
+  }, [doctorEmail]);
 
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
@@ -193,19 +224,36 @@ export default function EmailReportsPage() {
     });
   }
 
+  const pageTitle = isDoctorInbox
+    ? `${formatDoctorName(doctorInfo)}'s Inbox`
+    : "Email Reports";
+  const pageSubtitle = isDoctorInbox
+    ? `Emails sent from and received by ${doctorEmail}`
+    : "Smart email analytics and reporting for all system emails";
+
   return (
-    <div className="space-y-6">
+    <div className={isDoctorInbox ? "space-y-3" : "space-y-6"}>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Email Reports</h1>
-          <p className="text-sm text-slate-500">
-            Smart email analytics and reporting for all system emails
-          </p>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {isDoctorInbox && (
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-100 to-sky-50 text-sky-600">
+                <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                  <polyline points="22,6 12,13 2,6" />
+                </svg>
+              </div>
+            )}
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold text-slate-900">{pageTitle}</h1>
+              <p className="truncate text-sm text-slate-500">{pageSubtitle}</p>
+            </div>
+          </div>
         </div>
         <button
           onClick={resetFilters}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
+          className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm hover:bg-slate-50"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -215,131 +263,151 @@ export default function EmailReportsPage() {
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-100 to-sky-50 text-sky-600">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                <polyline points="22,6 12,13 2,6" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.total}</p>
-              <p className="text-xs text-slate-500">Total Emails</p>
-            </div>
-          </div>
+      {/* Stats — compact inline row for doctor inbox, full cards for global reports */}
+      {isDoctorInbox ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+          <CompactStat label="Total" value={stats.total} loading={statsLoading} color="text-slate-900" />
+          <Divider />
+          <CompactStat label="Sent" value={stats.sent} loading={statsLoading} color="text-emerald-600" />
+          <Divider />
+          <CompactStat label="Read" value={stats.read} loading={statsLoading} color="text-green-600" />
+          <Divider />
+          <CompactStat label="Failed" value={stats.failed} loading={statsLoading} color="text-rose-600" />
+          <Divider />
+          <CompactStat label="Inbox" value={stats.inbound} loading={statsLoading} color="text-emerald-600" />
+          <Divider />
+          <CompactStat label="Outbox" value={stats.outbound} loading={statsLoading} color="text-sky-600" />
+          <Divider />
+          <CompactStat label="Auto" value={stats.automation} loading={statsLoading} color="text-violet-600" />
+          <Divider />
+          <CompactStat label="Manual" value={stats.manual} loading={statsLoading} color="text-amber-600" />
         </div>
+      ) : (
+        <>
+          {/* Stats Cards */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-sky-100 to-sky-50 text-sky-600">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                    <polyline points="22,6 12,13 2,6" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.total}</p>
+                  <p className="text-xs text-slate-500">Total Emails</p>
+                </div>
+              </div>
+            </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.sent}</p>
+                  <p className="text-xs text-slate-500">Sent Successfully</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.sent}</p>
-              <p className="text-xs text-slate-500">Sent Successfully</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-100 to-green-50 text-green-600">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 12l5 5L20 5" />
-              </svg>
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-100 to-green-50 text-green-600">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 12l5 5L20 5" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.read}</p>
+                  <p className="text-xs text-slate-500">Read (Opened)</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.read}</p>
-              <p className="text-xs text-slate-500">Read (Opened)</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-rose-100 to-rose-50 text-rose-600">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="15" y1="9" x2="9" y2="15" />
-                <line x1="9" y1="9" x2="15" y2="15" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.failed}</p>
-              <p className="text-xs text-slate-500">Failed</p>
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-rose-100 to-rose-50 text-rose-600">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="15" y1="9" x2="9" y2="15" />
+                    <line x1="9" y1="9" x2="15" y2="15" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-2xl font-semibold text-slate-900">{statsLoading ? "—" : stats.failed}</p>
+                  <p className="text-xs text-slate-500">Failed</p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Direction & Source Stats */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-          <h3 className="mb-3 text-sm font-medium text-slate-700">Email Direction</h3>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-sky-500"></div>
-              <span className="text-sm text-slate-600">Outbox: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.outbound}</span></span>
+          {/* Direction & Source Stats */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+              <h3 className="mb-3 text-sm font-medium text-slate-700">Email Direction</h3>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-sky-500"></div>
+                  <span className="text-sm text-slate-600">Outbox: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.outbound}</span></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-emerald-500"></div>
+                  <span className="text-sm text-slate-600">Inbox: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.inbound}</span></span>
+                </div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="flex h-full">
+                  <div
+                    className="bg-sky-500"
+                    style={{ width: `${stats.total > 0 ? (stats.outbound / stats.total) * 100 : 0}%` }}
+                  />
+                  <div
+                    className="bg-emerald-500"
+                    style={{ width: `${stats.total > 0 ? (stats.inbound / stats.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-emerald-500"></div>
-              <span className="text-sm text-slate-600">Inbox: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.inbound}</span></span>
-            </div>
-          </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="flex h-full">
-              <div
-                className="bg-sky-500"
-                style={{ width: `${stats.total > 0 ? (stats.outbound / stats.total) * 100 : 0}%` }}
-              />
-              <div
-                className="bg-emerald-500"
-                style={{ width: `${stats.total > 0 ? (stats.inbound / stats.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </div>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-          <h3 className="mb-3 text-sm font-medium text-slate-700">Email Source</h3>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-violet-500"></div>
-              <span className="text-sm text-slate-600">Automation: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.automation}</span></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="h-3 w-3 rounded-full bg-amber-500"></div>
-              <span className="text-sm text-slate-600">Manual: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.manual}</span></span>
+            <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
+              <h3 className="mb-3 text-sm font-medium text-slate-700">Email Source</h3>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-violet-500"></div>
+                  <span className="text-sm text-slate-600">Automation: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.automation}</span></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-amber-500"></div>
+                  <span className="text-sm text-slate-600">Manual: <span className="font-semibold text-slate-900">{statsLoading ? "—" : stats.manual}</span></span>
+                </div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="flex h-full">
+                  <div
+                    className="bg-violet-500"
+                    style={{ width: `${stats.total > 0 ? (stats.automation / stats.total) * 100 : 0}%` }}
+                  />
+                  <div
+                    className="bg-amber-500"
+                    style={{ width: `${stats.total > 0 ? (stats.manual / stats.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div className="flex h-full">
-              <div
-                className="bg-violet-500"
-                style={{ width: `${stats.total > 0 ? (stats.automation / stats.total) * 100 : 0}%` }}
-              />
-              <div
-                className="bg-amber-500"
-                style={{ width: `${stats.total > 0 ? (stats.manual / stats.total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* Filters */}
+      {/* Filters — compact for doctor inbox, full for global reports */}
       <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.06)]">
-        <h3 className="mb-4 text-sm font-medium text-slate-700">Smart Filters</h3>
-        <div className="space-y-4">
-          {/* Search - Full width */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Search</label>
+        {isDoctorInbox ? (
+          <div className="space-y-3">
             <div className="relative">
               <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8" />
@@ -353,50 +421,34 @@ export default function EmailReportsPage() {
                 className="w-full rounded-lg border border-slate-200 bg-slate-50/80 py-2 pl-10 pr-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
             </div>
-          </div>
-
-          {/* Filter Row */}
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-            {/* Direction */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Direction</label>
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
               <select
                 value={filters.direction}
                 onChange={(e) => setFilters((f) => ({ ...f, direction: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               >
-                <option value="all">All</option>
+                <option value="all">All Directions</option>
                 <option value="inbound">Inbox</option>
                 <option value="outbound">Outbox</option>
               </select>
-            </div>
-
-            {/* Status */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Status</label>
               <select
                 value={filters.status}
                 onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               >
-                <option value="all">All</option>
+                <option value="all">All Status</option>
                 <option value="draft">Draft</option>
                 <option value="queued">Queued</option>
                 <option value="sent">Sent</option>
                 <option value="read">Read</option>
                 <option value="failed">Failed</option>
               </select>
-            </div>
-
-            {/* Source */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">Source</label>
               <select
                 value={filters.source}
                 onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               >
-                <option value="all">All</option>
+                <option value="all">All Sources</option>
                 <option value="manual">Manual</option>
                 <option value="automation">Automation</option>
                 <option value="ai_transcript">AI Transcript</option>
@@ -405,31 +457,116 @@ export default function EmailReportsPage() {
                 <option value="invoice">Invoice</option>
                 <option value="otp">OTP</option>
               </select>
-            </div>
-
-            {/* Date From */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">From Date</label>
               <input
                 type="date"
                 value={filters.dateFrom}
                 onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
-            </div>
-
-            {/* Date To */}
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">To Date</label>
               <input
                 type="date"
                 value={filters.dateTo}
                 onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
               />
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Search - Full width */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Search</label>
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search by subject, email, patient..."
+                  value={filters.searchQuery}
+                  onChange={(e) => setFilters((f) => ({ ...f, searchQuery: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50/80 py-2 pl-10 pr-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+            </div>
+
+            {/* Filter Row */}
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+              {/* Direction */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Direction</label>
+                <select
+                  value={filters.direction}
+                  onChange={(e) => setFilters((f) => ({ ...f, direction: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="all">All</option>
+                  <option value="inbound">Inbox</option>
+                  <option value="outbound">Outbox</option>
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Status</label>
+                <select
+                  value={filters.status}
+                  onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="all">All</option>
+                  <option value="draft">Draft</option>
+                  <option value="queued">Queued</option>
+                  <option value="sent">Sent</option>
+                  <option value="read">Read</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+
+              {/* Source */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Source</label>
+                <select
+                  value={filters.source}
+                  onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="all">All</option>
+                  <option value="manual">Manual</option>
+                  <option value="automation">Automation</option>
+                  <option value="ai_transcript">AI Transcript</option>
+                  <option value="appointment_reminder">Reminder</option>
+                  <option value="marketing">Marketing</option>
+                  <option value="invoice">Invoice</option>
+                  <option value="otp">OTP</option>
+                </select>
+              </div>
+
+              {/* Date From */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">From Date</label>
+                <input
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+
+              {/* Date To */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">To Date</label>
+                <input
+                  type="date"
+                  value={filters.dateTo}
+                  onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white py-2 px-2 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Email List */}
@@ -760,4 +897,19 @@ export default function EmailReportsPage() {
       )}
     </div>
   );
+}
+
+function CompactStat({ label, value, loading, color }: { label: string; value: number; loading: boolean; color: string }) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <span className={`text-sm font-semibold ${loading ? "text-slate-300" : color}`}>
+        {loading ? "—" : value}
+      </span>
+      <span className="text-[11px] text-slate-500">{label}</span>
+    </div>
+  );
+}
+
+function Divider() {
+  return <span className="h-4 w-px bg-slate-200" />;
 }
