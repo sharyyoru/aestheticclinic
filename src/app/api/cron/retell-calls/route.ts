@@ -70,6 +70,12 @@ export async function GET(req: NextRequest) {
   let failed = 0;
 
   for (const call of dueCalls) {
+    const callLogContext = {
+      scheduled_call_id: call.id,
+      patient_id: call.patient_id,
+      to_number: call.to_number,
+    };
+
     try {
       const callAgentId = (call.agent_id as string) || OUTBOUND_AGENTS.english;
       const rawToNumber = (call.to_number as string) || "";
@@ -85,11 +91,24 @@ export async function GET(req: NextRequest) {
       if (call.service_name) dynamicVariables.service_name = call.service_name as string;
       if (call.prompt) dynamicVariables.prompt = call.prompt as string;
 
-      // Mark as dispatched immediately to prevent double-fire
-      await supabaseAdmin
+      // Mark as dispatched atomically so overlapping cron invocations do not double-fire.
+      const { data: claimed } = await supabaseAdmin
         .from("retell_scheduled_calls")
         .update({ status: "dispatched", dispatched_at: new Date().toISOString() })
-        .eq("id", call.id);
+        .eq("id", call.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+
+      if (!claimed) {
+        console.log(`[Retell Cron] Scheduled call ${call.id} already processed, skipping`, callLogContext);
+        continue;
+      }
+
+      console.log(`[Retell Cron] Dispatching scheduled call ${call.id} to ${normalizedToNumber}`, {
+        ...callLogContext,
+        agent_id: callAgentId,
+      });
 
       // Mark the linked AI task as in progress
       if (call.task_id) {
@@ -131,10 +150,11 @@ export async function GET(req: NextRequest) {
 
       console.log(
         `Retell call dispatched: ${retellResponse.call_id} → patient ${call.patient_id}`,
+        { scheduled_call_id: call.id, retell_call_id: retellResponse.call_id, call_status: retellResponse.call_status },
       );
       dispatched += 1;
     } catch (err: any) {
-      console.error(`Failed to dispatch Retell call for scheduled_call ${call.id}:`, err);
+      console.error(`[Retell Cron] Failed to dispatch Retell call for scheduled_call ${call.id}:`, err, callLogContext);
 
       // Mark as failed so we don't retry endlessly
       await supabaseAdmin

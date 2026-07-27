@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY ?? "";
-const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER ?? "+41225394313";
+const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER ?? "";
 
 // Voice agents by language
 const VOICE_AGENTS = {
@@ -21,6 +21,11 @@ const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
 export async function POST(req: NextRequest) {
   if (!RETELL_API_KEY) {
     return NextResponse.json({ error: "RETELL_API_KEY not configured" }, { status: 500 });
+  }
+
+  if (!RETELL_FROM_NUMBER) {
+    console.error("[Retell create-web-call] RETELL_FROM_NUMBER not configured");
+    return NextResponse.json({ error: "RETELL_FROM_NUMBER not configured" }, { status: 500 });
   }
 
   let lang: "en" | "fr" = "en";

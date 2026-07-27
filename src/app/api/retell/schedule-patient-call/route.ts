@@ -50,6 +50,13 @@ export async function POST(req: NextRequest) {
     const scheduledByEmail = (body.scheduled_by_email ?? "").trim() || null;
     const scheduledByName = (body.scheduled_by_name ?? "").trim() || null;
 
+    if (!RETELL_FROM_NUMBER) {
+      return NextResponse.json(
+        { error: "RETELL_FROM_NUMBER env var not configured" },
+        { status: 500 },
+      );
+    }
+
     if (!patientId) {
       return NextResponse.json({ error: "patient_id is required" }, { status: 400 });
     }
@@ -74,19 +81,18 @@ export async function POST(req: NextRequest) {
 
     const toNumber = normalizePhone(patient.phone as string);
 
-    if (!RETELL_FROM_NUMBER) {
-      return NextResponse.json(
-        { error: "RETELL_FROM_NUMBER env var not configured" },
-        { status: 500 },
-      );
-    }
-
-    // Parse scheduled time. Default to immediate dispatch (next minute boundary).
+    // Parse scheduled time. Default to immediate dispatch.
     let scheduledFor: string;
     if (body.scheduled_for) {
       const parsed = new Date(body.scheduled_for);
       if (Number.isNaN(parsed.getTime())) {
         return NextResponse.json({ error: "Invalid scheduled_for datetime" }, { status: 400 });
+      }
+      if (parsed.getTime() < Date.now() - 5 * 60 * 1000) {
+        return NextResponse.json(
+          { error: "scheduled_for must be in the future" },
+          { status: 400 },
+        );
       }
       scheduledFor = parsed.toISOString();
     } else {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizePhone } from "@/lib/retell";
 
 export const runtime = "nodejs";
 
@@ -41,6 +42,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!RETELL_FROM_NUMBER) {
+      console.error("[Test Retell] RETELL_FROM_NUMBER not configured");
+      return NextResponse.json(
+        { error: "RETELL_FROM_NUMBER not configured" },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
     const { 
       phone_number, 
@@ -59,13 +68,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Normalize phone number to E.164 format
-    let normalizedPhone = phone_number.replace(/[^\d+]/g, "");
-    if (!normalizedPhone.startsWith("+")) {
-      if (normalizedPhone.startsWith("0")) {
-        normalizedPhone = "+41" + normalizedPhone.slice(1);
-      } else {
-        normalizedPhone = "+" + normalizedPhone;
-      }
+    const normalizedPhone = normalizePhone(phone_number);
+    if (!normalizedPhone || normalizedPhone.length < 8) {
+      return NextResponse.json(
+        { error: "Invalid phone_number" },
+        { status: 400 }
+      );
     }
 
     const agentId = OUTBOUND_AGENTS[agent_language as keyof typeof OUTBOUND_AGENTS] || OUTBOUND_AGENTS.english;
@@ -99,7 +107,7 @@ export async function POST(request: NextRequest) {
     dynamicVariables.call_purpose = call_purpose || "follow-up on inquiry";
 
     const callPayload = {
-      from_number: RETELL_FROM_NUMBER || "+41799029555",
+      from_number: RETELL_FROM_NUMBER,
       to_number: normalizedPhone,
       override_agent_id: agentId,
       override_agent_version: "latest_published",
@@ -196,7 +204,7 @@ export async function GET() {
 
   return NextResponse.json({
     configured: !!RETELL_API_KEY,
-    from_number: RETELL_FROM_NUMBER || "+41799029555",
+    from_number: RETELL_FROM_NUMBER || null,
     webhook_url: RETELL_WEBHOOK_URL,
     agents: OUTBOUND_AGENTS,
     agent_info: agentInfo,

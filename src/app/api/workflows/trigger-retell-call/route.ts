@@ -44,6 +44,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!RETELL_FROM_NUMBER) {
+      console.error("[Retell Workflow] RETELL_FROM_NUMBER not configured");
+      return NextResponse.json(
+        { error: "RETELL_FROM_NUMBER not configured" },
+        { status: 500 }
+      );
+    }
+
     const body = await request.json();
     const {
       patient_id,
@@ -91,11 +99,18 @@ export async function POST(request: NextRequest) {
     } | null = null;
 
     if (patient_id) {
-      const { data } = await supabase
+      const { data, error: patientError } = await supabase
         .from("patients")
         .select("id, first_name, last_name, email, phone")
         .eq("id", patient_id)
-        .single();
+        .maybeSingle();
+      if (patientError) {
+        console.error("[trigger-retell-call] Patient lookup error:", patientError);
+        return NextResponse.json(
+          { error: "Failed to look up patient", details: patientError.message },
+          { status: 500 }
+        );
+      }
       patient = data;
     }
 
@@ -143,7 +158,7 @@ export async function POST(request: NextRequest) {
     // webhook configuration inside agent_override.agent. Passing agent_id or
     // webhook_url at the top level is silently ignored by the current API.
     const callPayload = {
-      from_number: RETELL_FROM_NUMBER || "+41799029555", // Default Switzerland number
+      from_number: RETELL_FROM_NUMBER,
       to_number: normalizedPhone,
       override_agent_id: resolvedAgentId,
       override_agent_version: "latest_published",

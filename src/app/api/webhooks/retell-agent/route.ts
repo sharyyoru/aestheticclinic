@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { shouldCreateDeal } from "@/lib/dealDeduplication";
+import { normalizePhone } from "@/lib/retell";
 import {
   CALL_FOLLOWUP_TEAM_EMAILS,
   buildCallTaskContent,
   formatTranscriptReadable,
   parseTranscriptTurns,
 } from "@/lib/callLog";
+import { extractCustomerInfo, matchServiceToHubspot, type HubspotService } from "@/lib/retellWebhookHelpers";
 import { sendCallLogConversationEmail } from "@/lib/callLogEmail";
+
+// Where transcript notifications for workflow-triggered (non-scheduled)
+// outbound AI calls are sent, since those calls have no initiating user.
+const WORKFLOW_CALL_NOTIFICATION_TO = "info@aesthetics-ge.ch";
 
 /**
  * Webhook endpoint for receiving Retell AI Agent call data
@@ -60,135 +66,6 @@ type RetellCallPayload = {
   };
 };
 
-type HubspotService = {
-  id: string;
-  name: string;
-};
-
-/**
- * Extract customer info from transcript or dynamic variables
- */
-function extractCustomerInfo(call: RetellCallPayload["call"]): {
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
-  serviceInterest: string;
-  location: string;
-} {
-  const vars = call.retell_llm_dynamic_variables || {};
-  const metadata = call.metadata || {};
-  const analysis = (call.call_analysis?.custom_analysis_data || {}) as Record<string, unknown>;
-  
-  // Try to parse lead_info JSON if present (single-field extraction)
-  let parsedLeadInfo: Record<string, string> = {};
-  if (analysis.lead_info) {
-    try {
-      parsedLeadInfo = typeof analysis.lead_info === "string" ? JSON.parse(analysis.lead_info) : analysis.lead_info as Record<string, string>;
-    } catch { /* ignore parse errors */ }
-  }
-
-  // Try to get name from various sources
-  let firstName = (vars.first_name as string) || (analysis.first_name as string) || parsedLeadInfo.first_name || "";
-  let lastName = (vars.last_name as string) || (analysis.last_name as string) || parsedLeadInfo.last_name || "";
-  
-  // If we have customer_name but not first/last, split it
-  if (!firstName && vars.customer_name) {
-    const nameParts = (vars.customer_name as string).trim().split(/\s+/);
-    firstName = nameParts[0] || "";
-    lastName = nameParts.slice(1).join(" ") || "";
-  }
-  
-  // Check metadata as fallback
-  if (!firstName && metadata.first_name) {
-    firstName = metadata.first_name as string;
-  }
-  if (!lastName && metadata.last_name) {
-    lastName = metadata.last_name as string;
-  }
-  
-  // Phone from caller ID or variables or analysis. The patient's own number is
-  // the OTHER party: for inbound that's from_number, for outbound it's
-  // to_number (from_number is then the clinic's caller-ID). Using the wrong one
-  // for outbound calls matched the call to the clinic's own number instead of
-  // the patient.
-  const recipientNumber = call.direction === "outbound" ? call.to_number : call.from_number;
-  const rawPhone = (vars.phone as string) || (vars.customer_phone as string) || (analysis.phone as string) || parsedLeadInfo.phone || recipientNumber || "";
-  // Skip Retell placeholder numbers (web calls have no real caller ID)
-  let phone = rawPhone && !rawPhone.startsWith("+1000") ? rawPhone : "";
-  
-  // Email from variables, metadata, or analysis
-  let email = (vars.email as string) || (metadata.email as string) || (analysis.email as string) || parsedLeadInfo.email || "";
-  
-  // Service interest
-  let serviceInterest = (vars.service_interest as string) || (metadata.service_interest as string) || (analysis.service_interest as string) || parsedLeadInfo.service_interest || "";
-  
-  // Location
-  let location = (vars.location as string) || (analysis.location as string) || parsedLeadInfo.location || "";
-  
-  return { firstName, lastName, phone, email, serviceInterest, location };
-}
-
-/**
- * Match a service interest string to the closest service
- */
-function matchServiceToHubspot(
-  serviceInterest: string,
-  hubspotServices: HubspotService[]
-): HubspotService | null {
-  if (!serviceInterest || hubspotServices.length === 0) return null;
-
-  const normalizedInterest = serviceInterest.toLowerCase().trim();
-
-  // Direct match first
-  const directMatch = hubspotServices.find(
-    (s) => s.name.toLowerCase() === normalizedInterest
-  );
-  if (directMatch) return directMatch;
-
-  // Keyword matching patterns for common services
-  const serviceKeywords: { keywords: string[]; serviceNames: string[] }[] = [
-    { keywords: ["breast", "augment", "implant", "mammoplasty"], serviceNames: ["breast augmentation", "breast"] },
-    { keywords: ["face", "filler", "facial filler"], serviceNames: ["face filler", "facial filler", "filler"] },
-    { keywords: ["wrinkle", "ride", "rides", "anti-age", "antiage"], serviceNames: ["wrinkle", "anti-aging", "rides"] },
-    { keywords: ["blepharo", "eyelid", "paupière"], serviceNames: ["blepharoplasty", "eyelid"] },
-    { keywords: ["lipo", "liposuc"], serviceNames: ["liposuction", "lipo"] },
-    { keywords: ["iv", "therapy", "infusion", "drip"], serviceNames: ["iv therapy", "infusion"] },
-    { keywords: ["rhino", "nose", "nez"], serviceNames: ["rhinoplasty", "nose"] },
-    { keywords: ["facelift", "lifting", "face lift"], serviceNames: ["facelift", "face lift"] },
-    { keywords: ["botox", "toxin"], serviceNames: ["botox", "botulinum"] },
-    { keywords: ["lip", "lèvre"], serviceNames: ["lip filler", "lip"] },
-    { keywords: ["tummy", "tuck", "abdominoplast"], serviceNames: ["tummy tuck", "abdominoplasty"] },
-    { keywords: ["breast", "lift", "mastopexy"], serviceNames: ["breast lift", "mastopexy"] },
-    { keywords: ["hyperbaric", "oxygen", "hbot"], serviceNames: ["hyperbaric", "hbot", "oxygen"] },
-    { keywords: ["consultation", "consult", "rendez-vous"], serviceNames: ["consultation", "consult"] },
-  ];
-
-  // Try keyword matching
-  for (const { keywords, serviceNames } of serviceKeywords) {
-    const hasKeyword = keywords.some((k) => normalizedInterest.includes(k));
-    if (hasKeyword) {
-      for (const serviceName of serviceNames) {
-        const match = hubspotServices.find((s) =>
-          s.name.toLowerCase().includes(serviceName)
-        );
-        if (match) return match;
-      }
-    }
-  }
-
-  // Partial match
-  const interestWords = normalizedInterest.split(/\s+/).filter((w) => w.length > 3);
-  for (const word of interestWords) {
-    const partialMatch = hubspotServices.find((s) =>
-      s.name.toLowerCase().includes(word)
-    );
-    if (partialMatch) return partialMatch;
-  }
-
-  return null;
-}
-
 /**
  * Mirror every incoming Retell webhook into retell_request_logs so the
  * /agents "Retell Logs" tab reflects live call activity. The clinic migrated
@@ -219,10 +96,54 @@ async function logRetellAgentRequest(payload: RetellCallPayload) {
 }
 
 /**
+ * Retell disconnection reasons that mean the call never reached the patient
+ * (carrier/telephony failures). These must surface as failures, not silent
+ * "in progress" tasks — e.g. SIP 603 Decline arrives as `user_declined`.
+ */
+const NOT_CONNECTED_REASONS = new Set([
+  "dial_failed",
+  "dial_busy",
+  "dial_no_answer",
+  "user_declined",
+  "voicemail_reached",
+  "error_llm_websocket_open",
+  "registered_call_timeout",
+  "no_valid_payment",
+  "scam_detected",
+  "telephony_provider_permission_denied",
+  "telephony_provider_unavailable",
+  "sip_routing_error",
+  "invalid_destination",
+]);
+
+/**
+ * Produce a human-readable outcome from Retell's disconnection_reason so
+ * schedulers see *why* a call did not go through instead of a raw code.
+ */
+function describeDisconnection(reason: string | null | undefined): {
+  connected: boolean;
+  label: string;
+} {
+  const r = (reason || "").toLowerCase();
+  if (!r) return { connected: true, label: "" };
+  if (r === "user_declined") {
+    return { connected: false, label: "Call declined by the carrier/recipient (SIP 603)" };
+  }
+  if (r === "dial_busy") return { connected: false, label: "Line busy" };
+  if (r === "dial_no_answer") return { connected: false, label: "No answer" };
+  if (r === "dial_failed") return { connected: false, label: "Dial failed (carrier could not connect the call)" };
+  if (r === "voicemail_reached") return { connected: false, label: "Reached voicemail" };
+  if (NOT_CONNECTED_REASONS.has(r)) {
+    return { connected: false, label: `Call not connected (${reason})` };
+  }
+  return { connected: true, label: "" };
+}
+
+/**
  * Update the task linked to a scheduled AI call. We mark it completed when the
- * call finishes successfully, failed when Retell reports failure, and leave
- * it in_progress for everything else (no-answer, voicemail, etc.) so a human
- * can review.
+ * call finishes successfully, failed when Retell reports failure or the call
+ * never connected (carrier decline, busy, no-answer), and leave it in_progress
+ * for everything else so a human can review.
  *
  * Also sends the readable transcript to the user who scheduled the call and
  * annotates the task/call log with a notification that the email was sent.
@@ -241,6 +162,8 @@ async function updateLinkedAiTask(
     transcript: string | null;
     turns: import("@/lib/callLog").CallTurn[];
   },
+  disconnectionReason?: string | null,
+  eventType?: "call_started" | "call_ended" | "call_analyzed",
 ) {
   try {
     const { data: scheduled } = await supabaseAdmin
@@ -253,17 +176,43 @@ async function updateLinkedAiTask(
     const schedulerEmail = scheduled?.scheduled_by_email as string | null;
     const schedulerName = scheduled?.scheduled_by_name as string | null;
 
+    const { connected, label: disconnectLabel } = describeDisconnection(disconnectionReason);
+
     let nextStatus = "in_progress";
     const lower = (callStatus || "").toLowerCase();
-    if (lower === "completed") {
+    if (!connected) {
+      // Carrier/telephony failure (e.g. SIP 603 decline, busy, no-answer):
+      // the call never reached the patient — surface it as a failure.
+      nextStatus = "failed";
+    } else if (lower === "completed") {
       nextStatus = "completed";
-    } else if (["failed", "error", "busy", "no-answer", "canceled", "cancelled"].includes(lower)) {
+    } else if (["failed", "error", "busy", "no-answer", "canceled", "cancelled", "not_connected"].includes(lower)) {
       nextStatus = "failed";
     }
 
-    // Send transcript email to the user who scheduled the call
+    // Send the transcript email to the user who INITIATED the call.
+    //
+    // We send it on the `call_analyzed` event, because that is the only event
+    // that carries the AI summary (`call.call_analysis.call_summary`). Sending
+    // here means the emailed copy matches the call log exactly (summary +
+    // readable transcript) instead of an earlier, summary-less version.
+    //
+    // `call_analyzed` fires exactly once per call, so gating on it also
+    // de-duplicates the email (both call_ended and call_analyzed invoke this
+    // function). Failed/not-connected calls have no transcript, so they are
+    // naturally skipped below.
     let emailSent = false;
-    if (schedulerEmail && transcriptContext && transcriptContext.turns.length > 0) {
+    const hasTranscript =
+      !!transcriptContext &&
+      (transcriptContext.turns.length > 0 ||
+        !!(transcriptContext.transcript && transcriptContext.transcript.trim()));
+    if (
+      connected &&
+      schedulerEmail &&
+      hasTranscript &&
+      eventType === "call_analyzed" &&
+      transcriptContext
+    ) {
       try {
         const { sent } = await sendCallLogConversationEmail({
           patientName: transcriptContext.patientName,
@@ -279,8 +228,13 @@ async function updateLinkedAiTask(
           turns: transcriptContext.turns,
         }, schedulerEmail);
         emailSent = !!sent;
+        if (emailSent) {
+          console.log(
+            `[Retell Agent] Transcript emailed to initiator ${schedulerEmail} for call ${transcriptContext.callId}`
+          );
+        }
       } catch (emailErr) {
-        console.error("[Retell Agent] Failed to send transcript email to scheduler:", emailErr);
+        console.error("[Retell Agent] Failed to send transcript email to initiator:", emailErr);
       }
     }
 
@@ -288,15 +242,21 @@ async function updateLinkedAiTask(
     const emailNote = emailSent
       ? `\n\n📧 Transcript emailed to: ${schedulerName || schedulerEmail}`
       : "";
+    const callIdNote = transcriptContext?.callId
+      ? `\n\nCall ID: ${transcriptContext.callId}`
+      : "";
+    const outcomeNote = disconnectLabel ? `\n\n⚠️ ${disconnectLabel}` : "";
 
     if (taskId) {
       await supabaseAdmin
         .from("tasks")
         .update({
           status: nextStatus,
-          content: summary
-            ? `${summary}\n\n(Status: ${callStatus})${emailNote}`
-            : `AI call finished. Status: ${callStatus}${emailNote}`,
+          content: !connected
+            ? `AI call did not go through.${outcomeNote}${callIdNote}\n\nStatus: ${callStatus}${emailNote}`
+            : summary
+            ? `${summary}${callIdNote}\n\n(Status: ${callStatus})${emailNote}`
+            : `AI call finished.${callIdNote}\n\nStatus: ${callStatus}${emailNote}`,
           updated_at: new Date().toISOString(),
         })
         .eq("id", taskId);
@@ -365,7 +325,7 @@ export async function POST(request: NextRequest) {
     console.log("[Retell Agent] Processing lead:", { firstName, lastName, phone, email, serviceInterest, location });
 
     // Check if patient already exists by phone
-    const normalizedPhone = phone.replace(/[^\d+]/g, "");
+    const normalizedPhone = normalizePhone(phone);
     const phoneVariants = [
       normalizedPhone,
       normalizedPhone.replace(/^\+/, ""),
@@ -760,27 +720,15 @@ export async function POST(request: NextRequest) {
           .single();
         if (logError) {
           console.error("[Retell Agent] Failed to insert call_log:", logError);
-        } else if (insertedCallLog && call.direction === "outbound") {
-          try {
-            await sendCallLogConversationEmail({
-              patientName: patientFullName,
-              callId: call.call_id,
-              direction: call.direction || "outbound",
-              startedAt,
-              durationSeconds: callDuration,
-              callStatus: call.call_status,
-              fromNumber: call.from_number,
-              toNumber: call.to_number,
-              summary,
-              transcript: transcriptText,
-              turns,
-            });
-          } catch (emailError) {
-            console.error("[Retell Agent] Failed to email call log conversation:", emailError);
-          }
         }
 
-        // Keep the linked AI task in sync with the call outcome + send transcript email
+        // Route the post-call notification email:
+        // - Scheduled AI calls (from the AI Call button) → the initiating user,
+        //   handled inside updateLinkedAiTask.
+        // - Workflow-triggered / other non-scheduled outbound calls have no
+        //   initiating user, so they notify the clinic inbox instead.
+        // Both send on `call_analyzed` so the email includes the AI summary +
+        // full transcript, matching the call log exactly.
         const linkedScheduledCallId = (call.metadata?.scheduled_call_id as string) || null;
         if (linkedScheduledCallId && (payload.event === "call_ended" || payload.event === "call_analyzed")) {
           await updateLinkedAiTask(linkedScheduledCallId, call.call_status, summary, {
@@ -792,7 +740,36 @@ export async function POST(request: NextRequest) {
             toNumber: call.to_number || null,
             transcript: transcriptText,
             turns,
-          });
+          }, call.disconnection_reason, payload.event);
+        } else if (
+          !linkedScheduledCallId &&
+          call.direction === "outbound" &&
+          payload.event === "call_analyzed"
+        ) {
+          const { connected: didConnect } = describeDisconnection(call.disconnection_reason);
+          const hasTranscript = turns.length > 0 || !!(transcriptText && transcriptText.trim());
+          if (didConnect && hasTranscript) {
+            try {
+              await sendCallLogConversationEmail({
+                patientName: patientFullName,
+                callId: call.call_id,
+                direction: call.direction || "outbound",
+                startedAt,
+                durationSeconds: callDuration,
+                callStatus: call.call_status,
+                fromNumber: call.from_number,
+                toNumber: call.to_number,
+                summary,
+                transcript: transcriptText,
+                turns,
+              }, WORKFLOW_CALL_NOTIFICATION_TO);
+              console.log(
+                `[Retell Agent] Workflow call transcript emailed to ${WORKFLOW_CALL_NOTIFICATION_TO} for call ${call.call_id}`
+              );
+            } catch (emailError) {
+              console.error("[Retell Agent] Failed to email workflow call log:", emailError);
+            }
+          }
         }
       }
     } catch (callLogErr) {

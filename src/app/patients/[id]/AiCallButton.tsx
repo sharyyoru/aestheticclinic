@@ -31,6 +31,38 @@ function addDays(days: number): string {
   return toDateString(swiss);
 }
 
+/**
+ * Convert a date + time interpreted as Europe/Zurich into a true UTC Date.
+ * This prevents the browser's local timezone from shifting the scheduled time.
+ */
+function swissLocalToUTC(dateStr: string, timeStr: string): Date | null {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const [hour, minute] = timeStr.split(":").map(Number);
+  if ([year, month, day, hour, minute].some((v) => Number.isNaN(v))) return null;
+
+  // Candidate UTC moment with the same wall-clock values as the intended Swiss time.
+  const candidate = new Date(Date.UTC(year, month - 1, day, hour, minute));
+
+  // Read the candidate's Zurich wall-clock time and rebuild it as a UTC Date.
+  const zurichParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Zurich",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(candidate);
+  const get = (type: string) => Number(zurichParts.find((p) => p.type === type)?.value);
+  const zurichAsUTC = new Date(
+    Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute")),
+  );
+
+  const offsetMs = candidate.getTime() - zurichAsUTC.getTime();
+  return new Date(candidate.getTime() + offsetMs);
+}
+
 const DATE_PRESETS = [
   { label: "Today", getValue: () => toDateString(getSwissNow()) },
   { label: "Tomorrow", getValue: () => addDays(1) },
@@ -86,9 +118,15 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
       return;
     }
 
-    const scheduledFor = new Date(`${date}T${time}`);
-    if (Number.isNaN(scheduledFor.getTime())) {
+    const scheduledFor = swissLocalToUTC(date, time);
+    if (!scheduledFor || Number.isNaN(scheduledFor.getTime())) {
       setError("Invalid date or time.");
+      return;
+    }
+
+    // Allow a small buffer for immediate calls but reject dates that are clearly in the past.
+    if (scheduledFor.getTime() < Date.now() - 5 * 60 * 1000) {
+      setError("Scheduled time must be in the future.");
       return;
     }
 

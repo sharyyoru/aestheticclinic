@@ -1465,6 +1465,21 @@ export async function POST(request: Request) {
 
           // Normalize phone number to E.164 format
           const normalizedPhone = normalizePhone(patientPhone);
+          if (!normalizedPhone || normalizedPhone.length < 8) {
+            console.log("Invalid phone number for patient, skipping Retell call action");
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "trigger_retell_call",
+                step_config: config,
+                status: "failed",
+                executed_at: new Date().toISOString(),
+                error_message: `Invalid phone number: ${patientPhone}`,
+              });
+            }
+            continue;
+          }
 
           // Fetch service name if deal has a service
           let serviceName = "consultation";
@@ -1473,7 +1488,7 @@ export async function POST(request: Request) {
               .from("services")
               .select("name")
               .eq("id", deal.service_id)
-              .single();
+              .maybeSingle();
             if (serviceData?.name) {
               serviceName = serviceData.name;
             }
@@ -1495,11 +1510,27 @@ export async function POST(request: Request) {
             dynamicVariables.call_purpose = config.call_purpose;
           }
 
+          if (!RETELL_FROM_NUMBER) {
+            console.error("trigger_retell_call: RETELL_FROM_NUMBER not configured");
+            if (enrollmentId) {
+              await supabaseAdmin.from("workflow_enrollment_steps").insert({
+                enrollment_id: enrollmentId,
+                step_type: "action",
+                step_action: "trigger_retell_call",
+                step_config: config,
+                status: "failed",
+                executed_at: new Date().toISOString(),
+                error_message: "RETELL_FROM_NUMBER not configured",
+              });
+            }
+            continue;
+          }
+
           // Prepare the call payload for Retell v2 create-phone-call.
           // Use override_agent_id and place webhook config inside agent_override.agent
           // so it is actually honored by the API.
           const callPayload = {
-            from_number: RETELL_FROM_NUMBER || "+41799029555",
+            from_number: RETELL_FROM_NUMBER,
             to_number: normalizedPhone,
             override_agent_id: agentId,
             override_agent_version: "latest_published",

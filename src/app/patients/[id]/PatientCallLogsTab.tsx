@@ -14,6 +14,7 @@ type CallLog = {
   from_number: string | null;
   to_number: string | null;
   call_status: string | null;
+  disconnection_reason: string | null;
   duration_seconds: number | null;
   summary: string | null;
   transcript: string | null;
@@ -26,6 +27,29 @@ type CallLog = {
   created_at: string;
   prompt: string | null;
 };
+
+/**
+ * Map a Retell disconnection_reason to a short label when the call never
+ * connected to the patient (carrier/telephony failure). Returns null for
+ * normal/successful calls.
+ */
+function describeCallFailure(reason: string | null): string | null {
+  const r = (reason || "").toLowerCase();
+  if (!r) return null;
+  const map: Record<string, string> = {
+    user_declined: "Declined by carrier",
+    dial_busy: "Busy",
+    dial_no_answer: "No answer",
+    dial_failed: "Dial failed",
+    voicemail_reached: "Voicemail",
+    telephony_provider_permission_denied: "Carrier blocked",
+    telephony_provider_unavailable: "Carrier unavailable",
+    sip_routing_error: "Routing error",
+    invalid_destination: "Invalid number",
+    registered_call_timeout: "Not answered",
+  };
+  return map[r] ?? null;
+}
 
 /** A booking attributed to a call (the conversion). */
 type Booking = { at: number; apptDate: string | null; status: string | null };
@@ -127,7 +151,7 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
         supabaseClient
           .from("call_logs")
           .select(
-            "id, call_id, scheduled_call_id, direction, agent_id, from_number, to_number, call_status, duration_seconds, summary, transcript, transcript_turns, recording_url, service_interest, assigned_user_name, whatsapp_sent_at, started_at, created_at, prompt",
+            "id, call_id, scheduled_call_id, direction, agent_id, from_number, to_number, call_status, disconnection_reason, duration_seconds, summary, transcript, transcript_turns, recording_url, service_interest, assigned_user_name, whatsapp_sent_at, started_at, created_at, prompt",
           )
           .eq("patient_id", patientId)
           .order("started_at", { ascending: false, nullsFirst: false })
@@ -262,6 +286,17 @@ export default function PatientCallLogsTab({ patientId }: { patientId: string })
                     {log.call_status}
                   </span>
                 )}
+                {(() => {
+                  const failure = describeCallFailure(log.disconnection_reason);
+                  return failure ? (
+                    <span
+                      className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold border bg-red-50 text-red-700 border-red-200"
+                      title={`Call did not connect: ${log.disconnection_reason}`}
+                    >
+                      Not connected · {failure}
+                    </span>
+                  ) : null;
+                })()}
               </div>
               <div className="flex items-center gap-2">
                 {attr && attr.whatsappSentAt !== null && (
