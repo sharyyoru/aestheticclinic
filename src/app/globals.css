@@ -29,6 +29,7 @@ html { font-size: 17px; }
   --blz-text-primary: #0f172a;
   --blz-text-secondary: #475569;
   --blz-text-muted: #94a3b8;
+  --blz-hover: rgba(15, 23, 42, 0.06);
   color-scheme: light;
 }
 
@@ -42,6 +43,7 @@ html { font-size: 17px; }
   --blz-text-primary: #f1f5f9;
   --blz-text-secondary: #94a3b8;
   --blz-text-muted: #64748b;
+  --blz-hover: rgba(255, 255, 255, 0.08);
   color-scheme: dark;
 }
 

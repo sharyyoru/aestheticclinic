@@ -22,7 +22,7 @@ export default function BlizzardShell({ children }: { children: React.ReactNode 
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#1a1f2e] text-slate-200">
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--blz-surface)] text-[var(--blz-text-secondary)]">
       {/* Top bar */}
       <TopBar />
 
@@ -32,7 +32,7 @@ export default function BlizzardShell({ children }: { children: React.ReactNode 
       {/* Main area: content + right panel */}
       <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
-        <main className="flex-1 overflow-y-auto bg-[#141820]">
+        <main className="flex-1 overflow-y-auto bg-[var(--blz-bg)]">
           <div className="min-h-full blz-content px-4 py-4 sm:px-6 lg:px-8">
             {children}
           </div>

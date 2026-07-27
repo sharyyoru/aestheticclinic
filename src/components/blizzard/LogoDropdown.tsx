@@ -170,11 +170,11 @@ export default function LogoDropdown({ onClose }: Props) {
   return (
     <div
       ref={ref}
-      className="absolute left-0 top-full mt-2 w-72 rounded-xl border border-slate-700/60 bg-[#1e2433] shadow-2xl shadow-black/40 py-2 z-[100] max-h-[80vh] overflow-y-auto"
+      className="absolute left-0 top-full mt-2 w-72 rounded-xl border border-[var(--blz-border)] bg-[var(--blz-surface-elevated)] shadow-2xl shadow-black/10 dark:shadow-black/40 py-2 z-[100] max-h-[80vh] overflow-y-auto"
     >
       {NAV_SECTIONS.map((section, si) => (
         <div key={si}>
-          {si > 0 && <div className="my-2 border-t border-slate-700/40" />}
+          {si > 0 && <div className="my-2 border-t border-[var(--blz-border)]" />}
           {section.items.map((item) => {
             const hasChildren = item.children && item.children.length > 0;
             const isExpanded = expandedItems.has(item.href);
@@ -188,11 +188,11 @@ export default function LogoDropdown({ onClose }: Props) {
                   onClick={onClose}
                   className={`flex items-center gap-3 px-4 py-2 text-sm transition-colors ${
                     isActive
-                      ? "text-white bg-white/5"
-                      : "text-slate-300 hover:bg-white/5 hover:text-white"
+                      ? "text-[var(--blz-text-primary)] bg-[var(--blz-hover)]"
+                      : "text-[var(--blz-text-secondary)] hover:bg-[var(--blz-hover)] hover:text-[var(--blz-text-primary)]"
                   }`}
                 >
-                  {item.icon ? <span className="text-slate-400">{item.icon}</span> : null}
+                  {item.icon ? <span className="text-[var(--blz-text-muted)]">{item.icon}</span> : null}
                   <span>{item.label}</span>
                 </Link>
               );
@@ -205,16 +205,16 @@ export default function LogoDropdown({ onClose }: Props) {
                   onClick={() => toggleExpand(item.href)}
                   className={`flex w-full items-center justify-between px-4 py-2 text-sm transition-colors ${
                     isActive
-                      ? "text-white bg-white/5"
-                      : "text-slate-300 hover:bg-white/5 hover:text-white"
+                      ? "text-[var(--blz-text-primary)] bg-[var(--blz-hover)]"
+                      : "text-[var(--blz-text-secondary)] hover:bg-[var(--blz-hover)] hover:text-[var(--blz-text-primary)]"
                   }`}
                 >
                   <span className="flex items-center gap-3">
-                    {item.icon ? <span className="text-slate-400">{item.icon}</span> : null}
+                    {item.icon ? <span className="text-[var(--blz-text-muted)]">{item.icon}</span> : null}
                     <span>{item.label}</span>
                   </span>
                   <svg
-                    className={`h-3.5 w-3.5 text-slate-500 transition-transform duration-200 ${
+                    className={`h-3.5 w-3.5 text-[var(--blz-text-muted)] transition-transform duration-200 ${
                       isExpanded ? "rotate-180" : ""
                     }`}
                     viewBox="0 0 24 24"
@@ -228,7 +228,7 @@ export default function LogoDropdown({ onClose }: Props) {
                   </svg>
                 </button>
                 {isExpanded && (
-                  <div className="ml-4 border-l border-slate-700/40 pl-2 py-0.5">
+                  <div className="ml-4 border-l border-[var(--blz-border)] pl-2 py-0.5">
                     {item.children!.map((child) => {
                       const childActive = pathname === child.href;
                       return (
@@ -238,8 +238,8 @@ export default function LogoDropdown({ onClose }: Props) {
                           onClick={onClose}
                           className={`block px-3 py-1.5 text-[13px] transition-colors rounded ${
                             childActive
-                              ? "text-sky-400 bg-sky-400/10"
-                              : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+                              ? "text-sky-500 dark:text-sky-400 bg-sky-400/10"
+                              : "text-[var(--blz-text-muted)] hover:text-[var(--blz-text-secondary)] hover:bg-[var(--blz-hover)]"
                           }`}
                         >
                           {child.label}
@@ -254,7 +254,7 @@ export default function LogoDropdown({ onClose }: Props) {
         </div>
       ))}
 
-      <div className="my-2 border-t border-slate-700/40" />
+      <div className="my-2 border-t border-[var(--blz-border)]" />
 
       {/* Layout mode toggle */}
       <button
@@ -262,7 +262,7 @@ export default function LogoDropdown({ onClose }: Props) {
           toggleMode();
           onClose();
         }}
-        className="flex w-full items-center gap-3 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+        className="flex w-full items-center gap-3 px-4 py-2 text-sm text-[var(--blz-text-secondary)] hover:bg-[var(--blz-hover)] hover:text-[var(--blz-text-primary)] transition-colors"
       >
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="18" height="18" rx="2" />

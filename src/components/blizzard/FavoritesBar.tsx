@@ -69,13 +69,13 @@ function TooltipIcon({
 }) {
   const baseClasses =
     "flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-200";
-  const activeClasses = "border-sky-400/60 bg-sky-500/10 text-sky-400";
+  const activeClasses = "border-sky-400/60 bg-sky-500/10 text-sky-500 dark:text-sky-400";
   const inactiveClasses =
-    "border-slate-600/40 text-slate-400 hover:border-sky-400 hover:bg-sky-500/20 hover:text-sky-200 hover:shadow-[0_0_16px_rgba(56,189,248,0.35)] hover:scale-105";
+    "border-[var(--blz-border)] text-[var(--blz-text-muted)] hover:border-sky-400 hover:bg-sky-500/10 hover:text-sky-500 dark:hover:text-sky-200 hover:shadow-[0_0_16px_rgba(56,189,248,0.35)] hover:scale-105";
   const tooltip = (
-    <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+    <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--blz-surface-elevated)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--blz-text-primary)] opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
       {label}
-      <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-slate-800" />
+      <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-[var(--blz-surface-elevated)]" />
     </div>
   );
 
@@ -110,8 +110,8 @@ export default function FavoritesBar() {
   };
 
   return (
-    <div className="flex items-center gap-3 border-b border-slate-700/40 bg-[#1a1f2e] px-4 py-2">
-      <span className="mr-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+    <div className="flex items-center gap-3 border-b border-[var(--blz-border)] bg-[var(--blz-surface)] px-4 py-2">
+      <span className="mr-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--blz-text-muted)]">
         Favorites
       </span>
       <div className="flex items-center gap-2">
