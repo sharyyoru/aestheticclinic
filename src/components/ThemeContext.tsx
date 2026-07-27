@@ -19,7 +19,7 @@ const ThemeContext = createContext<ThemeContextType>({
   theme: "dark",
   setTheme: () => {},
   toggleTheme: () => {},
-  placeholderVisibility: "visible",
+  placeholderVisibility: "hidden",
   setPlaceholderVisibility: () => {},
   togglePlaceholderVisibility: () => {},
 });
@@ -29,7 +29,7 @@ const PLACEHOLDER_KEY = "app_placeholder_visibility";
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
-  const [placeholderVisibility, setPlaceholderVisibilityState] = useState<PlaceholderVisibility>("visible");
+  const [placeholderVisibility, setPlaceholderVisibilityState] = useState<PlaceholderVisibility>("hidden");
   const [mounted, setMounted] = useState(false);
   const { mode } = useLayoutMode();
 

@@ -64,7 +64,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem('app_placeholder_visibility');if(p==='hidden'){document.documentElement.classList.add('hide-placeholders');}}catch(e){}})();`,
+            __html: `(function(){try{var p=localStorage.getItem('app_placeholder_visibility');if(p!=='visible'){document.documentElement.classList.add('hide-placeholders');}}catch(e){document.documentElement.classList.add('hide-placeholders');}})();`,
           }}
         />
       </head>
