@@ -1135,6 +1135,10 @@ function AnesthesiaQuestionnairePdfForm({
             </div>
           ))}
         </div>
+        <div className="space-y-1">
+          <span className="font-semibold">{isFr ? "Précisions :" : "Details:"}</span>
+          <PdfTextarea id="medical_problems_details" value={formData.medical_problems_details} onChange={onChange} rows={2} />
+        </div>
 
         <PdfQuestion number={isFr ? 9 : 8}>{isFr ? t.q9 : t.q8}</PdfQuestion>
         <div><PdfRadioChoice id="other_disease" option="yes" label={`${t.yes}, ${t.which}`} value={formData.other_disease} onChange={onChange} /> <PdfRadioChoice id="other_disease" option="no" label={t.no} value={formData.other_disease} onChange={onChange} /></div>
@@ -1177,7 +1181,20 @@ function AnesthesiaQuestionnairePdfForm({
         <PdfTextarea id="other_particularity" value={formData.other_particularity} onChange={onChange} rows={1} />
 
         <PdfQuestion number={isFr ? 17 : 16}>{isFr ? t.q17 : t.q16}</PdfQuestion>
-        <PdfTextarea id="emergency_contact_name" value={formData.emergency_contact_name} onChange={onChange} rows={2} />
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="flex items-end gap-2">
+            <span>{isFr ? "Nom" : "Name"}:</span>
+            <PdfTextInput id="emergency_contact_name" value={formData.emergency_contact_name} onChange={onChange} />
+          </div>
+          <div className="flex items-end gap-2">
+            <span>{isFr ? "Téléphone" : "Phone"}:</span>
+            <PdfTextInput id="emergency_contact_phone" type="phone" value={formData.emergency_contact_phone} onChange={onChange} />
+          </div>
+          <div className="flex items-end gap-2">
+            <span>{isFr ? "Lien" : "Relationship"}:</span>
+            <PdfTextInput id="emergency_contact_relationship" value={formData.emergency_contact_relationship} onChange={onChange} />
+          </div>
+        </div>
 
         <div className="space-y-1 pt-2">
           <p>{t.women} {t.pill} <PdfYesNo id="contraceptive_pill" value={formData.contraceptive_pill} onChange={onChange} yesLabel={t.yes} noLabel={t.no} /></p>

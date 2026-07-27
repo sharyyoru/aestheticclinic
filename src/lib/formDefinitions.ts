@@ -602,16 +602,35 @@ const ANESTHESIA_QUESTIONNAIRE_EN_SECTIONS: FormSection[] = ANESTHESIA_QUESTIONN
   title: section.id === "women" ? "For Women" : section.title,
   titleFr: undefined,
   descriptionFr: undefined,
-  fields: section.fields.map((field) => ({
-    ...field,
-    labelFr: undefined,
-    placeholderFr: undefined,
-    helpTextFr: undefined,
-    options: field.options?.map((option) => ({
-      value: option.value,
-      label: option.label,
-    })),
-  })),
+  fields: section.fields
+    // These fields only exist on the French source questionnaire.
+    .filter((field) =>
+      !["surgeon", "family_anesthesia_problems", "family_anesthesia_problems_details"].includes(field.id)
+    )
+    .map((field) => ({
+      ...field,
+      labelFr: undefined,
+      placeholderFr: undefined,
+      helpTextFr: undefined,
+      options: field.options?.map((option) => ({
+        value: option.value,
+        label: option.label,
+      })),
+    }))
+    // The English source asks for a planned operation instead of a surgeon.
+    .concat(
+      section.id === "personal-info"
+        ? [{
+            id: "planned_operation",
+            type: "text" as const,
+            label: "Planned operation",
+            labelFr: undefined,
+            placeholderFr: undefined,
+            helpTextFr: undefined,
+            options: undefined,
+          }]
+        : []
+    ),
 }));
 
 export const FORM_DEFINITIONS: FormDefinition[] = [
