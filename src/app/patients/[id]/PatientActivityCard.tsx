@@ -4585,7 +4585,6 @@ export default function PatientActivityCard({
                                       event.target.value,
                                     )
                                   }
-                                  placeholder="Add a comment... Use @ to mention."
                                   className="flex-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                                   disabled={isSavingComment}
                                 />
@@ -4863,8 +4862,8 @@ export default function PatientActivityCard({
                   onChange={(event) => handleNoteBodyChange(event.target.value)}
                   rows={4}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  placeholder="Write a note... Use @ to mention."
                 />
+                <p className="text-[10px] text-slate-500">Use @ to mention teammates</p>
                 {noteMentionActive && (() => {
                   const mentionQuery = noteMentionQuery.trim();
                   const mentionOptions = (Array.isArray(userOptions) ? userOptions : [])
@@ -5139,8 +5138,8 @@ export default function PatientActivityCard({
                       onChange={(event) => setDealNotes(event.target.value)}
                       rows={4}
                       className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      placeholder="Internal notes about this deal"
                     />
+                    <p className="text-[10px] text-slate-500">Internal notes about this deal</p>
                   </div>
                 </div>
                 <div className="space-y-3">
@@ -5544,9 +5543,9 @@ export default function PatientActivityCard({
                   value={emailAiDescription}
                   onChange={(event) => setEmailAiDescription(event.target.value)}
                   rows={3}
-                  placeholder="Describe the goal, key points, and context for this email..."
                   className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
+                <p className="mt-1 text-[10px] text-slate-500">Describe the goal, key points, and context for this email</p>
                 {/* Knowledgebase topic selection */}
                 {emailAiKnowledgeTopics.length > 0 && (
                   <div className="mt-2">

@@ -729,10 +729,10 @@ export default function EmailTemplateBuilder({
                   <textarea
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
-                    placeholder="Describe the email you want to create... e.g., 'Welcome email for new patients with appointment confirmation'"
                     rows={3}
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900"
                   />
+                  <p className="mt-1 text-[11px] text-slate-500">Describe the email you want to create (e.g. "Welcome email for new patients with appointment confirmation")</p>
                   <button
                     onClick={handleAiGenerate}
                     disabled={aiGenerating || !aiPrompt.trim()}

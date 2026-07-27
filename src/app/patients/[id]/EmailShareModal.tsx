@@ -252,10 +252,10 @@ export default function EmailShareModal({
                 type="email"
                 value={emailCc}
                 onChange={(e) => onCcChange(e.target.value)}
-                placeholder="Custom CC address (optional)"
                 disabled={sending}
                 className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 disabled:cursor-not-allowed"
               />
+              <p className="text-[10px] text-slate-500">Optional — add a CC recipient</p>
             </div>
           </div>
 
@@ -298,9 +298,9 @@ export default function EmailShareModal({
               value={aiDescription}
               onChange={(e) => setAiDescription(e.target.value)}
               rows={3}
-              placeholder="Describe the goal, key points, and context for this email..."
               className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             />
+            <p className="mt-1 text-[10px] text-slate-500">Describe the goal, key points, and context for this email</p>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <select
                 value={aiTone}

@@ -333,11 +333,11 @@ export default function AcfAccordionTree({
               <label className="block text-[8px] font-semibold text-red-500 uppercase tracking-wide">ICD-10 *</label>
               <input
                 type="text"
-                placeholder="e.g. Z42.1"
                 value={stageIcd}
                 onChange={(e) => { setStageIcd(e.target.value); setGrouperResult(null); setGrouperError(null); }}
                 className="mt-0.5 block w-full rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
               />
+              <p className="text-[8px] text-slate-500">e.g. Z42.1</p>
             </div>
 
             {/* Side type */}

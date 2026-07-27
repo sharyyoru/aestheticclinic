@@ -577,7 +577,6 @@ export default function TaskEditModal({
                   type="text"
                   value={commentInput}
                   onChange={(e) => handleCommentInputChange(e.target.value)}
-                  placeholder="Add a comment... Use @ to mention."
                   className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   disabled={commentSaving}
                 />

@@ -4877,9 +4877,9 @@ export default function MedicalConsultationsCard({
                       type="text"
                       value={consultationDiagnosisCode}
                       onChange={(e) => setConsultationDiagnosisCode(e.target.value)}
-                      placeholder="e.g. L91.0"
                       className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
+                    <p className="text-[10px] text-slate-500">e.g. L91.0</p>
                   </div>
                   <div className="space-y-1">
                     <label className="block text-[11px] font-medium text-slate-700">
@@ -4889,9 +4889,9 @@ export default function MedicalConsultationsCard({
                       type="text"
                       value={consultationRefIcd10}
                       onChange={(e) => setConsultationRefIcd10(e.target.value)}
-                      placeholder="e.g. Z42.1"
                       className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
+                    <p className="text-[10px] text-slate-500">e.g. Z42.1</p>
                   </div>
                 </div>
               )}
@@ -5669,10 +5669,10 @@ export default function MedicalConsultationsCard({
                                 <span className="block text-[10px] font-medium text-slate-600">
                                   Search by Code / Name
                                 </span>
+                                <p className="text-[10px] text-slate-500">e.g. AA.00 or consultation</p>
                                 <div className="flex gap-1">
                                   <input
                                     type="text"
-                                    placeholder="e.g. AA.00 or consultation"
                                     value={tardocSearchQuery}
                                     onChange={(e) => setTardocSearchQuery(e.target.value)}
                                     onKeyDown={async (e) => {
@@ -6021,9 +6021,9 @@ export default function MedicalConsultationsCard({
                                   type="text"
                                   value={materielSearchQuery}
                                   onChange={(e) => setMaterielSearchQuery(e.target.value)}
-                                  placeholder="e.g. Vicryl, 0001, Propofol..."
                                   className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                                 />
+                                <p className="text-[10px] text-slate-500">e.g. Vicryl, 0001, Propofol...</p>
                               </div>
                               {(() => {
                                 const results = searchMateriel406(materielSearchQuery);
@@ -6640,7 +6640,6 @@ export default function MedicalConsultationsCard({
                                             }
                                             return val;
                                           })()}
-                                          placeholder="e.g. AA.00.0010"
                                           onChange={(e) => {
                                             const raw = e.target.value.trim().toUpperCase();
                                             setInvoiceServiceLines((prev) => {
@@ -6947,9 +6946,9 @@ export default function MedicalConsultationsCard({
                             type="text"
                             value={product.intakeNote}
                             onChange={(e) => updateMedProduct(product.id, { intakeNote: e.target.value })}
-                            placeholder="e.g. Take with food"
                             className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                           />
+                          <p className="text-[10px] text-slate-500">e.g. Take with food</p>
                         </div>
                         <div className="space-y-1">
                           <label className="block text-[11px] font-medium text-slate-700">
@@ -6989,9 +6988,9 @@ export default function MedicalConsultationsCard({
                       type="text"
                       value={medDecisionSummary}
                       onChange={(e) => setMedDecisionSummary(e.target.value)}
-                      placeholder="e.g. Post-operative pain management"
                       className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
+                    <p className="text-[10px] text-slate-500">e.g. Post-operative pain management</p>
                   </div>
 
                   <div className="flex items-center gap-4">
@@ -8463,7 +8462,6 @@ export default function MedicalConsultationsCard({
                                   type="text"
                                   value={inst.notes || ""}
                                   onChange={(e) => handleUpdateInstallment(index, { notes: e.target.value || null })}
-                                  placeholder="Optional notes"
                                   className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                                 />
                               </div>
@@ -8698,9 +8696,9 @@ export default function MedicalConsultationsCard({
                     type="text"
                     value={editConsultationDiagnosisCode}
                     onChange={(e) => setEditConsultationDiagnosisCode(e.target.value)}
-                    placeholder="e.g. L91.0"
                     className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
+                  <p className="text-[10px] text-slate-500">e.g. L91.0</p>
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-medium text-slate-700">Ref ICD-10</label>
@@ -8708,9 +8706,9 @@ export default function MedicalConsultationsCard({
                     type="text"
                     value={editConsultationRefIcd10}
                     onChange={(e) => setEditConsultationRefIcd10(e.target.value)}
-                    placeholder="e.g. Z42.1"
                     className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
+                  <p className="text-[10px] text-slate-500">e.g. Z42.1</p>
                 </div>
               </div>
 

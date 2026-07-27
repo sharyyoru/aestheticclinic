@@ -783,9 +783,9 @@ export default function InsuranceBillingModal({
                     value={selectedInsurerGln}
                     displayName={selectedInsurerName}
                     onChange={handleInsurerChange}
-                    placeholder="Search insurer from MediData (e.g., CSS, Helsana, Swica)..."
                     inputClassName="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
+                  <p className="mt-1 text-[10px] text-slate-500">Search by insurer name (e.g. CSS, Helsana, Swica)</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -796,9 +796,9 @@ export default function InsuranceBillingModal({
                       type="text"
                       value={avsNumber}
                       onChange={(e) => setAvsNumber(e.target.value)}
-                      placeholder="756.XXXX.XXXX.XX"
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
+                    <p className="mt-0.5 text-[10px] text-slate-500">Format: 756.XXXX.XXXX.XX</p>
                   </div>
                   <div>
                     <label className="mb-1 block text-[11px] font-medium text-slate-500">
@@ -808,9 +808,9 @@ export default function InsuranceBillingModal({
                       type="text"
                       value={policyNumber}
                       onChange={(e) => setPolicyNumber(e.target.value)}
-                      placeholder="e.g., 123456789"
                       className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
+                    <p className="mt-0.5 text-[10px] text-slate-500">e.g. 123456789</p>
                   </div>
                 </div>
                 <div>
@@ -938,7 +938,6 @@ export default function InsuranceBillingModal({
                   value={diagnosisInput}
                   onChange={(e) => setDiagnosisInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddDiagnosis()}
-                  placeholder="e.g., L70.0"
                   className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
                 <button

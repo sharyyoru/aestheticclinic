@@ -1007,10 +1007,10 @@ export default function Patient3DSetupPage() {
                     type="number"
                     step="0.1"
                     name="nipple_to_nipple_cm"
-                    placeholder="e.g., 18.5"
                     required
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
                   />
+                  <p className="text-[10px] text-slate-500">e.g. 18.5</p>
                 </div>
               )}
 
@@ -1023,10 +1023,10 @@ export default function Patient3DSetupPage() {
                     type="number"
                     step="0.1"
                     name="pupillary_distance_cm"
-                    placeholder="e.g., 6.3"
                     required
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
                   />
+                  <p className="text-[10px] text-slate-500">e.g. 6.3</p>
                 </div>
               )}
 
@@ -1039,10 +1039,10 @@ export default function Patient3DSetupPage() {
                     type="number"
                     step="0.1"
                     name="hipline_cm"
-                    placeholder="e.g., 95.0"
                     required
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900"
                   />
+                  <p className="text-[10px] text-slate-500">e.g. 95.0</p>
                 </div>
               )}
             </div>

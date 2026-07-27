@@ -32,6 +32,7 @@ function addDays(days: number): string {
 }
 
 const DATE_PRESETS = [
+  { label: "Today", getValue: () => toDateString(getSwissNow()) },
   { label: "Tomorrow", getValue: () => addDays(1) },
   { label: "In 3 days", getValue: () => addDays(3) },
   { label: "In 1 week", getValue: () => addDays(7) },
@@ -194,10 +195,10 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   rows={5}
-                  placeholder="e.g. Follow up after consultation and confirm next appointment."
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200 resize-y"
                   required
                 />
+                <p className="mt-1 text-[11px] text-slate-500">e.g. Follow up after consultation and confirm next appointment.</p>
               </div>
 
               <div>
@@ -208,9 +209,9 @@ export default function AiCallButton({ patientId, patientName }: AiCallButtonPro
                   type="text"
                   value={serviceName}
                   onChange={(e) => setServiceName(e.target.value)}
-                  placeholder="e.g. Breast augmentation consultation"
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                 />
+                <p className="mt-1 text-[11px] text-slate-500">e.g. Breast augmentation consultation</p>
               </div>
 
               <div>

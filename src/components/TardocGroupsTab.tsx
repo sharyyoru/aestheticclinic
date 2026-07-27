@@ -671,9 +671,9 @@ export default function TardocGroupsTab() {
                     type="text"
                     value={groupName}
                     onChange={(e) => setGroupName(e.target.value)}
-                    placeholder="e.g. Standard Consultation"
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
                   />
+                  <p className="mt-0.5 text-[10px] text-slate-500">e.g. Standard Consultation</p>
                 </div>
                 <div>
                   <label className="block text-[11px] font-medium text-slate-600 mb-1">Description</label>
@@ -766,10 +766,10 @@ export default function TardocGroupsTab() {
               {/* Search for TARDOC codes */}
               <div className="space-y-1">
                 <label className="block text-[11px] font-medium text-slate-600">Add TarDoc Codes</label>
+                <p className="text-[10px] text-slate-500">Search by code or name (e.g. AA.00)</p>
                 <div className="flex gap-1">
                   <input
                     type="text"
-                    placeholder="Search by code or name (e.g. AA.00 or consultation)"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => {
@@ -877,7 +877,6 @@ export default function TardocGroupsTab() {
                     </select>
                     <input
                       type="text"
-                      placeholder="Code (e.g. C09.60B)"
                       value={manualCode}
                       onChange={(e) => setManualCode(e.target.value)}
                       className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"

@@ -1355,7 +1355,6 @@ export default function Home() {
                     onChange={(event) =>
                       handleTaskCommentInputChangeDashboard(event.target.value)
                     }
-                    placeholder="Add a comment... Use @ to mention."
                     className="flex-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     disabled={taskCommentSaving}
                   />

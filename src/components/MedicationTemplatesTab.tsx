@@ -694,9 +694,9 @@ export default function MedicationTemplatesTab() {
                           type="text"
                           value={item.intake_note || ""}
                           onChange={(e) => updateItem(idx, { intake_note: e.target.value || null })}
-                          placeholder="e.g. Take with food"
                           className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                         />
+                        <p className="mt-0.5 text-[10px] text-slate-500">e.g. Take with food</p>
                       </div>
                     </div>
                   ))}
