@@ -713,7 +713,6 @@ export default function EmailTemplateBuilder({
                   <textarea
                     value={subjectTemplate}
                     onChange={(e) => setSubjectTemplate(e.target.value)}
-                    placeholder="Enter subject line..."
                     rows={2}
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 resize-y"
                   />

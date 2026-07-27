@@ -4769,7 +4769,6 @@ export default function MedicalConsultationsCard({
                   <SearchableSelect
                     value={consultationDoctorId}
                     onChange={setConsultationDoctorId}
-                    placeholder={`Select ${consultationRecordType === "invoice" ? "staff" : "doctor"}`}
                     options={
                       consultationRecordType === "invoice"
                         ? medicalStaffOptions.map((staff) => ({
@@ -6974,7 +6973,6 @@ export default function MedicalConsultationsCard({
                     <SearchableSelect
                       value={medDoctorProviderId}
                       onChange={setMedDoctorProviderId}
-                      placeholder="Select doctor"
                       options={doctorProviderOptions.map((doctor) => ({
                         value: doctor.id,
                         label: `${doctor.name}${doctor.specialty ? ` (${doctor.specialty})` : ""}`,
@@ -7995,7 +7993,6 @@ export default function MedicalConsultationsCard({
                   value={taskName}
                   onChange={(event) => setTaskName(event.target.value)}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Enter task name"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -8078,7 +8075,6 @@ export default function MedicalConsultationsCard({
                   onChange={(event) => setTaskContent(event.target.value)}
                   rows={3}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Enter task details..."
                 />
               </div>
               {taskSaveError ? (
@@ -8584,7 +8580,6 @@ export default function MedicalConsultationsCard({
                   value={editInvoiceTitle}
                   onChange={(e) => setEditInvoiceTitle(e.target.value)}
                   className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Invoice title"
                 />
               </div>
               <div className="rounded-lg bg-slate-50 p-3">
@@ -8639,7 +8634,6 @@ export default function MedicalConsultationsCard({
                   value={editConsultationTitle}
                   onChange={(e) => setEditConsultationTitle(e.target.value)}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Consultation title"
                 />
               </div>
 
@@ -8649,7 +8643,6 @@ export default function MedicalConsultationsCard({
                 <SearchableSelect
                   value={editConsultationDoctorId}
                   onChange={setEditConsultationDoctorId}
-                  placeholder="Select doctor"
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   options={doctorUserOptions.map((user) => ({
                     value: user.id,

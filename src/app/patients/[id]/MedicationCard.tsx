@@ -898,7 +898,6 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                                 <SearchableSelect
                                     value={newPrescriptionDoctorProviderId}
                                     onChange={setNewPrescriptionDoctorProviderId}
-                                    placeholder="Select doctor"
                                     options={doctorOptions.map((doctor) => ({
                                         value: doctor.id,
                                         label: `${doctor.name}${doctor.specialty ? ` (${doctor.specialty})` : ""}`,

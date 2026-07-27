@@ -415,7 +415,6 @@ export default function EmailReportsPage() {
               </svg>
               <input
                 type="text"
-                placeholder="Search by subject, email, patient..."
                 value={filters.searchQuery}
                 onChange={(e) => setFilters((f) => ({ ...f, searchQuery: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 bg-slate-50/80 py-2 pl-10 pr-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
@@ -483,7 +482,6 @@ export default function EmailReportsPage() {
                 </svg>
                 <input
                   type="text"
-                  placeholder="Search by subject, email, patient..."
                   value={filters.searchQuery}
                   onChange={(e) => setFilters((f) => ({ ...f, searchQuery: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 bg-slate-50/80 py-2 pl-10 pr-3 text-sm text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"

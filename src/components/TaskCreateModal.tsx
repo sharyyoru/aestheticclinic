@@ -289,7 +289,6 @@ export default function TaskCreateModal({
                 onBlur={() => {
                   setTimeout(() => setShowPatientDropdown(false), 200);
                 }}
-                placeholder="Search patient..."
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
               {selectedPatientId && (
@@ -394,7 +393,6 @@ export default function TaskCreateModal({
                   onBlur={() => {
                     setTimeout(() => setTaskAssignedUserDropdownOpen(false), 200);
                   }}
-                  placeholder="Search user..."
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
                 {taskAssignedUserId && (

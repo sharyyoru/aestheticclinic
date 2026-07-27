@@ -554,7 +554,6 @@ export default function SignatureEditor({ value, onChange }: SignatureEditorProp
         <Editable
           renderElement={renderElement}
           renderLeaf={renderLeaf}
-          placeholder="Type your email signature here..."
           className="min-h-[120px] px-3 py-2 text-sm text-slate-900 focus:outline-none"
           onKeyDown={(event) => {
             if (event.key === "b" && (event.ctrlKey || event.metaKey)) {

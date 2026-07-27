@@ -363,7 +363,6 @@ export default function AppointmentModal({
                   }
                 }}
                 onFocus={() => setUserDropdownOpen(true)}
-                placeholder="Search for a doctor..."
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
               {assignedUserId && (
@@ -418,7 +417,6 @@ export default function AppointmentModal({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={`Appointment with ${patientName}`}
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           </div>
@@ -493,7 +491,6 @@ export default function AppointmentModal({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              placeholder="Add any notes about this appointment..."
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           </div>

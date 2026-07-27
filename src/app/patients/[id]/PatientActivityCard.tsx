@@ -4941,7 +4941,6 @@ export default function PatientActivityCard({
                   value={taskName}
                   onChange={(event) => setTaskName(event.target.value)}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Enter task name"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -5053,7 +5052,6 @@ export default function PatientActivityCard({
                   onChange={(event) => setTaskContent(event.target.value)}
                   rows={3}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Enter task details..."
                 />
               </div>
               {taskSaveError ? (
@@ -5130,7 +5128,6 @@ export default function PatientActivityCard({
                       value={dealTitle}
                       onChange={(event) => setDealTitle(event.target.value)}
                       className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                      placeholder="Describe the deal"
                     />
                   </div>
                   <div className="space-y-1">
@@ -5524,7 +5521,6 @@ export default function PatientActivityCard({
                   value={emailSubject}
                   onChange={(event) => setEmailSubject(event.target.value)}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  placeholder="Subject line"
                 />
               </div>
               <div className="space-y-1">
@@ -5534,7 +5530,6 @@ export default function PatientActivityCard({
                 <RichTextEditor
                   value={emailBody}
                   onChange={setEmailBody}
-                  placeholder="Write your email..."
                   className="shadow-sm"
                 />
               </div>

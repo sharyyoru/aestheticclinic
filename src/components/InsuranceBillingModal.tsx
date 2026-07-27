@@ -821,7 +821,6 @@ export default function InsuranceBillingModal({
                     type="text"
                     value={caseNumber}
                     onChange={(e) => setCaseNumber(e.target.value)}
-                    placeholder="Optional"
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                 </div>

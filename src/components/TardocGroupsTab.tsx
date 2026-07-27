@@ -681,7 +681,6 @@ export default function TardocGroupsTab() {
                     type="text"
                     value={groupDescription}
                     onChange={(e) => setGroupDescription(e.target.value)}
-                    placeholder="Optional description"
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
                   />
                 </div>
@@ -885,7 +884,6 @@ export default function TardocGroupsTab() {
                     />
                     <input
                       type="text"
-                      placeholder="Description"
                       value={manualDescription}
                       onChange={(e) => setManualDescription(e.target.value)}
                       className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] text-slate-900 focus:border-sky-400 focus:outline-none"

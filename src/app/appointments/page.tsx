@@ -4933,7 +4933,6 @@ export default function CalendarPage() {
                     rows={3}
                     style={{ fontSize: '16px' }}
                     className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
-                    placeholder="Add notes for this appointment"
                   />
                 </div>
 
@@ -5827,7 +5826,6 @@ export default function CalendarPage() {
                     rows={3}
                     style={{ fontSize: '16px' }}
                     className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 touch-manipulation"
-                    placeholder="Add notes for this appointment"
                   />
                 </div>
               </div>
