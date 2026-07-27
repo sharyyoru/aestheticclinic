@@ -17,11 +17,30 @@ function isFieldAnswered(field: FormField, value: SubmissionValue): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+export function isPatientFormFieldRequired(
+  field: FormField,
+  submissionData: PatientFormData
+): boolean {
+  if (field.requiredWhen) {
+    return submissionData[field.requiredWhen.fieldId] === field.requiredWhen.equals;
+  }
+
+  if (field.required === false) {
+    return false;
+  }
+
+  return field.type !== "checkbox" || field.required === true;
+}
+
 export function getUnansweredPatientFormFields(
   form: FormDefinition,
   submissionData: PatientFormData
 ): FormField[] {
   return form.sections
     .flatMap((section) => section.fields)
-    .filter((field) => !isFieldAnswered(field, submissionData[field.id]));
+    .filter(
+      (field) =>
+        isPatientFormFieldRequired(field, submissionData) &&
+        !isFieldAnswered(field, submissionData[field.id])
+    );
 }

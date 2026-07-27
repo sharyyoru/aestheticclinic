@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { getAlternateLanguageFormId, getFormById, FormDefinition, FormField, FormSection, FormContentBlock } from "@/lib/formDefinitions";
-import { getUnansweredPatientFormFields } from "@/lib/patientFormValidation";
+import { getUnansweredPatientFormFields, isPatientFormFieldRequired } from "@/lib/patientFormValidation";
 import Image from "next/image";
 
 type FormData = Record<string, string | boolean | string[]>;
@@ -235,15 +235,16 @@ function FormFieldComponent({
   value,
   onChange,
   language,
+  isRequired,
 }: {
   field: FormField;
   value: string | boolean | string[];
   onChange: (value: string | boolean | string[]) => void;
   language: "en" | "fr";
+  isRequired: boolean;
 }) {
   const label = language === "fr" && field.labelFr ? field.labelFr : field.label;
   const placeholder = language === "fr" && field.placeholderFr ? field.placeholderFr : field.placeholder;
-  const isRequired = field.type !== "checkbox" || field.required === true;
 
   switch (field.type) {
     case "text":
@@ -471,15 +472,23 @@ function FormSectionComponent({
         </div>
       )}
       <div className="space-y-4">
-        {section.fields.map((field) => (
-          <FormFieldComponent
-            key={field.id}
-            field={field}
-            value={formData[field.id] || (field.type === "checkbox" ? false : "")}
-            onChange={(value) => onChange(field.id, value)}
-            language={language}
-          />
-        ))}
+        {section.fields.map((field) => {
+          const isRequired = isPatientFormFieldRequired(field, formData);
+          const isConditionalAndInactive = Boolean(field.requiredWhen) && !isRequired;
+
+          if (isConditionalAndInactive) return null;
+
+          return (
+            <FormFieldComponent
+              key={field.id}
+              field={field}
+              value={formData[field.id] || (field.type === "checkbox" ? false : "")}
+              onChange={(value) => onChange(field.id, value)}
+              language={language}
+              isRequired={isRequired}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -960,15 +969,20 @@ function GenericPdfDocumentForm({
         )}
         {fields.length > 0 && (
           <div className="space-y-2 border-t border-slate-200 pt-4">
-            {fields.map((field) => (
-              <PdfDocumentField
-                key={field.id}
-                field={field}
-                value={formData[field.id] || (field.type === "checkbox" ? false : "")}
-                onChange={onChange}
-                language={form.language}
-              />
-            ))}
+            {fields.map((field) => {
+              const isRequired = isPatientFormFieldRequired(field, formData);
+              if (field.requiredWhen && !isRequired) return null;
+
+              return (
+                <PdfDocumentField
+                  key={field.id}
+                  field={{ ...field, required: isRequired }}
+                  value={formData[field.id] || (field.type === "checkbox" ? false : "")}
+                  onChange={onChange}
+                  language={form.language}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -1082,11 +1096,15 @@ function AnesthesiaQuestionnairePdfForm({
 
         <PdfQuestion number={1}>{t.q1}</PdfQuestion>
         <div><PdfRadioChoice id="recent_medical_treatment" option="yes" label={`${t.yes}, ${t.which}`} value={formData.recent_medical_treatment} onChange={onChange} /> <PdfRadioChoice id="recent_medical_treatment" option="no" label={t.no} value={formData.recent_medical_treatment} onChange={onChange} /></div>
-        <PdfTextarea id="recent_medical_treatment_details" value={formData.recent_medical_treatment_details} onChange={onChange} rows={2} />
+        {formData.recent_medical_treatment === "yes" && (
+          <PdfTextarea id="recent_medical_treatment_details" value={formData.recent_medical_treatment_details} onChange={onChange} rows={2} />
+        )}
 
         <PdfQuestion number={2}>{t.q2}</PdfQuestion>
         <div><PdfRadioChoice id="daily_medication" option="yes" label={`${t.yes}, ${t.which}`} value={formData.daily_medication} onChange={onChange} /> <PdfRadioChoice id="daily_medication" option="no" label={t.no} value={formData.daily_medication} onChange={onChange} /></div>
-        <PdfTextarea id="daily_medication_details" value={formData.daily_medication_details} onChange={onChange} rows={3} />
+        {formData.daily_medication === "yes" && (
+          <PdfTextarea id="daily_medication_details" value={formData.daily_medication_details} onChange={onChange} rows={3} />
+        )}
 
         <PdfQuestion number={3}>{t.q3}</PdfQuestion>
         <PdfYesNo id="recent_fever" value={formData.recent_fever} onChange={onChange} yesLabel={t.yes} noLabel={t.no} />
@@ -1096,7 +1114,9 @@ function AnesthesiaQuestionnairePdfForm({
           <PdfRadioChoice id="allergies" option="yes" label={`${t.yes} (${t.reaction})`} value={formData.allergies} onChange={onChange} />
           <PdfRadioChoice id="allergies" option="no" label={t.no} value={formData.allergies} onChange={onChange} />
         </div>
-        <div className="flex items-end gap-2"><span>{isFr ? "Lesquelles ?" : "Which one ??"}</span><PdfTextInput id="allergy_details" value={formData.allergy_details} onChange={onChange} /></div>
+        {formData.allergies === "yes" && (
+          <div className="flex items-end gap-2"><span>{isFr ? "Lesquelles ?" : "Which one ??"}</span><PdfTextInput id="allergy_details" value={formData.allergy_details} onChange={onChange} /></div>
+        )}
 
         <PdfQuestion number={5}>{t.q5}</PdfQuestion>
         <div className="grid grid-cols-[1fr_90px_130px] gap-2 text-[12px] font-semibold">
@@ -1114,13 +1134,17 @@ function AnesthesiaQuestionnairePdfForm({
 
         <PdfQuestion number={6}>{t.q6}</PdfQuestion>
         <div><PdfRadioChoice id="anesthesia_problems" option="yes" label={`${t.yes}, ${t.whichPlural}`} value={formData.anesthesia_problems} onChange={onChange} /> <PdfRadioChoice id="anesthesia_problems" option="no" label={t.no} value={formData.anesthesia_problems} onChange={onChange} /></div>
-        <PdfTextarea id="anesthesia_problems_details" value={formData.anesthesia_problems_details} onChange={onChange} rows={2} />
+        {formData.anesthesia_problems === "yes" && (
+          <PdfTextarea id="anesthesia_problems_details" value={formData.anesthesia_problems_details} onChange={onChange} rows={2} />
+        )}
 
         {isFr && (
           <>
             <PdfQuestion number={7}>{t.q7}</PdfQuestion>
             <div><PdfRadioChoice id="family_anesthesia_problems" option="yes" label={`${t.yes}, ${t.whichPlural}`} value={formData.family_anesthesia_problems} onChange={onChange} /> <PdfRadioChoice id="family_anesthesia_problems" option="no" label={t.no} value={formData.family_anesthesia_problems} onChange={onChange} /></div>
-            <PdfTextarea id="family_anesthesia_problems_details" value={formData.family_anesthesia_problems_details} onChange={onChange} rows={1} />
+            {formData.family_anesthesia_problems === "yes" && (
+              <PdfTextarea id="family_anesthesia_problems_details" value={formData.family_anesthesia_problems_details} onChange={onChange} rows={1} />
+            )}
           </>
         )}
 
@@ -1142,7 +1166,9 @@ function AnesthesiaQuestionnairePdfForm({
 
         <PdfQuestion number={isFr ? 9 : 8}>{isFr ? t.q9 : t.q8}</PdfQuestion>
         <div><PdfRadioChoice id="other_disease" option="yes" label={`${t.yes}, ${t.which}`} value={formData.other_disease} onChange={onChange} /> <PdfRadioChoice id="other_disease" option="no" label={t.no} value={formData.other_disease} onChange={onChange} /></div>
-        <PdfTextarea id="other_disease_details" value={formData.other_disease_details} onChange={onChange} rows={1} />
+        {formData.other_disease === "yes" && (
+          <PdfTextarea id="other_disease_details" value={formData.other_disease_details} onChange={onChange} rows={1} />
+        )}
 
         <PdfQuestion number={isFr ? 10 : 9}>{isFr ? t.q10 : t.q9} <PdfYesNo id="prolonged_bleeding" value={formData.prolonged_bleeding} onChange={onChange} yesLabel={t.yes} noLabel={t.no} /></PdfQuestion>
 
@@ -1164,14 +1190,20 @@ function AnesthesiaQuestionnairePdfForm({
         <PdfQuestion number={isFr ? 12 : 11}>{isFr ? t.q12 : t.q11}</PdfQuestion>
         <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
           <PdfRadioChoice id="smoker" option="yes" label={`${t.yes}, ${isFr ? "Combien de cigarettes par jour?" : "how many cigarettes per day?"}`} value={formData.smoker} onChange={onChange} />
-          <PdfTextInput id="cigarettes_per_day" type="number" value={formData.cigarettes_per_day} onChange={onChange} className="w-28" />
+          {formData.smoker === "yes" && (
+            <PdfTextInput id="cigarettes_per_day" type="number" value={formData.cigarettes_per_day} onChange={onChange} className="w-28" />
+          )}
           <PdfRadioChoice id="smoker" option="no" label={t.no} value={formData.smoker} onChange={onChange} />
         </div>
-        <div className="flex items-end gap-2"><span>{isFr ? "Depuis combien de temps/pendant combien de temps?" : "For how long time?"}</span><PdfTextInput id="smoking_duration" value={formData.smoking_duration} onChange={onChange} /></div>
+        {formData.smoker === "yes" && (
+          <div className="flex items-end gap-2"><span>{isFr ? "Depuis combien de temps/pendant combien de temps?" : "For how long time?"}</span><PdfTextInput id="smoking_duration" value={formData.smoking_duration} onChange={onChange} /></div>
+        )}
 
         <PdfQuestion number={isFr ? 13 : 12}>{isFr ? t.q13 : t.q12}</PdfQuestion>
         <div><PdfRadioChoice id="drug_use" option="yes" label={`${t.yes}, ${t.which}`} value={formData.drug_use} onChange={onChange} /> <PdfRadioChoice id="drug_use" option="no" label={t.no} value={formData.drug_use} onChange={onChange} /></div>
-        <PdfTextarea id="drug_use_details" value={formData.drug_use_details} onChange={onChange} rows={1} />
+        {formData.drug_use === "yes" && (
+          <PdfTextarea id="drug_use_details" value={formData.drug_use_details} onChange={onChange} rows={1} />
+        )}
 
         <PdfQuestion number={isFr ? 14 : 13}>{isFr ? t.q14 : t.q13} <PdfRadioChoice id="alcohol" option="never" label={isFr ? "Jamais" : "Never"} value={formData.alcohol} onChange={onChange} /> <PdfRadioChoice id="alcohol" option="occasionally" label={isFr ? "A l'occasion" : "Occasionally"} value={formData.alcohol} onChange={onChange} /> <PdfRadioChoice id="alcohol" option="regularly" label={isFr ? "Régulièrement" : "Regularly"} value={formData.alcohol} onChange={onChange} /></PdfQuestion>
 
@@ -1302,6 +1334,18 @@ export default function PublicFormPage() {
     setFormData((prev) => ({
       ...prev,
       [fieldId]: value,
+      ...(form
+        ? Object.fromEntries(
+            form.sections
+              .flatMap((section) => section.fields)
+              .filter(
+                (field) =>
+                  field.requiredWhen?.fieldId === fieldId &&
+                  field.requiredWhen.equals !== value
+              )
+              .map((field) => [field.id, field.type === "checkbox" ? false : ""])
+          )
+        : {}),
     }));
   };
 

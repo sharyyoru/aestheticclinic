@@ -20,6 +20,10 @@ export type FormField = {
   label: string;
   labelFr?: string;
   required?: boolean;
+  requiredWhen?: {
+    fieldId: string;
+    equals: string | boolean;
+  };
   options?: { value: string; label: string; labelFr?: string }[];
   placeholder?: string;
   placeholderFr?: string;
@@ -481,9 +485,9 @@ const ANESTHESIA_QUESTIONNAIRE_FR_SECTIONS: FormSection[] = [
     titleFr: "Traitements et médicaments",
     fields: [
       { id: "recent_medical_treatment", type: "radio", label: "Have you had any medical treatment in recent months?", labelFr: "Avez-vous eu un traitement médical ces derniers mois ?", options: yesNoOptions },
-      { id: "recent_medical_treatment_details", type: "textarea", label: "If yes, which one?", labelFr: "Si oui, lequel ?" },
+      { id: "recent_medical_treatment_details", type: "textarea", label: "If yes, which one?", labelFr: "Si oui, lequel ?", requiredWhen: { fieldId: "recent_medical_treatment", equals: "yes" } },
       { id: "daily_medication", type: "radio", label: "Do you take medication every day, including sleeping pills, laxatives, aspirin and homeopathic medicines?", labelFr: "Prenez-vous des médicaments tous les jours, y compris somnifères, laxatifs, aspirine et médicaments homéopathiques ?", options: yesNoOptions },
-      { id: "daily_medication_details", type: "textarea", label: "If yes, which one?", labelFr: "Si oui, lequel ?" },
+      { id: "daily_medication_details", type: "textarea", label: "If yes, which one?", labelFr: "Si oui, lequel ?", requiredWhen: { fieldId: "daily_medication", equals: "yes" } },
       { id: "recent_fever", type: "radio", label: "Have you had a fever in the past few days?", labelFr: "Avez-vous eu de la fièvre ces derniers jours ?", options: yesNoOptions },
     ],
   },
@@ -497,18 +501,18 @@ const ANESTHESIA_QUESTIONNAIRE_FR_SECTIONS: FormSection[] = [
       { id: "allergy_angioedema", type: "checkbox", label: "Angioedema", labelFr: "Œdème de Quincke" },
       { id: "allergy_breathing_difficulty", type: "checkbox", label: "Breathing difficulties", labelFr: "Difficultés respiratoires" },
       { id: "allergy_anaphylactic_shock", type: "checkbox", label: "Anaphylactic shock", labelFr: "Choc anaphylactique" },
-      { id: "allergy_details", type: "textarea", label: "Which allergies?", labelFr: "Lesquelles ?" },
+      { id: "allergy_details", type: "textarea", label: "Which allergies?", labelFr: "Lesquelles ?", requiredWhen: { fieldId: "allergies", equals: "yes" } },
       { id: "previous_operation_1", type: "text", label: "Previous operation 1", labelFr: "Opération précédente 1" },
       { id: "previous_operation_1_year", type: "number", label: "Year", labelFr: "Année" },
       { id: "previous_operation_1_anesthesia", type: "select", label: "Type of anesthesia", labelFr: "Type d’anesthésie", options: anesthesiaTypeOptions },
       { id: "previous_operation_2", type: "text", label: "Previous operation 2", labelFr: "Opération précédente 2" },
       { id: "previous_operation_2_year", type: "number", label: "Year", labelFr: "Année" },
       { id: "previous_operation_2_anesthesia", type: "select", label: "Type of anesthesia", labelFr: "Type d’anesthésie", options: anesthesiaTypeOptions },
-      { id: "additional_previous_operations", type: "textarea", label: "If more operations, please specify the operation, year and type of anesthesia", labelFr: "Si plus d’opérations, veuillez préciser l’opération, l’année et le type d’anesthésie" },
+      { id: "additional_previous_operations", type: "textarea", label: "If more operations, please specify the operation, year and type of anesthesia", labelFr: "Si plus d’opérations, veuillez préciser l’opération, l’année et le type d’anesthésie", required: false },
       { id: "anesthesia_problems", type: "radio", label: "Have you had any particular problems with anesthesia, such as nausea, vomiting or difficulties waking up?", labelFr: "Avez-vous eu des problèmes particuliers en rapport avec l’anesthésie, tels que nausées, vomissements ou difficultés de réveil ?", options: yesNoOptions },
-      { id: "anesthesia_problems_details", type: "textarea", label: "If yes, which ones?", labelFr: "Si oui, lesquels ?" },
+      { id: "anesthesia_problems_details", type: "textarea", label: "If yes, which ones?", labelFr: "Si oui, lesquels ?", requiredWhen: { fieldId: "anesthesia_problems", equals: "yes" } },
       { id: "family_anesthesia_problems", type: "radio", label: "Did one of your close relatives have problems during anesthesia?", labelFr: "Un de vos proches parents a-t-il eu des problèmes lors d’une anesthésie ?", options: yesNoOptions },
-      { id: "family_anesthesia_problems_details", type: "textarea", label: "If yes, which ones?", labelFr: "Si oui, lesquels ?" },
+      { id: "family_anesthesia_problems_details", type: "textarea", label: "If yes, which ones?", labelFr: "Si oui, lesquels ?", requiredWhen: { fieldId: "family_anesthesia_problems", equals: "yes" } },
     ],
   },
   {
@@ -527,9 +531,9 @@ const ANESTHESIA_QUESTIONNAIRE_FR_SECTIONS: FormSection[] = [
       { id: "infectious_diseases", type: "checkbox", label: "Infectious diseases", labelFr: "Problèmes infectieux" },
       { id: "digestive_liver_problems", type: "checkbox", label: "Digestive system / liver problems", labelFr: "Problèmes digestifs ou hépatiques" },
       { id: "eye_problems", type: "checkbox", label: "Ophthalmology problems", labelFr: "Problèmes oculaires" },
-      { id: "medical_problems_details", type: "textarea", label: "Details", labelFr: "Précisions" },
+      { id: "medical_problems_details", type: "textarea", label: "Details", labelFr: "Précisions", required: false },
       { id: "other_disease", type: "radio", label: "Do you have a disease that is not mentioned in the previous list?", labelFr: "Avez-vous une maladie qui n’est pas mentionnée dans la liste précédente ?", options: yesNoOptions },
-      { id: "other_disease_details", type: "textarea", label: "If yes, which one?", labelFr: "Si oui, laquelle ?" },
+      { id: "other_disease_details", type: "textarea", label: "If yes, which one?", labelFr: "Si oui, laquelle ?", requiredWhen: { fieldId: "other_disease", equals: "yes" } },
       { id: "prolonged_bleeding", type: "radio", label: "Are you prone to prolonged bleeding?", labelFr: "Êtes-vous sujet aux saignements prolongés ?", options: yesNoOptions },
     ],
   },
@@ -556,10 +560,10 @@ const ANESTHESIA_QUESTIONNAIRE_FR_SECTIONS: FormSection[] = [
     titleFr: "Mode de vie",
     fields: [
       { id: "smoker", type: "radio", label: "Do you smoke or have you smoked?", labelFr: "Fumez-vous ou avez-vous fumé ?", options: yesNoOptions },
-      { id: "cigarettes_per_day", type: "number", label: "How many cigarettes per day?", labelFr: "Combien de cigarettes par jour ?" },
-      { id: "smoking_duration", type: "text", label: "For how long?", labelFr: "Depuis combien de temps / pendant combien de temps ?" },
+      { id: "cigarettes_per_day", type: "number", label: "How many cigarettes per day?", labelFr: "Combien de cigarettes par jour ?", requiredWhen: { fieldId: "smoker", equals: "yes" } },
+      { id: "smoking_duration", type: "text", label: "For how long?", labelFr: "Depuis combien de temps / pendant combien de temps ?", requiredWhen: { fieldId: "smoker", equals: "yes" } },
       { id: "drug_use", type: "radio", label: "Do you use drugs?", labelFr: "Consommez-vous des drogues ?", options: yesNoOptions },
-      { id: "drug_use_details", type: "textarea", label: "If yes, which one?", labelFr: "Si oui, laquelle ?" },
+      { id: "drug_use_details", type: "textarea", label: "If yes, which one?", labelFr: "Si oui, laquelle ?", requiredWhen: { fieldId: "drug_use", equals: "yes" } },
       { id: "alcohol", type: "radio", label: "Do you drink alcohol?", labelFr: "Buvez-vous de l’alcool ?", options: alcoholOptions },
       { id: "activity_level", type: "radio", label: "Are you rather?", labelFr: "Êtes-vous plutôt ?", options: activityOptions },
     ],
@@ -667,7 +671,7 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
           { id: "diabetes", type: "checkbox", label: "Diabetes", labelFr: "Diabète" },
           { id: "asthma", type: "checkbox", label: "Asthma / Respiratory problems", labelFr: "Asthme / Problèmes respiratoires" },
           { id: "allergies", type: "checkbox", label: "Known allergies", labelFr: "Allergies connues" },
-          { id: "allergies_details", type: "textarea", label: "If yes, please specify", labelFr: "Si oui, veuillez préciser", placeholder: "List any allergies..." },
+          { id: "allergies_details", type: "textarea", label: "If yes, please specify", labelFr: "Si oui, veuillez préciser", placeholder: "List any allergies...", requiredWhen: { fieldId: "allergies", equals: true } },
           { id: "bleeding_disorders", type: "checkbox", label: "Bleeding disorders", labelFr: "Troubles de la coagulation" },
           { id: "thyroid_problems", type: "checkbox", label: "Thyroid problems", labelFr: "Problèmes de thyroïde" },
           { id: "kidney_disease", type: "checkbox", label: "Kidney disease", labelFr: "Maladie rénale" },
@@ -682,7 +686,7 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
         titleFr: "Médicaments actuels",
         fields: [
           { id: "taking_medications", type: "radio", label: "Are you currently taking any medications?", labelFr: "Prenez-vous actuellement des médicaments?", options: [{ value: "yes", label: "Yes", labelFr: "Oui" }, { value: "no", label: "No", labelFr: "Non" }] },
-          { id: "medications_list", type: "textarea", label: "List all medications", labelFr: "Liste des médicaments", placeholder: "Include name, dosage, and frequency..." },
+          { id: "medications_list", type: "textarea", label: "List all medications", labelFr: "Liste des médicaments", placeholder: "Include name, dosage, and frequency...", requiredWhen: { fieldId: "taking_medications", equals: "yes" } },
           { id: "blood_thinners", type: "checkbox", label: "Blood thinners (Aspirin, Warfarin, etc.)", labelFr: "Anticoagulants (Aspirine, Warfarine, etc.)" },
           { id: "supplements", type: "textarea", label: "Vitamins/Supplements", labelFr: "Vitamines/Compléments", placeholder: "List any supplements..." },
         ],
@@ -693,7 +697,7 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
         titleFr: "Mode de vie",
         fields: [
           { id: "smoker", type: "radio", label: "Do you smoke?", labelFr: "Fumez-vous?", options: [{ value: "yes", label: "Yes", labelFr: "Oui" }, { value: "no", label: "No", labelFr: "Non" }, { value: "former", label: "Former smoker", labelFr: "Ancien fumeur" }] },
-          { id: "smoking_details", type: "text", label: "If yes, how many per day?", labelFr: "Si oui, combien par jour?" },
+          { id: "smoking_details", type: "text", label: "If yes, how many per day?", labelFr: "Si oui, combien par jour?", requiredWhen: { fieldId: "smoker", equals: "yes" } },
           { id: "alcohol", type: "radio", label: "Do you consume alcohol?", labelFr: "Consommez-vous de l'alcool?", options: [{ value: "no", label: "No", labelFr: "Non" }, { value: "occasionally", label: "Occasionally", labelFr: "Occasionnellement" }, { value: "regularly", label: "Regularly", labelFr: "Régulièrement" }] },
           { id: "recreational_drugs", type: "radio", label: "Do you use recreational drugs?", labelFr: "Utilisez-vous des drogues récréatives?", options: [{ value: "yes", label: "Yes", labelFr: "Oui" }, { value: "no", label: "No", labelFr: "Non" }] },
         ],
@@ -705,7 +709,7 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
         fields: [
           { id: "previous_anesthesia", type: "radio", label: "Have you had anesthesia before?", labelFr: "Avez-vous déjà eu une anesthésie?", options: [{ value: "yes", label: "Yes", labelFr: "Oui" }, { value: "no", label: "No", labelFr: "Non" }] },
           { id: "anesthesia_complications", type: "checkbox", label: "Any complications with previous anesthesia?", labelFr: "Complications lors d'anesthésies précédentes?" },
-          { id: "anesthesia_complications_details", type: "textarea", label: "If yes, please describe", labelFr: "Si oui, veuillez décrire" },
+          { id: "anesthesia_complications_details", type: "textarea", label: "If yes, please describe", labelFr: "Si oui, veuillez décrire", requiredWhen: { fieldId: "anesthesia_complications", equals: true } },
           { id: "family_anesthesia_problems", type: "checkbox", label: "Family history of anesthesia problems", labelFr: "Antécédents familiaux de problèmes d'anesthésie" },
           { id: "malignant_hyperthermia", type: "checkbox", label: "Personal or family history of malignant hyperthermia", labelFr: "Antécédents personnels ou familiaux d'hyperthermie maligne" },
         ],
@@ -754,7 +758,7 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
           { id: "diabetes", type: "checkbox", label: "Diabetes" },
           { id: "asthma", type: "checkbox", label: "Asthma / Respiratory problems" },
           { id: "allergies", type: "checkbox", label: "Known allergies" },
-          { id: "allergies_details", type: "textarea", label: "If yes, please specify", placeholder: "List any allergies..." },
+          { id: "allergies_details", type: "textarea", label: "If yes, please specify", placeholder: "List any allergies...", requiredWhen: { fieldId: "allergies", equals: true } },
           { id: "bleeding_disorders", type: "checkbox", label: "Bleeding disorders" },
           { id: "thyroid_problems", type: "checkbox", label: "Thyroid problems" },
           { id: "kidney_disease", type: "checkbox", label: "Kidney disease" },
@@ -768,7 +772,7 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
         title: "Current Medications",
         fields: [
           { id: "taking_medications", type: "radio", label: "Are you currently taking any medications?", options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }] },
-          { id: "medications_list", type: "textarea", label: "List all medications", placeholder: "Include name, dosage, and frequency..." },
+          { id: "medications_list", type: "textarea", label: "List all medications", placeholder: "Include name, dosage, and frequency...", requiredWhen: { fieldId: "taking_medications", equals: "yes" } },
           { id: "blood_thinners", type: "checkbox", label: "Blood thinners (Aspirin, Warfarin, etc.)" },
           { id: "supplements", type: "textarea", label: "Vitamins/Supplements", placeholder: "List any supplements..." },
         ],
@@ -778,7 +782,7 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
         title: "Lifestyle",
         fields: [
           { id: "smoker", type: "radio", label: "Do you smoke?", options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }, { value: "former", label: "Former smoker" }] },
-          { id: "smoking_details", type: "text", label: "If yes, how many per day?" },
+          { id: "smoking_details", type: "text", label: "If yes, how many per day?", requiredWhen: { fieldId: "smoker", equals: "yes" } },
           { id: "alcohol", type: "radio", label: "Do you consume alcohol?", options: [{ value: "no", label: "No" }, { value: "occasionally", label: "Occasionally" }, { value: "regularly", label: "Regularly" }] },
           { id: "recreational_drugs", type: "radio", label: "Do you use recreational drugs?", options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }] },
         ],
@@ -789,7 +793,7 @@ export const FORM_DEFINITIONS: FormDefinition[] = [
         fields: [
           { id: "previous_anesthesia", type: "radio", label: "Have you had anesthesia before?", options: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }] },
           { id: "anesthesia_complications", type: "checkbox", label: "Any complications with previous anesthesia?" },
-          { id: "anesthesia_complications_details", type: "textarea", label: "If yes, please describe" },
+          { id: "anesthesia_complications_details", type: "textarea", label: "If yes, please describe", requiredWhen: { fieldId: "anesthesia_complications", equals: true } },
           { id: "family_anesthesia_problems", type: "checkbox", label: "Family history of anesthesia problems" },
           { id: "malignant_hyperthermia", type: "checkbox", label: "Personal or family history of malignant hyperthermia" },
         ],
