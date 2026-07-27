@@ -25,11 +25,11 @@ export function isPatientFormFieldRequired(
     return submissionData[field.requiredWhen.fieldId] === field.requiredWhen.equals;
   }
 
-  if (field.required === false) {
-    return false;
-  }
-
-  return field.type !== "checkbox" || field.required === true;
+  // Requiredness must be intentional. Medical forms contain many fields where
+  // an empty value itself means "not applicable" (previous operations, optional
+  // history details, checklist items, etc.), so an omitted `required` flag must
+  // never turn into a blanket requirement.
+  return field.required === true;
 }
 
 export function getUnansweredPatientFormFields(
