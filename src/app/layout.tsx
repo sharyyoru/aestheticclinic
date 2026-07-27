@@ -61,6 +61,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p=localStorage.getItem('app_placeholder_visibility');if(p==='hidden'){document.documentElement.classList.add('hide-placeholders');}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body
         className={`${manrope.variable} ${geistMono.variable} antialiased`}
       >

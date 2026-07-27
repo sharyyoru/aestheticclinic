@@ -3,6 +3,12 @@
 /* Use class-based dark mode (`.dark` on <html>) instead of prefers-color-scheme */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Hide all input/textarea placeholders when .hide-placeholders is on <html> */
+html.hide-placeholders input::placeholder,
+html.hide-placeholders textarea::placeholder {
+  color: transparent !important;
+}
+
 /* Global font-size bump (~+3pt via scaling from 16→17px) */
 html { font-size: 17px; }
 

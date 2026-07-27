@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import ProvidersBillingSettingsTab from "@/components/ProvidersBillingSettingsTab";
 import WhatsAppTemplatesTab from "@/components/WhatsAppTemplatesTab";
+import { useTheme } from "@/components/ThemeContext";
 import { BOOKING_DOCTORS, WEEKDAYS } from "@/lib/bookingDoctors";
 
 const TABS = [
+  { id: "appearance", label: "Appearance" },
   { id: "external-labs", label: "External Labs" },
   { id: "providers-billing", label: "Providers & Billing" },
   { id: "doctor-scheduling", label: "Doctor Scheduling" },
@@ -39,7 +41,7 @@ const EMPTY_LAB: Omit<ExternalLab, "id"> = {
 };
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>("external-labs");
+  const [activeTab, setActiveTab] = useState<TabId>("appearance");
 
   return (
     <div className="w-full px-2 py-6">
@@ -70,6 +72,7 @@ export default function SettingsPage() {
 
       {/* Tab content */}
       <div className="mt-6">
+        {activeTab === "appearance" && <AppearanceTab />}
         {activeTab === "external-labs" && <ExternalLabsTab />}
         {activeTab === "providers-billing" && <ProvidersBillingSettingsTab />}
         {activeTab === "doctor-scheduling" && <DoctorSchedulingTab />}
@@ -77,6 +80,96 @@ export default function SettingsPage() {
         {activeTab === "blocked-dates" && <BlockedDatesTab />}
         {activeTab === "medidata" && <MediDataConnectionTab />}
         {activeTab === "whatsapp-templates" && <WhatsAppTemplatesTab />}
+      </div>
+    </div>
+  );
+}
+
+function AppearanceTab() {
+  const { theme, setTheme, placeholderVisibility, setPlaceholderVisibility } = useTheme();
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      {/* Theme */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="text-sm font-semibold text-slate-800">Theme</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Choose between light and dark mode for the admin interface (blizzard layout only).
+        </p>
+        <div className="mt-4 flex gap-3">
+          <button
+            type="button"
+            onClick={() => setTheme("light")}
+            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+              theme === "light"
+                ? "border-sky-500 bg-sky-50 text-sky-700"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+            }`}
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+            </svg>
+            Light
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme("dark")}
+            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+              theme === "dark"
+                ? "border-sky-500 bg-sky-50 text-sky-700"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+            }`}
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+            Dark
+          </button>
+        </div>
+      </div>
+
+      {/* Input Placeholders */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800">Input Placeholders</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Show or hide the grey hint text inside input fields across all admin pages.
+              Hiding them gives a cleaner look; the field labels remain visible.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={placeholderVisibility === "visible"}
+            onClick={() => setPlaceholderVisibility(placeholderVisibility === "visible" ? "hidden" : "visible")}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+              placeholderVisibility === "visible" ? "bg-sky-500" : "bg-slate-300"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
+                placeholderVisibility === "visible" ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+        <div className="mt-4 rounded-lg bg-slate-50 p-3">
+          <p className="text-[11px] font-medium text-slate-600">Preview</p>
+          <div className="mt-2 space-y-2">
+            <input
+              type="text"
+              placeholder="Search patients by name, email, or phone..."
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+            <textarea
+              rows={2}
+              placeholder="Add a comment... Use @ to mention."
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
