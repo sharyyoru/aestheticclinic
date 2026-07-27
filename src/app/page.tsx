@@ -13,6 +13,15 @@ type PlatformUser = {
   email: string | null;
 };
 
+// Strip HTML tags and decode entities from rich-text content (comments/notes)
+function stripHtmlTags(html: string): string {
+  if (!html) return "";
+  const withoutTags = html.replace(/<[^>]*>/g, "");
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = withoutTags;
+  return textarea.value;
+}
+
 function renderTextWithMentions(text: string) {
   const parts = text.split(/(\s+)/);
   return parts.map((part, index) => {
@@ -1021,7 +1030,7 @@ export default function Home() {
                             ) : null}
                             <span>
                               {task?.name ? <span className="font-medium">[{task.name}] </span> : null}
-                              {comment?.body ?? "(Comment unavailable)"}
+                              {stripHtmlTags(comment?.body ?? "(Comment unavailable)")}
                             </span>
                           </p>
                         </div>
@@ -1048,7 +1057,7 @@ export default function Home() {
                               {note.author_name}:{" "}
                             </span>
                           ) : null}
-                          <span>{note?.body ?? "(Note unavailable)"}</span>
+                          <span>{stripHtmlTags(note?.body ?? "(Note unavailable)")}</span>
                         </p>
                       </div>
                       <span className="mt-1 inline-flex h-2 w-2 rounded-full bg-sky-500" />
