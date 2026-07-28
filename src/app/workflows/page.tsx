@@ -71,6 +71,7 @@ export default function WorkflowsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
   const [enrollmentCounts, setEnrollmentCounts] = useState<Map<string, number>>(new Map());
   const [showEnrollmentsModal, setShowEnrollmentsModal] = useState<string | null>(null);
   
@@ -391,6 +392,44 @@ export default function WorkflowsPage() {
       alert(`Broadcast could not be queued: ${message}`);
     } finally {
       setRunningId(null);
+    }
+  }
+
+  async function testBroadcast(workflow: WorkflowRow) {
+    const action = getBroadcastAction(workflow);
+    const templateId = action?.data?.config?.template_id;
+    if (!templateId) {
+      alert("Select an email template before sending a test.");
+      return;
+    }
+
+    const email = prompt("Send a test marketing email to:");
+    if (!email?.trim()) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      alert("Enter a valid email address.");
+      return;
+    }
+
+    try {
+      setTestingId(workflow.id);
+      const response = await fetch("/api/marketing/campaigns/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName: workflow.name,
+          templateId,
+          subject: action?.data?.config?.subject,
+          filter: {},
+          testEmail: email.trim(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Test email failed");
+      alert(`Test marketing email sent to ${email.trim()}.`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Test email failed");
+    } finally {
+      setTestingId(null);
     }
   }
 
@@ -725,22 +764,32 @@ export default function WorkflowsPage() {
 
                   <div className="flex items-center gap-1">
                     {workflow.trigger_type === "manual" && getBroadcastAction(workflow) && (
-                      <button
-                        onClick={() => runBroadcast(workflow)}
-                        disabled={runningId === workflow.id || activeCampaign?.status === "sending"}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                        title="Send this email campaign to all patients"
-                      >
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.868v4.264a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        {runningId === workflow.id
-                          ? "Queuing..."
-                          : activeCampaign?.status === "sending"
-                            ? "Campaign running"
-                            : "Send to all"}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => testBroadcast(workflow)}
+                          disabled={testingId === workflow.id}
+                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                          title="Send this campaign to one test email"
+                        >
+                          {testingId === workflow.id ? "Testing..." : "Test email"}
+                        </button>
+                        <button
+                          onClick={() => runBroadcast(workflow)}
+                          disabled={runningId === workflow.id || activeCampaign?.status === "sending"}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                          title="Send this email campaign to all patients"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.868v4.264a1 1 0 011.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {runningId === workflow.id
+                            ? "Queuing..."
+                            : activeCampaign?.status === "sending"
+                              ? "Campaign running"
+                              : "Send to all"}
+                        </button>
+                      </>
                     )}
                     <Link
                       href={`/workflows/builder?id=${workflow.id}`}

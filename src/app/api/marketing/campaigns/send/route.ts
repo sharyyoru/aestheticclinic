@@ -6,6 +6,7 @@ import {
   type MarketingFilter,
   type PatientRow,
 } from "@/lib/marketingFilters";
+import { appendUnsubscribeFooter, createUnsubscribeUrl } from "@/lib/marketingUnsubscribe";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -38,6 +39,7 @@ type MailgunSendArgs = {
   subject: string;
   html: string;
   emailIdForTracking?: string | null;
+  patientId?: string | null;
 };
 
 async function sendViaMailgun(args: MailgunSendArgs): Promise<{ ok: boolean; error?: string; messageId?: string; status?: number }> {
@@ -50,7 +52,12 @@ async function sendViaMailgun(args: MailgunSendArgs): Promise<{ ok: boolean; err
   const fromAddress = MARKETING_FROM_EMAIL;
   const fromName = MARKETING_FROM_NAME;
 
-  let html = args.html;
+  const unsubscribeUrl = args.patientId
+    ? createUnsubscribeUrl(args.patientId, args.to)
+    : null;
+  let html = unsubscribeUrl
+    ? appendUnsubscribeFooter(args.html, unsubscribeUrl)
+    : args.html;
   if (args.emailIdForTracking) {
     const pixel = `<img src="${appUrl}/api/emails/track?id=${args.emailIdForTracking}" width="1" height="1" style="display:none;visibility:hidden;width:1px;height:1px;opacity:0;" alt="" />`;
     html = html.includes("</body>")
@@ -64,7 +71,15 @@ async function sendViaMailgun(args: MailgunSendArgs): Promise<{ ok: boolean; err
   form.append("subject", args.subject);
   form.append("html", html);
   // Marketing headers (help downstream mail servers classify correctly)
-  form.append("h:List-Unsubscribe", `<mailto:unsubscribe@${mailgunDomain}?subject=unsubscribe>`);
+  form.append(
+    "h:List-Unsubscribe",
+    unsubscribeUrl
+      ? `<${unsubscribeUrl}>, <mailto:unsubscribe@${mailgunDomain}?subject=unsubscribe>`
+      : `<mailto:unsubscribe@${mailgunDomain}?subject=unsubscribe>`,
+  );
+  if (unsubscribeUrl) {
+    form.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+  }
   if (args.emailIdForTracking) {
     form.append("v:email-id", args.emailIdForTracking);
     form.append("v:source", "marketing_campaign");
@@ -135,10 +150,25 @@ async function processCampaign(
   try {
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
       const batch = recipients.slice(i, i + BATCH_SIZE);
+      const { data: optedOutRows } = await supabaseAdmin
+        .from("patients")
+        .select("id")
+        .in("id", batch.map(patient => patient.id))
+        .eq("marketing_opt_out", true);
+      const optedOutIds = new Set((optedOutRows ?? []).map(patient => patient.id));
       await Promise.all(
         batch.map(async (patient) => {
           if (!patient.email) {
             failed += 1;
+            return;
+          }
+          if (optedOutIds.has(patient.id)) {
+            await supabaseAdmin
+              .from("marketing_campaign_recipients")
+              .update({ status: "skipped", error: "Patient unsubscribed from marketing emails" })
+              .eq("campaign_id", campaignId)
+              .eq("patient_id", patient.id)
+              .eq("status", "pending");
             return;
           }
 
@@ -180,6 +210,7 @@ async function processCampaign(
             subject: substitutePatientVariables(subject, patient),
             html: substitutePatientVariables(html, patient),
             emailIdForTracking: emailId,
+            patientId: patient.id,
           });
           const now = new Date().toISOString();
 
@@ -253,6 +284,7 @@ async function processCampaign(
       total_sent: storedSent,
       total_failed: storedFailed,
       total_opened: storedOpened,
+      total_recipients: storedSent + storedFailed + storedPending + storedProcessing,
       ...(completed ? { completed_at: new Date().toISOString() } : {}),
     })
     .eq("id", campaignId);
@@ -312,19 +344,37 @@ export async function POST(request: Request) {
         filter = list.filter as MarketingFilter;
       }
     }
+    // A patient opt-out is absolute for bulk marketing sends, even if an old
+    // saved list was created with less restrictive filter settings.
+    filter = { ...filter, requireEmail: true, excludeOptOut: true };
 
     const subjectToUse = (body.subject && body.subject.trim()) || template.subject;
 
     // ----- TEST MODE: send a single rendered preview to testEmail -----
     if (body.testEmail && body.testEmail.trim()) {
-      // Use the first matching audience row as sample data (or a placeholder)
-      const { rows: sample } = await fetchAudience(supabaseAdmin, filter, { limit: 1 });
+      const testEmail = body.testEmail.trim().toLowerCase();
+      const { data: matchingPatients, error: matchingError } = await supabaseAdmin
+        .from("patients")
+        .select("id, first_name, last_name, email, phone, dob, source, contact_owner_name, created_at, marketing_opt_out")
+        .ilike("email", testEmail)
+        .limit(10);
+      if (matchingError) throw matchingError;
+      if ((matchingPatients ?? []).some(patient => patient.marketing_opt_out)) {
+        return NextResponse.json(
+          { error: "This patient has unsubscribed from marketing emails." },
+          { status: 409 },
+        );
+      }
+
+      // Prefer the specified patient's data. For an address that is not tied
+      // to a patient, use a generic test recipient.
+      const matchingPatient = matchingPatients?.[0] as PatientRow | undefined;
       const samplePatient: PatientRow =
-        sample[0] ?? {
+        matchingPatient ?? {
           id: "test",
           first_name: "Test",
           last_name: "Recipient",
-          email: body.testEmail,
+          email: testEmail,
           phone: null,
           dob: null,
           source: null,
@@ -335,14 +385,15 @@ export async function POST(request: Request) {
       const subject = substitutePatientVariables(subjectToUse, samplePatient);
       const html = substitutePatientVariables(template.html, samplePatient);
       console.log("[marketing/send] Test send", {
-        to: body.testEmail.trim(),
+        to: testEmail,
         subject: `[TEST] ${subject}`,
         samplePatient: samplePatient.id,
       });
       const result = await sendViaMailgun({
-        to: body.testEmail.trim(),
+        to: testEmail,
         subject: `[TEST] ${subject}`,
         html,
+        patientId: matchingPatient?.id ?? null,
       });
       if (!result.ok) {
         return NextResponse.json({ error: result.error || "Test send failed" }, { status: 502 });

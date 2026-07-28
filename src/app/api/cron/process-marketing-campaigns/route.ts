@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { substitutePatientVariables, type PatientRow } from "@/lib/marketingFilters";
+import { appendUnsubscribeFooter, createUnsubscribeUrl } from "@/lib/marketingUnsubscribe";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,23 +19,34 @@ async function sendEmail(
   subject: string,
   html: string,
   emailId: string | null,
+  patientId: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
   if (!mailgunApiKey || !mailgunDomain) {
     return { ok: false, error: "Mailgun is not configured" };
   }
 
+  const unsubscribeUrl = patientId ? createUnsubscribeUrl(patientId, to) : null;
+  const emailHtml = unsubscribeUrl ? appendUnsubscribeFooter(html, unsubscribeUrl) : html;
   const pixel = emailId
     ? `<img src="${appUrl}/api/emails/track?id=${emailId}" width="1" height="1" style="display:none" alt="" />`
     : "";
-  const trackedHtml = html.includes("</body>")
-    ? html.replace("</body>", `${pixel}</body>`)
-    : `${html}${pixel}`;
+  const trackedHtml = emailHtml.includes("</body>")
+    ? emailHtml.replace("</body>", `${pixel}</body>`)
+    : `${emailHtml}${pixel}`;
   const form = new FormData();
   form.append("from", `${FROM_NAME} <${FROM_EMAIL}>`);
   form.append("to", to);
   form.append("subject", subject);
   form.append("html", trackedHtml);
-  form.append("h:List-Unsubscribe", `<mailto:unsubscribe@${mailgunDomain}?subject=unsubscribe>`);
+  form.append(
+    "h:List-Unsubscribe",
+    unsubscribeUrl
+      ? `<${unsubscribeUrl}>, <mailto:unsubscribe@${mailgunDomain}?subject=unsubscribe>`
+      : `<mailto:unsubscribe@${mailgunDomain}?subject=unsubscribe>`,
+  );
+  if (unsubscribeUrl) {
+    form.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+  }
   if (emailId) {
     form.append("v:email-id", emailId);
     form.append("v:source", "marketing_campaign");
@@ -97,6 +109,20 @@ async function processCampaign(campaign: {
   const patientMap = new Map((patients ?? []).map(patient => [patient.id, patient as PatientRow]));
 
   await Promise.all((pending ?? []).map(async recipient => {
+    const currentPatient = recipient.patient_id ? patientMap.get(recipient.patient_id) : undefined;
+    if (currentPatient?.marketing_opt_out) {
+      await supabaseAdmin
+        .from("marketing_campaign_recipients")
+        .update({
+          status: "skipped",
+          error: "Patient unsubscribed from marketing emails",
+          processing_started_at: null,
+        })
+        .eq("id", recipient.id)
+        .eq("status", "pending");
+      return;
+    }
+
     const { data: claimed } = await supabaseAdmin
       .from("marketing_campaign_recipients")
       .update({ status: "processing", processing_started_at: new Date().toISOString() })
@@ -106,7 +132,7 @@ async function processCampaign(campaign: {
       .maybeSingle();
     if (!claimed) return;
 
-    const patient = recipient.patient_id ? patientMap.get(recipient.patient_id) : undefined;
+    const patient = currentPatient;
     const variables: PatientRow = patient ?? {
       id: recipient.patient_id ?? recipient.id,
       first_name: null,
@@ -139,7 +165,7 @@ async function processCampaign(campaign: {
       emailId = emailRow?.id ?? null;
     }
 
-    const result = await sendEmail(recipient.email, subject, html, emailId);
+    const result = await sendEmail(recipient.email, subject, html, emailId, recipient.patient_id);
     const now = new Date().toISOString();
     if (result.ok) {
       if (emailId) {
@@ -176,6 +202,7 @@ async function processCampaign(campaign: {
       total_sent: sent,
       total_failed: failed,
       total_opened: opened,
+      total_recipients: sent + failed + pendingCount + processing,
       ...(completed ? { completed_at: new Date().toISOString() } : {}),
     })
     .eq("id", campaign.id);
