@@ -5,7 +5,6 @@ import {
   substitutePatientVariables,
   type MarketingFilter,
   type PatientRow,
-  MAX_CAMPAIGN_RECIPIENTS,
 } from "@/lib/marketingFilters";
 
 export const runtime = "nodejs";
@@ -122,6 +121,14 @@ async function processCampaign(
   let sent = 0;
   let failed = 0;
   let firstError: string | null = null;
+  const countStatus = async (status: string) => {
+    const { count } = await supabaseAdmin
+      .from("marketing_campaign_recipients")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("status", status);
+    return count ?? 0;
+  };
 
   try {
     for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
@@ -132,6 +139,19 @@ async function processCampaign(
             failed += 1;
             return;
           }
+
+          const { data: claimedRecipient } = await supabaseAdmin
+            .from("marketing_campaign_recipients")
+            .update({
+              status: "processing",
+              processing_started_at: new Date().toISOString(),
+            })
+            .eq("campaign_id", campaignId)
+            .eq("patient_id", patient.id)
+            .eq("status", "pending")
+            .select("id")
+            .maybeSingle();
+          if (!claimedRecipient) return;
 
           let emailId: string | null = null;
           try {
@@ -168,7 +188,7 @@ async function processCampaign(
             }
             await supabaseAdmin
               .from("marketing_campaign_recipients")
-              .update({ status: "sent", sent_at: now, email_id: emailId })
+              .update({ status: "sent", sent_at: now, email_id: emailId, processing_started_at: null })
               .eq("campaign_id", campaignId)
               .eq("patient_id", patient.id);
           } else {
@@ -179,16 +199,20 @@ async function processCampaign(
             }
             await supabaseAdmin
               .from("marketing_campaign_recipients")
-              .update({ status: "failed", error: result.error ?? "Unknown error", email_id: emailId })
+              .update({ status: "failed", error: result.error ?? "Unknown error", email_id: emailId, processing_started_at: null })
               .eq("campaign_id", campaignId)
               .eq("patient_id", patient.id);
           }
         }),
       );
 
+      const [storedSent, storedFailed] = await Promise.all([
+        countStatus("sent"),
+        countStatus("failed"),
+      ]);
       await supabaseAdmin
         .from("marketing_campaigns")
-        .update({ total_sent: sent, total_failed: failed })
+        .update({ total_sent: storedSent, total_failed: storedFailed })
         .eq("id", campaignId);
 
       if (i + BATCH_SIZE < recipients.length) {
@@ -200,24 +224,56 @@ async function processCampaign(
     failed = Math.max(failed, recipients.length - sent);
   }
 
-  const finalStatus = failed === 0 ? "sent" : sent === 0 ? "failed" : "partial";
+  const [storedSent, storedFailed, storedPending, storedProcessing] = await Promise.all([
+    countStatus("sent"),
+    countStatus("failed"),
+    countStatus("pending"),
+    countStatus("processing"),
+  ]);
+  const completed = storedPending === 0 && storedProcessing === 0;
+  const finalStatus = completed
+    ? storedFailed === 0
+      ? "sent"
+      : storedSent === 0
+        ? "failed"
+        : "partial"
+    : "sending";
   await supabaseAdmin
     .from("marketing_campaigns")
     .update({
       status: finalStatus,
-      total_sent: sent,
-      total_failed: failed,
-      completed_at: new Date().toISOString(),
+      total_sent: storedSent,
+      total_failed: storedFailed,
+      ...(completed ? { completed_at: new Date().toISOString() } : {}),
     })
     .eq("id", campaignId);
 
   console.log("[marketing/send] Background campaign complete", {
     campaignId,
-    sent,
-    failed,
+    sent: storedSent,
+    failed: storedFailed,
     status: finalStatus,
     firstError,
   });
+}
+
+async function fetchCompleteAudience(filter: MarketingFilter): Promise<PatientRow[]> {
+  const PAGE_SIZE = 1000;
+  const recipients: PatientRow[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await fetchAudience(supabaseAdmin, filter, {
+      limit: PAGE_SIZE,
+      offset,
+    });
+    recipients.push(...page.rows);
+    offset += page.fetchedCount;
+
+    if (page.fetchedCount < PAGE_SIZE) break;
+  }
+
+  return recipients;
 }
 
 export async function POST(request: Request) {
@@ -286,9 +342,7 @@ export async function POST(request: Request) {
     }
 
     // ----- REAL CAMPAIGN: fan out to all recipients -----
-    const { rows: recipients } = await fetchAudience(supabaseAdmin, filter, {
-      limit: MAX_CAMPAIGN_RECIPIENTS,
-    });
+    const recipients = await fetchCompleteAudience(filter);
     console.log("[marketing/send] Campaign start", {
       campaignName: body.campaignName,
       templateId: body.templateId,

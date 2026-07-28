@@ -40,7 +40,7 @@ export type PatientRow = {
   marketing_opt_out?: boolean | null;
 };
 
-/** Maximum recipients a single campaign may send to. Defence in depth. */
+/** Maximum rows fetched in one audience query. Larger audiences are paginated by callers. */
 export const MAX_CAMPAIGN_RECIPIENTS = 5000;
 
 function normaliseFilter(f: MarketingFilter | null | undefined): MarketingFilter {
@@ -68,7 +68,7 @@ export async function fetchAudience(
   supabase: SupabaseClient,
   filter: MarketingFilter | null | undefined,
   opts: { limit?: number; offset?: number; countOnly?: boolean } = {},
-): Promise<{ rows: PatientRow[]; count: number | null }> {
+): Promise<{ rows: PatientRow[]; count: number | null; fetchedCount: number }> {
   const f = normaliseFilter(filter);
   const hardCap = Math.min(opts.limit ?? MAX_CAMPAIGN_RECIPIENTS, MAX_CAMPAIGN_RECIPIENTS);
 
@@ -91,7 +91,7 @@ export async function fetchAudience(
     } else {
       // "has" or specific stage → only these patient IDs match
       if (dealPatientIds.length === 0) {
-        return { rows: [], count: 0 };
+        return { rows: [], count: 0, fetchedCount: 0 };
       }
       patientIdFilter = dealPatientIds;
     }
@@ -141,6 +141,7 @@ export async function fetchAudience(
 
   const { data, error, count } = await query;
   if (error) throw error;
+  const fetchedCount = data?.length ?? 0;
   let rows = (data ?? []) as PatientRow[];
 
   // Deal exclusion (we had to fetch and filter in memory)
@@ -159,7 +160,7 @@ export async function fetchAudience(
     });
   }
 
-  return { rows, count: count ?? rows.length };
+  return { rows, count: count ?? rows.length, fetchedCount };
 }
 
 /**

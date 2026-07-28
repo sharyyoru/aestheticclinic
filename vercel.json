@@ -17,6 +17,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/process-marketing-campaigns",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/appointment-reminders",
       "schedule": "*/15 * * * *"
     },
