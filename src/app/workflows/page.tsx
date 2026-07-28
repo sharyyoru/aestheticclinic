@@ -373,8 +373,14 @@ export default function WorkflowsPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Broadcast failed");
 
+      if (!result.queued) {
+        alert(result.message || "No new patients are eligible for this workflow.");
+        await loadWorkflows();
+        return;
+      }
+
       alert(
-        `Broadcast queued for ${result.totalRecipients ?? 0} patients. You can leave this page; an email notification will appear when it finishes.`,
+        `Broadcast queued for ${result.totalRecipients ?? 0} new patients.${result.skippedPreviouslyProcessed ? ` ${result.skippedPreviouslyProcessed} previously processed patients were skipped.` : ""} You can leave this page; an email notification will appear when it finishes.`,
       );
       setActiveCampaign({
         id: result.campaignId,

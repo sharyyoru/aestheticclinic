@@ -317,6 +317,27 @@ async function fetchCompleteAudience(filter: MarketingFilter): Promise<PatientRo
   return recipients;
 }
 
+async function loadProcessedPatientIds(workflowId: string): Promise<Set<string>> {
+  const processed = new Set<string>();
+  const PAGE_SIZE = 1000;
+
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from("workflow_enrollments")
+      .select("patient_id")
+      .eq("workflow_id", workflowId)
+      .range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+
+    for (const enrollment of data ?? []) {
+      if (enrollment.patient_id) processed.add(enrollment.patient_id);
+    }
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+
+  return processed;
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SendRequestBody;
@@ -402,39 +423,69 @@ export async function POST(request: Request) {
     }
 
     // ----- REAL CAMPAIGN: fan out to all recipients -----
-    const recipients = await fetchCompleteAudience(filter);
+    const completeAudience = await fetchCompleteAudience(filter);
+    const processedPatientIds = body.workflowId
+      ? await loadProcessedPatientIds(body.workflowId)
+      : new Set<string>();
+    const recipients = completeAudience.filter(
+      patient => !processedPatientIds.has(patient.id),
+    );
+    const skippedPreviouslyProcessed = completeAudience.length - recipients.length;
     console.log("[marketing/send] Campaign start", {
       campaignName: body.campaignName,
       templateId: body.templateId,
       subject: subjectToUse,
       recipientCount: recipients.length,
+      skippedPreviouslyProcessed,
       sampleEmails: recipients.slice(0, 3).map((r) => r.email),
     });
     if (recipients.length === 0) {
       return NextResponse.json(
-        { error: "No recipients match this filter" },
-        { status: 400 },
+        {
+          ok: true,
+          queued: false,
+          totalRecipients: 0,
+          skippedPreviouslyProcessed,
+          message: skippedPreviouslyProcessed > 0
+            ? "All eligible patients have already been processed for this workflow."
+            : "No recipients match this filter.",
+        },
       );
     }
 
     // Create campaign header
-    const { data: campaign, error: campaignError } = await supabaseAdmin
+    const campaignPayload = {
+      name: (body.campaignName || `Campaign ${new Date().toISOString().slice(0, 10)}`).trim(),
+      list_id: body.listId ?? null,
+      filter_snapshot: filter,
+      template_id: body.templateId,
+      subject: subjectToUse,
+      html_snapshot: template.html,
+      status: "sending",
+      total_recipients: recipients.length,
+      created_by: body.userId ?? null,
+      workflow_id: body.workflowId ?? null,
+      started_at: new Date().toISOString(),
+    };
+    let { data: campaign, error: campaignError } = await supabaseAdmin
       .from("marketing_campaigns")
-      .insert({
-        name: (body.campaignName || `Campaign ${new Date().toISOString().slice(0, 10)}`).trim(),
-        list_id: body.listId ?? null,
-        filter_snapshot: filter,
-        template_id: body.templateId,
-        subject: subjectToUse,
-        html_snapshot: template.html,
-        status: "sending",
-        total_recipients: recipients.length,
-        created_by: body.userId ?? null,
-        workflow_id: body.workflowId ?? null,
-        started_at: new Date().toISOString(),
-      })
+      .insert(campaignPayload)
       .select("id")
       .single();
+    // Older deployments may not have the optional workflow_id campaign column
+    // yet. Enrollments remain the source of truth for workflow deduplication.
+    if (campaignError?.code === "PGRST204" || campaignError?.code === "42703") {
+      const legacyCampaignPayload = Object.fromEntries(
+        Object.entries(campaignPayload).filter(([key]) => key !== "workflow_id"),
+      );
+      const retry = await supabaseAdmin
+        .from("marketing_campaigns")
+        .insert(legacyCampaignPayload)
+        .select("id")
+        .single();
+      campaign = retry.data;
+      campaignError = retry.error;
+    }
     if (campaignError || !campaign) {
       return NextResponse.json(
         { error: `Failed to create campaign: ${campaignError?.message ?? "unknown"}` },
@@ -452,7 +503,32 @@ export async function POST(request: Request) {
     // Chunk inserts to stay within Supabase row limits
     for (let i = 0; i < recipientRows.length; i += 500) {
       const slice = recipientRows.slice(i, i + 500);
-      await supabaseAdmin.from("marketing_campaign_recipients").insert(slice);
+      const { error: recipientError } = await supabaseAdmin
+        .from("marketing_campaign_recipients")
+        .insert(slice);
+      if (recipientError) throw recipientError;
+    }
+
+    // Mark this workflow audience as processed before background delivery
+    // begins, preventing a second click from queuing the same patients again.
+    if (body.workflowId) {
+      const enrollmentRows = recipients.map(patient => ({
+        workflow_id: body.workflowId,
+        patient_id: patient.id,
+        status: "active",
+        enrolled_at: new Date().toISOString(),
+        trigger_data: {
+          source: "email_campaign",
+          campaign_id: campaign.id,
+          delivery_status: "queued",
+        },
+      }));
+      for (let i = 0; i < enrollmentRows.length; i += 500) {
+        const { error: enrollmentError } = await supabaseAdmin
+          .from("workflow_enrollments")
+          .insert(enrollmentRows.slice(i, i + 500));
+        if (enrollmentError) throw enrollmentError;
+      }
     }
 
     after(processCampaign(campaign.id, recipients, subjectToUse, template.html));
@@ -462,6 +538,7 @@ export async function POST(request: Request) {
       queued: true,
       campaignId: campaign.id,
       totalRecipients: recipients.length,
+      skippedPreviouslyProcessed,
       status: "sending",
     }, { status: 202 });
   } catch (error) {
