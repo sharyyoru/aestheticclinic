@@ -808,10 +808,12 @@ export default function WorkflowBuilderPage() {
         },
       };
 
-      if (editId) {
-        await supabaseClient.from("workflows").update(workflowData).eq("id", editId);
-      } else {
-        await supabaseClient.from("workflows").insert(workflowData);
+      const { error: saveError } = editId
+        ? await supabaseClient.from("workflows").update(workflowData).eq("id", editId)
+        : await supabaseClient.from("workflows").insert(workflowData);
+
+      if (saveError) {
+        throw new Error(saveError.message);
       }
 
       setSuccess("Workflow saved successfully!");
