@@ -782,6 +782,17 @@ export default function WorkflowBuilderPage() {
       return;
     }
 
+    const hasAllPatientsBroadcast = nodes.some(
+      (node) =>
+        node.type === "action" &&
+        (node.data as ActionNodeData).actionType === "send_email" &&
+        ((node.data as ActionNodeData).config as { recipient?: string }).recipient === "all_patients",
+    );
+    if (hasAllPatientsBroadcast && (triggerNode.data as TriggerNodeData).triggerType !== "manual") {
+      setError('Email broadcasts to all patients require the "Manual Trigger" trigger type');
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -1086,11 +1097,22 @@ export default function WorkflowBuilderPage() {
                 >
                   <option value="patient">Patient (from trigger)</option>
                   <option value="deal_patient">Patient (from deal)</option>
+                  <option value="all_patients">All patients (email campaign)</option>
                   <option value="assigned_user">Assigned Staff</option>
                   <option value="specific_user">Specific User</option>
                   <option value="specific_email">Specific Email Address</option>
                 </select>
               </div>
+
+              {(data.config as { recipient?: string }).recipient === "all_patients" && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                  <p className="font-semibold">Marketing broadcast</p>
+                  <p className="mt-1">
+                    This sends a personalized copy to every patient with a valid email address. For safety,
+                    broadcasts can only be run from a Manual Trigger workflow.
+                  </p>
+                </div>
+              )}
 
               {(data.config as { recipient?: string }).recipient === "specific_user" && (
                 <div>
@@ -1616,7 +1638,7 @@ export default function WorkflowBuilderPage() {
               </div>
 
               <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
-                <strong>Example:</strong> If a lead is created at 2pm on Monday and you select "Next day" + "20:00", the next action will trigger at 8pm Tuesday (Swiss time).
+                <strong>Example:</strong> If a lead is created at 2pm on Monday and you select &quot;Next day&quot; + &quot;20:00&quot;, the next action will trigger at 8pm Tuesday (Swiss time).
               </div>
             </>
           )}

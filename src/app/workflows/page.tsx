@@ -59,6 +59,7 @@ export default function WorkflowsPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
   const [enrollmentCounts, setEnrollmentCounts] = useState<Map<string, number>>(new Map());
   const [showEnrollmentsModal, setShowEnrollmentsModal] = useState<string | null>(null);
   
@@ -241,6 +242,63 @@ export default function WorkflowsPage() {
       setError(err instanceof Error ? err.message : "Failed to duplicate workflow");
     } finally {
       setDuplicatingId(null);
+    }
+  }
+
+  function getBroadcastAction(workflow: WorkflowRow) {
+    const config = workflow.config as {
+      nodes?: Array<{
+        type?: string;
+        data?: {
+          actionType?: string;
+          config?: { recipient?: string; template_id?: string; subject?: string };
+        };
+      }>;
+    } | null;
+
+    return config?.nodes?.find(
+      (node) =>
+        node.type === "action" &&
+        node.data?.actionType === "send_email" &&
+        node.data.config?.recipient === "all_patients",
+    );
+  }
+
+  async function runBroadcast(workflow: WorkflowRow) {
+    const action = getBroadcastAction(workflow);
+    const templateId = action?.data?.config?.template_id;
+    if (!templateId) {
+      setError("Select an email template before running this broadcast.");
+      return;
+    }
+
+    if (!confirm(
+      `Send "${workflow.name}" to every patient with a valid email address?\n\nThis action cannot be undone.`,
+    )) return;
+
+    try {
+      setRunningId(workflow.id);
+      setError(null);
+      const response = await fetch("/api/marketing/campaigns/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName: workflow.name,
+          templateId,
+          subject: action?.data?.config?.subject,
+          filter: {},
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Broadcast failed");
+
+      alert(
+        `Broadcast complete.\nSent: ${result.sent ?? 0}\nFailed: ${result.failed ?? 0}\nTotal: ${result.totalRecipients ?? 0}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Broadcast failed");
+    } finally {
+      setRunningId(null);
     }
   }
 
@@ -574,6 +632,20 @@ export default function WorkflowsPage() {
                   </button>
 
                   <div className="flex items-center gap-1">
+                    {workflow.trigger_type === "manual" && getBroadcastAction(workflow) && (
+                      <button
+                        onClick={() => runBroadcast(workflow)}
+                        disabled={runningId === workflow.id}
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                        title="Send this email campaign to all patients"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.868v4.264a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {runningId === workflow.id ? "Sending..." : "Send to all"}
+                      </button>
+                    )}
                     <Link
                       href={`/workflows/builder?id=${workflow.id}`}
                       className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
