@@ -6,7 +6,15 @@ import { useEmailNotifications } from "@/components/EmailNotificationsContext";
 
 export default function HeaderNotificationsButton() {
   const router = useRouter();
-  const { unreadCount, notifications, loading, markAsRead, markAllAsRead } = useEmailNotifications();
+  const {
+    unreadCount,
+    notifications,
+    campaignNotifications,
+    loading,
+    markAsRead,
+    markCampaignAsRead,
+    markAllAsRead,
+  } = useEmailNotifications();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -98,10 +106,51 @@ export default function HeaderNotificationsButton() {
           <div className="max-h-80 overflow-y-auto">
             {loading ? (
               <p className="px-4 py-6 text-center text-xs text-slate-500">Loading...</p>
-            ) : notifications.length === 0 ? (
+            ) : notifications.length === 0 && campaignNotifications.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-slate-500">No email notifications</p>
             ) : (
-              notifications.map((notification) => (
+              <>
+              {campaignNotifications.map((campaign) => (
+                <button
+                  key={`campaign-${campaign.id}`}
+                  type="button"
+                  onClick={() => {
+                    if (!campaign.notification_read_at) {
+                      void markCampaignAsRead(campaign.id);
+                    }
+                    setDropdownOpen(false);
+                    router.push("/marketing");
+                  }}
+                  className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
+                    !campaign.notification_read_at ? "bg-emerald-50/60" : ""
+                  }`}
+                >
+                  <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <path d="M4 4h16v16H4z" />
+                      <path d="m4 7 8 6 8-6" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={`truncate text-xs ${!campaign.notification_read_at ? "font-semibold text-slate-900" : "font-medium text-slate-700"}`}>
+                        Campaign finished
+                      </p>
+                      <span className="flex-shrink-0 text-[10px] text-slate-400">
+                        {formatTimeAgo(campaign.completed_at)}
+                      </span>
+                    </div>
+                    <p className="truncate text-[11px] text-slate-600">{campaign.name}</p>
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      {campaign.total_sent} sent · {campaign.total_failed} failed · {campaign.total_recipients} total
+                    </p>
+                  </div>
+                  {!campaign.notification_read_at && (
+                    <div className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-emerald-500" />
+                  )}
+                </button>
+              ))}
+              {notifications.map((notification) => (
                 <button
                   key={notification.id}
                   type="button"
@@ -144,7 +193,8 @@ export default function HeaderNotificationsButton() {
                     <div className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-sky-500" />
                   )}
                 </button>
-              ))
+              ))}
+              </>
             )}
           </div>
           <div className="border-t border-slate-100 px-4 py-2">

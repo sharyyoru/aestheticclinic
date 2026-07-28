@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   fetchAudience,
@@ -109,6 +109,115 @@ async function loadTemplate(templateId: string): Promise<{ subject: string; html
     subject: (data.subject_template as string) || "",
     html,
   };
+}
+
+async function processCampaign(
+  campaignId: string,
+  recipients: PatientRow[],
+  subject: string,
+  html: string,
+) {
+  const BATCH_SIZE = 20;
+  const BATCH_DELAY_MS = 300;
+  let sent = 0;
+  let failed = 0;
+  let firstError: string | null = null;
+
+  try {
+    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+      const batch = recipients.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (patient) => {
+          if (!patient.email) {
+            failed += 1;
+            return;
+          }
+
+          let emailId: string | null = null;
+          try {
+            const { data: emailRow } = await supabaseAdmin
+              .from("emails")
+              .insert({
+                patient_id: patient.id,
+                to_address: patient.email,
+                from_address: MARKETING_FROM_EMAIL,
+                subject: substitutePatientVariables(subject, patient),
+                body: substitutePatientVariables(html, patient),
+                direction: "outbound",
+                status: "sending",
+              })
+              .select("id")
+              .single();
+            emailId = emailRow?.id ?? null;
+          } catch (error) {
+            console.warn("[marketing/send] Failed to create email record", error);
+          }
+
+          const result = await sendViaMailgun({
+            to: patient.email,
+            subject: substitutePatientVariables(subject, patient),
+            html: substitutePatientVariables(html, patient),
+            emailIdForTracking: emailId,
+          });
+          const now = new Date().toISOString();
+
+          if (result.ok) {
+            sent += 1;
+            if (emailId) {
+              await supabaseAdmin.from("emails").update({ status: "sent", sent_at: now }).eq("id", emailId);
+            }
+            await supabaseAdmin
+              .from("marketing_campaign_recipients")
+              .update({ status: "sent", sent_at: now, email_id: emailId })
+              .eq("campaign_id", campaignId)
+              .eq("patient_id", patient.id);
+          } else {
+            failed += 1;
+            firstError ||= result.error ?? "Unknown error";
+            if (emailId) {
+              await supabaseAdmin.from("emails").update({ status: "failed" }).eq("id", emailId);
+            }
+            await supabaseAdmin
+              .from("marketing_campaign_recipients")
+              .update({ status: "failed", error: result.error ?? "Unknown error", email_id: emailId })
+              .eq("campaign_id", campaignId)
+              .eq("patient_id", patient.id);
+          }
+        }),
+      );
+
+      await supabaseAdmin
+        .from("marketing_campaigns")
+        .update({ total_sent: sent, total_failed: failed })
+        .eq("id", campaignId);
+
+      if (i + BATCH_SIZE < recipients.length) {
+        await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    }
+  } catch (error) {
+    firstError ||= error instanceof Error ? error.message : "Background campaign failed";
+    failed = Math.max(failed, recipients.length - sent);
+  }
+
+  const finalStatus = failed === 0 ? "sent" : sent === 0 ? "failed" : "partial";
+  await supabaseAdmin
+    .from("marketing_campaigns")
+    .update({
+      status: finalStatus,
+      total_sent: sent,
+      total_failed: failed,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", campaignId);
+
+  console.log("[marketing/send] Background campaign complete", {
+    campaignId,
+    sent,
+    failed,
+    status: finalStatus,
+    firstError,
+  });
 }
 
 export async function POST(request: Request) {
@@ -231,142 +340,15 @@ export async function POST(request: Request) {
       await supabaseAdmin.from("marketing_campaign_recipients").insert(slice);
     }
 
-    // Send in batches with a small delay between batches to be gentle on Mailgun
-    const BATCH_SIZE = 20;
-    const BATCH_DELAY_MS = 300;
-    let sent = 0;
-    let failed = 0;
-    let firstError: string | null = null;
-
-    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
-      const batch = recipients.slice(i, i + BATCH_SIZE);
-      await Promise.all(
-        batch.map(async (patient) => {
-          if (!patient.email) {
-            failed += 1;
-            return;
-          }
-
-          // Create an email record in CRM for tracking (best-effort; do not
-          // block the Mailgun send if this fails).
-          let emailId: string | null = null;
-          try {
-            const { data: emailRow, error: emailErr } = await supabaseAdmin
-              .from("emails")
-              .insert({
-                patient_id: patient.id,
-                to_address: patient.email,
-                from_address: MARKETING_FROM_EMAIL,
-                subject: substitutePatientVariables(subjectToUse, patient),
-                body: substitutePatientVariables(template.html, patient),
-                direction: "outbound",
-                status: "sending",
-              })
-              .select("id")
-              .single();
-            if (emailErr) {
-              console.warn("[marketing/send] emails row insert failed", {
-                patientId: patient.id,
-                error: emailErr.message,
-              });
-            }
-            emailId = emailRow?.id ?? null;
-          } catch (err) {
-            console.warn("[marketing/send] emails row insert threw", err);
-          }
-
-          const result = await sendViaMailgun({
-            to: patient.email,
-            subject: substitutePatientVariables(subjectToUse, patient),
-            html: substitutePatientVariables(template.html, patient),
-            emailIdForTracking: emailId,
-          });
-
-          const now = new Date().toISOString();
-          if (result.ok) {
-            sent += 1;
-            if (emailId) {
-              await supabaseAdmin
-                .from("emails")
-                .update({ status: "sent", sent_at: now })
-                .eq("id", emailId);
-            }
-            await supabaseAdmin
-              .from("marketing_campaign_recipients")
-              .update({
-                status: "sent",
-                sent_at: now,
-                email_id: emailId,
-              })
-              .eq("campaign_id", campaign.id)
-              .eq("patient_id", patient.id);
-          } else {
-            failed += 1;
-            if (!firstError) firstError = result.error ?? "Unknown error";
-            console.error("[marketing/send] recipient failed", {
-              to: patient.email,
-              error: result.error,
-            });
-            if (emailId) {
-              await supabaseAdmin
-                .from("emails")
-                .update({ status: "failed" })
-                .eq("id", emailId);
-            }
-            await supabaseAdmin
-              .from("marketing_campaign_recipients")
-              .update({
-                status: "failed",
-                error: result.error ?? "Unknown error",
-                email_id: emailId,
-              })
-              .eq("campaign_id", campaign.id)
-              .eq("patient_id", patient.id);
-          }
-        }),
-      );
-
-      // Update running totals on the campaign
-      await supabaseAdmin
-        .from("marketing_campaigns")
-        .update({ total_sent: sent, total_failed: failed })
-        .eq("id", campaign.id);
-
-      if (i + BATCH_SIZE < recipients.length) {
-        await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
-      }
-    }
-
-    // Finalise status
-    const finalStatus = failed === 0 ? "sent" : sent === 0 ? "failed" : "partial";
-    await supabaseAdmin
-      .from("marketing_campaigns")
-      .update({
-        status: finalStatus,
-        total_sent: sent,
-        total_failed: failed,
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", campaign.id);
-
-    console.log("[marketing/send] Campaign complete", {
-      campaignId: campaign.id,
-      totalRecipients: recipients.length,
-      sent,
-      failed,
-      status: finalStatus,
-      firstError,
-    });
+    after(processCampaign(campaign.id, recipients, subjectToUse, template.html));
 
     return NextResponse.json({
       ok: true,
+      queued: true,
       campaignId: campaign.id,
       totalRecipients: recipients.length,
-      sent,
-      failed,
-      status: finalStatus,
-      firstError,
-    });
+      status: "sending",
+    }, { status: 202 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[/api/marketing/campaigns/send] Error:", error);

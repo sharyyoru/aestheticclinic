@@ -279,6 +279,7 @@ export default function WorkflowsPage() {
     try {
       setRunningId(workflow.id);
       setError(null);
+      const { data: authData } = await supabaseClient.auth.getUser();
       const response = await fetch("/api/marketing/campaigns/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -287,16 +288,19 @@ export default function WorkflowsPage() {
           templateId,
           subject: action?.data?.config?.subject,
           filter: {},
+          userId: authData.user?.id ?? null,
         }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Broadcast failed");
 
       alert(
-        `Broadcast complete.\nSent: ${result.sent ?? 0}\nFailed: ${result.failed ?? 0}\nTotal: ${result.totalRecipients ?? 0}`,
+        `Broadcast queued for ${result.totalRecipients ?? 0} patients. You can leave this page; an email notification will appear when it finishes.`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Broadcast failed");
+      const message = err instanceof Error ? err.message : "Broadcast failed";
+      setError(message);
+      alert(`Broadcast could not be queued: ${message}`);
     } finally {
       setRunningId(null);
     }
