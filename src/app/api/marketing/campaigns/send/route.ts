@@ -18,6 +18,7 @@ type SendRequestBody = {
   listId?: string | null;
   testEmail?: string | null;     // when set, only send a single test to this address
   userId?: string | null;
+  workflowId?: string | null;
 };
 
 const mailgunApiKey = process.env.MAILGUN_API_KEY;
@@ -378,6 +379,7 @@ export async function POST(request: Request) {
         status: "sending",
         total_recipients: recipients.length,
         created_by: body.userId ?? null,
+        workflow_id: body.workflowId ?? null,
         started_at: new Date().toISOString(),
       })
       .select("id")

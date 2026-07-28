@@ -174,15 +174,29 @@ export default function WorkflowsPage() {
       // Load enrollment counts for each workflow
       if (workflowsRes.data && workflowsRes.data.length > 0) {
         const workflowIds = workflowsRes.data.map((w: any) => w.id);
-        const { data: enrollments } = await supabaseClient
-          .from("workflow_enrollments")
-          .select("workflow_id")
-          .in("workflow_id", workflowIds);
+        const [{ data: enrollments }, { data: campaigns }] = await Promise.all([
+          supabaseClient
+            .from("workflow_enrollments")
+            .select("workflow_id")
+            .in("workflow_id", workflowIds),
+          supabaseClient
+            .from("marketing_campaigns")
+            .select("workflow_id, total_recipients, created_at")
+            .in("workflow_id", workflowIds)
+            .order("created_at", { ascending: false }),
+        ]);
 
-        if (enrollments) {
+        if (enrollments || campaigns) {
           const counts = new Map<string, number>();
-          for (const e of enrollments) {
+          for (const e of enrollments ?? []) {
             counts.set(e.workflow_id, (counts.get(e.workflow_id) || 0) + 1);
+          }
+          // Campaigns are newest-first. Display the latest broadcast audience,
+          // avoiding duplicate patient counts when a workflow is run repeatedly.
+          for (const campaign of campaigns ?? []) {
+            if (campaign.workflow_id && !counts.has(campaign.workflow_id)) {
+              counts.set(campaign.workflow_id, campaign.total_recipients ?? 0);
+            }
           }
           setEnrollmentCounts(counts);
         }
@@ -352,6 +366,7 @@ export default function WorkflowsPage() {
           subject: action?.data?.config?.subject,
           filter: {},
           userId: authData.user?.id ?? null,
+          workflowId: workflow.id,
         }),
       });
       const result = await response.json();
@@ -1067,6 +1082,7 @@ function WorkflowEnrollmentsModal({
   onClose: () => void;
 }) {
   const [enrollments, setEnrollments] = useState<EnrollmentRow[]>([]);
+  const [totalEnrollmentCount, setTotalEnrollmentCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1107,6 +1123,89 @@ function WorkflowEnrollmentsModal({
         .select("id", { count: "exact", head: true })
         .eq("workflow_id", workflowId);
 
+      const { data: latestCampaign } = await supabaseClient
+        .from("marketing_campaigns")
+        .select("id, total_recipients, started_at")
+        .eq("workflow_id", workflowId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let campaignEnrollments: EnrollmentRow[] = [];
+      if (latestCampaign) {
+        const recipients: Array<{
+          id: string;
+          patient_id: string | null;
+          email: string;
+          status: string;
+          sent_at: string | null;
+          error: string | null;
+          patient: {
+            id: string;
+            first_name: string | null;
+            last_name: string | null;
+            email: string | null;
+          } | Array<{
+            id: string;
+            first_name: string | null;
+            last_name: string | null;
+            email: string | null;
+          }> | null;
+        }> = [];
+        const CAMPAIGN_PAGE_SIZE = 1000;
+        let campaignOffset = 0;
+        while (true) {
+          const { data: recipientPage, error: recipientsError } = await supabaseClient
+            .from("marketing_campaign_recipients")
+            .select("id, patient_id, email, status, sent_at, error, patient:patients(id, first_name, last_name, email)")
+            .eq("campaign_id", latestCampaign.id)
+            .order("sent_at", { ascending: false, nullsFirst: false })
+            .range(campaignOffset, campaignOffset + CAMPAIGN_PAGE_SIZE - 1);
+          if (recipientsError) throw recipientsError;
+          recipients.push(...(recipientPage ?? []));
+          if (!recipientPage || recipientPage.length < CAMPAIGN_PAGE_SIZE) break;
+          campaignOffset += recipientPage.length;
+        }
+
+        campaignEnrollments = recipients.map((recipient) => {
+          const patientData = Array.isArray(recipient.patient) ? recipient.patient[0] : recipient.patient;
+          const delivered = recipient.status === "sent" || recipient.status === "opened";
+          return {
+            id: `campaign_${recipient.id}`,
+            patient_id: recipient.patient_id ?? "",
+            deal_id: null,
+            enrolled_at: recipient.sent_at ?? latestCampaign.started_at ?? new Date().toISOString(),
+            status: delivered ? "completed" : recipient.status === "failed" ? "failed" : "active",
+            trigger_data: { source: "email_campaign", campaign_id: latestCampaign.id },
+            patient: patientData
+              ? {
+                  id: patientData.id,
+                  first_name: patientData.first_name,
+                  last_name: patientData.last_name,
+                  email: patientData.email,
+                }
+              : {
+                  id: recipient.patient_id ?? recipient.id,
+                  first_name: null,
+                  last_name: null,
+                  email: recipient.email,
+                },
+            deal: null,
+            steps: [{
+              id: `campaign_step_${recipient.id}`,
+              step_type: "action",
+              step_action: "send_email",
+              status: delivered ? "completed" : recipient.status === "failed" ? "failed" : "scheduled",
+              executed_at: recipient.sent_at,
+              result: { delivery_status: recipient.status },
+              error_message: recipient.error,
+            }],
+          };
+        });
+      }
+
+      setTotalEnrollmentCount(latestCampaign?.total_recipients ?? totalCount ?? campaignEnrollments.length);
+
       // Load enrollments with patient and deal/service data - LIMITED to 100 per page max
       const PAGE_SIZE = 100;
       const { data, error: fetchError } = await supabaseClient
@@ -1127,18 +1226,20 @@ function WorkflowEnrollmentsModal({
 
       if (fetchError) throw fetchError;
 
-      if (!data || data.length === 0) {
+      if ((!data || data.length === 0) && campaignEnrollments.length === 0) {
         setEnrollments([]);
         return;
       }
 
       // Batch load steps only for the fetched enrollments (max 100)
-      const enrollmentIds = data.map((e) => e.id);
-      const { data: allSteps } = await supabaseClient
-        .from("workflow_enrollment_steps")
-        .select("id, enrollment_id, step_type, step_action, status, executed_at, result, error_message")
-        .in("enrollment_id", enrollmentIds)
-        .order("created_at", { ascending: true });
+      const enrollmentIds = (data ?? []).map((e) => e.id);
+      const { data: allSteps } = enrollmentIds.length > 0
+        ? await supabaseClient
+            .from("workflow_enrollment_steps")
+            .select("id, enrollment_id, step_type, step_action, status, executed_at, result, error_message")
+            .in("enrollment_id", enrollmentIds)
+            .order("created_at", { ascending: true })
+        : { data: [] };
 
       // Group steps by enrollment_id
       const stepsByEnrollment = new Map<string, typeof allSteps>();
@@ -1149,7 +1250,7 @@ function WorkflowEnrollmentsModal({
       }
 
       // Map enrollments with their steps and deal data
-      const enrollmentsWithSteps: EnrollmentRow[] = data.map((enrollment) => {
+      const enrollmentsWithSteps: EnrollmentRow[] = (data ?? []).map((enrollment) => {
         // Handle deal - Supabase may return as array for single relation
         const dealData = Array.isArray(enrollment.deal) ? enrollment.deal[0] : enrollment.deal;
         let deal = null;
@@ -1170,7 +1271,7 @@ function WorkflowEnrollmentsModal({
         };
       });
 
-      setEnrollments(enrollmentsWithSteps);
+      setEnrollments([...campaignEnrollments, ...enrollmentsWithSteps]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load enrollments");
     } finally {
@@ -1438,6 +1539,8 @@ function WorkflowEnrollmentsModal({
                             ? "bg-emerald-100 text-emerald-700"
                             : enrollment.status === "completed"
                             ? "bg-sky-100 text-sky-700"
+                            : enrollment.status === "failed"
+                            ? "bg-red-100 text-red-700"
                             : "bg-slate-100 text-slate-600"
                         }`}>
                           {enrollment.status}
@@ -1479,9 +1582,9 @@ function WorkflowEnrollmentsModal({
         <div className="border-t border-slate-200 px-6 py-4 flex justify-between items-center">
           <p className="text-sm text-slate-500">
             {searchQuery ? (
-              <>Showing {filteredEnrollments.length} of {enrollments.length} patient{enrollments.length !== 1 ? "s" : ""}</>
+              <>Showing {filteredEnrollments.length} of {totalEnrollmentCount} patient{totalEnrollmentCount !== 1 ? "s" : ""}</>
             ) : (
-              <>{enrollments.length} patient{enrollments.length !== 1 ? "s" : ""} enrolled</>
+              <>{totalEnrollmentCount} patient{totalEnrollmentCount !== 1 ? "s" : ""} enrolled</>
             )}
           </p>
           
