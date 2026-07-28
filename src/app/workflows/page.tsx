@@ -20,6 +20,17 @@ type DealStage = {
   name: string;
 };
 
+type CampaignProgress = {
+  id: string;
+  name: string;
+  status: "sending" | "sent" | "partial" | "failed" | "cancelled";
+  total_recipients: number;
+  total_sent: number;
+  total_failed: number;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
 const TRIGGER_LABELS: Record<string, string> = {
   deal_stage_changed: "Deal Stage Changed",
   patient_created: "Patient Created",
@@ -73,6 +84,7 @@ export default function WorkflowsPage() {
   const [testCallLoading, setTestCallLoading] = useState(false);
   const [testCallResult, setTestCallResult] = useState<{ success: boolean; message: string; call_id?: string } | null>(null);
   const [agentInfo, setAgentInfo] = useState<{ agent_name?: string; version?: number } | null>(null);
+  const [activeCampaign, setActiveCampaign] = useState<CampaignProgress | null>(null);
   
   // Filters
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
@@ -82,6 +94,57 @@ export default function WorkflowsPage() {
   useEffect(() => {
     loadWorkflows();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function recoverActiveCampaign() {
+      const { data: authData } = await supabaseClient.auth.getUser();
+      if (!authData.user || cancelled) return;
+
+      const { data } = await supabaseClient
+        .from("marketing_campaigns")
+        .select("id, name, status, total_recipients, total_sent, total_failed, started_at, completed_at")
+        .eq("created_by", authData.user.id)
+        .eq("status", "sending")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data && !cancelled) {
+        setActiveCampaign(data as CampaignProgress);
+      }
+    }
+
+    void recoverActiveCampaign();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeCampaign?.id || activeCampaign.status !== "sending") return;
+
+    let cancelled = false;
+    async function refreshCampaign() {
+      const { data, error } = await supabaseClient
+        .from("marketing_campaigns")
+        .select("id, name, status, total_recipients, total_sent, total_failed, started_at, completed_at")
+        .eq("id", activeCampaign!.id)
+        .single();
+
+      if (!cancelled && !error && data) {
+        setActiveCampaign(data as CampaignProgress);
+      }
+    }
+
+    void refreshCampaign();
+    const intervalId = window.setInterval(() => void refreshCampaign(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [activeCampaign?.id, activeCampaign?.status]);
 
   async function loadWorkflows() {
     try {
@@ -297,6 +360,16 @@ export default function WorkflowsPage() {
       alert(
         `Broadcast queued for ${result.totalRecipients ?? 0} patients. You can leave this page; an email notification will appear when it finishes.`,
       );
+      setActiveCampaign({
+        id: result.campaignId,
+        name: workflow.name,
+        status: "sending",
+        total_recipients: result.totalRecipients ?? 0,
+        total_sent: 0,
+        total_failed: 0,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Broadcast failed";
       setError(message);
@@ -639,7 +712,7 @@ export default function WorkflowsPage() {
                     {workflow.trigger_type === "manual" && getBroadcastAction(workflow) && (
                       <button
                         onClick={() => runBroadcast(workflow)}
-                        disabled={runningId === workflow.id}
+                        disabled={runningId === workflow.id || activeCampaign?.status === "sending"}
                         className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
                         title="Send this email campaign to all patients"
                       >
@@ -647,7 +720,11 @@ export default function WorkflowsPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.868v4.264a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        {runningId === workflow.id ? "Sending..." : "Send to all"}
+                        {runningId === workflow.id
+                          ? "Queuing..."
+                          : activeCampaign?.status === "sending"
+                            ? "Campaign running"
+                            : "Send to all"}
                       </button>
                     )}
                     <Link
@@ -854,6 +931,89 @@ export default function WorkflowsPage() {
           </div>
         </div>
       )}
+
+      {activeCampaign && (() => {
+        const processed = activeCampaign.total_sent + activeCampaign.total_failed;
+        const pending = Math.max(0, activeCampaign.total_recipients - processed);
+        const progress = activeCampaign.total_recipients > 0
+          ? Math.min(100, Math.round((processed / activeCampaign.total_recipients) * 100))
+          : 0;
+        const isRunning = activeCampaign.status === "sending";
+
+        return (
+          <div className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-800">
+            <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-700">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  isRunning ? "bg-sky-100 text-sky-600" : activeCampaign.status === "sent" ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
+                }`}>
+                  {isRunning ? (
+                    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+                      <path className="opacity-80" fill="currentColor" d="M12 3a9 9 0 019 9h-3a6 6 0 00-6-6V3z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {isRunning ? "Sending email campaign" : "Email campaign finished"}
+                  </p>
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">{activeCampaign.name}</p>
+                </div>
+              </div>
+              {!isRunning && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCampaign(null)}
+                  className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700"
+                  aria-label="Dismiss campaign monitor"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <div className="space-y-3 px-4 py-4">
+              <div>
+                <div className="mb-1.5 flex items-center justify-between text-xs">
+                  <span className="text-slate-500">{processed} of {activeCampaign.total_recipients} processed</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">{progress}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      activeCampaign.status === "failed" ? "bg-red-500" : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg bg-emerald-50 px-2 py-2 dark:bg-emerald-900/20">
+                  <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">{activeCampaign.total_sent}</p>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-500">Sent</p>
+                </div>
+                <div className="rounded-lg bg-red-50 px-2 py-2 dark:bg-red-900/20">
+                  <p className="text-base font-bold text-red-700 dark:text-red-400">{activeCampaign.total_failed}</p>
+                  <p className="text-[10px] text-red-600 dark:text-red-500">Failed</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-2 py-2 dark:bg-slate-700">
+                  <p className="text-base font-bold text-slate-700 dark:text-slate-200">{pending}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Pending</p>
+                </div>
+              </div>
+              {isRunning && (
+                <p className="text-[10px] text-slate-400">Updates automatically every 2 seconds. You may safely leave this page.</p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }
