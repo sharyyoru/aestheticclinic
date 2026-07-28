@@ -121,12 +121,13 @@ async function processCampaign(
   let sent = 0;
   let failed = 0;
   let firstError: string | null = null;
-  const countStatus = async (status: string) => {
-    const { count } = await supabaseAdmin
+  const countStatus = async (status: string | string[]) => {
+    let query = supabaseAdmin
       .from("marketing_campaign_recipients")
       .select("id", { count: "exact", head: true })
-      .eq("campaign_id", campaignId)
-      .eq("status", status);
+      .eq("campaign_id", campaignId);
+    query = Array.isArray(status) ? query.in("status", status) : query.eq("status", status);
+    const { count } = await query;
     return count ?? 0;
   };
 
@@ -206,13 +207,18 @@ async function processCampaign(
         }),
       );
 
-      const [storedSent, storedFailed] = await Promise.all([
-        countStatus("sent"),
+      const [storedSent, storedOpened, storedFailed] = await Promise.all([
+        countStatus(["sent", "opened"]),
+        countStatus("opened"),
         countStatus("failed"),
       ]);
       await supabaseAdmin
         .from("marketing_campaigns")
-        .update({ total_sent: storedSent, total_failed: storedFailed })
+        .update({
+          total_sent: storedSent,
+          total_failed: storedFailed,
+          total_opened: storedOpened,
+        })
         .eq("id", campaignId);
 
       if (i + BATCH_SIZE < recipients.length) {
@@ -224,8 +230,9 @@ async function processCampaign(
     failed = Math.max(failed, recipients.length - sent);
   }
 
-  const [storedSent, storedFailed, storedPending, storedProcessing] = await Promise.all([
-    countStatus("sent"),
+  const [storedSent, storedOpened, storedFailed, storedPending, storedProcessing] = await Promise.all([
+    countStatus(["sent", "opened"]),
+    countStatus("opened"),
     countStatus("failed"),
     countStatus("pending"),
     countStatus("processing"),
@@ -244,6 +251,7 @@ async function processCampaign(
       status: finalStatus,
       total_sent: storedSent,
       total_failed: storedFailed,
+      total_opened: storedOpened,
       ...(completed ? { completed_at: new Date().toISOString() } : {}),
     })
     .eq("id", campaignId);

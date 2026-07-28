@@ -55,12 +55,13 @@ async function sendEmail(
   }
 }
 
-async function countRecipients(campaignId: string, status: string) {
-  const { count } = await supabaseAdmin
+async function countRecipients(campaignId: string, status: string | string[]) {
+  let query = supabaseAdmin
     .from("marketing_campaign_recipients")
     .select("id", { count: "exact", head: true })
-    .eq("campaign_id", campaignId)
-    .eq("status", status);
+    .eq("campaign_id", campaignId);
+  query = Array.isArray(status) ? query.in("status", status) : query.eq("status", status);
+  const { count } = await query;
   return count ?? 0;
 }
 
@@ -159,8 +160,9 @@ async function processCampaign(campaign: {
     }
   }));
 
-  const [sent, failed, pendingCount, processing] = await Promise.all([
-    countRecipients(campaign.id, "sent"),
+  const [sent, opened, failed, pendingCount, processing] = await Promise.all([
+    countRecipients(campaign.id, ["sent", "opened"]),
+    countRecipients(campaign.id, "opened"),
     countRecipients(campaign.id, "failed"),
     countRecipients(campaign.id, "pending"),
     countRecipients(campaign.id, "processing"),
@@ -173,6 +175,7 @@ async function processCampaign(campaign: {
       status,
       total_sent: sent,
       total_failed: failed,
+      total_opened: opened,
       ...(completed ? { completed_at: new Date().toISOString() } : {}),
     })
     .eq("id", campaign.id);
