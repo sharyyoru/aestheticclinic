@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getFormById } from "@/lib/formDefinitions";
-import { FileText, Eye, Clock, CheckCircle, AlertCircle, Copy, ExternalLink, Send, Trash2, X } from "lucide-react";
+import { FileText, Eye, Clock, CheckCircle, AlertCircle, Copy, Download, ExternalLink, Send, Trash2, X } from "lucide-react";
 
 type FormSubmission = {
   id: string;
@@ -23,6 +23,189 @@ type ViewSubmissionModalProps = {
   submission: FormSubmission;
   onClose: () => void;
 };
+
+async function getClinicLogoDataUrl(): Promise<string> {
+  const response = await fetch("/logos/aesthetics-logo.svg");
+  if (!response.ok) throw new Error("Unable to load clinic logo");
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+
+    const canvas = document.createElement("canvas");
+    const scale = 3;
+    canvas.width = Math.max(1, image.naturalWidth * scale);
+    canvas.height = Math.max(1, image.naturalHeight * scale);
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Unable to prepare clinic logo");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png");
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function exportSubmissionToPdf(submission: FormSubmission) {
+  const form = getFormById(submission.form_id);
+  if (!form) throw new Error("Form definition not found");
+
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 16;
+  const contentWidth = pageWidth - margin * 2;
+  const labelWidth = 82;
+  const valueX = margin + labelWidth + 5;
+  const valueWidth = contentWidth - labelWidth - 5;
+  const footerY = pageHeight - 9;
+  let y = margin;
+  let pageNumber = 1;
+
+  const addFooter = () => {
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Aesthetics Clinic", margin, footerY);
+    doc.text(`Page ${pageNumber}`, pageWidth - margin, footerY, { align: "right" });
+  };
+
+  const addPage = () => {
+    addFooter();
+    doc.addPage();
+    pageNumber += 1;
+    y = margin;
+  };
+
+  const ensureSpace = (height: number) => {
+    if (y + height > footerY - 5) addPage();
+  };
+
+  const formatPdfValue = (value: unknown): string => {
+    if (value === true) return form.language === "fr" ? "Oui" : "Yes";
+    if (value === false) return form.language === "fr" ? "Non" : "No";
+    if (value === null || value === undefined || value === "") return "-";
+    return String(value);
+  };
+
+  const logo = await getClinicLogoDataUrl();
+  doc.addImage(logo, "PNG", margin, y, 42, 12);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42);
+  const formName =
+    form.language === "fr" && form.nameFr ? form.nameFr : submission.form_name;
+  doc.text(formName, pageWidth - margin, y + 5, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  const submittedLabel = form.language === "fr" ? "Soumis le" : "Submitted";
+  const submittedAt = submission.submitted_at
+    ? new Date(submission.submitted_at).toLocaleString(
+        form.language === "fr" ? "fr-CH" : "en-GB"
+      )
+    : "-";
+  doc.text(`${submittedLabel}: ${submittedAt}`, pageWidth - margin, y + 11, {
+    align: "right",
+  });
+  y += 20;
+  doc.setDrawColor(14, 165, 233);
+  doc.setLineWidth(0.6);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  for (const section of form.sections) {
+    ensureSpace(16);
+    const sectionTitle =
+      form.language === "fr" && section.titleFr ? section.titleFr : section.title;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, y, contentWidth, 9, 2, 2, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text(sectionTitle, margin + 4, y + 6);
+    y += 13;
+
+    for (const field of section.fields) {
+      const label =
+        form.language === "fr" && field.labelFr ? field.labelFr : field.label;
+      const value = submission.submission_data[field.id];
+
+      if (
+        field.type === "signature" &&
+        typeof value === "string" &&
+        value.startsWith("data:image")
+      ) {
+        const signatureBoxHeight = 31;
+        ensureSpace(signatureBoxHeight + 8);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        doc.text(label, margin, y + 4);
+
+        const boxX = valueX;
+        const boxY = y;
+        const boxWidth = valueWidth;
+        doc.setDrawColor(148, 163, 184);
+        doc.setLineWidth(0.4);
+        doc.roundedRect(boxX, boxY, boxWidth, signatureBoxHeight, 1.5, 1.5);
+
+        const properties = doc.getImageProperties(value);
+        const padding = 3;
+        const maxWidth = boxWidth - padding * 2;
+        const maxHeight = signatureBoxHeight - padding * 2;
+        const ratio = Math.min(
+          maxWidth / properties.width,
+          maxHeight / properties.height
+        );
+        const signatureWidth = properties.width * ratio;
+        const signatureHeight = properties.height * ratio;
+        doc.addImage(
+          value,
+          properties.fileType,
+          boxX + (boxWidth - signatureWidth) / 2,
+          boxY + (signatureBoxHeight - signatureHeight) / 2,
+          signatureWidth,
+          signatureHeight
+        );
+        y += signatureBoxHeight + 6;
+        continue;
+      }
+
+      const labelLines = doc.splitTextToSize(label, labelWidth);
+      const valueLines = doc.splitTextToSize(formatPdfValue(value), valueWidth);
+      const rowHeight = Math.max(labelLines.length, valueLines.length) * 4.2 + 4;
+      ensureSpace(rowHeight);
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(labelLines, margin, y + 3.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(valueLines, pageWidth - margin, y + 3.5, { align: "right" });
+      y += rowHeight;
+      doc.setDrawColor(241, 245, 249);
+      doc.line(margin, y - 1.5, pageWidth - margin, y - 1.5);
+    }
+
+    y += 4;
+  }
+
+  addFooter();
+  const safeName = formName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+  doc.save(`${safeName || "patient-form"}-${submission.id.slice(0, 8)}.pdf`);
+}
 
 const breastSurgeryFormIdsByLanguage = {
   en: [
@@ -80,7 +263,7 @@ function BreastFormsSendModal({
   onClose,
   onSuccess,
 }: BreastFormsSendModalProps) {
-  const language: "fr" = "fr";
+  const language = "fr" as const;
   const formGroups = [
     {
       title: "Chirurgie mammaire",
@@ -283,6 +466,23 @@ function BreastFormsSendModal({
 function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) {
   const form = getFormById(submission.form_id);
   const data = submission.submission_data;
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExportPdf = async () => {
+    try {
+      setExportingPdf(true);
+      setExportError(null);
+      await exportSubmissionToPdf(submission);
+    } catch (error) {
+      console.error("Error exporting form response to PDF:", error);
+      setExportError(
+        error instanceof Error ? error.message : "Failed to export PDF"
+      );
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   const formatValue = (value: unknown): string => {
     if (value === true) return "Yes";
@@ -351,7 +551,24 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
           </div>
         )}
 
-        <div className="mt-6 flex justify-end">
+        {exportError && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            {exportError}
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          {form && (
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              {exportingPdf ? "Exporting..." : "Export PDF"}
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
