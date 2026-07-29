@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getFormById } from "@/lib/formDefinitions";
+import { getAlternateLanguageFormId, getFormById } from "@/lib/formDefinitions";
 import { getUnansweredPatientFormFields } from "@/lib/patientFormValidation";
 
 // POST /api/forms/submit - Submit form data using token
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { token, submissionData } = body;
+    const { token, formId, submissionData } = body;
 
     if (!token) {
       return NextResponse.json(
@@ -53,7 +53,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const form = getFormById(submission.form_id);
+    const isStoredForm =
+      !formId || formId === submission.form_id;
+    const isAlternateLanguageForm =
+      formId === getAlternateLanguageFormId(submission.form_id);
+
+    if (!isStoredForm && !isAlternateLanguageForm) {
+      return NextResponse.json(
+        { error: "This form link does not match the requested form" },
+        { status: 400 }
+      );
+    }
+
+    // A patient may switch between the paired English and French versions while
+    // keeping the same secure token. Validate the form that is actually visible
+    // to the patient, not the language in which the token was first created.
+    const validatedFormId = formId || submission.form_id;
+    const form = getFormById(validatedFormId);
     if (!form) {
       return NextResponse.json(
         { error: "Form definition not found" },
@@ -76,6 +92,7 @@ export async function POST(request: Request) {
     const { error: updateError } = await supabaseAdmin
       .from("patient_form_submissions")
       .update({
+        form_id: validatedFormId,
         submission_data: submissionData,
         status: "submitted",
         submitted_at: new Date().toISOString(),

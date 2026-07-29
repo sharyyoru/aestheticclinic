@@ -1384,6 +1384,7 @@ export default function PublicFormPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
+          formId: form.id,
           submissionData: formData,
         }),
       });
@@ -1391,7 +1392,27 @@ export default function PublicFormPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || "Failed to submit form");
+        if (Array.isArray(data.missingFields) && data.missingFields.length > 0) {
+          const missingField = form.sections
+            .flatMap((section) => section.fields)
+            .find((field) => field.id === data.missingFields[0]);
+          const missingFieldLabel = missingField
+            ? form.language === "fr" && missingField.labelFr
+              ? missingField.labelFr
+              : missingField.label
+            : data.missingFields[0];
+
+          setValidationError(
+            form.language === "fr"
+              ? `Veuillez remplir les champs obligatoires avant de soumettre le formulaire. Premier champ manquant : ${missingFieldLabel}.`
+              : `Please complete the required fields before submitting the form. First missing field: ${missingFieldLabel}.`
+          );
+          document
+            .getElementById(data.missingFields[0])
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else {
+          setError(data.error || "Failed to submit form");
+        }
         setSubmitting(false);
         return;
       }
