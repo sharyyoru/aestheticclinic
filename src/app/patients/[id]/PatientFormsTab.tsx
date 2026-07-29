@@ -466,23 +466,6 @@ function BreastFormsSendModal({
 function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) {
   const form = getFormById(submission.form_id);
   const data = submission.submission_data;
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-
-  const handleExportPdf = async () => {
-    try {
-      setExportingPdf(true);
-      setExportError(null);
-      await exportSubmissionToPdf(submission);
-    } catch (error) {
-      console.error("Error exporting form response to PDF:", error);
-      setExportError(
-        error instanceof Error ? error.message : "Failed to export PDF"
-      );
-    } finally {
-      setExportingPdf(false);
-    }
-  };
 
   const formatValue = (value: unknown): string => {
     if (value === true) return "Yes";
@@ -551,24 +534,7 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
           </div>
         )}
 
-        {exportError && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-            {exportError}
-          </div>
-        )}
-
-        <div className="mt-6 flex items-center justify-end gap-2">
-          {form && (
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              disabled={exportingPdf}
-              className="inline-flex items-center gap-2 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Download className="h-4 w-4" />
-              {exportingPdf ? "Exporting..." : "Export PDF"}
-            </button>
-          )}
+        <div className="mt-6 flex justify-end">
           <button
             type="button"
             onClick={onClose}
@@ -598,6 +564,8 @@ export default function PatientFormsTab({
   const [showSendBreastFormsModal, setShowSendBreastFormsModal] = useState(false);
   const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
   const [deletingSubmissionIds, setDeletingSubmissionIds] = useState<string[]>([]);
+  const [exportingSubmissionId, setExportingSubmissionId] = useState<string | null>(null);
+  const [pdfExportError, setPdfExportError] = useState<string | null>(null);
 
   const loadSubmissions = async () => {
     try {
@@ -673,6 +641,21 @@ export default function PatientFormsTab({
 
   const handleCopyLink = (url: string) => {
     navigator.clipboard.writeText(url);
+  };
+
+  const handleExportPdf = async (submission: FormSubmission) => {
+    try {
+      setExportingSubmissionId(submission.id);
+      setPdfExportError(null);
+      await exportSubmissionToPdf(submission);
+    } catch (error) {
+      console.error("Error exporting form response to PDF:", error);
+      setPdfExportError(
+        error instanceof Error ? error.message : "Failed to export PDF"
+      );
+    } finally {
+      setExportingSubmissionId(null);
+    }
   };
 
   const toggleSubmissionSelection = (submissionId: string) => {
@@ -801,6 +784,12 @@ export default function PatientFormsTab({
         </div>
       )}
 
+      {pdfExportError && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          {pdfExportError}
+        </div>
+      )}
+
       {!loading && !error && submissions.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <FileText className="mb-3 h-12 w-12 text-slate-300" />
@@ -872,14 +861,28 @@ export default function PatientFormsTab({
                     </>
                   )}
                   {submission.status !== "pending" && (
-                    <button
-                      type="button"
-                      onClick={() => setViewingSubmission(submission)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
-                    >
-                      <Eye className="h-3 w-3" />
-                      View Response
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setViewingSubmission(submission)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50"
+                      >
+                        <Eye className="h-3 w-3" />
+                        View Response
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleExportPdf(submission)}
+                        disabled={exportingSubmissionId !== null}
+                        className="inline-flex items-center gap-1 rounded-lg border border-sky-200 px-2 py-1 text-[10px] font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Export completed form to PDF"
+                      >
+                        <Download className="h-3 w-3" />
+                        {exportingSubmissionId === submission.id
+                          ? "Exporting..."
+                          : "Export PDF"}
+                      </button>
+                    </>
                   )}
                   <button
                     type="button"
