@@ -24,7 +24,7 @@ type BookingPayload = {
   firstName: string;
   lastName: string;
   email: string;
-  phone?: string;
+  phone: string;
   patientId?: string;
   appointmentDate: string;
   service: string;
@@ -418,7 +418,7 @@ export async function POST(request: Request) {
     } = body;
 
     // Validate required fields
-    if (!firstName || !lastName || !email || !appointmentDate || !service || !doctorSlug || !doctorName) {
+    if (!firstName || !lastName || !email || !phone?.trim() || !appointmentDate || !service || !doctorSlug || !doctorName) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
