@@ -8,7 +8,7 @@ import BlizzardShell from "./blizzard/BlizzardShell";
 import RequireAuth from "./RequireAuth";
 
 // Routes that should bypass both shells entirely (standalone pages)
-const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/pricingaliice", "/appx", "/prodapp", "/patientapp", "/aliicestory"];
+const STANDALONE_ROUTES = ["/login", "/book-appointment", "/intake", "/onboarding", "/invoice/pay", "/consultations", "/embed", "/form", "/aliicechat", "/aliicechatembed", "/pricing", "/pricingaliice", "/appx", "/prodapp", "/patientapp", "/aliicestory", "/test-retell"];
 
 function isStandaloneRoute(pathname: string): boolean {
   return STANDALONE_ROUTES.some(route => pathname === route || pathname.startsWith(route + "/"));

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal } from "@/lib/swissTimezone";
 import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
+import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
 import { isHardBlock, type AppointmentRow } from "@/lib/appointmentAvailability";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -357,71 +358,20 @@ export async function POST(request: NextRequest) {
 
     // Send confirmation email if email provided
     if (patient.email) {
-      const emailHtml = `
-<!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="text-align: center; margin-bottom: 30px;">
-    <h1 style="color: #0f172a; font-size: 24px; margin: 0;">Aesthetics Clinic</h1>
-    <p style="color: #64748b; margin: 5px 0 0 0;">Geneva • Gstaad • Montreux</p>
-  </div>
-  
-  <h2 style="color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">✓ Appointment Confirmed</h2>
-  
-  <p>Dear ${patient.first_name || "Patient"},</p>
-  <p>Your appointment has been successfully booked. We look forward to seeing you!</p>
-  
-  <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding: 25px; border-radius: 12px; margin: 25px 0; border-left: 4px solid #0ea5e9;">
-    <h3 style="margin: 0 0 15px 0; color: #0f172a;">Appointment Details</h3>
-    <table style="width: 100%; border-collapse: collapse;">
-      <tr>
-        <td style="padding: 8px 0; color: #64748b; width: 100px;">Service:</td>
-        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${service.name}</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px 0; color: #64748b;">Date:</td>
-        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${formatSwissDateWithWeekday(appointmentDate)}</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px 0; color: #64748b;">Time:</td>
-        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${formatSwissTimeAmPm(appointmentDate)}</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px 0; color: #64748b;">Doctor:</td>
-        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${doctorName}</td>
-      </tr>
-    </table>
-  </div>
-  
-  <div style="background: #fefce8; padding: 20px; border-radius: 12px; margin: 25px 0; border: 1px solid #fef08a;">
-    <h3 style="margin: 0 0 10px 0; color: #854d0e; font-size: 16px;">📍 Location</h3>
-    <p style="margin: 0; color: #713f12; font-weight: 600;">${locationInfo.name}</p>
-    <p style="margin: 5px 0 0 0; color: #a16207;">${locationInfo.address}<br>${locationInfo.city}</p>
-  </div>
-  
-  <div style="background: #f0fdf4; padding: 20px; border-radius: 12px; margin: 25px 0; border: 1px solid #bbf7d0;">
-    <h3 style="margin: 0 0 10px 0; color: #166534; font-size: 16px;">📞 Need to reschedule?</h3>
-    <p style="margin: 0; color: #15803d;">Call us at <a href="tel:+41227322223" style="color: #166534; font-weight: 600;">+41 22 732 22 23</a></p>
-    <p style="margin: 5px 0 0 0; color: #15803d;">Email: <a href="mailto:info@aesthetics-ge.ch" style="color: #166534;">info@aesthetics-ge.ch</a></p>
-  </div>
-  
-  <p style="color: #64748b; font-size: 14px; text-align: center; margin-top: 30px;">
-    Thank you for choosing Aesthetics Clinic.<br>
-    Your first consultation is complimentary.
-  </p>
-  
-  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
-  
-  <p style="color: #94a3b8; font-size: 12px; text-align: center;">
-    Aesthetics Clinic • Geneva, Gstaad, Montreux<br>
-    <a href="https://aestheticclinic.vercel.app/book-appointment/location" style="color: #0ea5e9;">Book Online</a>
-  </p>
-</body>
-</html>`;
+      const emailHtml = generatePatientAppointmentEmailHtml({
+        type: "confirmation",
+        patientName: `${patient.first_name || "Patient"} ${patient.last_name || ""}`.trim(),
+        appointmentDate,
+        doctorName,
+        service: service.name,
+        location: fullLocation,
+        contactPhone: "+41 22 732 22 23",
+        contactEmail: mailgunFromEmail || "info@aesthetics-ge.ch",
+      });
 
       await sendEmail(
         patient.email,
-        `✓ Appointment Confirmed - ${formatSwissDateWithWeekday(appointmentDate)} at ${locationInfo.name}`,
+        `Appointment Confirmed / Rendez-vous confirmé - ${formatSwissDateWithWeekday(appointmentDate)} at ${locationInfo.name}`,
         emailHtml
       );
     }

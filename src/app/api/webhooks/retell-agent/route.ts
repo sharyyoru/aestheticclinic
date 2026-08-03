@@ -176,18 +176,25 @@ async function updateLinkedAiTask(
     const schedulerEmail = scheduled?.scheduled_by_email as string | null;
     const schedulerName = scheduled?.scheduled_by_name as string | null;
 
-    const { connected, label: disconnectLabel } = describeDisconnection(disconnectionReason);
+    console.log("[Retell Agent] updateLinkedAiTask:", {
+      scheduledCallId,
+      taskId,
+      schedulerEmail,
+      callStatus,
+      hasTranscriptContext: !!transcriptContext,
+      turnsCount: transcriptContext?.turns?.length || 0,
+    });
 
     let nextStatus = "in_progress";
     const lower = (callStatus || "").toLowerCase();
-    if (!connected) {
-      // Carrier/telephony failure (e.g. SIP 603 decline, busy, no-answer):
-      // the call never reached the patient — surface it as a failure.
-      nextStatus = "failed";
-    } else if (lower === "completed") {
+    // Retell sends "ended" when a call completes normally — treat it as completed.
+    // "registered"/"ongoing" mean the call hasn't finished yet — keep as in_progress.
+    // NOTE: tasks.status is a Postgres enum that only allows {not_started, in_progress, completed}.
+    // There is no "failed" value, so we mark failed calls as "completed" (the task is done)
+    // and include the failure details in the task content.
+    if (lower === "completed" || lower === "ended" || lower === "not_connected" ||
+        ["failed", "error", "busy", "no-answer", "no_answer", "canceled", "cancelled", "user_declined"].includes(lower)) {
       nextStatus = "completed";
-    } else if (["failed", "error", "busy", "no-answer", "canceled", "cancelled", "not_connected"].includes(lower)) {
-      nextStatus = "failed";
     }
 
     // Send the transcript email to the user who INITIATED the call.
@@ -202,6 +209,7 @@ async function updateLinkedAiTask(
     // function). Failed/not-connected calls have no transcript, so they are
     // naturally skipped below.
     let emailSent = false;
+    const { connected, label: disconnectLabel } = describeDisconnection(disconnectionReason);
     const hasTranscript =
       !!transcriptContext &&
       (transcriptContext.turns.length > 0 ||
@@ -214,6 +222,7 @@ async function updateLinkedAiTask(
       transcriptContext
     ) {
       try {
+        console.log("[Retell Agent] Sending transcript email to scheduler:", schedulerEmail);
         const { sent } = await sendCallLogConversationEmail({
           patientName: transcriptContext.patientName,
           callId: transcriptContext.callId,
@@ -228,14 +237,12 @@ async function updateLinkedAiTask(
           turns: transcriptContext.turns,
         }, schedulerEmail);
         emailSent = !!sent;
-        if (emailSent) {
-          console.log(
-            `[Retell Agent] Transcript emailed to initiator ${schedulerEmail} for call ${transcriptContext.callId}`
-          );
-        }
+        console.log("[Retell Agent] Transcript email sent to scheduler:", schedulerEmail, "sent:", sent);
       } catch (emailErr) {
         console.error("[Retell Agent] Failed to send transcript email to initiator:", emailErr);
       }
+    } else {
+      console.log("[Retell Agent] Skipping scheduler email — schedulerEmail:", schedulerEmail, "turnsCount:", transcriptContext?.turns?.length || 0);
     }
 
     // Build task content with email notification
@@ -248,18 +255,27 @@ async function updateLinkedAiTask(
     const outcomeNote = disconnectLabel ? `\n\n⚠️ ${disconnectLabel}` : "";
 
     if (taskId) {
-      await supabaseAdmin
+      const isFailed = lower !== "completed" && lower !== "ended";
+      const taskContent = isFailed
+        ? `AI call could not connect. Status: ${callStatus}${emailNote}`
+        : summary
+          ? `${summary}\n\n(Status: ${callStatus})${emailNote}`
+          : `AI call finished. Status: ${callStatus}${emailNote}`;
+      const { error: taskUpdateErr } = await supabaseAdmin
         .from("tasks")
         .update({
           status: nextStatus,
-          content: !connected
-            ? `AI call did not go through.${outcomeNote}${callIdNote}\n\nStatus: ${callStatus}${emailNote}`
-            : summary
-            ? `${summary}${callIdNote}\n\n(Status: ${callStatus})${emailNote}`
-            : `AI call finished.${callIdNote}\n\nStatus: ${callStatus}${emailNote}`,
+          content: taskContent,
           updated_at: new Date().toISOString(),
         })
         .eq("id", taskId);
+      if (taskUpdateErr) {
+        console.error("[Retell Agent] Failed to update task:", taskId, taskUpdateErr);
+      } else {
+        console.log("[Retell Agent] Task updated:", taskId, "→ status:", nextStatus);
+      }
+    } else {
+      console.log("[Retell Agent] No task_id linked to scheduled call:", scheduledCallId);
     }
 
     // Also annotate the call_log entry with email notification
@@ -552,15 +568,23 @@ export async function POST(request: NextRequest) {
     // call_id: the first event creates the log + task, later events only
     // enrich it (e.g. call_analyzed adds the summary). This never blocks the
     // lead flow — failures are logged and swallowed.
+    //
+    // Declare these outside the try so updateLinkedAiTask (which runs after
+    // the try/catch) can reuse them without re-parsing.
+    let turns: import("@/lib/callLog").CallTurn[] = [];
+    let transcriptText = "";
+    let summary: string | null = null;
+    let startedAt: string | null = null;
+    let patientFullName = `${firstName || "Unknown"} ${lastName || "Caller"}`.trim();
     try {
-      const turns = parseTranscriptTurns({
+      turns = parseTranscriptTurns({
         transcript_object: call.transcript_object,
         transcript: call.transcript,
       });
-      const transcriptText = call.transcript || formatTranscriptReadable(turns);
-      const summary = call.call_analysis?.call_summary || null;
-      const startedAt = call.start_timestamp ? new Date(call.start_timestamp).toISOString() : null;
-      const patientFullName = `${firstName || "Unknown"} ${lastName || "Caller"}`.trim();
+      transcriptText = call.transcript || formatTranscriptReadable(turns);
+      summary = call.call_analysis?.call_summary || null;
+      startedAt = call.start_timestamp ? new Date(call.start_timestamp).toISOString() : null;
+      patientFullName = `${firstName || "Unknown"} ${lastName || "Caller"}`.trim();
 
       // Did the agent send a WhatsApp booking link during this call? That is
       // logged separately by the in-call function webhook into
@@ -722,27 +746,12 @@ export async function POST(request: NextRequest) {
           console.error("[Retell Agent] Failed to insert call_log:", logError);
         }
 
-        // Route the post-call notification email:
-        // - Scheduled AI calls (from the AI Call button) → the initiating user,
-        //   handled inside updateLinkedAiTask.
-        // - Workflow-triggered / other non-scheduled outbound calls have no
-        //   initiating user, so they notify the clinic inbox instead.
-        // Both send on `call_analyzed` so the email includes the AI summary +
-        // full transcript, matching the call log exactly.
-        const linkedScheduledCallId = (call.metadata?.scheduled_call_id as string) || null;
-        if (linkedScheduledCallId && (payload.event === "call_ended" || payload.event === "call_analyzed")) {
-          await updateLinkedAiTask(linkedScheduledCallId, call.call_status, summary, {
-            patientName: patientFullName,
-            callId: call.call_id,
-            startedAt,
-            durationSeconds: callDuration,
-            fromNumber: call.from_number || null,
-            toNumber: call.to_number || null,
-            transcript: transcriptText,
-            turns,
-          }, call.disconnection_reason, payload.event);
-        } else if (
-          !linkedScheduledCallId &&
+        // Route the post-call notification email for workflow-triggered outbound
+        // calls (no scheduled_call_id) to the clinic inbox. Scheduled AI calls
+        // are handled by updateLinkedAiTask below (outside the try/catch).
+        const linkedScheduledCallIdInner = (call.metadata?.scheduled_call_id as string) || null;
+        if (
+          !linkedScheduledCallIdInner &&
           call.direction === "outbound" &&
           payload.event === "call_analyzed"
         ) {
@@ -773,7 +782,35 @@ export async function POST(request: NextRequest) {
         }
       }
     } catch (callLogErr) {
-      console.error("[Retell Agent] Call log / task step failed (non-fatal):", callLogErr);
+      console.error("[Retell Agent] Call log step failed:", callLogErr);
+    }
+
+    // Always update the linked AI task + send scheduler email, even if the
+    // call_log step above failed.  This runs OUTSIDE the call_log try/catch
+    // so a Supabase hiccup doesn't swallow the scheduler notification.
+    const linkedScheduledCallId = (call.metadata?.scheduled_call_id as string) || null;
+    if (linkedScheduledCallId && (payload.event === "call_ended" || payload.event === "call_analyzed")) {
+      try {
+        // Re-parse turns here in case the call_log block failed before setting them.
+        const taskTurns = turns.length > 0
+          ? turns
+          : parseTranscriptTurns({ transcript_object: call.transcript_object, transcript: call.transcript });
+        const taskTranscript = transcriptText || call.transcript || formatTranscriptReadable(taskTurns);
+        const taskSummary = summary || call.call_analysis?.call_summary || null;
+
+        await updateLinkedAiTask(linkedScheduledCallId, call.call_status, taskSummary, {
+          patientName: patientFullName,
+          callId: call.call_id,
+          startedAt,
+          durationSeconds: callDuration,
+          fromNumber: call.from_number || null,
+          toNumber: call.to_number || null,
+          transcript: taskTranscript,
+          turns: taskTurns,
+        });
+      } catch (taskErr) {
+        console.error("[Retell Agent] updateLinkedAiTask failed:", taskErr);
+      }
     }
 
     return NextResponse.json({
@@ -797,6 +834,9 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Allow up to 60s for Mailgun + Supabase calls (default Vercel timeout is 10s).
+export const maxDuration = 60;
 
 // GET for webhook verification
 export async function GET() {

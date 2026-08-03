@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { parseSwissDateTimeLocal, formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
+import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -94,44 +95,6 @@ function formatAppointmentDate(date: Date): string {
   return `${dateStr} at ${timeStr}`;
 }
 
-function generatePatientEmailHtml(
-  patientName: string,
-  appointmentDate: Date,
-  location: string | null,
-  notes: string | null
-): string {
-  const formattedDate = formatAppointmentDate(appointmentDate);
-  
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-  <div style="background: #1e293b; padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
-    <img src="https://cdn.jsdelivr.net/gh/sharyyoru/aestheticclinic@main/public/logos/aesthetics-logo.svg" alt="Aesthetics Clinic" style="height: 40px; margin-bottom: 20px; filter: brightness(0) invert(1);">
-    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">Appointment Confirmed!</h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Thank you for booking with us</p>
-  </div>
-  <div style="background: #ffffff; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
-    <p style="font-size: 16px; margin-bottom: 20px;">Dear ${patientName},</p>
-    <p style="margin-bottom: 20px;">Your appointment has been scheduled. Here are the details:</p>
-    
-    <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-      <p style="margin: 0 0 10px 0;"><strong>📅 Date & Time:</strong> ${formattedDate}</p>
-      ${location ? `<p style="margin: 0 0 10px 0;"><strong>📍 Location:</strong> ${location}</p>` : ""}
-    </div>
-    
-    <p style="margin-bottom: 20px;">If you need to reschedule or cancel, please contact us as soon as possible.</p>
-    
-    <p style="margin-bottom: 0;">Best regards,<br><strong>Your Clinic Team</strong></p>
-  </div>
-</body>
-</html>`;
-}
-
 function generateUserEmailHtml(
   userName: string,
   patientName: string,
@@ -173,46 +136,14 @@ function generateUserEmailHtml(
 </html>`;
 }
 
-function generateReminderEmailHtml(
-  recipientName: string,
-  isPatient: boolean,
+function generateProviderReminderEmailHtml(
+  userName: string,
   patientName: string,
   appointmentDate: Date,
   location: string | null
 ): string {
   const formattedDate = formatAppointmentDate(appointmentDate);
-  
-  if (isPatient) {
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-  <div style="background: #1e293b; padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
-    <img src="https://cdn.jsdelivr.net/gh/sharyyoru/aestheticclinic@main/public/logos/aesthetics-logo.svg" alt="Aesthetics Clinic" style="height: 40px; margin-bottom: 20px; filter: brightness(0) invert(1);">
-    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">⏰ Appointment Reminder</h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Don't forget your upcoming appointment</p>
-  </div>
-  <div style="background: #ffffff; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
-    <p style="font-size: 16px; margin-bottom: 20px;">Dear ${recipientName},</p>
-    <p style="margin-bottom: 20px;"><strong>This is a friendly reminder</strong> that you have an appointment scheduled for tomorrow:</p>
-    
-    <div style="background: #fffbeb; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 20px;">
-      <p style="margin: 0 0 10px 0;"><strong>📅 Date & Time:</strong> ${formattedDate}</p>
-      ${location ? `<p style="margin: 0;"><strong>📍 Location:</strong> ${location}</p>` : ""}
-    </div>
-    
-    <p style="margin-bottom: 20px;">If you need to reschedule, please contact us as soon as possible.</p>
-    
-    <p style="margin-bottom: 0;">We look forward to seeing you!<br><strong>Your Clinic Team</strong></p>
-  </div>
-</body>
-</html>`;
-  }
-  
+
   return `
 <!DOCTYPE html>
 <html>
@@ -222,14 +153,13 @@ function generateReminderEmailHtml(
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
   <div style="background: #1e293b; padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
-    <img src="https://cdn.jsdelivr.net/gh/sharyyoru/aestheticclinic@main/public/logos/aesthetics-logo.svg" alt="Aesthetics Clinic" style="height: 40px; margin-bottom: 20px; filter: brightness(0) invert(1);">
     <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">⏰ Appointment Reminder</h1>
     <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">Tomorrow's patient appointment</p>
   </div>
   <div style="background: #ffffff; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
-    <p style="font-size: 16px; margin-bottom: 20px;">Hi ${recipientName},</p>
+    <p style="font-size: 16px; margin-bottom: 20px;">Hi ${userName},</p>
     <p style="margin-bottom: 20px;"><strong>Reminder:</strong> You have an appointment scheduled for tomorrow with a patient:</p>
-    
+
     <div style="background: #fffbeb; padding: 20px; border-radius: 8px; border-left: 4px solid #f59e0b; margin-bottom: 20px;">
       <p style="margin: 0 0 10px 0;"><strong>👤 Patient:</strong> ${patientName}</p>
       <p style="margin: 0 0 10px 0;"><strong>📅 Date & Time:</strong> ${formattedDate}</p>
@@ -386,15 +316,16 @@ export async function POST(request: Request) {
     if (sendPatientEmail && patientEmail) {
       confirmationEmailPromises.push((async () => {
         try {
-          const patientEmailHtml = generatePatientEmailHtml(
+          const patientEmailHtml = generatePatientAppointmentEmailHtml({
+            type: "confirmation",
             patientName,
-            appointmentDateObj,
-            location || null,
-            notes || null
-          );
+            appointmentDate: appointmentDateObj,
+            location: location || null,
+            notes: notes || null,
+          });
           await sendEmail(
             patientEmail,
-            `Appointment Confirmed - ${formatAppointmentDate(appointmentDateObj)}`,
+            `Appointment Confirmed / Rendez-vous confirmé - ${formatAppointmentDate(appointmentDateObj)}`,
             patientEmailHtml
           );
           console.log("Patient confirmation email sent to:", patientEmail);
@@ -447,13 +378,12 @@ export async function POST(request: Request) {
           if (patientEmail) {
             reminderPromises.push((async () => {
               try {
-                const patientReminderHtml = generateReminderEmailHtml(
+                const patientReminderHtml = generatePatientAppointmentEmailHtml({
+                  type: "day_before",
                   patientName,
-                  true,
-                  patientName,
-                  appointmentDateObj,
-                  location || null
-                );
+                  appointmentDate: appointmentDateObj,
+                  location: location || null,
+                });
 
                 // Store in scheduled_emails as pending. The send-scheduled-emails
                 // cron is the single sender and validates the appointment is
@@ -466,7 +396,7 @@ export async function POST(request: Request) {
                   appointment_id: appointmentId,
                   recipient_type: "patient",
                   recipient_email: patientEmail,
-                  subject: `Reminder: Appointment Tomorrow - ${formatAppointmentDate(appointmentDateObj)}`,
+                  subject: `Appointment Reminder / Rappel de rendez-vous - ${formatAppointmentDate(appointmentDateObj)}`,
                   body: patientReminderHtml,
                   scheduled_for: reminderDate.toISOString(),
                   status: "pending",
@@ -484,9 +414,8 @@ export async function POST(request: Request) {
           if (assignedUserEmail) {
             reminderPromises.push((async () => {
               try {
-                const providerReminderHtml = generateReminderEmailHtml(
+                const providerReminderHtml = generateProviderReminderEmailHtml(
                   assignedUserName,
-                  false,
                   patientName,
                   appointmentDateObj,
                   location || null

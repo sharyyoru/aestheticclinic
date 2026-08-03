@@ -28,6 +28,7 @@ import {
   type InvoiceDiagnosis as SumexDiagnosis,
 } from "@/lib/sumexInvoice";
 import { deriveTariffType } from "@/lib/tariffType";
+import { resolveTardocTaxPoints } from "@/lib/tardocTaxPoints";
 
 type ConsultationData = {
   id: string;
@@ -312,12 +313,11 @@ export async function POST(request: NextRequest) {
       const billableLineItems = dbLineItems;
 
       // ── TARDOC tax-point backfill ─────────────────────────────────────────
-      // Some TARDOC line items were stored with tp_al=0/tp_tl=0 (the columns
-      // were not populated when the line item was created). Sumex requires the
-      // raw AL/TL tax-point counts (tp_mt/tp_tt) — it rejects dUnitMT = 0 or
-      // the CHF total.  Look up missing values from tardoc_group_items.
+      // Sumex requires the raw AL/TL tax-point counts (tp_mt/tp_tt).
+      // Catalog values are used only for missing components or legacy zeroes
+      // that conflict with a non-zero component in the tariff catalog.
       const tardocCodesNeedingLookup = billableLineItems
-        .filter((it: any) => it.tariff_code === 7 && (!(it.tp_al > 0) || !(it.tp_tl > 0)))
+        .filter((it: any) => it.tariff_code === 7)
         .map((it: any) => it.code as string)
         .filter(Boolean);
 
@@ -348,10 +348,17 @@ export async function POST(request: NextRequest) {
         // in the same session as their associated flat-rate code.
         const sessionNumber = item.session_number ?? 1;
 
-        // For TARDOC, prefer stored tp_al/tp_tl; fall back to catalog tp_mt/tp_tt
+        // For TARDOC, preserve valid zero components and resolve missing/legacy values from the catalog.
         const catalog = item.tariff_code === 7 ? tardocCatalogMap[item.code] : undefined;
-        const resolvedTpAl = (item.tp_al > 0) ? item.tp_al : (catalog?.tp_mt ?? 0);
-        const resolvedTpTl = (item.tp_tl > 0) ? item.tp_tl : (catalog?.tp_tt ?? 0);
+        const tardocTaxPoints = resolveTardocTaxPoints(
+          {
+            tpAl: item.tp_al,
+            tpTl: item.tp_tl,
+            tpAlValue: item.tp_al_value,
+            tpTlValue: item.tp_tl_value,
+          },
+          catalog ? { tpMt: catalog.tp_mt, tpTt: catalog.tp_tt } : undefined,
+        );
 
         return {
           code: item.code || "",
@@ -368,11 +375,11 @@ export async function POST(request: NextRequest) {
           sideType: item.tariff_code === 5 ? (item.side_type ?? 0) : undefined,
           sessionNumber,
           refCode: item.ref_code || undefined,
-          // Tax point fields for TARDOC — use catalog-backfilled values if stored as 0
-          tpAl: resolvedTpAl,
-          tpTl: resolvedTpTl,
-          tpAlValue: item.tp_al_value,
-          tpTlValue: item.tp_tl_value,
+          // Tax point fields for TARDOC — preserve valid zero components.
+          tpAl: tardocTaxPoints.tpAl,
+          tpTl: tardocTaxPoints.tpTl,
+          tpAlValue: tardocTaxPoints.tpAlValue,
+          tpTlValue: tardocTaxPoints.tpTlValue,
         };
       });
 
@@ -422,10 +429,16 @@ export async function POST(request: NextRequest) {
       const isTardoc = s.tariffType === "007";
       const isAcf = (s.tariffType || "590") === "005";
       const usesTaxPoints = isTardoc || isAcf;
-      const unit = usesTaxPoints && s.tpAl !== undefined && s.tpAl !== null && s.tpAl > 0 ? s.tpAl : (s.unitPrice || 0);
-      const unitFactor = usesTaxPoints && s.tpAlValue !== undefined && s.tpAlValue !== null && s.tpAlValue > 0 ? s.tpAlValue : 1;
-      const unitTT = usesTaxPoints && s.tpTl !== undefined && s.tpTl !== null && s.tpTl > 0 ? s.tpTl : undefined;
-      const unitFactorTT = usesTaxPoints && s.tpTlValue !== undefined && s.tpTlValue !== null && s.tpTlValue > 0 ? s.tpTlValue : undefined;
+      const tardocTaxPoints = resolveTardocTaxPoints({
+        tpAl: s.tpAl,
+        tpTl: s.tpTl,
+        tpAlValue: s.tpAlValue,
+        tpTlValue: s.tpTlValue,
+      });
+      const unit = isTardoc ? tardocTaxPoints.tpAl : (usesTaxPoints && s.tpAl !== undefined && s.tpAl !== null && s.tpAl > 0 ? s.tpAl : (s.unitPrice || 0));
+      const unitFactor = isTardoc ? tardocTaxPoints.tpAlValue : (usesTaxPoints && s.tpAlValue !== undefined && s.tpAlValue !== null && s.tpAlValue > 0 ? s.tpAlValue : 1);
+      const unitTT = isTardoc ? tardocTaxPoints.tpTl : (usesTaxPoints && s.tpTl !== undefined && s.tpTl !== null && s.tpTl > 0 ? s.tpTl : undefined);
+      const unitFactorTT = isTardoc ? tardocTaxPoints.tpTlValue : (usesTaxPoints && s.tpTlValue !== undefined && s.tpTlValue !== null && s.tpTlValue > 0 ? s.tpTlValue : undefined);
       return {
         tariffType: s.tariffType || "590",
         code: s.code,

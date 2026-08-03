@@ -17,6 +17,7 @@ import {
   type InvoiceDiagnosis as SumexDiagnosis,
 } from "@/lib/sumexInvoice";
 import { deriveTariffType } from "@/lib/tariffType";
+import { resolveTardocTaxPoints } from "@/lib/tardocTaxPoints";
 
 // Default QR-IBAN fallback (IID 30000-31999 required for QR type)
 const FALLBACK_QR_IBAN = "CH0930788000050249289";
@@ -233,10 +234,16 @@ export async function POST(request: NextRequest) {
       // This correctly separates tax points from point value (Taxpunktwert)
       const isTardoc = tariffType === "007";
       const usesTaxPoints = isTardoc || isAcf;
-      const unit = usesTaxPoints && item.tp_al !== undefined && item.tp_al !== null && item.tp_al > 0 ? item.tp_al : (item.unit_price || 0);
-      const unitFactor = usesTaxPoints && item.tp_al_value !== undefined && item.tp_al_value !== null && item.tp_al_value > 0 ? item.tp_al_value : 1;
-      const unitTT = usesTaxPoints && item.tp_tl !== undefined && item.tp_tl !== null && item.tp_tl > 0 ? item.tp_tl : undefined;
-      const unitFactorTT = usesTaxPoints && item.tp_tl_value !== undefined && item.tp_tl_value !== null && item.tp_tl_value > 0 ? item.tp_tl_value : undefined;
+      const tardocTaxPoints = resolveTardocTaxPoints({
+        tpAl: item.tp_al,
+        tpTl: item.tp_tl,
+        tpAlValue: item.tp_al_value,
+        tpTlValue: item.tp_tl_value,
+      });
+      const unit = isTardoc ? tardocTaxPoints.tpAl : (usesTaxPoints && item.tp_al !== undefined && item.tp_al !== null && item.tp_al > 0 ? item.tp_al : (item.unit_price || 0));
+      const unitFactor = isTardoc ? tardocTaxPoints.tpAlValue : (usesTaxPoints && item.tp_al_value !== undefined && item.tp_al_value !== null && item.tp_al_value > 0 ? item.tp_al_value : 1);
+      const unitTT = isTardoc ? tardocTaxPoints.tpTl : (usesTaxPoints && item.tp_tl !== undefined && item.tp_tl !== null && item.tp_tl > 0 ? item.tp_tl : undefined);
+      const unitFactorTT = isTardoc ? tardocTaxPoints.tpTlValue : (usesTaxPoints && item.tp_tl_value !== undefined && item.tp_tl_value !== null && item.tp_tl_value > 0 ? item.tp_tl_value : undefined);
 
       // Use the session number stored on the line. The frontend now assigns
       // distinct sessions to distinct ACF flat-rate codes and keeps TMA

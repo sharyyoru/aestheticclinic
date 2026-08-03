@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { MediDataClient } from "@/lib/medidataClient";
+import { getUploadStatus } from "@/lib/medidataProxy";
+import { mapUploadStatusToSubmissionStatus } from "@/lib/medidataResponseParser";
 
-type MediDataConfigRow = {
-  medidata_endpoint_url: string | null;
-  medidata_client_id: string | null;
-  medidata_username: string | null;
-  medidata_password_encrypted: string | null;
-  is_test_mode: boolean;
-};
+// This route talks to MediData via the AWS proxy (geoblocking bypass).
+// The old implementation used MediDataClient directly, which only works from
+// inside the MediData Box / EU network — in production (Vercel, non-EU) it
+// silently failed. The proxy is the only working path.
 
 /**
  * GET /api/medidata/status?submissionId=xxx
- * Poll the status of a MediData submission
+ * Poll the upload status of a MediData submission via the proxy.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +20,7 @@ export async function GET(request: NextRequest) {
     if (!submissionId) {
       return NextResponse.json(
         { error: "submissionId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -36,7 +34,7 @@ export async function GET(request: NextRequest) {
     if (subError || !submission) {
       return NextResponse.json(
         { error: "Submission not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -51,48 +49,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get MediData config
-    const { data: configData } = await supabaseAdmin
-      .from("medidata_config")
-      .select("medidata_endpoint_url, medidata_client_id, medidata_username, medidata_password_encrypted, is_test_mode")
-      .limit(1)
-      .single();
+    // Poll upload status via the proxy
+    const statusResult = await getUploadStatus(submission.medidata_message_id);
+    const rawData = statusResult.rawResponse as any;
+    const medidataStatus = rawData?.data?.status;
+    const errorReason = rawData?.data?.errorReason;
+    const created = rawData?.data?.created;
 
-    const config = configData as MediDataConfigRow | null;
-
-    if (!config?.medidata_endpoint_url || !config?.medidata_client_id || 
-        !config?.medidata_username || !config?.medidata_password_encrypted) {
-      return NextResponse.json({
-        submissionId,
-        status: submission.status,
-        statusMessage: "MediData not configured - cannot poll status",
-        lastChecked: null,
-        history: [],
-      });
-    }
-
-    // Create MediData client and poll status
-    const medidataClient = new MediDataClient({
-      baseUrl: config.medidata_endpoint_url,
-      clientId: config.medidata_client_id,
-      username: config.medidata_username,
-      password: config.medidata_password_encrypted,
-      isTestMode: config.is_test_mode,
-    });
-
-    const statusResult = await medidataClient.getTransmissionStatus(submission.medidata_message_id);
-
-    // Map MediData status to our status
-    let newStatus = submission.status;
-    if (statusResult.status === "transmitted") {
-      newStatus = "transmitted";
-    } else if (statusResult.status === "delivered") {
-      newStatus = "delivered";
-    } else if (statusResult.status === "accepted") {
-      newStatus = "accepted";
-    } else if (statusResult.status === "rejected") {
-      newStatus = "rejected";
-    }
+    const newStatus = mapUploadStatusToSubmissionStatus(
+      medidataStatus,
+      submission.status,
+      created,
+    );
 
     // Update status if changed
     if (newStatus !== submission.status) {
@@ -100,20 +68,19 @@ export async function GET(request: NextRequest) {
         .from("medidata_submissions")
         .update({
           status: newStatus,
-          medidata_response_code: statusResult.statusCode,
-          medidata_response_message: statusResult.statusMessage,
+          medidata_response_code: medidataStatus || null,
+          medidata_response_message: errorReason || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", submissionId);
 
-      // Record status change in history
       await supabaseAdmin.from("medidata_submission_history").insert({
         submission_id: submissionId,
         previous_status: submission.status,
         new_status: newStatus,
-        response_code: statusResult.statusCode,
+        response_code: medidataStatus || null,
         changed_by: null,
-        notes: statusResult.statusMessage || `Status updated to ${newStatus}`,
+        notes: errorReason || `Upload status: ${medidataStatus}`,
       });
     }
 
@@ -129,8 +96,8 @@ export async function GET(request: NextRequest) {
       submissionId,
       messageId: submission.medidata_message_id,
       status: newStatus,
-      statusCode: statusResult.statusCode,
-      statusMessage: statusResult.statusMessage,
+      statusCode: medidataStatus || null,
+      statusMessage: errorReason || null,
       lastChecked: new Date().toISOString(),
       history: history || [],
     });
@@ -138,14 +105,14 @@ export async function GET(request: NextRequest) {
     console.error("Error polling MediData status:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 /**
  * POST /api/medidata/status
- * Manually trigger status refresh for multiple submissions
+ * Manually trigger upload status refresh for multiple submissions.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -155,43 +122,17 @@ export async function POST(request: NextRequest) {
     if (!submissionIds || !Array.isArray(submissionIds) || submissionIds.length === 0) {
       return NextResponse.json(
         { error: "submissionIds array is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Limit batch size
     const idsToProcess = submissionIds.slice(0, 20);
 
-    // Get MediData config
-    const { data: configData } = await supabaseAdmin
-      .from("medidata_config")
-      .select("medidata_endpoint_url, medidata_client_id, medidata_username, medidata_password_encrypted, is_test_mode")
-      .limit(1)
-      .single();
-
-    const config = configData as MediDataConfigRow | null;
-
-    if (!config?.medidata_endpoint_url || !config?.medidata_client_id || 
-        !config?.medidata_username || !config?.medidata_password_encrypted) {
-      return NextResponse.json(
-        { error: "MediData not configured" },
-        { status: 400 }
-      );
-    }
-
-    // Create MediData client
-    const medidataClient = new MediDataClient({
-      baseUrl: config.medidata_endpoint_url,
-      clientId: config.medidata_client_id,
-      username: config.medidata_username,
-      password: config.medidata_password_encrypted,
-      isTestMode: config.is_test_mode,
-    });
-
     // Get submissions
     const { data: submissions } = await supabaseAdmin
       .from("medidata_submissions")
-      .select("id, medidata_message_id, status")
+      .select("id, medidata_message_id, status, created_at")
       .in("id", idsToProcess)
       .not("medidata_message_id", "is", null);
 
@@ -206,13 +147,17 @@ export async function POST(request: NextRequest) {
       if (!sub.medidata_message_id) continue;
 
       try {
-        const statusResult = await medidataClient.getTransmissionStatus(sub.medidata_message_id);
+        const statusResult = await getUploadStatus(sub.medidata_message_id);
+        const rawData = statusResult.rawResponse as any;
+        const medidataStatus = rawData?.data?.status;
+        const errorReason = rawData?.data?.errorReason;
+        const created = rawData?.data?.created || sub.created_at;
 
-        let newStatus = sub.status;
-        if (statusResult.status === "transmitted") newStatus = "transmitted";
-        else if (statusResult.status === "delivered") newStatus = "delivered";
-        else if (statusResult.status === "accepted") newStatus = "accepted";
-        else if (statusResult.status === "rejected") newStatus = "rejected";
+        const newStatus = mapUploadStatusToSubmissionStatus(
+          medidataStatus,
+          sub.status,
+          created,
+        );
 
         const updated = newStatus !== sub.status;
 
@@ -221,8 +166,8 @@ export async function POST(request: NextRequest) {
             .from("medidata_submissions")
             .update({
               status: newStatus,
-              medidata_response_code: statusResult.statusCode,
-              medidata_response_message: statusResult.statusMessage,
+              medidata_response_code: medidataStatus || null,
+              medidata_response_message: errorReason || null,
               updated_at: new Date().toISOString(),
             })
             .eq("id", sub.id);
@@ -231,9 +176,9 @@ export async function POST(request: NextRequest) {
             submission_id: sub.id,
             previous_status: sub.status,
             new_status: newStatus,
-            response_code: statusResult.statusCode,
+            response_code: medidataStatus || null,
             changed_by: null,
-            notes: `Batch status update: ${statusResult.statusMessage || newStatus}`,
+            notes: `Batch status update: ${errorReason || medidataStatus || newStatus}`,
           });
         }
 
@@ -264,7 +209,7 @@ export async function POST(request: NextRequest) {
     console.error("Error in batch status poll:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

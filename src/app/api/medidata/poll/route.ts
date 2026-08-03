@@ -8,6 +8,12 @@ import {
   confirmNotification,
   getUploadStatus,
 } from "@/lib/medidataProxy";
+import { parseResponseXml } from "@/lib/medidataResponseParser";
+
+// Vercel Pro supports up to 300s. The poll does many sequential proxy→MediData
+// HTTP calls (status checks + downloads + notifications); without this it times
+// out at 60s and responses are never fetched from MediData (lost forever).
+export const maxDuration = 300;
 
 /**
  * POST /api/medidata/poll
@@ -18,6 +24,8 @@ import {
  * - Store everything locally for audit trail
  * - Confirm receipt on MediData so messages are cleared
  * - Poll every 30 minutes in production (per MediData best practice docs)
+ *   (We poll hourly via Vercel cron — the minimum interval on Pro tier.
+ *    For true 30-min polling, use an external cron service.)
  */
 export async function POST() {
   try {
@@ -157,7 +165,7 @@ export async function POST() {
           .select("id")
           .eq("medidata_message_id", ref)
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (existing) {
           // Already processed — skip
@@ -180,27 +188,27 @@ export async function POST() {
         const isCopyResponse = /request_subtype\s*=\s*["']copy["']/i.test(content);
 
         // Try to find the related submission.
-        // CRITICAL: Match by transmission reference FIRST (unique per upload),
-        // then fall back to invoice_number only if transmission ref not found.
-        // This prevents multiple responses for the same invoice from all going to the latest submission.
+        //
+        // IMPORTANT: MediData's download object has its OWN transmissionReference
+        // (a new UUID for the response document) — it is NOT the same as the
+        // upload's transmissionReference that we stored in
+        // medidata_submissions.medidata_message_id. Matching by it never works.
+        //
+        // The correct link is the download's `correlationReference`, which
+        // echoes the `request_id` attribute from the invoice XML payload.
+        // In our case request_id = invoice_number (set in send-invoice route
+        // via SumexInvoiceInput.invoiceId). So the primary match is:
+        //     submission.invoice_number = download.correlationReference
+        //
+        // Some real insurers return a MediData-internal numeric document ID as
+        // `correlationReference` instead of echoing request_id. In that case we
+        // parse the response XML and extract request_id directly as a fallback.
         const corrRef = (dl as any).correlationReference || (dl as any).documentReference || "";
-        const transmissionRef = ref; // The download's transmissionReference is the unique upload ID
         let submissionId: string | null = null;
         let matchedSub: { id: string; status: string; is_storno?: boolean | null; parent_submission_id?: string | null } | null = null;
 
-        // First try matching by transmission reference (most reliable - unique per upload)
-        const { data: subByRef } = await supabaseAdmin
-          .from("medidata_submissions")
-          .select("id, status, is_storno, parent_submission_id")
-          .eq("medidata_message_id", transmissionRef)
-          .limit(1)
-          .single();
-
-        if (subByRef) {
-          matchedSub = subByRef;
-        } else if (corrRef) {
-          // Fall back to matching by invoice_number (correlation reference)
-          // Only use this if transmission ref didn't match
+        // Primary match: invoice_number = correlationReference
+        if (corrRef) {
           const { data: subByInv } = await supabaseAdmin
             .from("medidata_submissions")
             .select("id, status, is_storno, parent_submission_id")
@@ -208,10 +216,35 @@ export async function POST() {
             .not("medidata_message_id", "is", null)
             .order("created_at", { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           if (subByInv) {
             matchedSub = subByInv;
+          }
+        }
+
+        // Fallback: extract request_id from the response XML and match by it.
+        // Real insurers sometimes send a numeric doc ID as correlationReference
+        // instead of echoing our request_id. The response XML always contains
+        // <invoice:invoice request_id="..."/> which is what we sent.
+        if (!matchedSub) {
+          const requestIdMatch = content.match(/request_id\s*=\s*["']([^"']+)["']/i);
+          if (requestIdMatch && requestIdMatch[1]) {
+            const xmlRequestId = requestIdMatch[1];
+            if (xmlRequestId !== corrRef) {
+              const { data: subByXmlId } = await supabaseAdmin
+                .from("medidata_submissions")
+                .select("id, status, is_storno, parent_submission_id")
+                .eq("invoice_number", xmlRequestId)
+                .not("medidata_message_id", "is", null)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (subByXmlId) {
+                matchedSub = subByXmlId;
+              }
+            }
           }
         }
 
@@ -352,11 +385,15 @@ export async function POST() {
           .select("id")
           .eq("medidata_notification_id", notifId)
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (existing) continue;
 
-        // Find related submission
+        // Find related submission.
+        // Notifications reference the UPLOAD's transmissionReference (the UUID
+        // we stored in medidata_submissions.medidata_message_id), so matching
+        // by it is correct here — unlike downloads, which have their own new
+        // transmissionReference for the response document.
         let submissionId: string | null = null;
         let matchedNotifSub: { id: string; status: string; is_storno: boolean | null; parent_submission_id: string | null } | null = null;
         if (n.transmissionReference) {
@@ -365,7 +402,7 @@ export async function POST() {
             .select("id, status, is_storno, parent_submission_id")
             .eq("medidata_message_id", n.transmissionReference)
             .limit(1)
-            .single();
+            .maybeSingle();
           if (sub) {
             submissionId = sub.id;
             matchedNotifSub = sub as any;
@@ -472,46 +509,3 @@ export async function POST() {
   }
 }
 
-/**
- * Parse insurer response XML to extract type and explanation.
- */
-function parseResponseXml(content: string): {
-  type: string;
-  statusIn: string;
-  statusOut: string;
-  explanation: string;
-} {
-  let type = "unknown";
-  let statusIn = "";
-  let statusOut = "";
-  let explanation = "";
-
-  // Check for accepted/rejected/pending
-  const acceptedMatch = content.match(/status_in="([^"]*)"[^>]*status_out="([^"]*)"/);
-  if (acceptedMatch) {
-    statusIn = acceptedMatch[1];
-    statusOut = acceptedMatch[2];
-  }
-
-  if (content.includes("<invoice:accepted") || content.includes("status_out=\"granted\"")) {
-    type = "accepted";
-  } else if (content.includes("<invoice:rejected") || content.includes("status_out=\"refused\"")) {
-    type = "rejected";
-  } else if (content.includes("<invoice:pending") || content.includes("status_out=\"pending\"")) {
-    type = "pending";
-  }
-
-  // Extract explanation
-  const explMatch = content.match(/<invoice:explanation>([^<]+)<\/invoice:explanation>/);
-  if (explMatch) {
-    explanation = explMatch[1];
-  }
-
-  // Also check for text in status/reason elements
-  if (!explanation) {
-    const textMatch = content.match(/<invoice:text>([^<]+)<\/invoice:text>/);
-    if (textMatch) explanation = textMatch[1];
-  }
-
-  return { type, statusIn, statusOut, explanation };
-}

@@ -3,6 +3,9 @@ import { POST as pollMediData } from "@/app/api/medidata/poll/route";
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
+// Match the underlying poll route's max duration (300s on Vercel Pro).
+export const maxDuration = 300;
+
 async function run(request: Request) {
   const authHeader = request.headers.get("authorization");
   const vercelCronHeader = request.headers.get("x-vercel-cron");

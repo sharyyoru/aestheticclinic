@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
 import { reminderSuppressionReason } from "@/lib/appointmentComms";
 import { logEmailSent } from "@/lib/logEmail";
+import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -87,65 +88,19 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
   }
 }
 
-function generateReminderEmailHtml(
-  patientName: string,
-  appointmentDate: Date,
-  location: string | null,
-  doctorName: string | null,
-  reminderType: "day_before" | "booking_confirmation"
-): string {
-  const dateStr = formatSwissDateWithWeekday(appointmentDate);
-  const timeStr = formatSwissTimeAmPm(appointmentDate);
-  
-  const headerText = reminderType === "day_before" 
-    ? "⏰ Appointment Reminder" 
-    : "✓ Booking Confirmation";
-  const subText = reminderType === "day_before"
-    ? "Your appointment is tomorrow!"
-    : "Your appointment has been booked";
-  const bodyText = reminderType === "day_before"
-    ? "This is a friendly reminder that you have an appointment scheduled for <strong>tomorrow</strong>:"
-    : "Thank you for booking with us! Here are your appointment details:";
-
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
-  <div style="background: #1e293b; padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">${headerText}</h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 16px;">${subText}</p>
-  </div>
-  <div style="background: #ffffff; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
-    <p style="font-size: 16px; margin-bottom: 20px;">Dear ${patientName},</p>
-    <p style="margin-bottom: 20px;">${bodyText}</p>
-    
-    <div style="background: ${reminderType === "day_before" ? "#fffbeb" : "#f0fdf4"}; padding: 20px; border-radius: 8px; border-left: 4px solid ${reminderType === "day_before" ? "#f59e0b" : "#22c55e"}; margin-bottom: 20px;">
-      <p style="margin: 0 0 10px 0;"><strong>📅 Date:</strong> ${dateStr}</p>
-      <p style="margin: 0 0 10px 0;"><strong>🕐 Time:</strong> ${timeStr}</p>
-      ${doctorName ? `<p style="margin: 0 0 10px 0;"><strong>👨‍⚕️ Doctor:</strong> ${doctorName}</p>` : ""}
-      ${location ? `<p style="margin: 0;"><strong>📍 Location:</strong> ${location}</p>` : ""}
-    </div>
-    
-    <p style="margin-bottom: 20px;">If you need to reschedule or cancel, please contact us:</p>
-    <p style="margin-bottom: 0;">
-      📞 +41 22 732 22 23<br>
-      📧 info@aesthetics-ge.ch<br><br>
-      <strong>Aesthetics Clinic</strong>
-    </p>
-  </div>
-</body>
-</html>`;
-}
-
 function extractDoctorName(reason: string | null): string | null {
   if (!reason) return null;
   const match = reason.match(/\[Doctor:\s*(.+?)\s*\]/i);
   return match ? match[1] : null;
 }
+
+type ReminderPatient = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+};
 
 export async function GET(request: Request) {
   // Verify authorization
@@ -206,7 +161,7 @@ export async function GET(request: Request) {
           continue;
         }
 
-        const patient = appt.patient as any;
+        const patient = appt.patient as unknown as ReminderPatient | undefined;
         if (!patient) continue;
 
         const patientName = [patient.first_name, patient.last_name].filter(Boolean).join(" ") || "Patient";
@@ -246,16 +201,18 @@ We look forward to seeing you!`;
 
         // Send email as backup/copy
         if (patientEmail && patientEmail.trim().length > 0) {
-          const emailHtml = generateReminderEmailHtml(
+          const emailHtml = generatePatientAppointmentEmailHtml({
+            type: "day_before",
             patientName,
             appointmentDate,
             location,
             doctorName,
-            "day_before"
-          );
+            contactPhone: "+41 22 732 22 23",
+            contactEmail: mailgunFromEmail,
+          });
           emailSent = await sendEmail(
             patientEmail,
-            `⏰ Appointment Reminder - Tomorrow ${timeStr}`,
+            `Appointment Reminder / Rappel de rendez-vous - Tomorrow ${timeStr}`,
             emailHtml
           );
           if (emailSent) results.dayBefore.email++;
@@ -304,7 +261,7 @@ We look forward to seeing you!`;
           continue;
         }
 
-        const patient = appt.patient as any;
+        const patient = appt.patient as unknown as ReminderPatient | undefined;
         if (!patient) continue;
 
         const patientName = [patient.first_name, patient.last_name].filter(Boolean).join(" ") || "Patient";
@@ -346,16 +303,18 @@ Thank you for choosing Aesthetics Clinic!`;
 
         // Send email as backup/copy
         if (patientEmail && patientEmail.trim().length > 0) {
-          const emailHtml = generateReminderEmailHtml(
+          const emailHtml = generatePatientAppointmentEmailHtml({
+            type: "confirmation",
             patientName,
             appointmentDate,
             location,
             doctorName,
-            "booking_confirmation"
-          );
+            contactPhone: "+41 22 732 22 23",
+            contactEmail: mailgunFromEmail,
+          });
           emailSent = await sendEmail(
             patientEmail,
-            `✓ Booking Confirmed - ${dateStr} at ${timeStr}`,
+            `Booking Confirmed / Réservation confirmée - ${dateStr} at ${timeStr}`,
             emailHtml
           );
           if (emailSent) results.bookingConfirm.email++;

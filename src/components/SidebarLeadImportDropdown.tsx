@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 
 export default function SidebarLeadImportDropdown() {
   const pathname = usePathname();
-  const isActive = pathname?.startsWith("/lead-import");
+  const isActive = pathname?.startsWith("/lead-import") || pathname === "/lead-analytics";
   const [isOpen, setIsOpen] = useState(isActive);
 
   return (
@@ -93,6 +93,14 @@ export default function SidebarLeadImportDropdown() {
             }`}
           >
             Embed Forms
+          </Link>
+          <Link
+            href="/lead-analytics"
+            className={`block py-1.5 pl-3 text-xs hover:text-sky-600 ${
+              pathname === "/lead-analytics" ? "text-sky-600 font-medium" : "text-slate-500"
+            }`}
+          >
+            Lead Analytics
           </Link>
         </div>
       )}
