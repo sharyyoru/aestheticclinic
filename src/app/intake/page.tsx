@@ -229,24 +229,7 @@ export default function IntakePage() {
         .maybeSingle();
 
       if (patient) {
-        // Patient exists - create submission and go to steps
-        const { data: submission, error: subError } = await supabaseClient
-          .from("patient_intake_submissions")
-          .insert({
-            patient_id: patient.id,
-            status: "in_progress",
-            current_step: 1,
-          })
-          .select("id")
-          .single();
-
-        if (subError) throw subError;
-
-        // Push rich GTM conversion event (auto-captures utm/gclid attribution)
-        trackLeadConversion({ formType: "intake" });
-        
-        // Redirect to steps with submission ID and language
-        router.push(`/intake/steps?sid=${submission?.id}&pid=${patient.id}&lang=${language}`);
+        await beginIntake(patient.id);
       } else {
         // Patient doesn't exist - show registration form
         setRegEmail(email.trim());
@@ -257,6 +240,19 @@ export default function IntakePage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function beginIntake(patientId: string) {
+    const { data: submission, error: subError } = await supabaseClient
+      .from("patient_intake_submissions")
+      .insert({ patient_id: patientId, status: "in_progress", current_step: 1 })
+      .select("id")
+      .single();
+
+    if (subError) throw subError;
+
+    trackLeadConversion({ formType: "intake" });
+    router.push(`/intake/steps?sid=${submission.id}&pid=${patientId}&lang=${language}`);
   }
 
   async function handleRegister(e: React.FormEvent) {
@@ -272,6 +268,7 @@ export default function IntakePage() {
 
     try {
       const normalizedEmail = regEmail.trim().toLowerCase();
+      const normalizedPhone = `${countryCode}${phone.trim().replace(/\D/g, "").replace(/^0+/, "")}`;
 
       const { data: existingPatient, error: existingPatientError } = await supabaseClient
         .from("patients")
@@ -282,10 +279,29 @@ export default function IntakePage() {
       if (existingPatientError) throw existingPatientError;
 
       if (existingPatient) {
-        setEmail(normalizedEmail);
-        setRegEmail(normalizedEmail);
-        setView("search");
+        await beginIntake(existingPatient.id);
         return;
+      }
+
+      // Returning patients sometimes use a different email address. Match the
+      // last nine significant phone digits before creating a duplicate record.
+      const phoneKey = normalizedPhone.replace(/\D/g, "").slice(-9);
+      if (phoneKey.length === 9) {
+        const { data: phoneCandidates, error: phoneLookupError } = await supabaseClient
+          .from("patients")
+          .select("id, phone")
+          .not("phone", "is", null)
+          .ilike("phone", `%${phoneKey}%`);
+
+        if (phoneLookupError) throw phoneLookupError;
+
+        const phoneMatch = (phoneCandidates || []).find(
+          (candidate) => candidate.phone?.replace(/\D/g, "").slice(-9) === phoneKey
+        );
+        if (phoneMatch) {
+          await beginIntake(phoneMatch.id);
+          return;
+        }
       }
 
       // Check if selected country is WhatsApp-eligible
@@ -299,10 +315,11 @@ export default function IntakePage() {
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           email: normalizedEmail,
-          phone: `${countryCode}${phone.trim().replace(/^0+/, "")}`,
+          phone: normalizedPhone,
           country_code: countryCode,
           whatsapp_opt_in: isWhatsAppEligible,
           source: "intake_form",
+          lifecycle_stage: "new_patient",
         })
         .select("id")
         .single();
@@ -331,6 +348,7 @@ export default function IntakePage() {
           body: JSON.stringify({
             patient_id: newPatient?.id,
             form_type: "intake_form",
+            skip_deal_creation: true,
           }),
         });
       } catch {
@@ -420,6 +438,7 @@ export default function IntakePage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={t.enterEmail}
+                  data-show-placeholder="true"
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                   disabled={loading}
                 />
@@ -461,6 +480,7 @@ export default function IntakePage() {
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder={t.firstName}
+                data-show-placeholder="true"
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
@@ -470,6 +490,7 @@ export default function IntakePage() {
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder={t.lastName}
+                data-show-placeholder="true"
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
@@ -492,6 +513,7 @@ export default function IntakePage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder={t.mobile}
+                  data-show-placeholder="true"
                   className="flex-1 px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                   disabled={loading}
                 />
@@ -502,6 +524,7 @@ export default function IntakePage() {
                 value={regEmail}
                 onChange={(e) => setRegEmail(e.target.value)}
                 placeholder={t.email}
+                data-show-placeholder="true"
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-black placeholder:text-slate-400 focus:border-black focus:outline-none focus:ring-2 focus:ring-slate-200"
                 disabled={loading}
               />
