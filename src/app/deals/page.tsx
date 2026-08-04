@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
@@ -272,7 +272,10 @@ export default function DealsPage() {
           supabaseClient
             .from("deals")
             .select(
-              "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, notes, owner_id, owner_name, created_at, updated_at, patient:patients(id, first_name, last_name), service:services(id, name, base_price)",
+              // Keep this query flat. The nested patient/service embed makes
+              // PostgREST build a large join and hits the database statement
+              // timeout once the clinic has a large deal history.
+              "id, patient_id, stage_id, service_id, pipeline, contact_label, location, title, value, owner_id, owner_name, created_at, updated_at",
             )
             .order("created_at", { ascending: false }),
         ]);
@@ -295,12 +298,64 @@ export default function DealsPage() {
           return;
         }
 
-        // Fetch appointments for patients to link to deals in "Appointment Set" stage.
-        // Chunk the id list so the request URL stays within server limits.
-        const patientIds = [...new Set((dealsData as unknown as DealRow[]).map(d => d.patient_id))]
+        const rawDeals = dealsData as unknown as Array<Omit<DealRow, "patient" | "service" | "appointment">>;
+
+        // Resolve related records separately. Indexed id lookups avoid the
+        // expensive nested join used by the original query while preserving
+        // the same shape for the rest of the page.
+        const patientIds = [...new Set(rawDeals.map((deal) => deal.patient_id))]
           .filter((id): id is string => Boolean(id));
+        const serviceIds = [...new Set(rawDeals.map((deal) => deal.service_id))]
+          .filter((id): id is string => Boolean(id));
+
+        const [patientChunks, serviceChunks] = await Promise.all([
+          Promise.all(
+            chunkArray(patientIds, IN_FILTER_CHUNK_SIZE).map(async (ids) => {
+              const { data } = await supabaseClient
+                .from("patients")
+                .select("id, first_name, last_name")
+                .in("id", ids);
+              return data ?? [];
+            }),
+          ),
+          Promise.all(
+            chunkArray(serviceIds, IN_FILTER_CHUNK_SIZE).map(async (ids) => {
+              const { data } = await supabaseClient
+                .from("services")
+                .select("id, name, base_price")
+                .in("id", ids);
+              return data ?? [];
+            }),
+          ),
+        ]);
+
+        const patientsById = new Map(
+          patientChunks.flat().map((patient) => [patient.id, patient as DealPatient]),
+        );
+        const servicesById = new Map(
+          serviceChunks.flat().map((service) => [service.id, service as DealService]),
+        );
+
+        const dealsWithRelations = rawDeals.map((deal) => ({
+          ...deal,
+          notes: null,
+          patient: patientsById.get(deal.patient_id) ?? null,
+          service: deal.service_id ? servicesById.get(deal.service_id) ?? null : null,
+        })) as DealRow[];
+
+        // Fetch appointments only for deals in appointment-related stages.
+        // Looking up every deal's patient caused a large, unnecessary query.
+        const appointmentStages = stagesData?.filter(
+          (s: DealStage) => s.name.toLowerCase().includes("appointment set") || s.name.toLowerCase().includes("operation scheduled")
+        ) || [];
+        const appointmentStageIds = new Set(appointmentStages.map((s: DealStage) => s.id));
+        const appointmentPatientIds = [...new Set(
+          rawDeals
+            .filter((deal) => appointmentStageIds.has(deal.stage_id))
+            .map((deal) => deal.patient_id),
+        )].filter((id): id is string => Boolean(id));
         const appointmentChunks = await Promise.all(
-          chunkArray(patientIds, IN_FILTER_CHUNK_SIZE).map((ids) =>
+          chunkArray(appointmentPatientIds, IN_FILTER_CHUNK_SIZE).map((ids) =>
             supabaseClient
               .from("appointments")
               .select("id, patient_id, start_time, end_time, status, reason, location")
@@ -321,12 +376,8 @@ export default function DealsPage() {
           }
         }
 
-        // Attach appointments to deals in "Appointment Set" or "Operation Scheduled" stages
-        const appointmentStages = stagesData?.filter(
-          (s: DealStage) => s.name.toLowerCase().includes("appointment set") || s.name.toLowerCase().includes("operation scheduled")
-        ) || [];
-        const appointmentStageIds = new Set(appointmentStages.map((s: DealStage) => s.id));
-        const dealsWithAppointments = (dealsData as unknown as DealRow[]).map(deal => {
+        // Attach appointments to deals in "Appointment Set" or "Operation Scheduled" stages.
+        const dealsWithAppointments = dealsWithRelations.map(deal => {
           if (appointmentStageIds.has(deal.stage_id)) {
             return { ...deal, appointment: appointmentsByPatient[deal.patient_id] || null };
           }
@@ -334,34 +385,44 @@ export default function DealsPage() {
         });
 
         setDeals(dealsWithAppointments);
+        // The deals list is ready now. Invoice status is supplementary and
+        // should not keep the whole page in a loading state.
+        setLoading(false);
 
-        // Fetch invoiced deals (consultations with invoice data).
-        // Chunk the id list so the request URL stays within server limits.
-        const dealIds = dealsWithAppointments.map(d => d.id);
-        if (dealIds.length > 0) {
-          const consultationChunks = await Promise.all(
-            chunkArray(dealIds, IN_FILTER_CHUNK_SIZE).map((ids) =>
-              supabaseClient
-                .from("consultations")
-                .select("id, deal_id")
-                .in("deal_id", ids)
-                .not("invoice_total_amount", "is", null)
-                .then((res) => res.data ?? []),
-            ),
-          );
-          const consultationsData = consultationChunks.flat();
-
-          if (consultationsData.length > 0) {
-            const invoicedIds = new Set(
-              consultationsData
-                .map(c => c.deal_id)
-                .filter((id): id is string => id !== null)
+        // Fetch invoiced patients (consultations are linked to patients in this
+        // schema, not directly to deals) and mark their deals as invoiced.
+        if (patientIds.length > 0) {
+          try {
+            const consultationChunks = await Promise.all(
+              chunkArray(patientIds, IN_FILTER_CHUNK_SIZE).map((ids) =>
+                supabaseClient
+                  .from("consultations")
+                  .select("id, patient_id")
+                  .in("patient_id", ids)
+                  .not("invoice_total_amount", "is", null)
+                  .then((res) => res.data ?? []),
+              ),
             );
-            setInvoicedDealIds(invoicedIds);
+            const consultationsData = consultationChunks.flat();
+
+            if (isMounted && consultationsData.length > 0) {
+              const invoicedIds = new Set(
+                consultationsData
+                  .map((consultation) => consultation.patient_id)
+                  .filter((id): id is string => id !== null)
+                  .flatMap((patientId) =>
+                    dealsWithAppointments
+                      .filter((deal) => deal.patient_id === patientId)
+                      .map((deal) => deal.id),
+                  ),
+              );
+              setInvoicedDealIds(invoicedIds);
+            }
+          } catch {
+            // Invoice status is optional; keep the loaded deals visible if
+            // this supplementary lookup is unavailable.
           }
         }
-
-        setLoading(false);
       } catch {
         if (!isMounted) return;
         setError("Failed to load deals.");
@@ -535,7 +596,7 @@ export default function DealsPage() {
   const boardScrollRef = useRef<HTMLDivElement | null>(null);
   const boardContentRef = useRef<HTMLDivElement | null>(null);
 
-  function handleBoardDragOver(event: any) {
+  function handleBoardDragOver(event: ReactDragEvent<HTMLDivElement>) {
     if (!dragDealId) return;
 
     const container = boardScrollRef.current;
