@@ -99,6 +99,7 @@ function SearchableSelect({
             setQuery("");
           }}
           placeholder={value === "all" || !value ? placeholder : ""}
+          data-show-placeholder="true"
           className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 pr-7 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
         />
         {value && value !== "all" && (
@@ -858,6 +859,7 @@ export default function DealsPage() {
                     value={dealOwnerSearch}
                     onChange={(event) => handleDealOwnerSearchChange(event.target.value)}
                     placeholder="Deal Owner..."
+                    data-show-placeholder="true"
                     className="w-48 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 pr-7 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                   {dealOwnerFilter && (
@@ -906,6 +908,7 @@ export default function DealsPage() {
                   value={patientSearch}
                   onChange={(event) => setPatientSearch(event.target.value)}
                   placeholder="Search patient..."
+                  data-show-placeholder="true"
                   className="w-48 rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
 
@@ -950,6 +953,7 @@ export default function DealsPage() {
                       value={searchQuery}
                       onChange={(event) => setSearchQuery(event.target.value)}
                       placeholder="Search by deal, patient, pipeline, or service"
+                      data-show-placeholder="true"
                       className="w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                   </div>

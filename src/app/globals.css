@@ -4,8 +4,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Hide all input/textarea placeholders when .hide-placeholders is on <html> */
-html.hide-placeholders input::placeholder,
-html.hide-placeholders textarea::placeholder {
+html.hide-placeholders input:not([data-show-placeholder])::placeholder,
+html.hide-placeholders textarea:not([data-show-placeholder])::placeholder {
   color: transparent !important;
 }
 
