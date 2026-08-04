@@ -65,6 +65,13 @@ const DOCTORS: Record<string, {
     email: "sofien.seneina@aesthetics-ge.ch",
     description: "Registered nurse specializing in IV drip therapy and wellness treatments.",
   },
+  "ekaterina": {
+    name: "Ekaterina",
+    specialty: "Aesthetic Nurse | PRP & Skin Rejuvenation Specialist",
+    image: "/doctors/ekaterina.jpg",
+    email: "ekaterina@aesthetics-ge.ch",
+    description: "Specialist in PRP, microneedling, exosome treatments, radiofrequency, cryotherapy and hyperbaric oxygen therapy. Available in Montreux (Tue/Thu) and Rhône (Fri).",
+  },
 };
 
 // Doctor availability by location
@@ -141,6 +148,15 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       3: { start: "15:00", end: "17:00" }, // Wednesday 3pm-5pm
       4: { start: "08:00", end: "17:00" }, // Thursday 8am-5pm
       5: { start: "14:00", end: "17:00" }, // Friday 2pm-5pm
+    },
+  },
+  "ekaterina": {
+    montreux: {
+      2: { start: "10:00", end: "12:30" }, // Tuesday 10am-12:30pm
+      4: { start: "10:00", end: "12:30" }, // Thursday 10am-12:30pm
+    },
+    rhone: {
+      5: { start: "10:00", end: "12:30" }, // Friday 10am-12:30pm
     },
   },
 };

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { isTransactionPaid, type PayrexxWebhookPayload, type PayrexxTransactionStatus } from "@/lib/payrexx";
+import { isTransactionPaid, splitPayrexxAmount, type PayrexxWebhookPayload, type PayrexxTransactionStatus } from "@/lib/payrexx";
 
 // Use service role for webhook processing (no user context)
 const supabaseAdmin = createClient(
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
 
       const { data: invoice } = await supabaseAdmin
         .from("invoices")
-        .select("id, invoice_number, total_amount, status")
+        .select("id, invoice_number, total_amount, status, payrexx_fee_amount")
         .eq("invoice_number", invoiceNumber)
         .single();
 
@@ -176,6 +176,14 @@ export async function POST(request: NextRequest) {
       const isPaid = isTransactionPaid(transaction.status);
       const paidAt = isPaid ? new Date().toISOString() : null;
 
+      // Payrexx charges the patient the full installment amount, then
+      // deducts its own fee before paying out to us — same as the
+      // invoice-level flow below.
+      const { fee: installmentFee, net: installmentNet } = splitPayrexxAmount(
+        transaction.amount,
+        transaction.payrexxFee
+      );
+
       // Update installment
       const instUpdate: Record<string, unknown> = {
         payrexx_transaction_id: String(transaction.id),
@@ -193,15 +201,31 @@ export async function POST(request: NextRequest) {
         .update(instUpdate)
         .eq("id", installment.id);
 
-      // Record individual payment
+      // Record individual payment — use the NET amount (post-fee) so
+      // accounting reflects what the clinic actually receives.
       if (isPaid && installment.status !== "PAID") {
+        const netAmount = installmentFee > 0.005 && installmentNet > 0
+          ? installmentNet
+          : Number(installment.amount) || 0;
+
         await supabaseAdmin.from("invoice_payments").insert({
           invoice_id: invoice.id,
-          amount: Number(installment.amount) || 0,
+          amount: netAmount,
           payment_date: new Date().toISOString().substring(0, 10),
           payment_method: "payrexx",
           payrexx_transaction_id: String(transaction.id),
+          fee_amount: installmentFee > 0.005 ? installmentFee : null,
         });
+
+        // Accumulate the fee at the invoice level so PARTIAL_LOSS reporting
+        // covers installment plans too.
+        if (installmentFee > 0.005) {
+          const cumulativeFee = (Number(invoice.payrexx_fee_amount) || 0) + installmentFee;
+          await supabaseAdmin
+            .from("invoices")
+            .update({ payrexx_fee_amount: cumulativeFee })
+            .eq("id", invoice.id);
+        }
       }
 
       // Recalculate invoice-level status based on all installments
@@ -260,30 +284,40 @@ export async function POST(request: NextRequest) {
     };
 
     // Mark as paid if transaction is confirmed
+    let paymentFeeAmount = 0;
     if (isPaid && invoice.status !== "PAID" && invoice.status !== "PARTIAL_LOSS") {
       const invoiceTotal = Number(invoice.total_amount) || 0;
 
-      // Payrexx invoice.amount is in cents (e.g. 10000 = CHF 100.00)
-      const transactionAmountCents = transaction.invoice?.amount ?? 0;
-      const transactionAmount = transactionAmountCents / 100;
+      // Payrexx charges the patient the full transaction `amount`, then
+      // deducts its own `payrexxFee` before paying out to us. The fee is
+      // never reflected in the amount charged to the patient — it only
+      // reduces what we actually receive. (transaction.invoice.amount was
+      // removed from the Payrexx API in version 2021-10-12 and must not be
+      // used for this calculation.)
+      const { gross, fee, net } = splitPayrexxAmount(transaction.amount, transaction.payrexxFee);
+      // Fall back to the invoice total if Payrexx didn't echo back an amount
+      // (older API versions / some webhook shapes).
+      const grossAmount = gross > 0 ? gross : invoiceTotal;
+      paymentFeeAmount = fee;
 
-      // Compare transaction amount with invoice total to detect commission/fee deductions
-      // Allow a small tolerance (0.01 CHF) for rounding
-      if (transactionAmount > 0 && transactionAmount < invoiceTotal - 0.01) {
-        // Partial loss: platform fees/commissions were deducted
+      if (fee > 0.005) {
+        // Payrexx deducted a processing fee — the clinic receives less than
+        // the invoiced total, even though the patient paid in full.
         updateData.status = "PARTIAL_LOSS";
-        updateData.paid_amount = transactionAmount;
+        updateData.paid_amount = net > 0 ? net : grossAmount - fee;
+        updateData.payrexx_fee_amount = fee;
         updateData.paid_at = paidAt;
         updateData.payrexx_paid_at = paidAt;
 
-        console.log("Payrexx partial loss detected:", {
+        console.log("Payrexx fee deducted — recording net amount as partial loss:", {
           invoiceId: invoice.id,
           invoiceTotal,
-          transactionAmount,
-          loss: invoiceTotal - transactionAmount,
+          grossAmount,
+          fee,
+          netAmount: updateData.paid_amount,
         });
       } else {
-        // Full payment received
+        // Full payment received, no fee reported on this webhook event
         updateData.status = "PAID";
         updateData.paid_amount = invoiceTotal;
         updateData.paid_at = paidAt;
@@ -312,6 +346,7 @@ export async function POST(request: NextRequest) {
         payment_date: new Date().toISOString().substring(0, 10),
         payment_method: "payrexx",
         payrexx_transaction_id: String(transaction.id),
+        fee_amount: paymentFeeAmount > 0 ? paymentFeeAmount : null,
       });
     }
 

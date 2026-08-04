@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getPayrexxGateway } from "@/lib/payrexx";
+import { getPayrexxGateway, getPayrexxTransaction, splitPayrexxAmount } from "@/lib/payrexx";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     // Get the invoice with Payrexx gateway info
     const { data: invoice, error: invoiceError } = await supabaseAdmin
       .from("invoices")
-      .select("id, invoice_number, payrexx_gateway_id, status, total_amount, payrexx_payment_status")
+      .select("id, invoice_number, payrexx_gateway_id, status, total_amount, payrexx_payment_status, payrexx_transaction_id")
       .eq("id", invoiceId)
       .single();
 
@@ -66,34 +66,46 @@ export async function POST(request: NextRequest) {
       const invoiceTotal = Number(invoice.total_amount) || 0;
       const now = new Date().toISOString();
 
-      // Try to extract the actual transaction amount from the gateway response
-      // Payrexx gateway invoices contain the amount in cents
-      const gatewayInvoices = (gatewayData as any)?.invoices;
-      let transactionAmount = invoiceTotal; // default to full amount
-      if (Array.isArray(gatewayInvoices) && gatewayInvoices.length > 0) {
-        const txAmountCents = gatewayInvoices[0]?.amount ?? 0;
-        if (txAmountCents > 0) {
-          transactionAmount = txAmountCents / 100;
+      // The Gateway endpoint does NOT return Payrexx's fee — only the
+      // Transaction endpoint does. If we already have a transaction ID on
+      // file (normally set by the webhook), fetch it to get the authoritative
+      // gross/fee amounts. Otherwise fall back to treating it as a full
+      // payment (the webhook is the source of truth for fee tracking).
+      let fee = 0;
+      let netAmount = invoiceTotal;
+      if (invoice.payrexx_transaction_id) {
+        try {
+          const txResponse = await getPayrexxTransaction(Number(invoice.payrexx_transaction_id));
+          const tx = Array.isArray(txResponse.data) ? txResponse.data[0] : undefined;
+          if (tx) {
+            const split = splitPayrexxAmount(tx.amount, tx.payrexxFee);
+            fee = split.fee;
+            netAmount = split.net > 0 ? split.net : invoiceTotal;
+          }
+        } catch (txErr) {
+          console.error("Failed to fetch Payrexx transaction for fee lookup:", txErr);
         }
       }
 
-      // Detect partial loss (commission/fee deduction)
-      const isPartialLoss = transactionAmount > 0 && transactionAmount < invoiceTotal - 0.01;
+      const isPartialLoss = fee > 0.005;
 
       const updatePayload: Record<string, unknown> = {
         status: isPartialLoss ? "PARTIAL_LOSS" : "PAID",
-        paid_amount: isPartialLoss ? transactionAmount : invoiceTotal,
+        paid_amount: isPartialLoss ? netAmount : invoiceTotal,
         payrexx_payment_status: "confirmed",
         payrexx_paid_at: now,
         paid_at: now,
       };
+      if (isPartialLoss) {
+        updatePayload.payrexx_fee_amount = fee;
+      }
 
       if (isPartialLoss) {
-        console.log("Payrexx partial loss detected (status check):", {
+        console.log("Payrexx fee deducted — recording net amount as partial loss (status check):", {
           invoiceId: invoice.id,
           invoiceTotal,
-          transactionAmount,
-          loss: invoiceTotal - transactionAmount,
+          fee,
+          netAmount,
         });
       }
 
@@ -117,11 +129,12 @@ export async function POST(request: NextRequest) {
         payment_date: new Date().toISOString().substring(0, 10),
         payment_method: "payrexx",
         payrexx_transaction_id: invoice.payrexx_gateway_id ? String(invoice.payrexx_gateway_id) : null,
+        fee_amount: isPartialLoss ? fee : null,
       });
 
       return NextResponse.json({
         success: true,
-        message: isPartialLoss ? "Invoice marked as partial loss (fees deducted)" : "Invoice marked as paid",
+        message: isPartialLoss ? "Invoice marked as partial loss (Payrexx fee deducted)" : "Invoice marked as paid",
         gatewayStatus,
         isPaid: true,
         isPartialLoss,

@@ -82,6 +82,15 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       5: { start: "14:00", end: "17:00" }, // Friday 2pm-5pm
     },
   },
+  "ekaterina": {
+    montreux: {
+      2: { start: "10:00", end: "12:30" }, // Tuesday 10am-12:30pm
+      4: { start: "10:00", end: "12:30" }, // Thursday 10am-12:30pm
+    },
+    rhone: {
+      5: { start: "10:00", end: "12:30" }, // Friday 10am-12:30pm
+    },
+  },
 };
 
 const ALL_DOCTORS = [
@@ -133,6 +142,13 @@ const ALL_DOCTORS = [
     specialty: "Infirmier | IV Drip Therapy",
     image: "/doctors/sofien-seneina.jpeg",
     description: "Registered nurse specializing in IV drip therapy and wellness treatments.",
+  },
+  {
+    slug: "ekaterina",
+    name: "Ekaterina",
+    specialty: "Aesthetic Nurse | PRP & Skin Rejuvenation Specialist",
+    image: "/doctors/ekaterina.jpg",
+    description: "Specialist in PRP, microneedling, exosome treatments, radiofrequency, cryotherapy and hyperbaric oxygen therapy.",
   },
 ];
 

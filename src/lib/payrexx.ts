@@ -47,6 +47,16 @@ export type PayrexxWebhookPayload = {
     time: string;
     lang: string;
     pageUuid: string;
+    // The amount actually charged to the patient, in the smallest currency
+    // unit (e.g. cents for CHF). Per Payrexx docs this is the top-level
+    // `amount` field on the transaction (NOT transaction.invoice.amount,
+    // which was removed from the API in version 2021-10-12).
+    amount?: number;
+    // Payrexx's own processing fee, in the smallest currency unit. This is
+    // deducted from the gross `amount` before payout to the merchant — it
+    // is NOT reflected in the amount charged to the patient.
+    // https://developers.payrexx.com/docs/transaction
+    payrexxFee?: number;
     payment: {
       brand: string;
       wallet: string | null;
@@ -65,7 +75,10 @@ export type PayrexxWebhookPayload = {
         amount: number;
         sku: string;
       }>;
-      amount: number;
+      // NOTE: `invoice.amount` was removed from the Payrexx API in version
+      // 2021-10-12 and should not be relied on. Use transaction.amount
+      // instead. Kept here as optional for backwards compatibility only.
+      amount?: number;
       currency: string;
       discount: {
         code: string;
@@ -272,6 +285,53 @@ export async function deletePayrexxGateway(gatewayId: number): Promise<void> {
     const errorText = await response.text();
     throw new Error(`Payrexx API error: ${response.status} ${errorText}`);
   }
+}
+
+/**
+ * Retrieve a single Payrexx Transaction by ID.
+ * Used to fetch the authoritative `amount` / `payrexxFee` fields when we
+ * only have a transaction ID on hand (e.g. manual status sync), since the
+ * Gateway endpoint does not return fee information.
+ * https://developers.payrexx.com/reference/retrieve-transactions
+ */
+export async function getPayrexxTransaction(
+  transactionId: number
+): Promise<{ status: string; data: PayrexxWebhookPayload["transaction"][] }> {
+  const url = new URL(`Transaction/${transactionId}/`, PAYREXX_BASE_URL);
+  url.searchParams.set("instance", PAYREXX_INSTANCE);
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "Accept": "application/json",
+      "X-API-KEY": PAYREXX_API_SECRET,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Payrexx API error: ${response.status} ${errorText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Split a Payrexx transaction's gross amount into gross/fee/net CHF values.
+ *
+ * Payrexx charges the patient the full `amount`, then deducts its own
+ * `payrexxFee` before paying out to the merchant. The fee is NEVER reflected
+ * in the amount charged to the patient — it only affects what the clinic
+ * actually receives. Both values are in the smallest currency unit (cents).
+ */
+export function splitPayrexxAmount(
+  amountCents: number | undefined,
+  payrexxFeeCents: number | undefined
+): { gross: number; fee: number; net: number } {
+  const gross = (amountCents || 0) / 100;
+  const fee = (payrexxFeeCents || 0) / 100;
+  const net = Math.max(0, gross - fee);
+  return { gross, fee, net };
 }
 
 /**
