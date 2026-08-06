@@ -1636,6 +1636,7 @@ export default function CalendarPage() {
   const ALLOWED_CALENDAR_NAMES = [
     "Xavier Tenorio",
     "Yulia Raspertova",
+    "Ekaterina Iosipoi",
     "Borhan Rosa",
     "Rodrigues Cezar",
     "Patricia Caballero",
