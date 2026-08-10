@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldCreateDeal } from "@/lib/dealDeduplication";
 import { resolveEmbedService } from "@/lib/embedServiceResolver";
+import { createDealNotification } from "@/lib/dealNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -143,14 +144,30 @@ export async function POST(request: Request) {
           dealInsertData.owner_name = roundRobinAssignee.name;
         }
 
-        const { error: dealError } = await supabaseAdmin
+        const { data: newDeal, error: dealError } = await supabaseAdmin
           .from("deals")
-          .insert(dealInsertData);
+          .insert(dealInsertData)
+          .select("id")
+          .single();
 
-        if (!dealError) {
+        if (!dealError && newDeal) {
           dealCreated = true;
           actionsRun += 1;
           console.log(`Created deal for patient ${patient_id} in stage "${requestStage.name}" — service: ${serviceName || "(none)"}, owner: ${roundRobinAssignee?.name || "none"}`);
+
+          // Notify the deal owner
+          try {
+            await createDealNotification({
+              dealId: newDeal.id,
+              patientId: patient_id,
+              notificationType: "deal_created",
+              newStageId: requestStage.id,
+              newStageName: requestStage.name,
+              changedByName: "System",
+            });
+          } catch (notifErr) {
+            console.error("Failed to create deal notification:", notifErr);
+          }
         } else {
           console.error("Failed to create deal:", dealError);
         }

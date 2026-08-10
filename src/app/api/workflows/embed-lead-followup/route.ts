@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldCreateDeal } from "@/lib/dealDeduplication";
 import { resolveEmbedService } from "@/lib/embedServiceResolver";
+import { createDealNotification } from "@/lib/dealNotifications";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -156,6 +157,20 @@ export async function POST(request: Request) {
           dealCreated = true;
           actionsRun += 1;
           console.log(`Created deal for existing patient ${patient_id} from embed form, owner: ${roundRobinAssignee?.name || "none"}`);
+
+          // Notify the deal owner
+          try {
+            await createDealNotification({
+              dealId: newDeal.id,
+              patientId: patient_id,
+              notificationType: "deal_created",
+              newStageId: requestStage.id,
+              newStageName: requestStage.name,
+              changedByName: "System",
+            });
+          } catch (notifErr) {
+            console.error("Failed to create deal notification:", notifErr);
+          }
 
           // Update the lead with deal ID
           if (lead_id) {

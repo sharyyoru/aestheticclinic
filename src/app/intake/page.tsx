@@ -348,7 +348,6 @@ export default function IntakePage() {
           body: JSON.stringify({
             patient_id: newPatient?.id,
             form_type: "intake_form",
-            skip_deal_creation: true,
           }),
         });
       } catch {
