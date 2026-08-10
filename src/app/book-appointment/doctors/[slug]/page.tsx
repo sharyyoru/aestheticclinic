@@ -480,15 +480,14 @@ function DoctorBookingContent() {
     return emailRegex.test(email.trim());
   };
 
-  // Phone validation helper (optional but if provided, should be valid)
+  // Phone validation helper
   const isValidPhone = (phone: string): boolean => {
-    if (!phone.trim()) return true; // Phone is optional
     const phoneRegex = /^[+]?[\d\s()-]{7,20}$/;
     return phoneRegex.test(phone.trim());
   };
 
   async function handleSubmit() {
-    if (!firstName || !lastName || !email || !selectedDate || !selectedTime || !locationId) {
+    if (!firstName || !lastName || !email || !phone.trim() || !selectedDate || !selectedTime || !locationId) {
       setError("Please fill in all required fields");
       return;
     }
@@ -706,7 +705,7 @@ function DoctorBookingContent() {
                 <button
                   key={s}
                   onClick={() => {
-                    if (s === "info" || (s === "datetime" && firstName && lastName && email) || 
+                    if (s === "info" || (s === "datetime" && firstName && lastName && email && phone.trim()) ||
                         (s === "confirm" && selectedDate && selectedTime)) {
                       setStep(s);
                     }
@@ -795,12 +794,13 @@ function DoctorBookingContent() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1.5">Phone Number</label>
+                  <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1.5">Phone Number *</label>
                   <input
                     id="phone"
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"
+                    required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+41 XX XXX XX XX"
@@ -812,7 +812,7 @@ function DoctorBookingContent() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (!firstName || !lastName || !email) {
+                      if (!firstName || !lastName || !email || !phone.trim()) {
                         setError("Please fill in all required fields");
                         return;
                       }
@@ -821,17 +821,15 @@ function DoctorBookingContent() {
                         setError("Please enter a valid email address");
                         return;
                       }
-                      if (phone.trim()) {
-                        const phoneRegex = /^[+]?[\d\s()-]{7,20}$/;
-                        if (!phoneRegex.test(phone.trim())) {
-                          setError("Please enter a valid phone number");
-                          return;
-                        }
+                      const phoneRegex = /^[+]?[\d\s()-]{7,20}$/;
+                      if (!phoneRegex.test(phone.trim())) {
+                        setError("Please enter a valid phone number");
+                        return;
                       }
                       setStep("datetime");
                       setError(null);
                     }}
-                    disabled={!firstName || !lastName || !email}
+                    disabled={!firstName || !lastName || !email || !phone.trim()}
                     className="w-full bg-slate-900 text-white py-4 rounded-xl font-medium hover:bg-slate-800 active:bg-slate-700 transition-colors touch-manipulation active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Continue
