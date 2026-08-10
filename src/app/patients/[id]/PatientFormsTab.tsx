@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getFormById } from "@/lib/formDefinitions";
+import { getFormById, FormContentBlock } from "@/lib/formDefinitions";
 import { FileText, Eye, Clock, CheckCircle, AlertCircle, Copy, Download, ExternalLink, Send, Trash2, X } from "lucide-react";
 
 type FormSubmission = {
@@ -132,6 +132,48 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
     doc.setTextColor(15, 23, 42);
     doc.text(sectionTitle, margin + 4, y + 6);
     y += 13;
+
+    // Render document content blocks (legal text, lists) before fields
+    if (section.content && section.content.length > 0) {
+      for (const block of section.content) {
+        if (block.type === "paragraph") {
+          const text = form.language === "fr" && block.textFr ? block.textFr : block.text;
+          const lines = doc.splitTextToSize(text, contentWidth);
+          const blockHeight = lines.length * 4.2 + 2;
+          ensureSpace(blockHeight);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9);
+          doc.setTextColor(30, 41, 59);
+          doc.text(lines, margin, y + 3.5);
+          y += blockHeight + 1;
+        } else {
+          const items = form.language === "fr" && block.itemsFr ? block.itemsFr : block.items;
+          const isOrdered = block.type === "ordered-list";
+          for (let li = 0; li < items.length; li++) {
+            const prefix = isOrdered ? `${li + 1}. ` : "\u2022 ";
+            const itemText = prefix + items[li];
+            const lines = doc.splitTextToSize(itemText, contentWidth - 4);
+            const itemHeight = lines.length * 4.2 + 1;
+            ensureSpace(itemHeight);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(9);
+            doc.setTextColor(30, 41, 59);
+            doc.text(lines, margin + 4, y + 3.5);
+            y += itemHeight;
+          }
+          y += 1;
+        }
+      }
+
+      // Separator between document content and fields
+      if (section.fields.length > 0) {
+        y += 2;
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(margin, y, pageWidth - margin, y);
+        y += 4;
+      }
+    }
 
     for (const field of section.fields) {
       const label =
@@ -501,6 +543,26 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
                 <h3 className="mb-3 text-sm font-semibold text-slate-900">
                   {form.language === "fr" && section.titleFr ? section.titleFr : section.title}
                 </h3>
+                {section.content && section.content.length > 0 && (
+                  <div className="mb-4 space-y-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
+                    {section.content.map((block: FormContentBlock, idx: number) => {
+                      if (block.type === "paragraph") {
+                        const text = form.language === "fr" && block.textFr ? block.textFr : block.text;
+                        return <p key={idx} className="whitespace-pre-line text-xs leading-5 text-slate-700">{text}</p>;
+                      }
+                      const items = form.language === "fr" && block.itemsFr ? block.itemsFr : block.items;
+                      const ListTag = block.type === "ordered-list" ? "ol" : "ul";
+                      const listClass = block.type === "ordered-list"
+                        ? "list-decimal space-y-1 pl-5 text-xs leading-5 text-slate-700"
+                        : "list-disc space-y-1 pl-5 text-xs leading-5 text-slate-700";
+                      return (
+                        <ListTag key={idx} className={listClass}>
+                          {items.map((item: string) => <li key={item}>{item}</li>)}
+                        </ListTag>
+                      );
+                    })}
+                  </div>
+                )}
                 <dl className="space-y-2">
                   {section.fields.map((field) => {
                     const label = form.language === "fr" && field.labelFr ? field.labelFr : field.label;
