@@ -385,6 +385,9 @@ export default function PatientDocumentsTab({
     };
   }, [emailModalOpen, patientId, emailTo]);
 
+  // Primary bucket items (patient_document) — loaded independently of legacy docs
+  const [primaryItems, setPrimaryItems] = useState<ListedItem[]>([]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -406,16 +409,11 @@ export default function PatientDocumentsTab({
           sortBy: { column: "name", order: "asc" },
         });
 
-      console.log(`[PatientDocs] bucket=${BUCKET_NAME}, listPath=${listPath}, returned=${data?.length ?? 0} items, error=${listError?.message ?? 'none'}`);
-      if (data) {
-        console.log(`[PatientDocs] raw items:`, data.map(d => ({ name: d.name, id: (d as any).id, metadata: (d as any).metadata })));
-      }
-
       if (cancelled) return;
 
       if (listError) {
         setError(listError.message ?? "Failed to load documents.");
-        setItems([]);
+        setPrimaryItems([]);
         setSelectedFile(null);
         setLoading(false);
         return;
@@ -470,39 +468,12 @@ export default function PatientDocumentsTab({
         });
       }
 
-      // Only show legacy docs at root level (they're already deduplicated in the fetch)
-      const combined: ListedItem[] = [
+      const result: ListedItem[] = [
         ...Object.values(folders).sort((a, b) => a.name.localeCompare(b.name)),
         ...files,
-        ...(currentPrefix === "" ? legacyDocsItems : []),
       ];
 
-      // Sort files based on sortBy and sortOrder
-      combined.sort((a, b) => {
-        // Folders always come first
-        if (a.kind === "folder" && b.kind !== "folder") return -1;
-        if (a.kind !== "folder" && b.kind === "folder") return 1;
-        if (a.kind === "folder" && b.kind === "folder") {
-          return a.name.localeCompare(b.name);
-        }
-        // Sort files
-        if (sortBy === "date") {
-          const aDate = a.updated_at || a.created_at || "";
-          const bDate = b.updated_at || b.created_at || "";
-          const comparison = aDate.localeCompare(bDate);
-          return sortOrder === "desc" ? -comparison : comparison;
-        }
-        const comparison = a.name.localeCompare(b.name);
-        return sortOrder === "desc" ? -comparison : comparison;
-      });
-
-      setItems(combined);
-
-      if (!selectedFile) {
-        const firstFile = combined.find((item) => item.kind === "file") ?? null;
-        setSelectedFile(firstFile ?? null);
-      }
-
+      setPrimaryItems(result);
       setLoading(false);
     }
 
@@ -511,7 +482,42 @@ export default function PatientDocumentsTab({
     return () => {
       cancelled = true;
     };
-  }, [patientId, currentPrefix, refreshKey, legacyDocsItems, sortBy, sortOrder]);
+  }, [patientId, currentPrefix, refreshKey]);
+
+  // Merge primary + legacy items, apply sorting. Recalculates when either source updates.
+  useEffect(() => {
+    const combined: ListedItem[] = [
+      ...primaryItems,
+      ...(currentPrefix === "" ? legacyDocsItems : []),
+    ];
+
+    // Sort files based on sortBy and sortOrder
+    combined.sort((a, b) => {
+      // Folders always come first
+      if (a.kind === "folder" && b.kind !== "folder") return -1;
+      if (a.kind !== "folder" && b.kind === "folder") return 1;
+      if (a.kind === "folder" && b.kind === "folder") {
+        return a.name.localeCompare(b.name);
+      }
+      // Sort files
+      if (sortBy === "date") {
+        const aDate = a.updated_at || a.created_at || "";
+        const bDate = b.updated_at || b.created_at || "";
+        const comparison = aDate.localeCompare(bDate);
+        return sortOrder === "desc" ? -comparison : comparison;
+      }
+      const comparison = a.name.localeCompare(b.name);
+      return sortOrder === "desc" ? -comparison : comparison;
+    });
+
+    setItems(combined);
+
+    if (!selectedFile) {
+      const firstFile = combined.find((item) => item.kind === "file") ?? null;
+      setSelectedFile(firstFile ?? null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primaryItems, legacyDocsItems, currentPrefix, sortBy, sortOrder]);
 
   const breadcrumbSegments = useMemo(() => {
     const segments = currentPrefix.split("/").filter(Boolean);

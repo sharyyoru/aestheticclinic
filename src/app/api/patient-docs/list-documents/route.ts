@@ -12,6 +12,22 @@ const supabaseAdmin = createClient(
 const BUCKET_NAME = "patient-docs";
 const PATIENT_DOCUMENTS_BUCKET = "patient_document";
 
+// ============================================================
+// In-memory folder cache (30-minute TTL)
+// ============================================================
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+let folderCache: { folders: { name: string; id: string | null }[]; expiresAt: number } | null = null;
+
+async function getCachedFolders(): Promise<{ name: string; id: string | null }[]> {
+  if (folderCache && Date.now() < folderCache.expiresAt) {
+    return folderCache.folders;
+  }
+
+  const folders = await fetchAllFolders();
+  folderCache = { folders, expiresAt: Date.now() + CACHE_TTL_MS };
+  return folders;
+}
+
 type DocumentFile = {
   name: string;
   path: string;
@@ -19,7 +35,8 @@ type DocumentFile = {
   mimeType: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-  source: "patient-docs"; // To distinguish from patient_document bucket
+  source: "patient-docs";
+  publicUrl?: string;
 };
 
 // Parse folder name pattern to extract first/last name
@@ -105,7 +122,6 @@ async function fetchAllPatientDocumentKeys(patientId: string): Promise<Set<strin
         continue;
       }
 
-      // ✅ Dedup key = normalized filename only
       const normalizedName = normalizeForMatch(item.name);
       keys.add(normalizedName);
     }
@@ -123,35 +139,32 @@ export async function POST(request: NextRequest) {
     if (!firstName || !lastName) {
       return NextResponse.json({ error: "firstName and lastName are required" }, { status: 400 });
     }
-    
-    // Fetch all file names from patient_document bucket for deduplication unless caller skips it
-    const existingKeys = patientId && !skipDedup
-      ? await fetchAllPatientDocumentKeys(patientId)
-      : new Set<string>();
 
-    console.log("Existing keys in patient_document:", Array.from(existingKeys));
-    
-    const searchFirstNameLower = firstName.toLowerCase().trim();
-    const searchLastNameLower = lastName.toLowerCase().trim();
-
-    // Fetch all folders from patient-docs bucket
-    const folders = await fetchAllFolders();
+    // Run dedup key fetch and folder cache lookup in PARALLEL
+    const [existingKeys, folders] = await Promise.all([
+      patientId && !skipDedup
+        ? fetchAllPatientDocumentKeys(patientId)
+        : Promise.resolve(new Set<string>()),
+      getCachedFolders(),
+    ]);
 
     if (folders.length === 0) {
       return NextResponse.json({ files: [] });
     }
 
-    const documentFiles: DocumentFile[] = [];
+    const searchFirstNameLower = firstName.toLowerCase().trim();
+    const searchLastNameLower = lastName.toLowerCase().trim();
+
+    // Find matching folders (CPU-only, fast)
+    const matchingFolders: string[] = [];
 
     for (const folder of folders) {
-      // Skip files at root level
       if (/\.(pdf|jpg|jpeg|png|gif|txt|doc|docx)$/i.test(folder.name)) continue;
 
       const folderInfo = parseFolderName(folder.name);
       const folderFirstName = folderInfo.firstName?.toLowerCase().trim() || "";
       const folderLastName = folderInfo.lastName?.toLowerCase().trim() || "";
 
-      // Check if folder matches the patient name
       const directMatch = 
         (folderFirstName.includes(searchFirstNameLower) || searchFirstNameLower.includes(folderFirstName)) &&
         (folderLastName.includes(searchLastNameLower) || searchLastNameLower.includes(folderLastName));
@@ -163,46 +176,68 @@ export async function POST(request: NextRequest) {
       const folderNameLower = folder.name.toLowerCase();
       const containsBothNames = folderNameLower.includes(searchFirstNameLower) && folderNameLower.includes(searchLastNameLower);
 
-      if (!directMatch && !reverseMatch && !containsBothNames) continue;
+      if (directMatch || reverseMatch || containsBothNames) {
+        matchingFolders.push(folder.name);
+      }
+    }
 
-      // Found matching patient folder - now look for 5_Documents subfolder
-      const documentsPath = `${folder.name}/5_Documents`;
-      
-      const { data: files, error: listError } = await supabaseAdmin.storage
-        .from(BUCKET_NAME)
-        .list(documentsPath, { limit: 200 });
+    if (matchingFolders.length === 0) {
+      return NextResponse.json({ files: [] });
+    }
 
-      if (listError || !files) {
-        // 5_Documents folder doesn't exist for this patient - that's OK
+    // Fetch 5_Documents contents for ALL matching folders in PARALLEL
+    const folderResults = await Promise.all(
+      matchingFolders.map(async (folderName) => {
+        const documentsPath = `${folderName}/5_Documents`;
+        const { data: files, error: listError } = await supabaseAdmin.storage
+          .from(BUCKET_NAME)
+          .list(documentsPath, { limit: 200 });
+
+        if (listError || !files) return [];
+
+        return files
+          .filter((file) => file.name !== ".keep" && file.name !== ".emptyFolderPlaceholder")
+          .map((file) => ({ file, documentsPath }));
+      })
+    );
+
+    // Flatten and deduplicate
+    const documentFiles: DocumentFile[] = [];
+    const allRawFiles = folderResults.flat();
+
+    for (const { file, documentsPath } of allRawFiles) {
+      const filePath = `${documentsPath}/${file.name}`;
+      const legacyDisplayName = file.name.replace(/_/g, "-");
+      const normalizedLegacyName = normalizeForMatch(legacyDisplayName);
+
+      if (existingKeys.has(normalizedLegacyName)) {
         continue;
       }
 
-      // Process each file in 5_Documents
-      for (const file of files) {
-        if (file.name === ".keep" || file.name === ".emptyFolderPlaceholder") continue;
+      documentFiles.push({
+        name: legacyDisplayName,
+        path: filePath,
+        size: (file as any).metadata?.size ?? null,
+        mimeType: (file as any).metadata?.mimetype || null,
+        createdAt: (file as any).created_at || null,
+        updatedAt: (file as any).updated_at || null,
+        source: "patient-docs",
+      });
+    }
 
-        const filePath = `${documentsPath}/${file.name}`;
+    // Batch-generate signed URLs for all files (Supabase supports batch signing)
+    if (documentFiles.length > 0) {
+      const paths = documentFiles.map((f) => f.path);
+      const { data: signedData } = await supabaseAdmin.storage
+        .from(BUCKET_NAME)
+        .createSignedUrls(paths, 86400); // 24 hours
 
-        const legacyDisplayName = file.name.replace(/_/g, "-");
-        const normalizedLegacyName = normalizeForMatch(legacyDisplayName);
-
-        const legacySize = (file as any).metadata?.size ?? null;
-
-        // ✅ Dedup by normalized filename only
-        if (existingKeys.has(normalizedLegacyName)) {
-          console.log("Skipping duplicate legacy file (name):", legacyDisplayName);
-          continue;
+      if (signedData) {
+        for (let i = 0; i < signedData.length; i++) {
+          if (signedData[i]?.signedUrl) {
+            documentFiles[i].publicUrl = signedData[i].signedUrl;
+          }
         }
-
-        documentFiles.push({
-          name: legacyDisplayName,          // ✅ UI shows '-' instead of '_'
-          path: filePath,                   // ✅ still points to the real storage object
-          size: legacySize,
-          mimeType: (file as any).metadata?.mimetype || null,
-          createdAt: (file as any).created_at || null,
-          updatedAt: (file as any).updated_at || null,
-          source: "patient-docs",
-        });
       }
     }
 
