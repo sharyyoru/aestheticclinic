@@ -38,10 +38,6 @@ const DOCTOR_AVAILABILITY: Record<string, Record<string, Record<number, { start:
       2: { start: "13:00", end: "17:00" }, // Tuesday 1pm-5pm
       5: { start: "13:00", end: "17:00" }, // Friday 1pm-5pm
     },
-    rhone: {
-      1: { start: "14:00", end: "18:30" }, // Monday 2pm-6:30pm
-      5: { start: "14:00", end: "18:30" }, // Friday 2pm-6:30pm
-    },
     montreux: {
       3: { start: "15:00", end: "17:00" }, // Wednesday 3pm-5pm
     },
