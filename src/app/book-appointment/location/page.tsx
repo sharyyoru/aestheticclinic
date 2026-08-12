@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 const CLINIC_LOCATIONS = [
   {
@@ -30,7 +31,17 @@ const CLINIC_LOCATIONS = [
   },
 ];
 
+const CARRY_PARAMS = ["pid", "sid", "autofill", "ctype", "promo", "promo_source", "lang"];
+
 export default function LocationSelectionPage() {
+  const searchParams = useSearchParams();
+  const extraQuery = new URLSearchParams();
+  for (const key of CARRY_PARAMS) {
+    const val = searchParams.get(key);
+    if (val) extraQuery.set(key, val);
+  }
+  const extra = extraQuery.toString() ? `&${extraQuery.toString()}` : "";
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Background decoration */}
@@ -80,7 +91,7 @@ export default function LocationSelectionPage() {
           {CLINIC_LOCATIONS.map((location) => (
             <Link
               key={location.id}
-              href={`/book-appointment/doctors?location=${location.id}`}
+              href={`/book-appointment/doctors?location=${location.id}${extra}`}
               className="group bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-400 active:bg-slate-50 transition-all transform hover:-translate-y-1 active:scale-[0.98] p-6 sm:p-8 touch-manipulation"
             >
               <div className="flex items-center gap-4">

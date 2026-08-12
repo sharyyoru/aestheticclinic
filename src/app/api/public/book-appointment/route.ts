@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal, getSwissDayOfWeek } from "@/lib/swissTimezone";
 import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
 import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
+import { sendCancellationPolicyMessages, type PatientContact } from "@/lib/messaging";
 import {
   describeBlocking,
   fetchOverlappingAppointments,
@@ -34,6 +35,9 @@ type BookingPayload = {
   doctorEmail: string;
   notes?: string;
   location?: string;
+  promo?: string;
+  promoSource?: string;
+  lang?: "en" | "fr" | string;
 };
 
 function parseBookingAppointmentDate(value: string): Date {
@@ -282,6 +286,9 @@ export async function POST(request: Request) {
       doctorEmail,
       notes,
       location,
+      promo,
+      promoSource,
+      lang,
     } = body;
 
     // Validate required fields
@@ -470,6 +477,7 @@ export async function POST(request: Request) {
           email: email.toLowerCase(),
           phone: phone || null,
           source: "online_booking",
+          language_preference: lang === "fr" ? "fr" : (lang === "en" ? "en" : null),
         })
         .select("id")
         .single();
@@ -492,6 +500,18 @@ export async function POST(request: Request) {
         { error: "Failed to resolve patient record" },
         { status: 500 }
       );
+    }
+
+    // Update language preference if the booking link carried a lang param
+    if (lang) {
+      try {
+        await supabase
+          .from("patients")
+          .update({ language_preference: lang === "fr" ? "fr" : "en" })
+          .eq("id", patientId);
+      } catch (err) {
+        console.error("[Booking] Failed to update language preference:", err);
+      }
     }
 
     // Calculate end time (30 min first-consultation duration)
@@ -518,7 +538,11 @@ export async function POST(request: Request) {
     }
 
     // Build reason field - include [Doctor: Name] for calendar filtering
-    const reason = `${service}${notes ? ` - ${notes}` : ""} [Doctor: ${doctorName.replace("Dr. ", "")}] [Online Booking]`;
+    // Append promo code for tracking if present.
+    const promoTag = promo
+      ? ` [Promo: ${promo}${promoSource ? `, source: ${promoSource}` : ""}]`
+      : "";
+    const reason = `${service}${notes ? ` - ${notes}` : ""} [Doctor: ${doctorName.replace("Dr. ", "")}] [Online Booking]${promoTag}`;
 
     // Create the appointment
     const { data: appointment, error: appointmentError } = await supabase
@@ -580,10 +604,17 @@ export async function POST(request: Request) {
     // staff having to drag the deal manually, which would open the appointment
     // modal and create a duplicate appointment.
     try {
+      const dealNotes = [
+        `Booked via online booking on ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)} with ${doctorName}`,
+        promo ? `Promo code: ${promo}${promoSource ? ` (source: ${promoSource})` : ""}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
       const dealSync = await syncDealToAppointmentSet(supabase, {
         patientId,
         title: `${patientName} - ${service}`,
-        notes: `Booked via online booking on ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)} with ${doctorName}`,
+        notes: dealNotes,
         location: location || null,
       });
       console.log("✓ Deal synced to Appointment Set:", dealSync);
@@ -664,6 +695,30 @@ export async function POST(request: Request) {
       console.log("✓ Doctor notification email sent successfully to:", doctorEmail);
     } catch (err) {
       console.error("✗ Error sending doctor email:", err);
+    }
+
+    // Send cancellation policy SMS + WhatsApp to the patient
+    try {
+      const patientContact: PatientContact = {
+        id: patientId,
+        first_name: firstName,
+        last_name: lastName,
+        phone,
+        email,
+        language_preference: lang as "en" | "fr" | undefined,
+      };
+
+      const { smsOk, whatsappOk } = await sendCancellationPolicyMessages({
+        patient: patientContact,
+        language: (lang as "en" | "fr") || "en",
+        appointmentId: appointment.id,
+        appointmentDate: appointmentDateObj,
+      });
+      console.log(
+        `✓ Cancellation policy messages sent. SMS: ${smsOk}, WhatsApp: ${whatsappOk}`
+      );
+    } catch (err) {
+      console.error("✗ Error sending cancellation policy messages:", err);
     }
 
     // Schedule reminder email for 1 day before appointment

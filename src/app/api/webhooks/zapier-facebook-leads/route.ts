@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendLeadPromoSms } from "@/lib/messaging";
 
 /**
  * Webhook endpoint for receiving Facebook Lead Ads via Zapier
  * 
  * This endpoint queues webhooks for sequential processing to prevent race conditions.
  * The actual processing happens in /api/cron/process-webhook-queue
+ * 
+ * An immediate promo SMS is sent from this endpoint so the lead receives it right away.
  */
 
 type FacebookLeadPayload = {
@@ -83,6 +86,55 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Zapier Facebook Leads] Webhook queued successfully: ${queueItem.id}`);
+
+    // Send the lead promo SMS immediately (fire-and-forget).
+    // The queue handles patient/deal creation in the background.
+    const phone = payload.phone || payload.phone_number;
+    if (phone) {
+      const email = payload.email?.toLowerCase().trim() || null;
+
+      // Try to find an existing patient so we can use their preferred language and first name
+      let patientId: string | null = null;
+      let firstName = payload.first_name || "";
+      let language: "en" | "fr" = "en";
+
+      try {
+        const phoneDigits = phone.replace(/\D/g, "");
+        const lastNine = phoneDigits.slice(-9);
+        const filters: string[] = [];
+        if (email) filters.push(`email.ilike.${email}`);
+        if (lastNine) filters.push(`phone.ilike.%${lastNine}%`);
+
+        let query = supabaseAdmin
+          .from("patients")
+          .select("id, first_name, language_preference");
+
+        if (filters.length > 0) {
+          query = query.or(filters.join(","));
+        }
+
+        const { data: existingPatient } = await query.limit(1).maybeSingle();
+
+        if (existingPatient) {
+          patientId = existingPatient.id;
+          if (existingPatient.first_name) firstName = existingPatient.first_name;
+          if (existingPatient.language_preference === "fr") language = "fr";
+        }
+      } catch (lookupErr) {
+        console.error("[Zapier Facebook Leads] Patient lookup error:", lookupErr);
+      }
+
+      // Fire-and-forget so the webhook response is not delayed
+      sendLeadPromoSms({
+        to: phone,
+        firstName,
+        language,
+        patientId,
+        promoSource: "facebook_lead",
+      }).catch((err) => {
+        console.error("[Zapier Facebook Leads] Promo SMS send failed:", err);
+      });
+    }
 
     // Return success immediately - processing happens in background
     return NextResponse.json({

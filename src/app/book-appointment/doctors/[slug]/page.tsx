@@ -296,6 +296,23 @@ function DoctorBookingContent() {
   const patientId = searchParams.get("pid");
   const autofill = searchParams.get("autofill");
 
+  // Promo code passed from lead SMS/WhatsApp or ads
+  const promo = searchParams.get("promo") || "";
+  const promoSource = searchParams.get("promo_source") || "";
+  const promoLang = searchParams.get("lang") || "";
+
+  // Build query string for the back link (preserve patient + promo)
+  const backQuery = new URLSearchParams();
+  if (locationId) backQuery.set("location", locationId);
+  if (patientId) {
+    backQuery.set("pid", patientId);
+    backQuery.set("autofill", "true");
+  }
+  if (promo) backQuery.set("promo", promo);
+  if (promoSource) backQuery.set("promo_source", promoSource);
+  if (promoLang) backQuery.set("lang", promoLang);
+  const backQueryString = backQuery.toString();
+
   useEffect(() => {
     if (autofill === "true" && patientId) {
       const fetchPatientData = async () => {
@@ -528,6 +545,9 @@ function DoctorBookingContent() {
           doctorEmail: doctor.email,
           notes,
           location: locationName,
+          promo,
+          promoSource,
+          lang: promoLang,
         }),
       });
 
@@ -646,12 +666,10 @@ function DoctorBookingContent() {
           </Link>
         </div>
 
-        {/* Back Link — preserve the magic-link patient id so going back doesn't
-            break the existing-patient association. */}
+        {/* Back Link — preserve the magic-link patient id + promo so going back doesn't
+            break the existing-patient association or lose the promo. */}
         <Link
-          href={`/book-appointment/doctors?location=${locationId}${
-            patientId ? `&pid=${patientId}&autofill=true` : ""
-          }`}
+          href={`/book-appointment/doctors?${backQueryString}`}
           className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-6 sm:mb-8 transition-colors text-sm sm:text-base"
         >
           <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -698,6 +716,16 @@ function DoctorBookingContent() {
           {/* Booking Form */}
           <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 lg:p-8 border border-slate-200">
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4 sm:mb-6">Book an Appointment</h1>
+
+            {promo && (
+              <div className="mb-4 sm:mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-3 sm:p-4">
+                <p className="text-sm font-semibold text-emerald-800">
+                  {promoLang === "fr"
+                    ? "Offre spéciale : réservez dans les 10 prochaines minutes pour débloquer 100 CHF de crédit + consultation gratuite."
+                    : "Special offer: book within the next 10 minutes to unlock 100 CHF credit + free consultation."}
+                </p>
+              </div>
+            )}
 
             {/* Progress Steps */}
             <div className="flex items-center gap-1.5 sm:gap-2 mb-6 sm:mb-8 overflow-x-auto pb-2">

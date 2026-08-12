@@ -159,12 +159,11 @@ function DoctorsListContent() {
   const searchParams = useSearchParams();
   const location = searchParams.get("location") || "";
 
-  // Preserve the magic-link / intake params so the existing patient stays
-  // associated through the doctor-selection step. Without this, pid is dropped
-  // here and the booking creates a NEW patient + duplicate deal.
+  // Preserve the magic-link / intake / promo params so the existing patient stays
+  // associated through the doctor-selection step and any promo code is kept.
   const carryParams = new URLSearchParams();
   if (location) carryParams.set("location", location);
-  for (const key of ["pid", "sid", "autofill", "ctype"]) {
+  for (const key of ["pid", "sid", "autofill", "ctype", "promo", "promo_source", "lang"]) {
     const val = searchParams.get(key);
     if (val) carryParams.set(key, val);
   }
