@@ -330,6 +330,8 @@ create table if not exists emails (
 
 create index if not exists emails_patient_id_idx on emails(patient_id);
 create index if not exists emails_deal_id_idx on emails(deal_id);
+alter table emails add column if not exists sent_by_user_id uuid references users(id) on delete set null;
+create index if not exists emails_sent_by_user_id_idx on emails(sent_by_user_id) where sent_by_user_id is not null;
 
 create table if not exists email_attachments (
   id uuid primary key default gen_random_uuid(),

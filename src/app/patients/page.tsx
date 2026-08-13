@@ -22,13 +22,14 @@ type PatientRow = {
   created_at: string | null;
   contact_owner_name: string | null;
   dob: string | null;
+  lifecycle_stage: string | null;
 };
 
 type OwnerFilter = "all" | "owner";
 
 type CreatedDateFilter = "all" | "today" | "last_7_days" | "last_30_days";
 
-type StatusFilter = "all" | "has_deal" | "no_deal";
+type StatusFilter = "all" | "new_patient" | "has_deal" | "no_deal";
 
 type SearchCategory = "all" | "name" | "email" | "phone" | "birthday";
 
@@ -138,7 +139,7 @@ export default function PatientsPage() {
         let patientsQuery = supabaseClient
           .from("patients")
           .select(
-            "id, first_name, last_name, email, phone, created_at, contact_owner_name, dob",
+            "id, first_name, last_name, email, phone, created_at, contact_owner_name, dob, lifecycle_stage",
             { count: "exact" }
           );
 
@@ -231,6 +232,12 @@ export default function PatientsPage() {
           patientsQuery = patientsQuery.eq("contact_owner_name", ownerNameFilter);
         }
 
+        // New-patient status is stored directly on the patient, so filter it
+        // before pagination to return every matching record across all pages.
+        if (statusFilter === "new_patient") {
+          patientsQuery = patientsQuery.eq("lifecycle_stage", "new_patient");
+        }
+
         // Apply created date filter
         if (createdFilter !== "all") {
           const now = new Date();
@@ -276,7 +283,7 @@ export default function PatientsPage() {
 
         // Only fetch deals for the patients we just loaded (much smaller query)
         if (patientsData.length > 0) {
-          const patientIds = patientsData.map((p: any) => p.id);
+          const patientIds = (patientsData as PatientRow[]).map((patient) => patient.id);
           const { data: dealsData } = await supabaseClient
             .from("deals")
             .select("patient_id, stage:deal_stages(name)")
@@ -284,7 +291,10 @@ export default function PatientsPage() {
 
           if (isMounted && dealsData) {
             const statusMap: DealStatusByPatient = {};
-            for (const row of dealsData as any[]) {
+            for (const row of dealsData as unknown as Array<{
+              patient_id: string | null;
+              stage: { name: string | null } | null;
+            }>) {
               const pid = row.patient_id as string | null;
               if (!pid || statusMap[pid] != null) continue;
               const stage = row.stage as { name: string | null } | null;
@@ -322,7 +332,7 @@ export default function PatientsPage() {
     return () => {
       isMounted = false;
     };
-  }, [page, debouncedSearch, searchCategory, ownerFilter, ownerNameFilter, createdFilter]);
+  }, [page, debouncedSearch, searchCategory, ownerFilter, ownerNameFilter, createdFilter, statusFilter]);
 
   // Load priority mode from user metadata
   useEffect(() => {
@@ -345,14 +355,6 @@ export default function PatientsPage() {
     return Array.from(set.values()).sort();
   }, [patients]);
 
-  const statusOptions = useMemo(() => {
-    const set = new Set<string>();
-    Object.values(dealStatusByPatient).forEach((status) => {
-      if (status) set.add(status);
-    });
-    return Array.from(set.values()).sort();
-  }, [dealStatusByPatient]);
-
   // Client-side filter for status (deal presence) - applied to already paginated results
   const filteredPatients = useMemo(() => {
     if (statusFilter === "all") {
@@ -360,6 +362,9 @@ export default function PatientsPage() {
     }
     return patients.filter((patient) => {
       const dealStatus = dealStatusByPatient[patient.id] ?? null;
+      if (statusFilter === "new_patient") {
+        return patient.lifecycle_stage === "new_patient";
+      }
       if (statusFilter === "has_deal" && !dealStatus) return false;
       if (statusFilter === "no_deal" && dealStatus) return false;
       return true;
@@ -485,6 +490,7 @@ export default function PatientsPage() {
           className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
         >
           <option value="all">Filter by Status...</option>
+          <option value="new_patient">New patients</option>
           <option value="has_deal">With deals</option>
           <option value="no_deal">No deals</option>
         </select>
@@ -623,6 +629,11 @@ export default function PatientsPage() {
                         >
                           {fullName || "Unnamed patient"}
                         </Link>
+                        {patient.lifecycle_stage === "new_patient" && (
+                          <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                            New Patient
+                          </span>
+                        )}
                       </td>
                       <td className="py-2 pr-3 align-top text-slate-700">
                         {patient.dob ? new Date(patient.dob).toLocaleDateString() : "—"}

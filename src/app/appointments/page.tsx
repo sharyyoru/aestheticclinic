@@ -858,6 +858,7 @@ async function sendAppointmentConfirmationEmail(
         deal_id: null,
         to_address: patientEmail,
         from_address: fromAddress,
+        sent_by_user_id: authUser?.id ?? null,
         subject,
         body: htmlBody,
         direction: "outbound",

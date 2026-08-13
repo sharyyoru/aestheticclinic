@@ -2773,12 +2773,12 @@ export default function PatientActivityCard({
           to_address: toAddress,
           cc_address: ccAddress || null,
           from_address: fromAddress,
+          sent_by_user_id: authUser.id,
           subject,
           body: finalBody,
           direction: "outbound" satisfies EmailDirection,
           status: resolvedStatus,
           sent_at: resolvedSentAt,
-          sent_by_user_id: authUser.id,
         })
         .select(
           "id, to_address, cc_address, from_address, subject, body, status, direction, sent_at, read_at, created_at",
