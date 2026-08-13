@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { reminderSuppressionReason } from "@/lib/appointmentComms";
-import { logEmailSent } from "@/lib/logEmail";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -15,10 +14,21 @@ const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailg
 // Verify cron secret to prevent unauthorized access
 const CRON_SECRET = process.env.CRON_SECRET;
 
-async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+type ScheduledEmailContext = {
+  emailId: string;
+  patientId: string | null;
+  sentByEmail: string | null;
+};
+
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  context: ScheduledEmailContext,
+): Promise<{ success: boolean; messageId: string | null }> {
   if (!mailgunApiKey || !mailgunDomain) {
     console.log("Mailgun not configured, skipping email send");
-    return false;
+    return { success: false, messageId: null };
   }
 
   const domain = mailgunDomain as string;
@@ -29,6 +39,16 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
   formData.append("to", to);
   formData.append("subject", subject);
   formData.append("html", html);
+
+  // Route patient replies through the inbound webhook and preserve enough
+  // metadata to notify/forward to the staff member who booked the appointment.
+  const replyToAddress = context.patientId
+    ? `reply+${context.emailId}+${context.patientId}@${domain}`
+    : `reply+${context.emailId}@${domain}`;
+  formData.append("h:Reply-To", replyToAddress);
+  formData.append("v:email-id", context.emailId);
+  if (context.patientId) formData.append("v:patient-id", context.patientId);
+  if (context.sentByEmail) formData.append("v:sent-by", context.sentByEmail);
 
   const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
 
@@ -44,15 +64,14 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       console.error("Error sending email via Mailgun", response.status, text);
-      void logEmailSent({ to_address: to, from_address: fromAddress, subject, body: html, source: "scheduled_reminder", status: "failed" });
-      return false;
+      return { success: false, messageId: null };
     }
 
-    void logEmailSent({ to_address: to, from_address: fromAddress, subject, body: html, source: "scheduled_reminder", status: "sent" });
-    return true;
+    const mailgunResponse = (await response.json().catch(() => null)) as { id?: string } | null;
+    return { success: true, messageId: mailgunResponse?.id ?? null };
   } catch (err) {
     console.error("Error sending email:", err);
-    return false;
+    return { success: false, messageId: null };
   }
 }
 
@@ -107,6 +126,11 @@ export async function GET(request: Request) {
       { id: string; status: string | null; start_time: string | null; reason: string | null }
     >();
 
+    const schedulerByAppointment = new Map<
+      string,
+      { userId: string | null; email: string | null }
+    >();
+
     if (appointmentIds.length > 0) {
       const { data: appts, error: apptError } = await supabase
         .from("appointments")
@@ -118,6 +142,29 @@ export async function GET(request: Request) {
       } else {
         for (const appt of appts || []) {
           appointmentMap.set(appt.id, appt);
+        }
+      }
+
+      // The creation history is the authoritative record of who scheduled an
+      // appointment from the staff calendar. Keep the first creation entry per
+      // appointment so replies go to that person, not merely the assigned doctor.
+      const { data: creationHistory, error: historyError } = await supabase
+        .from("appointment_history")
+        .select("appointment_id, changed_by_user_id, changed_by_email, changed_at")
+        .in("appointment_id", appointmentIds)
+        .eq("change_type", "created")
+        .order("changed_at", { ascending: true });
+
+      if (historyError) {
+        console.error("Error fetching appointment schedulers:", historyError);
+      } else {
+        for (const entry of creationHistory || []) {
+          if (!schedulerByAppointment.has(entry.appointment_id)) {
+            schedulerByAppointment.set(entry.appointment_id, {
+              userId: entry.changed_by_user_id ?? null,
+              email: entry.changed_by_email ?? null,
+            });
+          }
         }
       }
     }
@@ -216,24 +263,62 @@ export async function GET(request: Request) {
       
       const results = await Promise.allSettled(
         batch.map(async (email) => {
-          const success = await sendEmail(
-            email.recipient_email,
-            email.subject,
-            email.body
-          );
+          const scheduler = email.appointment_id
+            ? schedulerByAppointment.get(email.appointment_id)
+            : undefined;
+          const fromAddress = scheduler?.email || mailgunFromEmail || `no-reply@${mailgunDomain}`;
+
+          // Create the CRM row before sending so the Reply-To address can carry
+          // its ID. The inbound webhook uses this row to create the scheduler's
+          // notification and forward the patient's response to their work email.
+          const { data: emailLog, error: emailLogError } = await supabase
+            .from("emails")
+            .insert({
+              patient_id: email.patient_id ?? null,
+              to_address: email.recipient_email,
+              from_address: fromAddress,
+              subject: email.subject,
+              body: email.body,
+              direction: "outbound",
+              status: "queued",
+              source: "scheduled_reminder",
+              sent_by_user_id: scheduler?.userId ?? null,
+            })
+            .select("id")
+            .single();
+
+          if (emailLogError || !emailLog) {
+            console.error("Failed to create scheduled reminder email record:", emailLogError);
+            return false;
+          }
+
+          const result = await sendEmail(email.recipient_email, email.subject, email.body, {
+            emailId: emailLog.id,
+            patientId: email.patient_id ?? null,
+            sentByEmail: scheduler?.email ?? null,
+          });
+
+          await supabase
+            .from("emails")
+            .update({
+              status: result.success ? "sent" : "failed",
+              sent_at: result.success ? new Date().toISOString() : null,
+              message_id: result.messageId,
+            })
+            .eq("id", emailLog.id);
 
           // Update status in database
-          const newStatus = success ? "sent" : "failed";
+          const newStatus = result.success ? "sent" : "failed";
           await supabase
             .from("scheduled_emails")
             .update({
               status: newStatus,
-              sent_at: success ? new Date().toISOString() : null,
-              error: success ? null : "Failed to send via Mailgun",
+              sent_at: result.success ? new Date().toISOString() : null,
+              error: result.success ? null : "Failed to send via Mailgun",
             })
             .eq("id", email.id);
 
-          return success;
+          return result.success;
         })
       );
 
