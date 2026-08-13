@@ -6,6 +6,13 @@ import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 import { formatSwissShortDate, formatSwissTime } from "@/lib/swissTimezone";
+import {
+  getLastContactByPatientIds,
+  contactChannelLabel,
+  daysSince,
+  formatRelativeTime,
+  type LastContact,
+} from "@/lib/lastContact";
 
 // Supabase/PostgREST `.in()` filters are encoded into the request URL. With a
 // large id list the URL exceeds server limits and the request fails with
@@ -138,6 +145,32 @@ function SearchableSelect({
   );
 }
 
+function LastContactBadge({ contact }: { contact: LastContact | undefined }) {
+  if (!contact) {
+    return (
+      <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600">
+        Never contacted
+      </span>
+    );
+  }
+
+  const days = daysSince(contact.timestamp);
+  const isStale = days >= 3;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+        isStale
+          ? "border-amber-200 bg-amber-50 text-amber-700"
+          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+      }`}
+      title={`${contactChannelLabel(contact.channel)}${contact.direction ? ` (${contact.direction})` : ""} by ${contact.actorName}`}
+    >
+      {contactChannelLabel(contact.channel)} · {contact.actorName} · {formatRelativeTime(contact.timestamp)}
+    </span>
+  );
+}
+
 type DealStageType =
   | "lead"
   | "consultation"
@@ -216,6 +249,11 @@ export default function DealsPage() {
   const [dealOwnerDropdownOpen, setDealOwnerDropdownOpen] = useState(false);
   const [patientSearch, setPatientSearch] = useState("");
   const [userOptions, setUserOptions] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
+
+  // Contact history: last touchpoint per patient (call/email/whatsapp/note/task)
+  const [lastContactByPatient, setLastContactByPatient] = useState<Map<string, LastContact>>(new Map());
+  const [contactStatusFilter, setContactStatusFilter] = useState<"all" | "none" | "stale_3" | "stale_7">("all");
+  const [sortByStaleness, setSortByStaleness] = useState(false);
 
   // Date range filter
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -424,6 +462,20 @@ export default function DealsPage() {
             // this supplementary lookup is unavailable.
           }
         }
+
+        // Fetch last-contact info (who reached out and when) for each lead's
+        // patient. Supplementary — the deals list stays usable if this fails.
+        if (patientIds.length > 0) {
+          try {
+            const lastContactMap = await getLastContactByPatientIds(supabaseClient, patientIds);
+            if (isMounted) {
+              setLastContactByPatient(lastContactMap);
+            }
+          } catch {
+            // Contact history is optional; keep the loaded deals visible if
+            // this supplementary lookup is unavailable.
+          }
+        }
       } catch {
         if (!isMounted) return;
         setError("Failed to load deals.");
@@ -524,8 +576,31 @@ export default function DealsPage() {
       });
     }
 
+    // Contact status filter (last-contact staleness)
+    if (contactStatusFilter !== "all") {
+      filtered = filtered.filter((deal) => {
+        const contact = lastContactByPatient.get(deal.patient_id);
+        if (contactStatusFilter === "none") return !contact;
+        if (!contact) return true; // never contacted counts as stale too
+        const days = daysSince(contact.timestamp);
+        if (contactStatusFilter === "stale_3") return days >= 3;
+        if (contactStatusFilter === "stale_7") return days >= 7;
+        return true;
+      });
+    }
+
+    if (sortByStaleness) {
+      filtered = [...filtered].sort((a, b) => {
+        const aContact = lastContactByPatient.get(a.patient_id);
+        const bContact = lastContactByPatient.get(b.patient_id);
+        const aTime = aContact ? new Date(aContact.timestamp).getTime() : -Infinity;
+        const bTime = bContact ? new Date(bContact.timestamp).getTime() : -Infinity;
+        return aTime - bTime; // oldest (or never contacted) first
+      });
+    }
+
     return filtered;
-  }, [deals, normalizedSearch, normalizedPatientSearch, serviceFilter, stageFilter, dealOwnerFilter, userOptions, dateFrom, dateTo]);
+  }, [deals, normalizedSearch, normalizedPatientSearch, serviceFilter, stageFilter, dealOwnerFilter, userOptions, dateFrom, dateTo, contactStatusFilter, sortByStaleness, lastContactByPatient]);
 
   const uniqueServices = useMemo(() => {
     const map = new Map<string, string>();
@@ -940,6 +1015,33 @@ export default function DealsPage() {
                     </button>
                   )}
                 </div>
+
+                {/* Contact Status Filter */}
+                <select
+                  value={contactStatusFilter}
+                  onChange={(event) => setContactStatusFilter(event.target.value as typeof contactStatusFilter)}
+                  className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 text-[11px] text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  title="Filter by contact status"
+                >
+                  <option value="all">All contact statuses</option>
+                  <option value="none">Never contacted</option>
+                  <option value="stale_3">Not contacted in 3+ days</option>
+                  <option value="stale_7">Not contacted in 7+ days</option>
+                </select>
+
+                {/* Staleness Sort Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setSortByStaleness((prev) => !prev)}
+                  className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium shadow-sm ${
+                    sortByStaleness
+                      ? "border-sky-500 bg-sky-500 text-white"
+                      : "border-slate-200 bg-slate-50/80 text-slate-700 hover:bg-slate-100"
+                  }`}
+                  title="Sort by least recently contacted first"
+                >
+                  Least recently contacted
+                </button>
               </div>
             </div>
 
@@ -1027,6 +1129,7 @@ export default function DealsPage() {
                           <th className="py-2 pr-3 font-medium">Service</th>
                           <th className="py-2 pr-3 font-medium">Patient</th>
                           <th className="py-2 pr-3 font-medium">Deal Owner</th>
+                          <th className="py-2 pr-3 font-medium">Last Contact</th>
                           <th className="py-2 pr-3 font-medium">Created</th>
                         </tr>
                       </thead>
@@ -1077,6 +1180,9 @@ export default function DealsPage() {
                             </td>
                             <td className="py-2 pr-3 align-top text-slate-600">
                               {deal.owner_name || "—"}
+                            </td>
+                            <td className="py-2 pr-3 align-top">
+                              <LastContactBadge contact={lastContactByPatient.get(deal.patient_id)} />
                             </td>
                             <td className="py-2 pr-3 align-top text-slate-500">
                               {deal.createdLabel}
@@ -1270,6 +1376,9 @@ export default function DealsPage() {
                                   <p className="mt-0.5 text-[10px] text-slate-600">
                                     Deal Owner: <span className="font-medium text-sky-700">{deal.owner_name || "—"}</span>
                                   </p>
+                                  <div className="mt-1">
+                                    <LastContactBadge contact={lastContactByPatient.get(deal.patient_id)} />
+                                  </div>
                                   <p className="mt-0.5 text-[10px] text-slate-500">
                                     Created: {createdLabel}
                                   </p>

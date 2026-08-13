@@ -70,13 +70,14 @@ type InlineAttachment = {
 
 export async function POST(request: Request) {
   try {
-    const { to, cc, subject, html, fromUserEmail, fromUserName, emailId, patientId, inlineAttachments } = (await request.json()) as {
+    const { to, cc, subject, html, fromUserEmail, fromUserName, fromUserId, emailId, patientId, inlineAttachments } = (await request.json()) as {
       to?: string;
       cc?: string | null;
       subject?: string;
       html?: string;
       fromUserEmail?: string | null;
       fromUserName?: string | null;
+      fromUserId?: string | null;
       emailId?: string | null;
       patientId?: string | null;
       inlineAttachments?: InlineAttachment[];
@@ -272,6 +273,7 @@ export async function POST(request: Request) {
             direction: "outbound",
             status: "sent",
             sent_at: nowIso,
+            sent_by_user_id: fromUserId || null,
           })
           .select("id")
           .single();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendMissedCallNotificationEmail } from "@/lib/missedCallEmail";
 
 export const runtime = "nodejs";
 
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
     ];
 
     let patientId: string | null = null;
+    let patientName: string | null = null;
     let dealId: string | null = null;
     let dealOwnerId: string | null = null;
 
@@ -96,13 +98,14 @@ export async function POST(request: NextRequest) {
       
       const { data: patient } = await supabaseAdmin
         .from("patients")
-        .select("id")
+        .select("id, first_name, last_name")
         .or(`phone.eq.${phoneVariant},phone.ilike.%${phoneVariant.slice(-9)}%`)
         .limit(1)
         .maybeSingle();
 
       if (patient) {
         patientId = patient.id;
+        patientName = [patient.first_name, patient.last_name].filter(Boolean).join(" ") || null;
         
         // Find the most recent active deal for this patient
         const { data: deal } = await supabaseAdmin
@@ -195,6 +198,21 @@ export async function POST(request: NextRequest) {
         error: insertError.message,
         result: "I've noted this call but encountered an issue. Someone will follow up.",
       });
+    }
+
+    // Front desk must know about every call that didn't reach a normal
+    // conclusion, even though a follow-up task is also created below.
+    try {
+      await sendMissedCallNotificationEmail({
+        type: "ai_confused",
+        patientName,
+        phone: normalizedPhone,
+        reason,
+        patientId,
+        dealId,
+      });
+    } catch (emailError) {
+      console.error("[Dropped Call] Failed to send missed-call email:", emailError);
     }
 
     // Create a follow-up task if we have someone to assign to

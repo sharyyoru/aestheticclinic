@@ -54,6 +54,16 @@ const FAVORITES = [
       </svg>
     ),
   },
+  {
+    label: "Missed Calls",
+    href: "/missed-calls",
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m22 8-6 6M16 8l6 6" />
+        <path d="M10.7 15.3a13.5 13.5 0 0 1-4-4l2.1-2.1a1.5 1.5 0 0 0 .3-1.7L7.7 4.2a1.5 1.5 0 0 0-1.7-.7A3 3 0 0 0 4 6.5C4 13.4 10.6 20 17.5 20a3 3 0 0 0 3-2 1.5 1.5 0 0 0-.7-1.7l-3.3-1.4a1.5 1.5 0 0 0-1.7.3l-2.1 2.1Z" />
+      </svg>
+    ),
+  },
 ];
 
 function TooltipIcon({

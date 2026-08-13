@@ -10,6 +10,8 @@ import {
 } from "@/lib/callLog";
 import { extractCustomerInfo, matchServiceToHubspot, type HubspotService } from "@/lib/retellWebhookHelpers";
 import { sendCallLogConversationEmail } from "@/lib/callLogEmail";
+import { sendMissedCallNotificationEmail } from "@/lib/missedCallEmail";
+import { NOT_CONNECTED_REASONS } from "@/lib/missedCalls";
 
 // Where transcript notifications for workflow-triggered (non-scheduled)
 // outbound AI calls are sent, since those calls have no initiating user.
@@ -94,27 +96,6 @@ async function logRetellAgentRequest(payload: RetellCallPayload) {
     console.error("[Retell Agent] Failed to log request:", logError);
   }
 }
-
-/**
- * Retell disconnection reasons that mean the call never reached the patient
- * (carrier/telephony failures). These must surface as failures, not silent
- * "in progress" tasks — e.g. SIP 603 Decline arrives as `user_declined`.
- */
-const NOT_CONNECTED_REASONS = new Set([
-  "dial_failed",
-  "dial_busy",
-  "dial_no_answer",
-  "user_declined",
-  "voicemail_reached",
-  "error_llm_websocket_open",
-  "registered_call_timeout",
-  "no_valid_payment",
-  "scam_detected",
-  "telephony_provider_permission_denied",
-  "telephony_provider_unavailable",
-  "sip_routing_error",
-  "invalid_destination",
-]);
 
 /**
  * Produce a human-readable outcome from Retell's disconnection_reason so
@@ -744,6 +725,27 @@ export async function POST(request: NextRequest) {
           .single();
         if (logError) {
           console.error("[Retell Agent] Failed to insert call_log:", logError);
+        }
+
+        // Front desk must know about every call that didn't reach a normal
+        // conclusion so they can call the client back — even though the
+        // round-robin task above already covers internal CRM follow-up.
+        if (isInbound) {
+          const { connected: didConnectInbound } = describeDisconnection(call.disconnection_reason);
+          if (!didConnectInbound) {
+            try {
+              await sendMissedCallNotificationEmail({
+                type: "not_connected",
+                patientName: patientFullName,
+                phone: call.from_number || "Unknown",
+                reason: call.disconnection_reason ?? null,
+                patientId,
+                dealId,
+              });
+            } catch (emailError) {
+              console.error("[Retell Agent] Failed to send missed-call email:", emailError);
+            }
+          }
         }
 
         // Route the post-call notification email for workflow-triggered outbound

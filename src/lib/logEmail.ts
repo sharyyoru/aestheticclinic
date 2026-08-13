@@ -12,7 +12,8 @@ export type EmailSource =
   | "otp"
   | "scheduled_reminder"
   | "marketing"
-  | "invoice";
+  | "invoice"
+  | "missed_call";
 
 export interface LogEmailOpts {
   patient_id?: string | null;

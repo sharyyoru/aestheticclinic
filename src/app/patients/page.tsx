@@ -6,6 +6,12 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import PatientMergeModal from "@/components/PatientMergeModal";
 import { useAuth } from "@/components/AuthContext";
 import { fuzzySearchPatients, buildFuzzyOrConditions } from "@/lib/fuzzySearch";
+import {
+  getLastContactByPatientIds,
+  contactChannelLabel,
+  formatRelativeTime,
+  type LastContact,
+} from "@/lib/lastContact";
 
 type PatientRow = {
   id: string;
@@ -88,6 +94,7 @@ export default function PatientsPage() {
   const { user } = useAuth();
   const [patients, setPatients] = useState<PatientRow[]>([]);
   const [dealStatusByPatient, setDealStatusByPatient] = useState<DealStatusByPatient>({});
+  const [lastContactByPatient, setLastContactByPatient] = useState<Map<string, LastContact>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
@@ -285,8 +292,18 @@ export default function PatientsPage() {
             }
             setDealStatusByPatient(statusMap);
           }
+
+          try {
+            const lastContactMap = await getLastContactByPatientIds(supabaseClient, patientIds);
+            if (isMounted) {
+              setLastContactByPatient(lastContactMap);
+            }
+          } catch {
+            // Last-contact info is supplementary; keep the patient list visible if it fails.
+          }
         } else {
           setDealStatusByPatient({});
+          setLastContactByPatient(new Map());
         }
 
         setLoading(false);
@@ -576,7 +593,7 @@ export default function PatientsPage() {
                   <th className="py-2 pr-3 font-medium">DOB</th>
                   <th className="py-2 pr-3 font-medium">Mobile Number</th>
                   <th className="py-2 pr-3 font-medium">Email</th>
-                  <th className="py-2 pr-3 font-medium">Contact Owner</th>
+                  <th className="py-2 pr-3 font-medium">Last Contact</th>
                   <th className="py-2 pr-3 font-medium">Deal Status</th>
                   <th className="py-2 pr-3 font-medium">Action</th>
                 </tr>
@@ -617,7 +634,16 @@ export default function PatientsPage() {
                         {patient.email || "—"}
                       </td>
                       <td className="py-2 pr-3 align-top text-slate-700">
-                        {patient.contact_owner_name || "—"}
+                        {(() => {
+                          const contact = lastContactByPatient.get(patient.id);
+                          if (!contact) return <span className="text-slate-400">Never contacted</span>;
+                          return (
+                            <span title={`${contactChannelLabel(contact.channel)} by ${contact.actorName}`}>
+                              {contactChannelLabel(contact.channel)} · {contact.actorName} ·{" "}
+                              {formatRelativeTime(contact.timestamp)}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="py-2 pr-3 align-top text-slate-700">
                         {dealStatus || "—"}
