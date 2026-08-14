@@ -683,7 +683,7 @@ export async function POST(request: Request) {
             service,
             location: location || null,
             contactPhone: "+41 22 732 22 23",
-            contactEmail: mailgunFromEmail,
+            contactEmail: "info@aesthetics-ge.ch",
           });
 
           // Store in scheduled_emails as pending. The send-scheduled-emails

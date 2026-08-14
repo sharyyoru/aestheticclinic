@@ -383,6 +383,8 @@ export async function POST(request: Request) {
                   patientName,
                   appointmentDate: appointmentDateObj,
                   location: location || null,
+                  contactPhone: "+41 22 732 22 23",
+                  contactEmail: "info@aesthetics-ge.ch",
                 });
 
                 // Store in scheduled_emails as pending. The send-scheduled-emails

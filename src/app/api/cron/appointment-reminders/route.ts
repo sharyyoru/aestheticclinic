@@ -13,6 +13,7 @@ const mailgunDomain = process.env.MAILGUN_DOMAIN;
 const mailgunFromEmail = process.env.MAILGUN_FROM_EMAIL;
 const mailgunFromName = process.env.MAILGUN_FROM_NAME || "Aesthetics Clinic";
 const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
+const reminderReplyToEmail = "info@aesthetics-ge.ch";
 
 // Verify cron secret to prevent unauthorized access
 const CRON_SECRET = process.env.CRON_SECRET;
@@ -55,6 +56,7 @@ async function sendEmail(
   subject: string,
   html: string,
   patientId: string,
+  replyTo?: string,
 ): Promise<boolean> {
   if (!mailgunApiKey || !mailgunDomain) {
     console.log("[Reminder] Mailgun not configured");
@@ -69,6 +71,7 @@ async function sendEmail(
   formData.append("to", to);
   formData.append("subject", subject);
   formData.append("html", html);
+  if (replyTo) formData.append("h:Reply-To", replyTo);
 
   const auth = Buffer.from(`api:${mailgunApiKey}`).toString("base64");
 
@@ -214,13 +217,14 @@ We look forward to seeing you!`;
             location,
             doctorName,
             contactPhone: "+41 22 732 22 23",
-            contactEmail: mailgunFromEmail,
+            contactEmail: reminderReplyToEmail,
           });
           emailSent = await sendEmail(
             patientEmail,
             `Appointment Reminder / Rappel de rendez-vous - Tomorrow ${timeStr}`,
             emailHtml,
             patient.id,
+            reminderReplyToEmail,
           );
           if (emailSent) results.dayBefore.email++;
         }
