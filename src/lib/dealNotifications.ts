@@ -43,15 +43,32 @@ export async function createDealNotification(params: CreateDealNotificationParam
       }
     }
 
-    // Don't notify the user who made the change
+    // Don't notify the user who made the change — but still record the
+    // action for that actor (read_at pre-set) so activity reporting (e.g.
+    // "everything Audrey handled") never silently loses events just because
+    // she happened to be the deal owner too.
+    const hadRecipients = userIdsToNotify.length > 0;
     if (changedByUserId) {
       userIdsToNotify = userIdsToNotify.filter(id => id !== changedByUserId);
     }
 
-    // If no users to notify, return early
+    // If no one else needs notifying (either because the only recipient was
+    // the actor themselves, or the deal simply has no owner), still log the
+    // action for the actor as an audit-only row so activity reporting never
+    // silently loses events.
     if (userIdsToNotify.length === 0) {
-      return { success: true, notificationsCreated: 0 };
+      if (changedByUserId) {
+        userIdsToNotify = [changedByUserId];
+      } else if (hadRecipients) {
+        // Recipients existed but were filtered for an unrelated reason and
+        // there's no actor to fall back to — nothing to log.
+        return { success: true, notificationsCreated: 0 };
+      } else {
+        return { success: true, notificationsCreated: 0 };
+      }
     }
+
+    const nowIso = new Date().toISOString();
 
     // Create notification for each user
     const notifications = userIdsToNotify.map(userId => ({
@@ -65,6 +82,9 @@ export async function createDealNotification(params: CreateDealNotificationParam
       new_stage_name: newStageName,
       changed_by_user_id: changedByUserId,
       changed_by_name: changedByName,
+      // Self-caused audit rows are pre-read so they never surface as an
+      // unread notification bubble for the actor who made the change.
+      read_at: userId === changedByUserId ? nowIso : null,
     }));
 
     const { error } = await supabaseAdmin

@@ -10,6 +10,7 @@ import PaidServicesTab from "./tabs/PaidServicesTab";
 import FirstConsultationsTab from "./tabs/FirstConsultationsTab";
 import AgendaPatientsPaymentsTab from "./tabs/AgendaPatientsPaymentsTab";
 import MediDataStatusTab from "./tabs/MediDataStatusTab";
+import UserActivityTab from "./tabs/UserActivityTab";
 
 type TabKey =
   | "debiteurs"
@@ -20,6 +21,7 @@ type TabKey =
   | "first_consultations"
   | "agenda_patients_payments"
   | "medidata_status"
+  | "user_activity"
   | "services_apercu"
   | "non_invoiced"
   | "cash_collection"
@@ -70,6 +72,11 @@ const TABS: {
     key: "medidata_status",
     label: "MediData Status",
     description: "Insurance invoice status — sent, paid, rejected, transmitted, stornoed, duplicates, aging, routing",
+  },
+  {
+    key: "user_activity",
+    label: "Activity by User",
+    description: "Deals/patients touched by a staff member — stage changes, appointments, notes, tasks, emails — export to Excel",
   },
   {
     key: "services_apercu",
@@ -273,6 +280,7 @@ export default function StatisticsPage() {
         {activeTab === "medidata_status" && (
           <MediDataStatusTab filters={filters} entities={entities} doctors={doctors} />
         )}
+        {activeTab === "user_activity" && <UserActivityTab filters={filters} />}
       </div>
     </div>
   );

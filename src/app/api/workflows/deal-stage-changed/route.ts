@@ -31,6 +31,8 @@ type DealStageChangedPayload = {
   fromStageId: string | null;
   toStageId: string;
   pipeline: string | null;
+  changedByUserId: string | null;
+  changedByName: string | null;
 };
 
 function resolvePath(object: unknown, path: string): unknown {
@@ -124,6 +126,8 @@ export async function POST(request: Request) {
     const toStageId = body.toStageId?.trim() ?? null;
     const fromStageId = body.fromStageId?.trim() ?? null;
     const pipeline = (body.pipeline ?? null) as string | null;
+    const changedByUserId = body.changedByUserId?.trim() || null;
+    const changedByName = body.changedByName?.trim() || null;
 
     if (!dealId || !patientId || !toStageId) {
       return NextResponse.json(
@@ -246,8 +250,8 @@ export async function POST(request: Request) {
         patientId,
         fromStageId,
         toStageId,
-        null, // changedByUserId - could be passed from request if available
-        null, // changedByName - could be passed from request if available
+        changedByUserId,
+        changedByName,
       );
     } catch (notifErr) {
       console.error("Error creating deal notification:", notifErr);

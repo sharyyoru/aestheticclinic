@@ -750,6 +750,13 @@ export default function DealsPage() {
         }
         
         try {
+          const { data: authData } = await supabaseClient.auth.getUser();
+          const currentUser = authData?.user;
+          const changedByName =
+            (currentUser?.user_metadata?.full_name as string | undefined) ||
+            currentUser?.email ||
+            null;
+
           void fetch("/api/workflows/deal-stage-changed", {
             method: "POST",
             headers: {
@@ -761,6 +768,8 @@ export default function DealsPage() {
               fromStageId: previousStageId,
               toStageId: stageId,
               pipeline: current.pipeline,
+              changedByUserId: currentUser?.id || null,
+              changedByName,
             }),
           });
         } catch {
