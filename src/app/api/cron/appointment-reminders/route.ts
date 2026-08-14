@@ -50,7 +50,12 @@ async function sendWhatsAppMessage(
   }
 }
 
-async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  patientId: string,
+): Promise<boolean> {
   if (!mailgunApiKey || !mailgunDomain) {
     console.log("[Reminder] Mailgun not configured");
     return false;
@@ -77,13 +82,14 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       console.error("[Reminder] Email error:", response.status, text);
-      void logEmailSent({ to_address: to, from_address: fromAddress, subject, body: html, source: "appointment_reminder", status: "failed" });
+      void logEmailSent({ patient_id: patientId, to_address: to, from_address: fromAddress, subject, body: html, source: "appointment_reminder", status: "failed" });
       return false;
     }
-    void logEmailSent({ to_address: to, from_address: fromAddress, subject, body: html, source: "appointment_reminder", status: "sent" });
+    void logEmailSent({ patient_id: patientId, to_address: to, from_address: fromAddress, subject, body: html, source: "appointment_reminder", status: "sent" });
     return true;
   } catch (err) {
     console.error("[Reminder] Email send failed:", err);
+    void logEmailSent({ patient_id: patientId, to_address: to, from_address: fromAddress, subject, body: html, source: "appointment_reminder", status: "failed" });
     return false;
   }
 }
@@ -213,7 +219,8 @@ We look forward to seeing you!`;
           emailSent = await sendEmail(
             patientEmail,
             `Appointment Reminder / Rappel de rendez-vous - Tomorrow ${timeStr}`,
-            emailHtml
+            emailHtml,
+            patient.id,
           );
           if (emailSent) results.dayBefore.email++;
         }
@@ -315,7 +322,8 @@ Thank you for choosing Aesthetics Clinic!`;
           emailSent = await sendEmail(
             patientEmail,
             `Booking Confirmed / Réservation confirmée - ${dateStr} at ${timeStr}`,
-            emailHtml
+            emailHtml,
+            patient.id,
           );
           if (emailSent) results.bookingConfirm.email++;
         }
