@@ -175,44 +175,65 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch queue", details: error.message }, { status: 500 });
     }
 
-    // Enrich with patient and deal names
-    const enriched = await Promise.all((items || []).map(async (item) => {
-      let patient = null;
-      let deal = null;
-      let workflow = null;
+    // Resolve related records in batches. The previous per-item lookups made up
+    // to three additional database requests for every queue item and selected
+    // the nonexistent `deals.name` column, causing a large request/error storm.
+    const queueItems = items || [];
+    const patientIds = [...new Set(queueItems.map((item) => item.patient_id).filter(Boolean))] as string[];
+    const dealIds = [...new Set(queueItems.map((item) => item.deal_id).filter(Boolean))] as string[];
+    const workflowIds = [...new Set(queueItems.map((item) => item.workflow_id).filter(Boolean))] as string[];
 
-      if (item.patient_id) {
-        const { data } = await supabaseAdmin
-          .from("patients")
-          .select("id, first_name, last_name, phone")
-          .eq("id", item.patient_id)
-          .single();
-        patient = data;
-      }
-      if (item.deal_id) {
-        const { data } = await supabaseAdmin
-          .from("deals")
-          .select("id, name")
-          .eq("id", item.deal_id)
-          .single();
-        deal = data;
-      }
-      if (item.workflow_id) {
-        const { data } = await supabaseAdmin
-          .from("workflows")
-          .select("id, name")
-          .eq("id", item.workflow_id)
-          .single();
-        workflow = data;
-      }
+    const [patientsResult, dealsResult, workflowsResult] = await Promise.all([
+      patientIds.length > 0
+        ? supabaseAdmin
+            .from("patients")
+            .select("id, first_name, last_name, phone")
+            .in("id", patientIds)
+        : Promise.resolve({ data: [], error: null }),
+      dealIds.length > 0
+        ? supabaseAdmin
+            .from("deals")
+            .select("id, title")
+            .in("id", dealIds)
+        : Promise.resolve({ data: [], error: null }),
+      workflowIds.length > 0
+        ? supabaseAdmin
+            .from("workflows")
+            .select("id, name")
+            .in("id", workflowIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
 
-      return { ...item, patient, deal, workflow };
+    if (patientsResult.error || dealsResult.error || workflowsResult.error) {
+      console.error("Failed to enrich WhatsApp queue items:", {
+        patients: patientsResult.error?.message,
+        deals: dealsResult.error?.message,
+        workflows: workflowsResult.error?.message,
+      });
+    }
+
+    const patientsById = new Map((patientsResult.data || []).map((patient) => [patient.id, patient]));
+    // Preserve the existing API response shape while sourcing the value from
+    // the actual deals column (`title`).
+    const dealsById = new Map(
+      (dealsResult.data || []).map((deal) => [deal.id, { id: deal.id, name: deal.title }]),
+    );
+    const workflowsById = new Map(
+      (workflowsResult.data || []).map((workflow) => [workflow.id, workflow]),
+    );
+
+    const enriched = queueItems.map((item) => ({
+      ...item,
+      patient: item.patient_id ? patientsById.get(item.patient_id) ?? null : null,
+      deal: item.deal_id ? dealsById.get(item.deal_id) ?? null : null,
+      workflow: item.workflow_id ? workflowsById.get(item.workflow_id) ?? null : null,
     }));
 
     return NextResponse.json({ items: enriched });
-  } catch (err: any) {
-    console.error("WhatsApp queue GET error:", err?.message || err);
-    return NextResponse.json({ error: "Internal server error", details: err?.message }, { status: 500 });
+  } catch (err: unknown) {
+    const details = err instanceof Error ? err.message : String(err);
+    console.error("WhatsApp queue GET error:", details);
+    return NextResponse.json({ error: "Internal server error", details }, { status: 500 });
   }
 }
 
@@ -287,8 +308,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json({ error: "Provide id or retryAll" }, { status: 400 });
-  } catch (err: any) {
-    console.error("WhatsApp queue PATCH error:", err?.message || err);
+  } catch (err: unknown) {
+    console.error("WhatsApp queue PATCH error:", err instanceof Error ? err.message : String(err));
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
