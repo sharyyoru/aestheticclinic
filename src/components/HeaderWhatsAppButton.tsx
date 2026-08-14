@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { useVisibilityPolling } from "@/hooks/useVisibilityPolling";
 
 const GlobalWhatsAppPanel = dynamic(() => import("@/components/GlobalWhatsAppPanel"), { ssr: false });
 
@@ -20,7 +21,7 @@ export default function HeaderWhatsAppButton() {
     try {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (!session?.access_token) return;
-      const res = await fetch('/api/whatsapp/queue?limit=50', {
+      const res = await fetch("/api/whatsapp/queue?countOnly=true", {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
           "Content-Type": "application/json",
@@ -28,21 +29,17 @@ export default function HeaderWhatsAppButton() {
       });
       if (res.ok) {
         const data = await res.json();
-        setNotifCount((data.items || []).length);
+        setNotifCount(data.count ?? 0);
       }
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => {
-    fetchNotifCount();
-    const interval = setInterval(fetchNotifCount, 60000); // refresh every minute
-    return () => clearInterval(interval);
-  }, [fetchNotifCount]);
+  useVisibilityPolling(fetchNotifCount);
 
   // Refresh count when panel closes
   const handleClose = useCallback(() => {
     setPanelOpen(false);
-    fetchNotifCount();
+    void fetchNotifCount();
   }, [fetchNotifCount]);
 
   const isConnected = waStatus === "ready";

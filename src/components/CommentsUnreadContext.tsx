@@ -3,13 +3,13 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useState,
   useCallback,
   type ReactNode,
 } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useAuth } from "./AuthContext";
+import { useVisibilityPolling } from "@/hooks/useVisibilityPolling";
 
 type CommentsUnreadContextValue = {
   unreadCount: number | null;
@@ -65,29 +65,7 @@ export function CommentsUnreadProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  useEffect(() => {
-    // Wait for auth to load before fetching
-    if (authLoading) return;
-
-    let isMounted = true;
-
-    async function load() {
-      if (!isMounted) return;
-      await refreshUnread();
-    }
-
-    void load();
-
-    const intervalId = window.setInterval(() => {
-      if (!isMounted) return;
-      void refreshUnread();
-    }, 30000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [authLoading, refreshUnread]);
+  useVisibilityPolling(refreshUnread, !authLoading);
 
   const setUnreadCountOptimistic = (updater: (prev: number) => number) => {
     setUnreadCount((prev) => {

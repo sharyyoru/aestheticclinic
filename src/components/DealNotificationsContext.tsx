@@ -3,13 +3,13 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useState,
   useCallback,
   type ReactNode,
 } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useAuth } from "./AuthContext";
+import { useVisibilityPolling } from "@/hooks/useVisibilityPolling";
 
 type DealNotification = {
   id: string;
@@ -171,28 +171,7 @@ export function DealNotificationsProvider({ children }: { children: ReactNode })
     }
   }, [user]);
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    let isMounted = true;
-
-    async function load() {
-      if (!isMounted) return;
-      await refreshNotifications();
-    }
-
-    void load();
-
-    const intervalId = window.setInterval(() => {
-      if (!isMounted) return;
-      void refreshNotifications();
-    }, 30000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [authLoading, refreshNotifications]);
+  useVisibilityPolling(refreshNotifications, !authLoading);
 
   const value: DealNotificationsContextValue = {
     unreadCount,

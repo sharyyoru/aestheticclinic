@@ -156,6 +156,29 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const statusFilter = searchParams.get("status"); // null = all non-sent
+    const countOnly = searchParams.get("countOnly") === "true";
+    const queueStatuses = statusFilter
+      ? [statusFilter]
+      : ["pending", "sending", "failed", "session_failed"];
+
+    if (countOnly) {
+      const { count, error } = await supabaseAdmin
+        .from("whatsapp_queue")
+        .select("id", { count: "exact", head: true })
+        .eq("sender_user_id", senderUserId)
+        .in("status", queueStatuses);
+
+      if (error) {
+        console.error("Failed to fetch WhatsApp queue count:", error);
+        return NextResponse.json(
+          { error: "Failed to fetch queue count", details: error.message },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({ count: count ?? 0 });
+    }
+
     const limit = parseInt(searchParams.get("limit") || "50");
 
     // Fetch WhatsApp queue items from Supabase
@@ -164,9 +187,7 @@ export async function GET(request: NextRequest) {
       .from("whatsapp_queue")
       .select("*")
       .eq("sender_user_id", senderUserId)
-      .in("status", statusFilter
-        ? [statusFilter]
-        : ["pending", "sending", "failed", "session_failed"])
+      .in("status", queueStatuses)
       .order("created_at", { ascending: false })
       .limit(limit);
 

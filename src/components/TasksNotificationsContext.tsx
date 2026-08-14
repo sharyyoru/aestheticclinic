@@ -3,13 +3,13 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useState,
   useCallback,
   type ReactNode,
 } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useAuth } from "./AuthContext";
+import { useVisibilityPolling } from "@/hooks/useVisibilityPolling";
 
 type TasksNotificationsContextValue = {
   openTasksCount: number | null;
@@ -52,29 +52,7 @@ export function TasksNotificationsProvider({
     }
   }, [user]);
 
-  useEffect(() => {
-    // Wait for auth to load before fetching
-    if (authLoading) return;
-
-    let isMounted = true;
-
-    async function load() {
-      if (!isMounted) return;
-      await refreshOpenTasksCount();
-    }
-
-    void load();
-
-    const intervalId = window.setInterval(() => {
-      if (!isMounted) return;
-      void refreshOpenTasksCount();
-    }, 30000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [authLoading, refreshOpenTasksCount]);
+  useVisibilityPolling(refreshOpenTasksCount, !authLoading);
 
   const setOpenTasksCountOptimistic = (updater: (prev: number) => number) => {
     setOpenTasksCount((prev) => {
