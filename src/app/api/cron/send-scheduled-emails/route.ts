@@ -10,6 +10,7 @@ const mailgunDomain = process.env.MAILGUN_DOMAIN;
 const mailgunFromEmail = process.env.MAILGUN_FROM_EMAIL;
 const mailgunFromName = process.env.MAILGUN_FROM_NAME || "Clinic";
 const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
+const reminderReplyToEmail = "info@aesthetics-ge.ch";
 
 // Verify cron secret to prevent unauthorized access
 const CRON_SECRET = process.env.CRON_SECRET;
@@ -18,6 +19,7 @@ type ScheduledEmailContext = {
   emailId: string;
   patientId: string | null;
   sentByEmail: string | null;
+  replyToEmail?: string;
 };
 
 async function sendEmail(
@@ -42,9 +44,9 @@ async function sendEmail(
 
   // Route patient replies through the inbound webhook and preserve enough
   // metadata to notify/forward to the staff member who booked the appointment.
-  const replyToAddress = context.patientId
+  const replyToAddress = context.replyToEmail || (context.patientId
     ? `reply+${context.emailId}+${context.patientId}@${domain}`
-    : `reply+${context.emailId}@${domain}`;
+    : `reply+${context.emailId}@${domain}`);
   formData.append("h:Reply-To", replyToAddress);
   formData.append("v:email-id", context.emailId);
   if (context.patientId) formData.append("v:patient-id", context.patientId);
@@ -296,6 +298,10 @@ export async function GET(request: Request) {
             emailId: emailLog.id,
             patientId: email.patient_id ?? null,
             sentByEmail: scheduler?.email ?? null,
+            replyToEmail:
+              email.appointment_id && email.recipient_type === "patient"
+                ? reminderReplyToEmail
+                : undefined,
           });
 
           await supabase
