@@ -778,6 +778,29 @@ textarea::placeholder {
   opacity: 1;
 }
 
+/* Mobile/WebView form fields: force light background + dark text so iOS autofill
+   and system dark-appearance overrides don't wash out content. */
+.mobile-input-contrast,
+.mobile-input-contrast:-webkit-autofill,
+.mobile-input-contrast:-webkit-autofill:hover,
+.mobile-input-contrast:-webkit-autofill:focus,
+.mobile-input-contrast:-webkit-autofill:active {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  caret-color: #0f172a !important;
+  background-clip: padding-box !important;
+  box-shadow: inset 0 0 0 1000px #ffffff !important;
+}
+
+.mobile-input-contrast::placeholder {
+  color: #9ca3af !important;
+  -webkit-text-fill-color: #9ca3af !important;
+  opacity: 1 !important;
+}
+
 .crm-glow {
   border-radius: 9999px;
   background: radial-gradient(circle at center, rgba(16, 185, 129, 0.4), transparent 65%);

@@ -105,7 +105,7 @@ export default function ProdAppLoginPage() {
                   autoComplete="email"
                   autoCapitalize="none"
                   autoCorrect="off"
-                  className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
+                  className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all appearance-none mobile-input-contrast"
                   placeholder="you@clinic.com"
                 />
               </div>
@@ -121,7 +121,7 @@ export default function ProdAppLoginPage() {
                     type={showPassword ? "text" : "password"}
                     required
                     autoComplete="current-password"
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-base text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
+                    className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-12 text-base text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all appearance-none mobile-input-contrast"
                     placeholder="••••••••"
                   />
                   <button

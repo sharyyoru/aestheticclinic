@@ -74,7 +74,7 @@ export default function LoginForm() {
           name="email"
           type="email"
           required
-          className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 appearance-none mobile-input-contrast"
         />
       </div>
       <div className="space-y-1">
@@ -90,7 +90,7 @@ export default function LoginForm() {
             name="password"
             type={showPassword ? "text" : "password"}
             required
-            className="block w-full rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 pr-9 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 appearance-none mobile-input-contrast"
           />
           <button
             type="button"

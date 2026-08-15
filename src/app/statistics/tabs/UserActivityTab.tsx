@@ -61,7 +61,7 @@ export default function UserActivityTab({ filters }: { filters: StatisticsFilter
     let cancelled = false;
     (async () => {
       const { data, error } = await supabaseClient
-        .from("profiles")
+        .from("users")
         .select("id, full_name, email")
         .order("full_name");
       if (cancelled) return;

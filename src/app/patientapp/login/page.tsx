@@ -130,7 +130,7 @@ export default function PatientAppLoginPage() {
                     autoComplete="email"
                     autoCapitalize="none"
                     autoCorrect="off"
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
+                    className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all appearance-none mobile-input-contrast"
                     placeholder="you@example.com"
                   />
                 </div>
@@ -173,7 +173,7 @@ export default function PatientAppLoginPage() {
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                     autoComplete="one-time-code"
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-2xl font-bold tracking-[0.5em] text-slate-900 placeholder-slate-300 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
+                    className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-2xl font-bold tracking-[0.5em] text-slate-900 placeholder-slate-300 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all appearance-none mobile-input-contrast"
                     placeholder="••••••"
                   />
                 </div>
