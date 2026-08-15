@@ -183,10 +183,10 @@ export function JarvisPulse({
       
       {/* State label */}
       <span className={`text-sm font-medium transition-colors ${
-        state === "listening" ? "text-cyan-400" :
-        state === "speaking" ? "text-emerald-400" :
-        state === "processing" ? "text-cyan-400" :
-        "text-slate-400"
+        state === "listening" ? "text-cyan-600" :
+        state === "speaking" ? "text-emerald-600" :
+        state === "processing" ? "text-cyan-600" :
+        "text-slate-500"
       }`}>
         {getStateLabel()}
       </span>

@@ -60,7 +60,7 @@ export default function AppxLoginPage() {
       <div className="min-h-screen jarvis-shell flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-cyan-400 text-sm">Initializing...</p>
+          <p className="text-cyan-600 text-sm">Initializing...</p>
         </div>
       </div>
     );
@@ -80,22 +80,22 @@ export default function AppxLoginPage() {
                 height={72} 
                 className="rounded-full shadow-lg ring-2 ring-cyan-500/30"
               />
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full border-2 border-slate-900" />
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-cyan-500 rounded-full border-2 border-white" />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-white">
-            Aliice <span className="text-cyan-400">Assistant</span>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Aliice <span className="text-cyan-600">Assistant</span>
           </h1>
-          <p className="text-slate-400 text-sm mt-1">Medical AI • Aesthetics Clinic</p>
+          <p className="text-slate-500 text-sm mt-1">Medical AI • Aesthetics Clinic</p>
         </div>
 
         {/* Login Form */}
         <div className="jarvis-glass-elevated rounded-2xl p-6">
-          <h2 className="text-lg font-semibold text-white mb-4 text-center">Sign In</h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-4 text-center">Sign In</h2>
           
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
-              <label htmlFor="email" className="block text-xs font-medium text-slate-300">
+              <label htmlFor="email" className="block text-xs font-medium text-slate-600">
                 Email
               </label>
               <input
@@ -104,13 +104,13 @@ export default function AppxLoginPage() {
                 type="email"
                 required
                 autoComplete="email"
-                className="block w-full rounded-xl border border-slate-600/50 bg-slate-800/50 px-4 py-3 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all appearance-none mobile-input-contrast"
                 placeholder="you@clinic.com"
               />
             </div>
             
             <div className="space-y-1">
-              <label htmlFor="password" className="block text-xs font-medium text-slate-300">
+              <label htmlFor="password" className="block text-xs font-medium text-slate-600">
                 Password
               </label>
               <div className="relative">
@@ -120,13 +120,13 @@ export default function AppxLoginPage() {
                   type={showPassword ? "text" : "password"}
                   required
                   autoComplete="current-password"
-                  className="block w-full rounded-xl border border-slate-600/50 bg-slate-800/50 px-4 py-3 pr-10 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                  className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm text-slate-900 placeholder-slate-400 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all appearance-none mobile-input-contrast"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-white"
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-700"
                 >
                   {showPassword ? (
                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -144,7 +144,7 @@ export default function AppxLoginPage() {
 
             {error && (
               <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-                <p className="text-sm text-red-400">{error}</p>
+                <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
 

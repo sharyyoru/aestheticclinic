@@ -76,7 +76,7 @@ function TruncatedText({ text, maxLength = 60 }: { text: string; maxLength?: num
           e.stopPropagation();
           setExpanded(!expanded);
         }}
-        className="ml-1 text-cyan-400 hover:text-cyan-300 text-xs font-medium"
+        className="ml-1 text-cyan-600 hover:text-cyan-700 text-xs font-medium"
       >
         {expanded ? "less" : "more"}
       </button>
@@ -137,7 +137,7 @@ function AppointmentsTable({
             <td className="whitespace-nowrap font-medium">
               {formatDate(apt.date)}
             </td>
-            <td className="whitespace-nowrap text-slate-300">
+            <td className="whitespace-nowrap text-slate-600">
               {formatTime(apt.time)}
             </td>
             <td>
@@ -186,17 +186,17 @@ function InvoicesTable({
             onClick={() => onRowClick?.(inv)}
             className={onRowClick ? "cursor-pointer" : ""}
           >
-            <td className="whitespace-nowrap font-mono text-cyan-400">
+            <td className="whitespace-nowrap font-mono text-cyan-600">
               #{inv.number}
             </td>
-            <td className="whitespace-nowrap text-slate-300">
+            <td className="whitespace-nowrap text-slate-600">
               {formatDate(inv.date)}
             </td>
             <td className="whitespace-nowrap text-right">
               {formatCurrency(inv.amount)}
             </td>
             <td className={`whitespace-nowrap text-right font-medium ${
-              inv.amount - inv.paid > 0 ? "text-amber-400" : "text-emerald-400"
+              inv.amount - inv.paid > 0 ? "text-amber-600" : "text-emerald-600"
             }`}>
               {formatCurrency(inv.amount - inv.paid)}
             </td>
@@ -241,11 +241,11 @@ function NotesTable({
             onClick={() => onRowClick?.(note)}
             className={onRowClick ? "cursor-pointer" : ""}
           >
-            <td className="whitespace-nowrap text-slate-300">
+            <td className="whitespace-nowrap text-slate-600">
               {formatDate(note.date)}
             </td>
             <td className="whitespace-nowrap">
-              <span className="text-cyan-400">{note.author}</span>
+              <span className="text-cyan-600">{note.author}</span>
             </td>
             <td>
               <TruncatedText text={note.content} maxLength={80} />
@@ -289,11 +289,11 @@ function RecordsTable({
             onClick={() => onRowClick?.(record)}
             className={onRowClick ? "cursor-pointer" : ""}
           >
-            <td className="whitespace-nowrap text-slate-300">
+            <td className="whitespace-nowrap text-slate-600">
               {formatDate(record.date)}
             </td>
             <td className="whitespace-nowrap">
-              <span className="text-cyan-400">{record.type}</span>
+              <span className="text-cyan-600">{record.type}</span>
             </td>
             <td className="whitespace-nowrap">
               {record.provider}
@@ -363,21 +363,21 @@ function TabFilters({ activeTab, onTabChange, counts }: TabFiltersProps) {
   ];
 
   return (
-    <div className="flex gap-1 p-1 bg-slate-800/50 rounded-xl mb-3">
+    <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-3">
       {tabs.map((tab) => (
         <button
           key={tab.key}
           onClick={() => onTabChange(tab.key)}
           className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
             activeTab === tab.key
-              ? "bg-cyan-500/20 text-cyan-400"
-              : "text-slate-400 hover:text-slate-200 hover:bg-slate-700/50"
+              ? "bg-cyan-500/20 text-cyan-700"
+              : "text-slate-500 hover:text-slate-900 hover:bg-white"
           }`}
         >
           {tab.icon}
           <span className="hidden sm:inline">{tab.label}</span>
           <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] ${
-            activeTab === tab.key ? "bg-cyan-500/30" : "bg-slate-700"
+            activeTab === tab.key ? "bg-cyan-500/30" : "bg-slate-200"
           }`}>
             {counts[tab.key]}
           </span>
@@ -424,7 +424,7 @@ export function ClinicalDataView({
 
   return (
     <div className="jarvis-glass rounded-xl overflow-hidden">
-      <div className="p-3 border-b border-slate-700/50">
+      <div className="p-3 border-b border-slate-200">
         <TabFilters 
           activeTab={activeTab} 
           onTabChange={setActiveTab} 

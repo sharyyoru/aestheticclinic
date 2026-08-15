@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "../prodapp/prodapp.css";
+import ForceLightMode from "@/components/ForceLightMode";
 
 export const metadata: Metadata = {
   title: "Aliice - Patient Portal",
@@ -28,5 +29,10 @@ export default function PatientAppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return (
+    <>
+      <ForceLightMode />
+      {children}
+    </>
+  );
 }

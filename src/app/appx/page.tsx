@@ -836,14 +836,14 @@ export default function AppxPage() {
         <div className="text-center">
           <div className="jarvis-pulse-container mb-6">
             <div className="jarvis-pulse-core idle w-16 h-16">
-              <div className="jarvis-wave-container text-cyan-400">
+              <div className="jarvis-wave-container text-cyan-600">
                 <div className="jarvis-wave-bar" />
                 <div className="jarvis-wave-bar" />
                 <div className="jarvis-wave-bar" />
               </div>
             </div>
           </div>
-          <p className="text-cyan-400 text-sm font-medium">Initializing Aliice...</p>
+          <p className="text-cyan-600 text-sm font-medium">Initializing Aliice...</p>
           <p className="text-slate-500 text-xs mt-1">Medical AI Assistant</p>
         </div>
       </div>
@@ -856,7 +856,7 @@ export default function AppxPage() {
       <div className="min-h-screen jarvis-shell flex items-center justify-center p-4">
         <div className="text-center">
           <div className="w-12 h-12 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-400 text-sm">Redirecting to login...</p>
+          <p className="text-slate-500 text-sm">Redirecting to login...</p>
         </div>
       </div>
     );
@@ -868,7 +868,7 @@ export default function AppxPage() {
   return (
     <div className="min-h-screen jarvis-shell flex flex-col">
       {/* Header - Glassmorphism */}
-      <header className="flex-shrink-0 px-4 py-3 jarvis-glass border-b border-slate-700/30">
+      <header className="flex-shrink-0 px-4 py-3 jarvis-glass border-b border-slate-200/70">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -880,7 +880,7 @@ export default function AppxPage() {
                 className="rounded-full shadow-lg ring-2 ring-cyan-500/30"
               />
               {/* Status indicator dot */}
-              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-900 ${
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
                 computedVoiceState === "listening" ? "bg-cyan-400 animate-pulse" :
                 computedVoiceState === "speaking" ? "bg-emerald-400 animate-pulse" :
                 computedVoiceState === "processing" ? "bg-amber-400 animate-pulse" :
@@ -888,8 +888,8 @@ export default function AppxPage() {
               }`} />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-white tracking-tight">Aliice</h1>
-              <p className="text-[10px] text-cyan-400/80 font-medium">Medical AI Assistant</p>
+              <h1 className="text-sm font-bold text-slate-900 tracking-tight">Aliice</h1>
+              <p className="text-[10px] text-cyan-600/90 font-medium">Medical AI Assistant</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -897,10 +897,10 @@ export default function AppxPage() {
             <TelemetryBadge state={computedVoiceState === "idle" ? "connected" : computedVoiceState} />
             
             <span className="text-xs text-slate-500 hidden sm:block">|</span>
-            <span className="text-xs text-slate-400 hidden sm:block">{user.name}</span>
+            <span className="text-xs text-slate-500 hidden sm:block">{user.name}</span>
             <button
               onClick={handleLogout}
-              className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-slate-800/50 rounded-full transition-colors"
+              className="p-2 text-slate-500 hover:text-cyan-700 hover:bg-slate-100 rounded-full transition-colors"
               title="Sign out"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -919,11 +919,11 @@ export default function AppxPage() {
             <div className="relative">
               {/* Mode toggle for patient search */}
               <div className="flex items-center justify-center mb-4">
-                <div className="flex items-center bg-slate-700/50 rounded-full p-1">
+                <div className="flex items-center bg-slate-100 rounded-full p-1">
                   <button
                     onClick={() => setInputMode("voice")}
                     className={`px-4 py-2 text-sm rounded-full transition-colors ${
-                      inputMode === "voice" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"
+                      inputMode === "voice" ? "bg-sky-500 text-white" : "text-slate-500 hover:text-slate-900"
                     }`}
                   >
                     🎤 Voice
@@ -931,7 +931,7 @@ export default function AppxPage() {
                   <button
                     onClick={() => setInputMode("type")}
                     className={`px-4 py-2 text-sm rounded-full transition-colors ${
-                      inputMode === "type" ? "bg-sky-500 text-white" : "text-slate-400 hover:text-white"
+                      inputMode === "type" ? "bg-sky-500 text-white" : "text-slate-500 hover:text-slate-900"
                     }`}
                   >
                     ⌨️ Type
@@ -956,12 +956,12 @@ export default function AppxPage() {
                     </svg>
                   </button>
                   
-                  <p className="mt-4 text-sm text-slate-400">
+                  <p className="mt-4 text-sm text-slate-500">
                     {isListening && isSearchingByVoice ? "Listening... Say patient name" : "Tap to search by voice"}
                   </p>
                   
                   {patientSearch && (
-                    <p className="mt-2 text-white text-lg">&ldquo;{patientSearch}&rdquo;</p>
+                    <p className="mt-2 text-slate-900 text-lg">&ldquo;{patientSearch}&rdquo;</p>
                   )}
                 </div>
               ) : (
@@ -976,7 +976,7 @@ export default function AppxPage() {
                     }}
                     onFocus={() => setShowPatientDropdown(true)}
                     placeholder="🔍 Search patient by name, email, or phone..."
-                    className="w-full px-4 py-3 bg-slate-800/80 border border-slate-600 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                   />
                   {searchLoading && (
                     <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -988,21 +988,21 @@ export default function AppxPage() {
               
               {/* Search results dropdown */}
               {showPatientDropdown && patientResults.length > 0 && (
-                <div className="absolute z-50 w-full mt-2 bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden shadow-2xl max-h-[300px] overflow-y-auto">
+                <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xl max-h-[300px] overflow-y-auto">
                   {patientResults.map((patient) => (
                     <button
                       key={patient.id}
                       onClick={() => selectPatient(patient)}
-                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-700 transition-colors text-left"
+                      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
                     >
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm">
                         {patient.first_name?.[0]}{patient.last_name?.[0]}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-white font-medium truncate">
+                        <p className="text-slate-900 font-medium truncate">
                           {patient.first_name} {patient.last_name}
                         </p>
-                        <p className="text-xs text-slate-400 truncate">
+                        <p className="text-xs text-slate-500 truncate">
                           {patient.email || patient.phone}
                         </p>
                       </div>
@@ -1022,10 +1022,10 @@ export default function AppxPage() {
                   {selectedPatient.first_name?.[0]}{selectedPatient.last_name?.[0]}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold truncate">
+                  <p className="text-slate-900 font-semibold truncate">
                     {selectedPatient.first_name} {selectedPatient.last_name}
                   </p>
-                  <p className="text-xs text-cyan-400/80 truncate">
+                  <p className="text-xs text-cyan-600/90 truncate">
                     {selectedPatient.phone || selectedPatient.email}
                   </p>
                 </div>
@@ -1035,8 +1035,8 @@ export default function AppxPage() {
                     onClick={() => setShowClinicalData(!showClinicalData)}
                     className={`p-2 rounded-full transition-colors ${
                       showClinicalData 
-                        ? "text-cyan-400 bg-cyan-500/20" 
-                        : "text-slate-400 hover:text-cyan-400 hover:bg-slate-700/50"
+                        ? "text-cyan-600 bg-cyan-500/20" 
+                        : "text-slate-500 hover:text-cyan-700 hover:bg-slate-100"
                     }`}
                     title="View clinical data"
                   >
@@ -1047,7 +1047,7 @@ export default function AppxPage() {
                   <Link
                     href={`/patients/${selectedPatient.id}`}
                     target="_blank"
-                    className="p-2 text-slate-400 hover:text-cyan-400 hover:bg-slate-700/50 rounded-full transition-colors"
+                    className="p-2 text-slate-500 hover:text-cyan-700 hover:bg-slate-100 rounded-full transition-colors"
                     title="Open patient profile"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1056,7 +1056,7 @@ export default function AppxPage() {
                   </Link>
                   <button
                     onClick={clearPatient}
-                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-700/50 rounded-full transition-colors"
+                    className="p-2 text-slate-500 hover:text-red-500 hover:bg-slate-100 rounded-full transition-colors"
                     title="End session"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1066,8 +1066,8 @@ export default function AppxPage() {
                 </div>
               </div>
               {changes.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-700/50">
-                  <p className="text-xs text-emerald-400 flex items-center gap-1">
+                <div className="mt-3 pt-3 border-t border-slate-200">
+                  <p className="text-xs text-emerald-600 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                     {changes.length} change{changes.length !== 1 ? "s" : ""} made this session
                   </p>
@@ -1102,20 +1102,20 @@ export default function AppxPage() {
                   className={`max-w-[85%] rounded-2xl px-4 py-3 ${
                     msg.role === "user"
                       ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white rounded-br-md shadow-lg shadow-cyan-500/20"
-                      : "jarvis-glass text-slate-100 rounded-bl-md"
+                      : "jarvis-glass text-slate-900 rounded-bl-md"
                   }`}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                   
                   {/* Data display */}
                   {msg.data && (
-                    <div className="mt-3 p-3 bg-slate-800/50 rounded-xl text-xs space-y-2">
+                    <div className="mt-3 p-3 bg-slate-100 rounded-xl text-xs space-y-2">
                       {Array.isArray(msg.data.items) && msg.data.items.map((item: Record<string, unknown>, idx: number) => (
-                        <div key={idx} className="p-2 bg-slate-900/50 rounded-lg">
+                        <div key={idx} className="p-2 bg-slate-50 rounded-lg">
                           {Object.entries(item).map(([key, value]) => (
                             <div key={key} className="flex justify-between">
-                              <span className="text-slate-400">{key}:</span>
-                              <span className="text-white">{String(value)}</span>
+                              <span className="text-slate-500">{key}:</span>
+                              <span className="text-slate-900">{String(value)}</span>
                             </div>
                           ))}
                         </div>
@@ -1147,7 +1147,7 @@ export default function AppxPage() {
             
             {isProcessing && (
               <div className="flex justify-start">
-                <div className="bg-slate-700/80 rounded-2xl rounded-bl-md px-4 py-3">
+                <div className="bg-slate-100 rounded-2xl rounded-bl-md px-4 py-3">
                   <div className="flex gap-1.5">
                     <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                     <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -1164,9 +1164,9 @@ export default function AppxPage() {
         {/* Summary Modal */}
         {sessionStatus === "summary" && (
           <div className="flex-1 p-4 overflow-y-auto">
-            <div className="bg-slate-800/80 rounded-2xl p-5 border border-slate-700">
-              <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="bg-white rounded-2xl p-5 border border-slate-200">
+              <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 Session Summary
@@ -1174,12 +1174,12 @@ export default function AppxPage() {
               
               {changes.length > 0 && (
                 <div className="mb-4">
-                  <h3 className="text-sm font-medium text-slate-400 mb-2">Changes Made:</h3>
+                  <h3 className="text-sm font-medium text-slate-500 mb-2">Changes Made:</h3>
                   <div className="space-y-2">
                     {changes.map((change) => (
                       <div key={change.id} className="flex items-start gap-2 text-sm">
-                        <span className="text-emerald-400">✓</span>
-                        <span className="text-slate-300">{change.description}</span>
+                        <span className="text-emerald-600">✓</span>
+                        <span className="text-slate-600">{change.description}</span>
                       </div>
                     ))}
                   </div>
@@ -1187,12 +1187,12 @@ export default function AppxPage() {
               )}
               
               <div className="mb-4">
-                <label className="text-sm font-medium text-slate-400 mb-2 block">Summary:</label>
+                <label className="text-sm font-medium text-slate-500 mb-2 block">Summary:</label>
                 <textarea
                   value={summary}
                   onChange={(e) => setSummary(e.target.value)}
                   rows={4}
-                  className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
               </div>
               
@@ -1205,7 +1205,7 @@ export default function AppxPage() {
                 </button>
                 <button
                   onClick={() => setSessionStatus("active")}
-                  className="px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition-colors"
+                  className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors"
                 >
                   Back
                 </button>
@@ -1227,10 +1227,10 @@ export default function AppxPage() {
                 </div>
               </div>
               
-              <h2 className="text-xl font-bold text-white mb-2">
-                Welcome, <span className="text-cyan-400">{user.name.split(" ")[0]}</span>
+              <h2 className="text-xl font-bold text-slate-900 mb-2">
+                Welcome, <span className="text-cyan-600">{user.name.split(" ")[0]}</span>
               </h2>
-              <p className="text-slate-400 text-sm max-w-xs mx-auto mb-6">
+              <p className="text-slate-500 text-sm max-w-xs mx-auto mb-6">
                 Search for a patient to begin your AI-assisted clinical session.
               </p>
               
@@ -1239,7 +1239,7 @@ export default function AppxPage() {
                 {["Voice Commands", "Smart Booking", "EMR Access", "Auto-Notes"].map((feature) => (
                   <span 
                     key={feature} 
-                    className="px-3 py-1 text-xs text-cyan-400/80 bg-cyan-500/10 rounded-full border border-cyan-500/20"
+                    className="px-3 py-1 text-xs text-cyan-700/90 bg-cyan-500/10 rounded-full border border-cyan-500/20"
                   >
                     {feature}
                   </span>
@@ -1252,17 +1252,17 @@ export default function AppxPage() {
       
       {/* Input Bar - Jarvis Glass */}
       {selectedPatient && sessionStatus === "active" && (
-        <div className="flex-shrink-0 p-4 jarvis-glass border-t border-slate-700/30">
+        <div className="flex-shrink-0 p-4 jarvis-glass border-t border-slate-200/70">
           <div className="max-w-lg mx-auto">
             {/* Mode toggle & New conversation */}
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center bg-slate-800/60 rounded-full p-1 border border-slate-700/50">
+              <div className="flex items-center bg-slate-100 rounded-full p-1 border border-slate-200">
                 <button
                   onClick={() => { setInputMode("voice"); stopContinuousListening(); }}
                   className={`px-3 py-1.5 text-xs rounded-full transition-all font-medium ${
                     inputMode === "voice" 
                       ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white shadow-lg shadow-cyan-500/25" 
-                      : "text-slate-400 hover:text-white"
+                      : "text-slate-500 hover:text-slate-900"
                   }`}
                 >
                   🎤 Voice
@@ -1272,7 +1272,7 @@ export default function AppxPage() {
                   className={`px-3 py-1.5 text-xs rounded-full transition-all font-medium ${
                     inputMode === "type" 
                       ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white shadow-lg shadow-cyan-500/25" 
-                      : "text-slate-400 hover:text-white"
+                      : "text-slate-500 hover:text-slate-900"
                   }`}
                 >
                   ⌨️ Type
@@ -1280,7 +1280,7 @@ export default function AppxPage() {
               </div>
               <button
                 onClick={startNewConversation}
-                className="px-3 py-1.5 text-xs text-cyan-400 hover:text-white hover:bg-cyan-500/20 rounded-full transition-colors border border-cyan-500/30"
+                className="px-3 py-1.5 text-xs text-cyan-600 hover:text-cyan-700 hover:bg-cyan-500/10 rounded-full transition-colors border border-cyan-500/30"
               >
                 + New Chat
               </button>
@@ -1301,7 +1301,7 @@ export default function AppxPage() {
                 {/* Show transcript */}
                 {input && (
                   <div className="mt-4 px-4 py-2 jarvis-glass rounded-xl max-w-xs">
-                    <p className="text-cyan-400 text-sm text-center">&ldquo;{input}&rdquo;</p>
+                    <p className="text-cyan-600 text-sm text-center">&ldquo;{input}&rdquo;</p>
                   </div>
                 )}
               </div>
@@ -1314,7 +1314,7 @@ export default function AppxPage() {
                   className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center transition-all ${
                     isListening
                       ? "bg-red-500 animate-pulse"
-                      : "bg-slate-700 hover:bg-slate-600"
+                      : "bg-sky-600 hover:bg-sky-500"
                   } disabled:opacity-50`}
                 >
                   <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1331,7 +1331,7 @@ export default function AppxPage() {
                     onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                     placeholder={isListening ? "Listening..." : "Type your request..."}
                     disabled={isProcessing}
-                    className="w-full px-4 py-3 bg-slate-700/80 border border-slate-600 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"
+                    className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50"
                   />
                 </div>
                 
@@ -1359,7 +1359,7 @@ export default function AppxPage() {
                   key={item.cmd}
                   onClick={() => handleSubmit(item.cmd)}
                   disabled={isProcessing || isSpeaking}
-                  className="jarvis-action-card px-3 py-2 text-xs font-medium text-slate-300 hover:text-cyan-400 disabled:opacity-50"
+                  className="jarvis-action-card px-3 py-2 text-xs font-medium text-slate-600 hover:text-cyan-700 disabled:opacity-50"
                 >
                   {item.label}
                 </button>
