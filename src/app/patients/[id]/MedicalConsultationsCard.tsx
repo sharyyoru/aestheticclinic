@@ -4281,6 +4281,14 @@ export default function MedicalConsultationsCard({
                             payment_method: paymentMethod,
                         };
 
+                        // Set insurance law / treatment reason for every invoice type
+                        // (also used when invoicing outside of TarDoc and flat rates).
+                        invoicePayload.health_insurance_law = invoiceLawType;
+                        invoicePayload.treatment_reason = invoiceLawType === "UVG" ? "accident" : "disease";
+                        if (invoiceLawType === "UVG" && invoiceAccidentDate) {
+                          invoicePayload.accident_date = invoiceAccidentDate;
+                        }
+
                         // Add TARDOC-specific invoice fields
                         if (isTardocInvoice) {
                           invoicePayload.treatment_canton = invoiceCanton;
@@ -5180,6 +5188,44 @@ export default function MedicalConsultationsCard({
                       </select>
                     </div>
 
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-medium text-slate-700">
+                        Insurance Law
+                      </label>
+                      <select
+                        value={invoiceLawType}
+                        onChange={(event) =>
+                          setInvoiceLawType(event.target.value)
+                        }
+                        className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      >
+                        <option value="KVG">KVG</option>
+                        <option value="UVG">UVG</option>
+                        <option value="IVG">IVG</option>
+                        <option value="MVG">MVG</option>
+                        <option value="VVG">VVG</option>
+                      </select>
+                    </div>
+
+                    {invoiceLawType === "UVG" && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <svg className="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                          </svg>
+                          <span className="text-[11px] font-medium text-amber-800">
+                            Accident (UVG) — accident date required
+                          </span>
+                        </div>
+                        <input
+                          type="date"
+                          value={invoiceAccidentDate}
+                          onChange={(e) => setInvoiceAccidentDate(e.target.value)}
+                          className="block w-full rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                      </div>
+                    )}
+
                     <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)]">
                       <div className="space-y-3">
                         <div className="rounded-lg border border-slate-200 bg-slate-50/80">
@@ -5433,8 +5479,8 @@ export default function MedicalConsultationsCard({
                             </div>
                           ) : invoiceMode === "tardoc" ? (
                             <div className="space-y-2 px-3 py-3">
-                              {/* Canton + TPV + Law Type */}
-                              <div className="grid grid-cols-[1fr_70px_1fr] gap-2">
+                              {/* Canton + TPV */}
+                              <div className="grid grid-cols-[1fr_70px] gap-2">
                                 <div className="space-y-1">
                                   <span className="block text-[10px] font-medium text-slate-600">
                                     Canton
@@ -5488,22 +5534,7 @@ export default function MedicalConsultationsCard({
                                     </button>
                                   )}
                                 </div>
-                                <div className="space-y-1">
-                                  <span className="block text-[10px] font-medium text-slate-600">
-                                    Insurance Law
-                                  </span>
-                                  <select
-                                    value={invoiceLawType}
-                                    onChange={(e) => setInvoiceLawType(e.target.value)}
-                                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                                  >
-                                    <option value="KVG">KVG</option>
-                                    <option value="UVG">UVG</option>
-                                    <option value="IVG">IVG</option>
-                                    <option value="MVG">MVG</option>
-                                    <option value="VVG">VVG</option>
-                                  </select>
-                                </div>
+
                               </div>
 
                               {/* Load TarDoc Group */}
@@ -5640,29 +5671,7 @@ export default function MedicalConsultationsCard({
                                 )}
                               </div>
 
-                              {/* UVG: Accident Date */}
-                              {invoiceLawType === "UVG" && (
-                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <svg className="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                                    </svg>
-                                    <span className="text-[11px] font-semibold text-amber-700">UVG — Accident Date Required</span>
-                                  </div>
-                                  <div className="space-y-1">
-                                    <label className="block text-[10px] font-medium text-amber-700">
-                                      Accident Date (Unfalldatum) <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                      type="date"
-                                      value={invoiceAccidentDate}
-                                      onChange={(e) => setInvoiceAccidentDate(e.target.value)}
-                                      className="block w-full rounded-lg border border-amber-300 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                                    />
-                                    <p className="text-[10px] text-amber-600">Required for UVG (accident insurance) invoices.</p>
-                                  </div>
-                                </div>
-                              )}
+
 
                               {/* Code search */}
                               <div className="space-y-1">
@@ -5895,8 +5904,8 @@ export default function MedicalConsultationsCard({
                             </div>
                           ) : invoiceMode === "flatrate" ? (
                             <div className="space-y-2 px-3 py-3">
-                              {/* Canton + TPV + Law Type (TPV defaults to 1.00 — flat rates are in CHF) */}
-                              <div className="grid grid-cols-[1fr_70px_1fr] gap-2">
+                              {/* Canton + TPV (TPV defaults to 1.00 — flat rates are in CHF) */}
+                              <div className="grid grid-cols-[1fr_70px] gap-2">
                                 <div className="space-y-1">
                                   <span className="block text-[10px] font-medium text-slate-600">
                                     Canton
@@ -5952,22 +5961,7 @@ export default function MedicalConsultationsCard({
                                     </button>
                                   )}
                                 </div>
-                                <div className="space-y-1">
-                                  <span className="block text-[10px] font-medium text-slate-600">
-                                    Insurance Law
-                                  </span>
-                                  <select
-                                    value={invoiceLawType}
-                                    onChange={(e) => setInvoiceLawType(e.target.value)}
-                                    className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                                  >
-                                    <option value="KVG">KVG</option>
-                                    <option value="UVG">UVG</option>
-                                    <option value="IVG">IVG</option>
-                                    <option value="MVG">MVG</option>
-                                    <option value="VVG">VVG</option>
-                                  </select>
-                                </div>
+
                               </div>
 
                               <AcfAccordionTree
