@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 
 const CLINIC_LOCATIONS = [
   {
@@ -33,7 +34,7 @@ const CLINIC_LOCATIONS = [
 
 const CARRY_PARAMS = ["pid", "sid", "autofill", "ctype", "promo", "promo_source", "lang"];
 
-export default function LocationSelectionPage() {
+function LocationSelectionContent() {
   const searchParams = useSearchParams();
   const extraQuery = new URLSearchParams();
   for (const key of CARRY_PARAMS) {
@@ -135,5 +136,17 @@ export default function LocationSelectionPage() {
         </div>
       </footer>
     </main>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center">
+        <p className="text-slate-500 text-sm">Loading...</p>
+      </div>
+    }>
+      <LocationSelectionContent />
+    </Suspense>
   );
 }
