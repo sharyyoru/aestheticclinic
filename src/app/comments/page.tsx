@@ -473,12 +473,12 @@ export default function CommentsPage() {
                         >
                           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                             {createdLabel ? <span>{createdLabel}</span> : null}
-                            <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-700">
+                            <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-medium text-purple-500">
                               Task Comment
                             </span>
                             <span>
                               Task:{" "}
-                              <span className="font-medium text-purple-700">
+                              <span className="font-medium text-purple-500">
                                 {task?.name || "No Task Name"}
                               </span>
                             </span>
@@ -497,7 +497,7 @@ export default function CommentsPage() {
                                   e.stopPropagation();
                                   router.push(`/patients/${patientId}?m_tab=crm&crm_sub=tasks`);
                                 }}
-                                className="font-medium text-purple-700 hover:text-purple-800 hover:underline cursor-pointer"
+                                className="font-medium text-purple-500 hover:text-purple-400 hover:underline cursor-pointer"
                               >
                                 {patientName}
                               </span>
@@ -515,7 +515,7 @@ export default function CommentsPage() {
                                   e.stopPropagation();
                                   handleOpenMention(mention);
                                 }}
-                                className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                                className="inline-flex items-center rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-500 hover:bg-purple-100 transition-colors"
                               >
                                 Mark as read
                               </button>
