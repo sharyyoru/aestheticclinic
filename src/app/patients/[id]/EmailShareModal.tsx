@@ -4,6 +4,28 @@ import { useState, useEffect, useRef } from "react";
 import RichTextEditor from "@/components/RichTextEditor";
 import { supabaseClient } from "@/lib/supabaseClient";
 
+function plainTextToHtml(text: string): string {
+  // Escape HTML entities first so the output is safe to use as innerHTML.
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // Split on blank lines (paragraphs), then preserve single newlines as <br>.
+  return escaped
+    .split(/\n\n+/)
+    .map((paragraph) => {
+      const lines = paragraph
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      if (lines.length === 0) return "";
+      return `<p>${lines.join("<br>")}</p>`;
+    })
+    .filter((p) => p.length > 0)
+    .join("");
+}
+
 interface EmailShareModalProps {
   open: boolean;
   onClose: () => void;
@@ -167,7 +189,10 @@ export default function EmailShareModal({
         onSubjectChange(data.subject.trim());
       }
       if (data.body && data.body.trim().length > 0) {
-        onBodyChange(data.body.trim());
+        // The AI endpoint returns plain text; convert it to HTML so the rich
+        // text editor shows paragraphs, and the email is sent with the same
+        // formatting visible in the generated preview.
+        onBodyChange(plainTextToHtml(data.body.trim()));
       }
     } catch {
       setAiError("Unexpected error generating email.");
