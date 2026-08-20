@@ -497,7 +497,7 @@ export default function PatientsPage() {
       </div>
 
       {/* Main contacts card */}
-      <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-xs text-slate-800 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur dark:!border-slate-600 dark:!bg-slate-800 dark:!text-slate-100">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-1 items-center gap-2">
             {/* Search Category Dropdown */}
@@ -505,7 +505,7 @@ export default function PatientsPage() {
               <select
                 value={searchCategory}
                 onChange={(e) => setSearchCategory(e.target.value as SearchCategory)}
-                className="h-[30px] appearance-none rounded-l-lg border border-r-0 border-slate-200 bg-slate-100 pl-8 pr-6 text-xs font-medium text-slate-700 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="h-[30px] appearance-none rounded-l-lg border border-r-0 border-slate-200 bg-slate-100 pl-8 pr-6 text-xs font-medium text-slate-700 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:!border-slate-500 dark:!bg-slate-700 dark:!text-white"
               >
                 {(Object.keys(SEARCH_CATEGORY_CONFIG) as SearchCategory[]).map((cat) => (
                   <option key={cat} value={cat}>
@@ -513,10 +513,10 @@ export default function PatientsPage() {
                   </option>
                 ))}
               </select>
-              <div className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500">
+              <div className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 dark:!text-slate-200">
                 {SEARCH_CATEGORY_CONFIG[searchCategory].icon}
               </div>
-              <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-slate-400">
+              <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 dark:!text-slate-200">
                 <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="m6 9 6 6 6-6" />
                 </svg>
@@ -530,7 +530,7 @@ export default function PatientsPage() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder={SEARCH_CATEGORY_CONFIG[searchCategory].placeholder}
-                className="h-[30px] w-full rounded-r-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="h-[30px] w-full rounded-r-lg border border-slate-200 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-900 shadow-sm placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 dark:!border-slate-500 dark:!bg-slate-700 dark:!text-white dark:!placeholder:text-slate-300"
               />
               {searchQuery && (
                 <button
@@ -580,7 +580,7 @@ export default function PatientsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-[11px]">
-              <thead className="border-b text-[10px] uppercase tracking-wide text-slate-500">
+              <thead className="border-b text-[10px] uppercase tracking-wide text-slate-600 dark:!border-slate-500 dark:!text-slate-200">
                 <tr>
                   <th className="w-8 py-2 pl-3 pr-2">
                     <input
@@ -604,14 +604,14 @@ export default function PatientsPage() {
                   <th className="py-2 pr-3 font-medium">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:!divide-slate-600">
                 {paginatedPatients.map((patient) => {
                   const fullName = `${patient.first_name} ${patient.last_name}`.trim();
                   const dealStatus = dealStatusByPatient[patient.id] ?? null;
                   const checked = selectedIds.includes(patient.id);
 
                   return (
-                    <tr key={patient.id} className="hover:bg-slate-50/70">
+                    <tr key={patient.id} className="hover:bg-slate-50/70 dark:hover:!bg-slate-700/70">
                       <td className="py-2 pl-3 pr-2 align-top">
                         <input
                           type="checkbox"
@@ -622,7 +622,7 @@ export default function PatientsPage() {
                           }
                         />
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-900">
+                      <td className="py-2 pr-3 align-top text-slate-900 dark:!text-white">
                         <Link
                           href={buildPatientHref(patient.id)}
                           className="hover:text-sky-600 hover:underline"
@@ -635,19 +635,19 @@ export default function PatientsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700">
+                      <td className="py-2 pr-3 align-top text-slate-700 dark:!text-slate-100">
                         {patient.dob ? new Date(patient.dob).toLocaleDateString() : "—"}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700">
+                      <td className="py-2 pr-3 align-top text-slate-700 dark:!text-slate-100">
                         {patient.phone || "—"}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700">
+                      <td className="py-2 pr-3 align-top text-slate-700 dark:!text-slate-100">
                         {patient.email || "—"}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700">
+                      <td className="py-2 pr-3 align-top text-slate-700 dark:!text-slate-100">
                         {(() => {
                           const contact = lastContactByPatient.get(patient.id);
-                          if (!contact) return <span className="text-slate-400">Never contacted</span>;
+                          if (!contact) return <span className="text-slate-400 dark:!text-slate-300">Never contacted</span>;
                           return (
                             <span title={`${contactChannelLabel(contact.channel)} by ${contact.actorName}`}>
                               {contactChannelLabel(contact.channel)} · {contact.actorName} ·{" "}
@@ -656,10 +656,10 @@ export default function PatientsPage() {
                           );
                         })()}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700">
+                      <td className="py-2 pr-3 align-top text-slate-700 dark:!text-slate-100">
                         {dealStatus || "—"}
                       </td>
-                      <td className="py-2 pr-3 align-top text-slate-700">
+                      <td className="py-2 pr-3 align-top text-slate-700 dark:!text-slate-100">
                         <div className="flex flex-wrap items-center gap-1">
                           <Link
                             href={buildPatientHref(patient.id)}
@@ -680,7 +680,7 @@ export default function PatientsPage() {
                 })}
               </tbody>
             </table>
-            <div className="mt-3 flex items-center justify-end gap-2 text-[11px] text-slate-600">
+            <div className="mt-3 flex items-center justify-end gap-2 text-[11px] text-slate-600 dark:!text-slate-200">
               <button
                 type="button"
                 onClick={() => setPage((prev) => Math.max(1, prev - 1))}
