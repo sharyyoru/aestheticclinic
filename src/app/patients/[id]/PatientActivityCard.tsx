@@ -11,6 +11,30 @@ import WhatsAppTwilioChat from "@/components/WhatsAppTwilioChat";
 import PatientCallLogsTab from "./PatientCallLogsTab";
 import { formatSwissDateTime, formatSwissDate, formatSwissShortDate, formatSwissTime } from "@/lib/swissTimezone";
 
+/**
+ * Convert plain text to HTML with proper paragraphs for email formatting.
+ * Double newlines become paragraph breaks, single newlines become <br>.
+ */
+function plainTextToHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  return escaped
+    .split(/\n\n+/)
+    .map((paragraph) => {
+      const lines = paragraph
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      if (lines.length === 0) return "";
+      return `<p>${lines.join("<br>")}</p>`;
+    })
+    .filter((p) => p.length > 0)
+    .join("");
+}
+
 type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals" | "call_logs";
 
 type SortOrder = "desc" | "asc";
@@ -2667,7 +2691,9 @@ export default function PatientActivityCard({
       }
 
       if (data.body && data.body.trim().length > 0) {
-        setEmailBody(data.body.trim());
+        // Convert plain text to HTML with proper paragraphs for email formatting
+        const htmlBody = plainTextToHtml(data.body.trim());
+        setEmailBody(htmlBody);
       }
     } catch {
       setEmailAiError("Unexpected error generating email.");
