@@ -5,35 +5,12 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { stripEmailSignature } from "@/utils/emailCleaner";
+import { markdownToHtml } from "@/utils/markdownToHtml";
 import AppointmentModal, { type AppointmentData } from "@/components/AppointmentModal";
 import RichTextEditor from "@/components/RichTextEditor";
 import WhatsAppTwilioChat from "@/components/WhatsAppTwilioChat";
 import PatientCallLogsTab from "./PatientCallLogsTab";
 import { formatSwissDateTime, formatSwissDate, formatSwissShortDate, formatSwissTime } from "@/lib/swissTimezone";
-
-/**
- * Convert plain text to HTML with proper paragraphs for email formatting.
- * Double newlines become paragraph breaks, single newlines become <br>.
- */
-function plainTextToHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  return escaped
-    .split(/\n\n+/)
-    .map((paragraph) => {
-      const lines = paragraph
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      if (lines.length === 0) return "";
-      return `<p>${lines.join("<br>")}</p>`;
-    })
-    .filter((p) => p.length > 0)
-    .join("");
-}
 
 type ActivityTab = "activity" | "notes" | "emails" | "whatsapp" | "tasks" | "deals" | "call_logs";
 
@@ -2691,8 +2668,8 @@ export default function PatientActivityCard({
       }
 
       if (data.body && data.body.trim().length > 0) {
-        // Convert plain text to HTML with proper paragraphs for email formatting
-        const htmlBody = plainTextToHtml(data.body.trim());
+        // Convert markdown-style AI output to HTML for proper email formatting
+        const htmlBody = markdownToHtml(data.body.trim());
         setEmailBody(htmlBody);
       }
     } catch {

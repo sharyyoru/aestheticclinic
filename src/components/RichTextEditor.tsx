@@ -385,8 +385,8 @@ export default function RichTextEditor({
         contentEditable
         onInput={handleInput}
         onPaste={handlePaste}
-        className="min-h-[200px] px-3 py-2 text-xs text-slate-900 focus:outline-none [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4 [&_a]:text-sky-600 [&_a]:underline"
-        style={{ whiteSpace: "pre-wrap" }}
+        className="min-h-[200px] px-3 py-2 text-xs text-slate-900 focus:outline-none [&_p]:mb-3 [&_p:last-child]:mb-0 [&_ul]:list-disc [&_ul]:ml-4 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:ml-4 [&_ol]:mb-3 [&_li]:mb-1 [&_a]:text-sky-600 [&_a]:underline [&_hr]:my-3 [&_hr]:border-slate-200"
+        style={{ whiteSpace: "normal" }}
         data-placeholder={placeholder}
         suppressContentEditableWarning
       />
