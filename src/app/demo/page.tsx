@@ -1,35 +1,25 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useState, useEffect } from "react";
+import { FormEvent, useState } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { clearDemoCache } from "@/lib/demoMode";
 
 export default function DemoLoginPage() {
+  const [email, setEmail] = useState("demo@aliice.com");
+  const [password, setPassword] = useState("demotest");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Demo credentials
-  const DEMO_EMAIL = "demo@aliice.com";
-  const DEMO_PASSWORD = "demotest";
-
-  // Attempt auto-login on mount
-  useEffect(() => {
-    if (autoLoginAttempted) return;
-    setAutoLoginAttempted(true);
+  async function handleDemoLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     
-    // Check if already logged in
-    supabaseClient.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email === DEMO_EMAIL) {
-        // Already logged in as demo user, redirect to dashboard
-        window.location.href = "/";
-      }
-    });
-  }, [autoLoginAttempted]);
+    if (!email || !password) {
+      setError("Email and password are required.");
+      return;
+    }
 
-  async function handleDemoLogin(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
     setLoading(true);
     setError(null);
 
@@ -37,12 +27,12 @@ export default function DemoLoginPage() {
     clearDemoCache();
 
     const { data, error: signInError } = await supabaseClient.auth.signInWithPassword({
-      email: DEMO_EMAIL,
-      password: DEMO_PASSWORD,
+      email: email.trim(),
+      password: password.trim(),
     });
 
     if (signInError || !data.session) {
-      setError(signInError?.message ?? "Unable to access demo. Please try again.");
+      setError(signInError?.message ?? "Invalid email or password.");
       setLoading(false);
       return;
     }
@@ -76,7 +66,6 @@ export default function DemoLoginPage() {
             </h1>
             <p className="text-sm text-slate-500">
               Explore our aesthetic clinic CRM with pre-loaded sample data.
-              No sign-up required.
             </p>
           </div>
 
@@ -101,18 +90,53 @@ export default function DemoLoginPage() {
           </div>
 
           <form onSubmit={handleDemoLogin} className="space-y-4">
-            {/* Hidden credentials display */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="mb-2 text-xs font-medium text-slate-500">Demo Credentials</div>
-              <div className="space-y-1 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Email:</span>
-                  <code className="rounded bg-white px-2 py-0.5 font-mono text-slate-800">{DEMO_EMAIL}</code>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Password:</span>
-                  <code className="rounded bg-white px-2 py-0.5 font-mono text-slate-800">{DEMO_PASSWORD}</code>
-                </div>
+            <div className="space-y-1">
+              <label htmlFor="email" className="block text-xs font-medium text-slate-700">
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="password" className="block text-xs font-medium text-slate-700">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-9 text-xs text-slate-900 shadow-[0_4px_14px_rgba(15,23,42,0.08)] focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? (
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-5 0-9.27-3.11-11-8 1.01-2.89 2.98-5.11 5.35-6.44" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c5 0 9.27 3.11 11 8-.62 1.77-1.67 3.32-3.02 4.57" />
+                      <path d="M1 1l22 22" />
+                    </svg>
+                  ) : (
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -133,27 +157,13 @@ export default function DemoLoginPage() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  <span>Entering Demo...</span>
+                  <span>Signing in...</span>
                 </>
               ) : (
-                <>
-                  <span>Enter Demo</span>
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                </>
+                <span>Sign in to Demo</span>
               )}
             </button>
           </form>
-
-          <div className="mt-6 text-center">
-            <a
-              href="/login"
-              className="text-xs text-slate-500 hover:text-sky-600 hover:underline"
-            >
-              Have an account? Sign in here
-            </a>
-          </div>
         </div>
 
         {/* Footer */}
