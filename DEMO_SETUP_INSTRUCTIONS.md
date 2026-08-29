@@ -7,8 +7,10 @@ This document explains how to set up the demo mode for the aesthetic clinic CRM.
 The demo mode allows users to log in with demo credentials and experience the full functionality of the app with sample data, completely isolated from real production data.
 
 **Demo Credentials:**
-- Email: `demo@aliice.space`
+- Email: `demo@aliice.com`
 - Password: `demotest`
+
+**Demo URL:** `/demo` - Auto-login demo page with pre-filled credentials
 
 ## Database Setup
 
@@ -18,7 +20,10 @@ Run the following migration scripts in order in your Supabase SQL editor:
 
 1. `migrations/20241217_demo_mode_support.sql` - Adds `is_demo` flags to all tables
 2. `migrations/20241217_demo_rls_policies.sql` - Sets up Row Level Security policies for data isolation
-3. `migrations/20241217_demo_user_and_data.sql` - Seeds demo data
+3. `migrations/20241217_demo_user_and_data.sql` - Seeds basic demo data
+4. `migrations/20250210_comprehensive_demo_data.sql` - Seeds 100 patients with full data
+5. `migrations/20260829_demo_workflow_templates.sql` - Creates workflow email templates
+6. `migrations/20260829_setup_demo_user.sql` - Sets up the demo@aliice.com user
 
 ### Step 2: Create Demo User in Supabase Auth
 
@@ -28,7 +33,7 @@ You need to create the demo user in Supabase Auth:
 1. Go to Authentication > Users in your Supabase dashboard
 2. Click "Add user" > "Create new user"
 3. Enter:
-   - Email: `demo@aliice.space`
+   - Email: `demo@aliice.com`
    - Password: `demotest`
    - Auto Confirm User: Yes
 4. Click "Create user"
@@ -51,19 +56,19 @@ UPDATE users
 SET is_demo = true, 
     role = 'staff',
     full_name = 'Demo User',
-    email = 'demo@aliice.space'
-WHERE email = 'demo@aliice.space';
+    email = 'demo@aliice.com'
+WHERE email = 'demo@aliice.com';
 ```
 
 If the user doesn't exist in the users table yet, insert them:
 
 ```sql
 -- Get the auth user ID first
-SELECT id FROM auth.users WHERE email = 'demo@aliice.space';
+SELECT id FROM auth.users WHERE email = 'demo@aliice.com';
 
 -- Then insert into users table (replace YOUR_USER_ID with the actual ID from above)
 INSERT INTO users (id, role, full_name, email, is_demo)
-VALUES ('YOUR_USER_ID', 'staff', 'Demo User', 'demo@aliice.space', true)
+VALUES ('YOUR_USER_ID', 'staff', 'Demo User', 'demo@aliice.com', true)
 ON CONFLICT (id) DO UPDATE 
 SET is_demo = true;
 ```
@@ -94,7 +99,7 @@ The system uses Row Level Security (RLS) policies to automatically filter data b
 
 1. Log out of the application
 2. Log in with demo credentials:
-   - Email: `demo@aliice.space`
+   - Email: `demo@aliice.com`
    - Password: `demotest`
 3. Verify you can see demo patients, appointments, deals, etc.
 4. Create new records and verify they are isolated from real data
@@ -126,7 +131,7 @@ When adding new tables that should support demo mode:
 ### Demo user sees no data
 - Check that demo data was seeded properly: `SELECT count(*) FROM patients WHERE is_demo = true;`
 - Verify RLS policies are enabled: `SELECT tablename, policyname FROM pg_policies WHERE tablename = 'patients';`
-- Check that the user is marked as demo: `SELECT is_demo FROM users WHERE email = 'demo@aliice.space';`
+- Check that the user is marked as demo: `SELECT is_demo FROM users WHERE email = 'demo@aliice.com';`
 
 ### Demo user sees real data or vice versa
 - Verify RLS policies are working: Check the policy definitions in the database
