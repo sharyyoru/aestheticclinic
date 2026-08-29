@@ -1,16 +1,31 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useEffect } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { clearDemoCache } from "@/lib/demoMode";
 
 export default function DemoLoginPage() {
-  const [email, setEmail] = useState("demo@aliice.com");
-  const [password, setPassword] = useState("demotest");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [initializing, setInitializing] = useState(true);
+
+  // Ensure demo user exists on mount
+  useEffect(() => {
+    async function ensureDemoUser() {
+      try {
+        await fetch("/api/demo/ensure-user", { method: "POST" });
+      } catch (e) {
+        console.error("Failed to ensure demo user:", e);
+      } finally {
+        setInitializing(false);
+      }
+    }
+    ensureDemoUser();
+  }, []);
 
   async function handleDemoLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -148,16 +163,16 @@ export default function DemoLoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || initializing}
               className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-sky-200/80 bg-sky-600 px-4 py-3 text-sm font-medium text-white shadow-[0_10px_25px_rgba(15,23,42,0.22)] backdrop-blur transition-all hover:bg-sky-700 hover:shadow-[0_15px_30px_rgba(15,23,42,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading ? (
+              {loading || initializing ? (
                 <>
                   <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  <span>Signing in...</span>
+                  <span>{initializing ? "Preparing demo..." : "Signing in..."}</span>
                 </>
               ) : (
                 <span>Sign in to Demo</span>
