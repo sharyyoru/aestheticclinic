@@ -31,6 +31,7 @@ export async function POST() {
     );
 
     let userId: string;
+    let isNewUser = false;
 
     if (demoUser) {
       userId = demoUser.id;
@@ -52,6 +53,7 @@ export async function POST() {
       }
 
       userId = newUser.user.id;
+      isNewUser = true;
     }
 
     // Ensure the user exists in the users table with is_demo = true
@@ -70,10 +72,26 @@ export async function POST() {
 
     if (upsertError) {
       console.error("Error upserting demo user record:", upsertError);
-      // Don't fail - auth user exists, just the users table entry failed
     }
 
-    return NextResponse.json({ success: true, userId });
+    // Seed demo data (function is idempotent - safe to call multiple times)
+    const { data: seedResult, error: seedError } = await adminClient.rpc(
+      "seed_demo_data",
+      { demo_user_id: userId }
+    );
+
+    if (seedError) {
+      console.error("Error seeding demo data:", seedError);
+      // Don't fail - user exists, just demo data seeding failed
+      // This can happen if the function doesn't exist yet
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      userId, 
+      isNewUser,
+      seedResult: seedResult || null 
+    });
   } catch (error) {
     console.error("Error ensuring demo user:", error);
     return NextResponse.json(
