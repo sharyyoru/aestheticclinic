@@ -99,16 +99,19 @@ const globalStyles = `
     margin: 0 !important;
     padding: 0 !important;
   }
-  input.aliice-phone-input,
-  html.dark input.aliice-phone-input {
+  #aliice-phone-input,
+  html.dark #aliice-phone-input {
     background-color: #ffffff !important;
     border-color: #ddd6fe !important;
     color: #1e293b !important;
     color-scheme: light;
+    -webkit-text-fill-color: #1e293b !important;
+    caret-color: #1e293b !important;
   }
-  input.aliice-phone-input::placeholder,
-  html.dark input.aliice-phone-input::placeholder {
+  #aliice-phone-input::placeholder,
+  html.dark #aliice-phone-input::placeholder {
     color: #94a3b8 !important;
+    -webkit-text-fill-color: #94a3b8 !important;
     opacity: 1;
   }
   @keyframes embedBounce {
@@ -548,7 +551,7 @@ export default function AliiceChatEmbed() {
               
               <div className="w-full space-y-3">
                 <label className="text-sm font-medium text-slate-700">{t.phoneLabel}</label>
-                <input ref={phoneInputRef} type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}
+                <input id="aliice-phone-input" data-show-placeholder ref={phoneInputRef} type="tel" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && requestPhoneCall()}
                   placeholder={t.phonePlaceholder}
                   className="aliice-phone-input w-full px-4 py-3 rounded-xl bg-white border-2 border-violet-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-violet-400 text-center text-lg" />
