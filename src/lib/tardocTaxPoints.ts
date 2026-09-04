@@ -24,12 +24,12 @@ function finiteNumber(value: number | null | undefined): number | null {
 function resolveComponent(value: number | null | undefined, fallback: number | null | undefined): number {
   const direct = finiteNumber(value);
   const catalog = finiteNumber(fallback);
-  // A zero stored in older line items can mean the catalog value was not
-  // copied yet. Use the catalog when available, but preserve a genuine zero
-  // when no catalog fallback exists.
-  if (direct !== null && direct !== 0) return direct;
-  if (catalog !== null && catalog !== 0) return catalog;
-  return direct ?? catalog ?? 0;
+  // A stored value — including a deliberate zero (e.g. charge-free TARDOC
+  // lines accompanying a surgery flat rate) — is authoritative. The catalog
+  // is only used when the component was never stored (null/undefined/NaN).
+  if (direct !== null) return direct;
+  if (catalog !== null) return catalog;
+  return 0;
 }
 
 function resolveValue(value: number | null | undefined): number {

@@ -22,7 +22,11 @@ import {
   type InvoiceServiceInput as SumexServiceInput,
   type InvoiceDiagnosis as SumexDiagnosis,
 } from "@/lib/sumexInvoice";
-import { deriveTariffType } from "@/lib/tariffType";
+import {
+  mapLineItemToSumexService,
+  reconcileInvoiceLines,
+  type SumexLineItemRow,
+} from "@/lib/sumexLineMapper";
 
 type PatientData = {
   first_name: string;
@@ -237,77 +241,36 @@ export async function POST(request: NextRequest) {
 
       const treatmentDate = invoiceData.treatment_date || invoiceData.invoice_date || new Date().toISOString().split("T")[0];
 
-      // Map line items to Sumex1 services
-      // GLN must be exactly 13 digits; fall back to billing entity GLN if invalid
-      const isValidGln = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
+      // Map line items to Sumex1 services — shared mapping with send-invoice /
+      // check-xml (src/lib/sumexLineMapper.ts) so the printed PDF can never
+      // diverge from the insurance XML or the stored invoice.
+      const mapperCtx = {
+        fallbackProviderGln: provGln,
+        fallbackTreatmentDate: treatmentDate,
+        skipValidation: true,
+      };
+      const sumexServices: SumexServiceInput[] = (lineItems as unknown as SumexLineItemRow[]).map(
+        (item) => mapLineItemToSumexService(item, mapperCtx),
+      );
 
-      const sumexServices: SumexServiceInput[] = lineItems.map((item: any) => {
-        // Resolve tariff_type honoring `catalog_name` first so TMA gestures
-        // emit as "TMA". See src/lib/tariffType.ts.
-        const tariffType = deriveTariffType(item);
-        const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
-        const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
-        
-        // TARMED (tariff_code=1) vs TARDOC (tariff_code=7) have different handling
-        const isTardoc = item.tariff_code === 7 || tariffType === "007";
-        const isTarmed = item.tariff_code === 1 || tariffType === "001";
-        
-        // For TARMED: Sumex expects amounts in technical points (TP), not CHF
-        // The formula is: amount = tp_al (medical TP) for the service
-        // Sumex will multiply by tax point value internally
-        // For TARDOC/others: use stored total_price (CHF)
-        let calculatedAmount: number;
-        let unit: number;
-        let unitFactor: number;
-        let unitTT: number | undefined;
-        let unitFactorTT: number | undefined;
-        
-        if (isTarmed) {
-          // TARMED: amount = tp_al (medical technical points)
-          // unit = tp_al, unitFactor = 1 (Sumex handles tax point value internally)
-          unit = item.tp_al || item.unit_price || 0;
-          unitFactor = 1;
-          unitTT = undefined;
-          unitFactorTT = undefined;
-          calculatedAmount = unit * (item.quantity || 1);
-        } else if (isTardoc || (item.catalog_name === "ACF" && item.tp_al > 0)) {
-          // TARDOC and ACF: use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors (same as medidata send-invoice)
-          unit = item.tp_al || 0;
-          unitFactor = item.tp_al_value || 1;
-          unitTT = item.tp_tl || undefined;
-          unitFactorTT = item.tp_tl_value || undefined;
-          calculatedAmount = item.total_price || 0;
-          
-        } else {
-          // Other tariffs: use unit_price and total_price
-          unit = item.unit_price || 0;
-          unitFactor = 1;
-          unitTT = undefined;
-          unitFactorTT = undefined;
-          calculatedAmount = item.total_price || 0;
-        }
-        
-        return {
-          tariffType,
-          code: item.code || "",
-          referenceCode: item.ref_code || "",
-          quantity: item.quantity || 1,
-          sessionNumber: item.session_number ?? 1,
-          dateBegin: item.date_begin || treatmentDate,
-          providerGln: svcGln,
-          responsibleGln: svcRespGln,
-          side: (item.side_type as 0 | 1 | 2 | 3) ?? 0,
-          serviceName: item.name || "",
-          unit,
-          unitFactor,
-          unitTT,
-          unitFactorTT,
-          externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : (item.external_factor_mt ?? 1),
-          amount: calculatedAmount,
-          vatRate: 0,
-          ignoreValidate: YesNo.Yes,
-        };
-      });
+      // Reconciliation guard: what Sumex prints must equal the stored invoice.
+      const reconciliation = reconcileInvoiceLines(
+        lineItems as unknown as SumexLineItemRow[],
+        Number(invoiceData.total_amount) || 0,
+      );
+      if (!reconciliation.ok) {
+        console.error(`[GeneratePDF] ❌ Reconciliation failed for invoice ${invoiceData.invoice_number}:`, JSON.stringify(reconciliation, null, 2));
+        return NextResponse.json(
+          {
+            error: "Invoice amounts do not reconcile — PDF generation blocked",
+            details:
+              "The amounts Sumex would print differ from the stored invoice. " +
+              "Fix the invoice line amounts (or tax points) before regenerating the PDF.",
+            reconciliation,
+          },
+          { status: 422 },
+        );
+      }
 
       // Diagnosis codes from invoice
       const diagCodes: string[] = Array.isArray(invoiceData.diagnosis_codes)
@@ -588,74 +551,34 @@ export async function POST(request: NextRequest) {
       const provIbanSumex = sanitizeIban2(billingEntityData?.iban) || sanitizeIban2(invoiceData.provider_iban) || "CH0930788000050249289";
       const treatmentDate = invoiceData.treatment_date || invoiceData.invoice_date || new Date().toISOString().split("T")[0];
 
-      // Map line items
-      const isValidGln2 = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
-      const sumexServices2: SumexServiceInput[] = lineItems.map((item: any) => {
-        const svcGln = isValidGln2(item.provider_gln) ? item.provider_gln : provGln;
-        const svcRespGln = isValidGln2(item.responsible_gln) ? item.responsible_gln : svcGln;
-        
-        // Resolve tariff_type honoring `catalog_name` first so TMA gestures
-        // emit as "TMA". See src/lib/tariffType.ts.
-        const tariffType = deriveTariffType(item);
-        
-        // TARMED (tariff_code=1) vs TARDOC (tariff_code=7) have different handling
-        const isTardoc = item.tariff_code === 7 || tariffType === "007";
-        const isTarmed = item.tariff_code === 1 || tariffType === "001";
-        
-        // For TARMED: Sumex expects amounts in technical points (TP), not CHF
-        // For TARDOC/others: use stored total_price (CHF)
-        let calculatedAmount: number;
-        let unit: number;
-        let unitFactor: number;
-        let unitTT: number | undefined;
-        let unitFactorTT: number | undefined;
-        
-        if (isTarmed) {
-          // TARMED: amount = tp_al (medical technical points)
-          // unit = tp_al, unitFactor = 1 (Sumex handles tax point value internally)
-          unit = item.tp_al || item.unit_price || 0;
-          unitFactor = 1;
-          unitTT = undefined;
-          unitFactorTT = undefined;
-          calculatedAmount = unit * (item.quantity || 1);
-        } else if (isTardoc || (item.catalog_name === "ACF" && item.tp_al > 0)) {
-          // TARDOC and ACF: use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors (same as medidata send-invoice)
-          unit = item.tp_al || 0;
-          unitFactor = item.tp_al_value || 1;
-          unitTT = item.tp_tl || undefined;
-          unitFactorTT = item.tp_tl_value || undefined;
-          calculatedAmount = item.total_price || 0;
-          
-        } else {
-          // Other tariffs: use unit_price and total_price
-          unit = item.unit_price || 0;
-          unitFactor = 1;
-          unitTT = undefined;
-          unitFactorTT = undefined;
-          calculatedAmount = item.total_price || 0;
-        }
-        
-        return {
-          tariffType,
-          code: item.code || "",
-          referenceCode: item.ref_code || "",
-          quantity: item.quantity || 1,
-          sessionNumber: item.session_number ?? 1,
-          dateBegin: item.date_begin || treatmentDate,
-          providerGln: svcGln,
-          responsibleGln: svcRespGln,
-          side: (item.side_type as 0 | 1 | 2 | 3) ?? 0,
-          serviceName: item.name || "",
-          unit,
-          unitFactor,
-          unitTT,
-          unitFactorTT,
-          externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : (item.external_factor_mt ?? 1),
-          amount: calculatedAmount,
-          vatRate: 0,
-          ignoreValidate: YesNo.Yes,
-        };
-      });
+      // Map line items — shared mapping (src/lib/sumexLineMapper.ts)
+      const mapperCtx2 = {
+        fallbackProviderGln: provGln,
+        fallbackTreatmentDate: treatmentDate,
+        skipValidation: true,
+      };
+      const sumexServices2: SumexServiceInput[] = (lineItems as unknown as SumexLineItemRow[]).map(
+        (item) => mapLineItemToSumexService(item, mapperCtx2),
+      );
+
+      // Reconciliation guard: what Sumex prints must equal the stored invoice.
+      const reconciliation2 = reconcileInvoiceLines(
+        lineItems as unknown as SumexLineItemRow[],
+        Number(invoiceData.total_amount) || 0,
+      );
+      if (!reconciliation2.ok) {
+        console.error(`[GeneratePDF] ❌ Reconciliation failed for invoice ${invoiceData.invoice_number}:`, JSON.stringify(reconciliation2, null, 2));
+        return NextResponse.json(
+          {
+            error: "Invoice amounts do not reconcile — PDF generation blocked",
+            details:
+              "The amounts Sumex would print differ from the stored invoice. " +
+              "Fix the invoice line amounts (or tax points) before regenerating the PDF.",
+            reconciliation: reconciliation2,
+          },
+          { status: 422 },
+        );
+      }
 
       // --- Payment status remark & generation attributes (non-insurance path) ---
       const paidAmt2 = Number(invoiceData.paid_amount) || 0;

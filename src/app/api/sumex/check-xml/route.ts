@@ -16,8 +16,11 @@ import {
   type InvoiceServiceInput as SumexServiceInput,
   type InvoiceDiagnosis as SumexDiagnosis,
 } from "@/lib/sumexInvoice";
-import { deriveTariffType } from "@/lib/tariffType";
-import { resolveTardocTaxPoints } from "@/lib/tardocTaxPoints";
+import {
+  mapLineItemToSumexService,
+  reconcileInvoiceLines,
+  type SumexLineItemRow,
+} from "@/lib/sumexLineMapper";
 
 // Default QR-IBAN fallback (IID 30000-31999 required for QR type)
 const FALLBACK_QR_IBAN = "CH0930788000050249289";
@@ -213,66 +216,30 @@ export async function POST(request: NextRequest) {
     console.log(`[CheckXML] Line items: ${dbLineItems?.length || 0}`);
 
     // ── Map line items to Sumex service inputs ──
-    // GLN must be exactly 13 digits; fall back to billing entity GLN if invalid
-    const isValidGln = (g: string | null | undefined) => g != null && /^\d{13}$/.test(g);
-
+    // Shared mapping with send-invoice / generate-pdf (src/lib/sumexLineMapper.ts)
+    // so the preview validates exactly what would be sent.
     console.log(`[CheckXML] skipValidation=${skipValidation}`);
 
     // Include all line items (TMA gesture codes are kept as reference lines with amount=0)
     const billableLineItems = dbLineItems || [];
 
-    const sumexServices: SumexServiceInput[] = billableLineItems.map((item: any, idx: number) => {
-      // Resolve tariff_type honoring `catalog_name` first so TMA gestures
-      // (catalog_name='TMA' but tariff_code=5/7) emit as "TMA", not "005".
-      // See src/lib/tariffType.ts for the full priority chain.
-      const tariffType = deriveTariffType(item);
-      const isAcf = tariffType === "005";
-      const svcGln = isValidGln(item.provider_gln) ? item.provider_gln : provGln;
-      const svcRespGln = isValidGln(item.responsible_gln) ? item.responsible_gln : svcGln;
-      
-      // For TARDOC (007) and ACF (005), use tp_al/tp_tl as unit values and tp_al_value/tp_tl_value as unitFactors
-      // This correctly separates tax points from point value (Taxpunktwert)
-      const isTardoc = tariffType === "007";
-      const usesTaxPoints = isTardoc || isAcf;
-      const tardocTaxPoints = resolveTardocTaxPoints({
-        tpAl: item.tp_al,
-        tpTl: item.tp_tl,
-        tpAlValue: item.tp_al_value,
-        tpTlValue: item.tp_tl_value,
-      });
-      const unit = isTardoc ? tardocTaxPoints.tpAl : (usesTaxPoints && item.tp_al !== undefined && item.tp_al !== null && item.tp_al > 0 ? item.tp_al : (item.unit_price || 0));
-      const unitFactor = isTardoc ? tardocTaxPoints.tpAlValue : (usesTaxPoints && item.tp_al_value !== undefined && item.tp_al_value !== null && item.tp_al_value > 0 ? item.tp_al_value : 1);
-      const unitTT = isTardoc ? tardocTaxPoints.tpTl : (usesTaxPoints && item.tp_tl !== undefined && item.tp_tl !== null && item.tp_tl > 0 ? item.tp_tl : undefined);
-      const unitFactorTT = isTardoc ? tardocTaxPoints.tpTlValue : (usesTaxPoints && item.tp_tl_value !== undefined && item.tp_tl_value !== null && item.tp_tl_value > 0 ? item.tp_tl_value : undefined);
+    const mapperCtx = {
+      fallbackProviderGln: provGln,
+      fallbackTreatmentDate: treatmentDate,
+      skipValidation,
+    };
+    const sumexServices: SumexServiceInput[] = (billableLineItems as SumexLineItemRow[]).map(
+      (item) => mapLineItemToSumexService(item, mapperCtx),
+    );
 
-      // Use the session number stored on the line. The frontend now assigns
-      // distinct sessions to distinct ACF flat-rate codes and keeps TMA
-      // gestures in the same session as their associated flat-rate code.
-      const sessionNumber = item.session_number ?? 1;
-      
-      return {
-        tariffType,
-        code: item.code || "",
-        referenceCode: item.ref_code || "",
-        quantity: item.quantity || 1,
-        sessionNumber,
-        dateBegin: item.date_begin || treatmentDate,
-        providerGln: svcGln,
-        responsibleGln: svcRespGln,
-        side: (item.side_type as 0 | 1 | 2 | 3) ?? 0,
-        serviceName: item.name || "",
-        unit,
-        unitFactor,
-        unitTT,
-        unitFactorTT,
-        externalFactor: item.tariff_code === 5 ? (item.external_factor_mt ?? 1) : 1,
-        amount: item.total_price || 0,
-        vatRate: 0,
-        // ACF 005: always skip validation — already grouped by standalone acfValidator.
-        // The Invoice Manager's internal ACF grouper requires TMA session setup we don't use.
-        ignoreValidate: (isAcf || skipValidation) ? YesNo.Yes : YesNo.No,
-      };
-    });
+    // Reconciliation check — surfaced as a warning in the preview response.
+    const reconciliation = reconcileInvoiceLines(
+      billableLineItems as SumexLineItemRow[],
+      Number(invoice.total_amount) || 0,
+    );
+    if (!reconciliation.ok) {
+      console.warn(`[CheckXML] ⚠ Reconciliation mismatch:`, JSON.stringify(reconciliation, null, 2));
+    }
 
     if (sumexServices.length === 0) {
       return NextResponse.json(
@@ -438,6 +405,7 @@ export async function POST(request: NextRequest) {
       xmlFilePath: result.xmlFilePath,
       total: invoice.total_amount,
       serviceCount: sumexServices.length,
+      reconciliation,
     });
   } catch (error) {
     console.error("[CheckXML] Error:", error);
