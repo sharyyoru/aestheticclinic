@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
-import { reminderSuppressionReason } from "@/lib/appointmentComms";
+import { isOperationRoomAppointment, reminderSuppressionReason } from "@/lib/appointmentComms";
 import { logEmailSent } from "@/lib/logEmail";
 import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
 
@@ -159,6 +159,10 @@ export async function GET(request: Request) {
       console.log(`[Reminder] Processing ${tomorrowAppts.length} appointments for tomorrow`);
       
       for (const appt of tomorrowAppts) {
+        if (isOperationRoomAppointment(appt)) {
+          console.log(`[Reminder] Skipping Operation Room appointment ${appt.id}`);
+          continue;
+        }
         // Authoritative guard: skip appointments that were moved ("Déplacé") or
         // cancelled via the agenda `[Status: ...]` tag even though the DB
         // status column is still "scheduled". See @/lib/appointmentComms.
@@ -263,6 +267,10 @@ We look forward to seeing you!`;
       console.log(`[Reminder] Processing ${recentBookings.length} booking confirmations`);
       
       for (const appt of recentBookings) {
+        if (isOperationRoomAppointment(appt)) {
+          console.log(`[Reminder] Skipping Operation Room booking confirmation ${appt.id}`);
+          continue;
+        }
         // Same authoritative guard as the day-before reminder above.
         const suppression = reminderSuppressionReason(appt);
         if (suppression) {

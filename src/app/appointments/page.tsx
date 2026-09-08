@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback, useLayoutEffect } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { isOperationRoomAppointment } from "@/lib/appointmentComms";
 import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
 import {
   formatSwissMonthYear,
@@ -780,6 +781,8 @@ async function sendAppointmentConfirmationEmail(
   appointment: CalendarAppointment,
   variant: "created" | "updated" = "created",
 ): Promise<{ success: boolean; error?: string }> {
+  if (isOperationRoomAppointment(appointment)) return { success: true };
+
   const patientEmail = appointment.patient?.email ?? null;
   if (!patientEmail) {
     console.warn(`[Email Confirmation] No email address for patient ${appointment.patient_id} (${appointment.patient?.first_name} ${appointment.patient?.last_name}). Skipping confirmation email.`);
@@ -939,6 +942,9 @@ async function sendAppointmentRescheduledEmail(
   newAppointment: CalendarAppointment,
   oldAppointment: CalendarAppointment,
 ): Promise<{ success: boolean; error?: string }> {
+  // Operation Room is an internal agenda; do not notify patients of its moves.
+  if (isOperationRoomAppointment(newAppointment)) return { success: true };
+
   const patientEmail = newAppointment.patient?.email ?? null;
   if (!patientEmail) {
     console.warn(`[Email Rescheduled] No email address for patient ${newAppointment.patient_id}. Skipping.`);

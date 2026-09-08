@@ -76,6 +76,16 @@ type AppointmentCommsInput = {
   reason?: string | null;
 };
 
+/** Operation Room is an internal agenda, not a patient-facing doctor. */
+export function isOperationRoomAppointment(
+  appt: { reason?: string | null; provider?: { name: string | null } | null },
+): boolean {
+  const taggedDoctor = appt.reason?.match(/\[Doctor:\s*([^\]]+?)\s*\]/i)?.[1];
+  const doctor = normalizeAgendaStatus(taggedDoctor || appt.provider?.name)
+    .replace(/^dr\.?\s+/, "");
+  return doctor === "operation room";
+}
+
 /**
  * Returns a machine-readable reason WHY patient communications must be
  * suppressed for this appointment, or `null` if it is eligible.

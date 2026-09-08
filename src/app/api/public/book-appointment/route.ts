@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal, getSwissDayOfWeek } from "@/lib/swissTimezone";
 import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
 import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
+import { isOperationRoomAppointment } from "@/lib/appointmentComms";
 import { sendCancellationPolicyMessages, type PatientContact } from "@/lib/messaging";
 import {
   describeBlocking,
@@ -665,12 +666,14 @@ export async function POST(request: Request) {
         contactPhone: "+41 22 732 22 23",
         contactEmail: mailgunFromEmail,
       });
-      await sendEmail(
-        email,
-        `Appointment Confirmed / Rendez-vous confirmé - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
-        patientEmailHtml
-      );
-      console.log("✓ Patient confirmation email sent successfully to:", email);
+      if (!isOperationRoomAppointment({ reason })) {
+        await sendEmail(
+          email,
+          `Appointment Confirmed / Rendez-vous confirmé - ${formatDate(appointmentDateObj)} at ${formatTime(appointmentDateObj)}`,
+          patientEmailHtml
+        );
+        console.log("✓ Patient confirmation email sent successfully to:", email);
+      }
     } catch (err) {
       console.error("✗ Error sending patient email:", err);
     }

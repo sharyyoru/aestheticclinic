@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { reminderSuppressionReason } from "@/lib/appointmentComms";
+import { isOperationRoomAppointment, reminderSuppressionReason } from "@/lib/appointmentComms";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -201,6 +201,10 @@ export async function GET(request: Request) {
       // moved ("Déplacé") or cancelled via the `[Status: ...]` reason tag, which
       // leave the DB status as "scheduled". See @/lib/appointmentComms.
       const suppression = reminderSuppressionReason(appt);
+      if (email.recipient_type === "patient" && isOperationRoomAppointment(appt)) {
+        staleEmails.push({ id: email.id, reason: "appointment_operation_room" });
+        continue;
+      }
       if (suppression) {
         staleEmails.push({ id: email.id, reason: suppression });
         continue;

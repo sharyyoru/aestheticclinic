@@ -14,6 +14,7 @@ import {
   normalizeAgendaStatus,
   reminderSuppressionReason,
   isEligibleForPatientComms,
+  isOperationRoomAppointment,
 } from "../lib/appointmentComms";
 
 type Case = {
@@ -96,6 +97,13 @@ function testParsers(): boolean {
   let failed = 0;
 
   const checks: Array<[string, unknown, unknown]> = [
+    ["Operation Room tag", isOperationRoomAppointment({ reason: "Surgery [Doctor: Operation Room]" }), true],
+    ["Operation Room title and spacing", isOperationRoomAppointment({ reason: "[Doctor:  DR. operation   room ]" }), true],
+    ["Operation Room provider fallback", isOperationRoomAppointment({ provider: { name: "Dr Operation Room" } }), true],
+    ["Doctor tag takes precedence", isOperationRoomAppointment({ reason: "[Doctor: Yulia]", provider: { name: "Operation Room" } }), false],
+    ["Operation Room mentioned in notes only", isOperationRoomAppointment({ reason: "Use Operation Room [Doctor: Yulia]" }), false],
+    ["Other doctor", isOperationRoomAppointment({ reason: "[Doctor: Xavier Tenorio]" }), false],
+    ["No doctor", isOperationRoomAppointment({ reason: null }), false],
     ["parse Déplacé", parseAgendaStatus("X [Status: Déplacé]"), "Déplacé"],
     ["parse missing", parseAgendaStatus("X [Doctor: A]"), null],
     ["parse null", parseAgendaStatus(null), null],

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { parseSwissDateTimeLocal, formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
 import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
+import { isOperationRoomAppointment } from "@/lib/appointmentComms";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -313,7 +314,7 @@ export async function POST(request: Request) {
     const confirmationEmailPromises: Promise<void>[] = [];
 
     // Send confirmation email to patient
-    if (sendPatientEmail && patientEmail) {
+    if (sendPatientEmail && patientEmail && !isOperationRoomAppointment({ reason })) {
       confirmationEmailPromises.push((async () => {
         try {
           const patientEmailHtml = generatePatientAppointmentEmailHtml({
