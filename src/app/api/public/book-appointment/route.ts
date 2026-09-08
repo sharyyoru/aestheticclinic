@@ -1,3 +1,4 @@
+import { resolveCalendarOwner } from "@/lib/appointmentCalendar";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLocal, getSwissDayOfWeek } from "@/lib/swissTimezone";
@@ -347,6 +348,14 @@ export async function POST(request: Request) {
 
     // SINGLE SOURCE OF TRUTH: use the SAME helpers as /api/appointments/check-availability
     // so a slot offered to the user can always be booked (no "fully booked (2/1)" 409).
+    // Resolve the actual agenda owner before creating any patient or booking.
+    const { data: calendarUsers, error: calendarError } = await supabase
+      .from("users").select("id, full_name");
+    if (calendarError) {
+      return NextResponse.json({ error: "Unable to load doctor calendars" }, { status: 503 });
+    }
+    const calendarOwner = resolveCalendarOwner(calendarUsers ?? [], doctorName);
+
     let providerId = await resolveProviderId(supabase, doctorName);
     const maxCapacity = getMaxCapacity(doctorSlug);
 
@@ -543,7 +552,7 @@ export async function POST(request: Request) {
     const promoTag = promo
       ? ` [Promo: ${promo}${promoSource ? `, source: ${promoSource}` : ""}]`
       : "";
-    const reason = `${service}${notes ? ` - ${notes}` : ""} [Doctor: ${doctorName.replace("Dr. ", "")}] [Online Booking]${promoTag}`;
+    const reason = `${service}${notes ? ` - ${notes}` : ""} [Doctor: ${calendarOwner?.full_name ?? doctorName.replace(/^Dr\.\s*/i, "")}] [Online Booking]${promoTag}`;
 
     // Create the appointment
     const { data: appointment, error: appointmentError } = await supabase
@@ -551,6 +560,7 @@ export async function POST(request: Request) {
       .insert({
         patient_id: patientId,
         provider_id: providerId,
+        doctor_user_id: calendarOwner?.id ?? null,
         start_time: appointmentDateObj.toISOString(),
         end_time: endDateObj.toISOString(),
         reason,

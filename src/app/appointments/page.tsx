@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback, useLayoutEffect } from "react";
 import Link from "next/link";
+import { normalizeDoctorName, fetchAllCalendarPages } from "@/lib/appointmentCalendar";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { isOperationRoomAppointment } from "@/lib/appointmentComms";
 import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
@@ -560,20 +561,6 @@ function getDoctorNameFromReason(reason: string | null): string | null {
   if (!match) return null;
   const raw = match[1].trim();
   return raw || null;
-}
-
-function normalizeDoctorName(name: string | null | undefined): string {
-  return (name ?? "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/^(mme|mr|mrs|ms|dr|prof)\.?\s+/i, "")
-    .replace(/z/g, "s")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .sort()
-    .join(" ");
 }
 
 // Returns the reason text with the free-text [Notes: ...] segment removed, for
@@ -1440,7 +1427,7 @@ export default function CalendarPage() {
         const fromIso = monthStart.toISOString();
         const toIso = monthEnd.toISOString();
 
-        const { data, error } = await supabaseClient
+        const data = await fetchAllCalendarPages((from, to) => supabaseClient
           .from("appointments")
           .select(
             "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, temporary_text, source, patient:patients(id, first_name, last_name, email, phone, dob), provider:providers(id, name)",
@@ -1448,16 +1435,11 @@ export default function CalendarPage() {
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
           .lte("start_time", toIso)
-          .order("start_time", { ascending: true });
+          .order("start_time", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to));
 
         if (!isMounted) return;
-
-        if (error || !data) {
-          setError(error?.message ?? "Failed to load appointments.");
-          setAppointments([]);
-          setLoading(false);
-          return;
-        }
 
         setAppointments(data as unknown as CalendarAppointment[]);
         setLoading(false);
