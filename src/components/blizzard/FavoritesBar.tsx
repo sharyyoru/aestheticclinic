@@ -64,6 +64,16 @@ const FAVORITES = [
       </svg>
     ),
   },
+  {
+    label: "Academy",
+    href: "/academy",
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+        <path d="M6 12v5c0 1.1 2.7 2 6 2s6-.9 6-2v-5" />
+      </svg>
+    ),
+  },
 ];
 
 function TooltipIcon({
