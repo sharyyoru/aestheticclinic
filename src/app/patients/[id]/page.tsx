@@ -47,7 +47,20 @@ type MedicalTab =
   | "forms"
   | "crm"
   | "form_photos"
-  | "medication";
+  | "medication"
+  | "medical";
+
+// Map medical_sub query param to actual content tab
+const MEDICAL_SUB_MAP: Record<string, MedicalTab> = {
+  consultations: "notes",
+  invoice: "invoice",
+  medication: "medication",
+  "3d": "3d",
+  patient_information: "patient_information",
+  documents: "documents",
+  rendezvous: "rendezvous",
+  forms: "forms",
+};
 
 async function getPatientWithDetails(id: string) {
   const { data: patient, error } = await supabaseAdmin
@@ -330,22 +343,36 @@ export default async function PatientPage({
     return undefined;
   })();
 
-  const medicalTab: MedicalTab =
+  const rawMedicalSub = (() => {
+    const value = resolvedSearchParams?.medical_sub;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value) && value.length > 0) return value[0];
+    return undefined;
+  })();
+
+  // If m_tab=medical and medical_sub is provided, map to the actual content tab
+  let medicalTab: MedicalTab;
+  if (rawMedicalTab === "medical" && rawMedicalSub && MEDICAL_SUB_MAP[rawMedicalSub]) {
+    medicalTab = MEDICAL_SUB_MAP[rawMedicalSub];
+  } else if (
     rawMedicalTab === "cockpit" ||
-      rawMedicalTab === "notes" ||
-      rawMedicalTab === "invoice" ||
-      rawMedicalTab === "file" ||
-      rawMedicalTab === "photo" ||
-      rawMedicalTab === "3d" ||
-      rawMedicalTab === "patient_information" ||
-      rawMedicalTab === "documents" ||
-      rawMedicalTab === "rendezvous" ||
-      rawMedicalTab === "forms" ||
-      rawMedicalTab === "crm" ||
-      rawMedicalTab === "form_photos" ||
-      rawMedicalTab === "medication"
-      ? (rawMedicalTab as MedicalTab)
-      : "cockpit";
+    rawMedicalTab === "notes" ||
+    rawMedicalTab === "invoice" ||
+    rawMedicalTab === "file" ||
+    rawMedicalTab === "photo" ||
+    rawMedicalTab === "3d" ||
+    rawMedicalTab === "patient_information" ||
+    rawMedicalTab === "documents" ||
+    rawMedicalTab === "rendezvous" ||
+    rawMedicalTab === "forms" ||
+    rawMedicalTab === "crm" ||
+    rawMedicalTab === "form_photos" ||
+    rawMedicalTab === "medication"
+  ) {
+    medicalTab = rawMedicalTab as MedicalTab;
+  } else {
+    medicalTab = "cockpit";
+  }
 
   let genderClasses = "bg-slate-50 text-slate-700 border-slate-200";
   if (gender === "male") {

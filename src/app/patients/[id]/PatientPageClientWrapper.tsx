@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import Link from "next/link";
 import DocumentPreviewTabsWrapper from "./DocumentPreviewTabsWrapper";
 import CrmTabDropdown from "./CrmTabDropdown";
+import MedicalTabDropdown from "./MedicalTabDropdown";
 import AiCallButton from "./AiCallButton";
 
 type MedicalTab =
@@ -20,7 +21,8 @@ type MedicalTab =
   | "forms"
   | "crm"
   | "form_photos"
-  | "medication";
+  | "medication"
+  | "medical";
 
 interface PatientPageClientWrapperProps {
   patientId: string;
@@ -29,22 +31,21 @@ interface PatientPageClientWrapperProps {
   children: ReactNode;
 }
 
+// Medical sub-tabs that are grouped under the Medical dropdown
+const MEDICAL_SUB_TABS = ["notes", "invoice", "medication", "3d", "patient_information", "documents", "rendezvous", "forms"];
+
 export default function PatientPageClientWrapper({
   patientId,
   medicalTab,
   patientName,
   children,
 }: PatientPageClientWrapperProps) {
+  // Check if current tab is a medical sub-tab
+  const isMedicalSubTab = MEDICAL_SUB_TABS.includes(medicalTab) || medicalTab === "medical";
+
   const medicalTabs: { id: MedicalTab; label: string }[] = [
     { id: "cockpit", label: "Cockpit" },
-    { id: "notes", label: "Consultations" },
-    { id: "invoice", label: "Invoice" },
-    { id: "medication", label: "Medication" },
-    { id: "3d", label: "3D" },
-    { id: "patient_information", label: "Patient Information" },
-    { id: "documents", label: "Documents" },
-    { id: "rendezvous", label: "Rendezvous" },
-    { id: "forms", label: "Forms" },
+    { id: "medical", label: "Medical" },
     { id: "crm", label: "CRM" },
   ];
 
@@ -53,6 +54,9 @@ export default function PatientPageClientWrapper({
       patientId={patientId}
       medicalTab={medicalTab}
       medicalTabs={medicalTabs}
+      MedicalTabDropdown={
+        <MedicalTabDropdown patientId={patientId} isActive={isMedicalSubTab} />
+      }
       CrmTabDropdown={
         <CrmTabDropdown patientId={patientId} isActive={medicalTab === "crm"} />
       }
