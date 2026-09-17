@@ -38,6 +38,8 @@ const SUMEX_RESPONSE_BASE_URL =
 
 const LOG_PREFIX = "[SumexInvoice]";
 
+import { runSumexCalls, type SumexCall, type SumexCallResult } from "./sumexBatch";
+
 // ---------------------------------------------------------------------------
 // Enums — matching Sumex1 COM enumeration values
 // ---------------------------------------------------------------------------
@@ -551,6 +553,54 @@ async function reqPost<T = Record<string, unknown>>(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Batched execution (proxy v2 /batch) — collapses call sequences into one
+// round-trip. Falls back to sequential automatically on v1 proxies.
+// ---------------------------------------------------------------------------
+
+const SUMEX_REQ_ORIGIN = new URL(SUMEX_REQUEST_BASE_URL).origin;
+const SUMEX_REQ_PREFIX = new URL(SUMEX_REQUEST_BASE_URL).pathname;
+
+/** Build a batchable POST call against the request server. */
+function bcall(iface: string, method: string, body: Record<string, unknown>): SumexCall {
+  return { method: "POST", path: `${SUMEX_REQ_PREFIX}/${iface}/${method}`, body };
+}
+
+/**
+ * Run calls with reqPost-equivalent error semantics: throws on the first
+ * failed call (transport error → SUMEX_SERVER_OFFLINE, HTTP >= 400 or
+ * pbStatus=false → descriptive error).
+ */
+async function execStrict(calls: SumexCall[], label: string): Promise<SumexCallResult[]> {
+  const results = await runSumexCalls(SUMEX_REQ_ORIGIN, calls, { stopOnError: true });
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.skipped) continue;
+    if (r.error) {
+      console.error(`${LOG_PREFIX} batch[${label}] transport error at ${calls[i].path}: ${r.error}`);
+      throw new Error("SUMEX_SERVER_OFFLINE");
+    }
+    if ((r.status ?? 500) >= 400 || r.json?.pbStatus === false) {
+      const abortCode = r.json?.abortCode ?? "";
+      const abortText = r.json?.pbstrAbort || r.json?.errorText || `${r.status}`;
+      console.error(`${LOG_PREFIX} batch[${label}] FAILED at ${calls[i].path}: [${abortCode}] ${abortText}`);
+      throw new Error(`Sumex Request POST ${calls[i].path} failed: [${abortCode}] ${abortText}`);
+    }
+  }
+  console.log(`${LOG_PREFIX} batch[${label}] OK (${calls.length} calls)`);
+  return results;
+}
+
+/** Run calls collecting per-call outcomes without aborting (AddService loops). */
+async function execTolerant(calls: SumexCall[], label: string): Promise<SumexCallResult[]> {
+  const results = await runSumexCalls(SUMEX_REQ_ORIGIN, calls, { stopOnError: false });
+  console.log(`${LOG_PREFIX} batch[${label}] done (${calls.length} calls)`);
+  return results;
+}
+
+const callOk = (r: SumexCallResult) =>
+  !r.error && !r.skipped && (r.status ?? 500) < 400 && r.json?.pbStatus !== false;
+
 async function resGet<T = Record<string, unknown>>(path: string): Promise<T> {
   const url = `${SUMEX_RESPONSE_BASE_URL}/${path}`;
   const res = await fetch(url, { cache: "no-store" });
@@ -664,31 +714,30 @@ async function setupAddress(
   addrHandle: number,
   addr: InvoiceAddress,
 ): Promise<number> {
-  // Initialize (reset)
-  await reqPost("IAddress", "Initialize", { pIAddress: addrHandle });
+  const calls: SumexCall[] = [bcall("IAddress", "Initialize", { pIAddress: addrHandle })];
 
   // Person or Company
   if (addr.companyName) {
-    await reqPost("IAddress", "SetCompany", {
+    calls.push(bcall("IAddress", "SetCompany", {
       pIAddress: addrHandle,
       bstrCompanyName: addr.companyName,
       bstrDepartment: addr.department || "",
       bstrSubaddressing: addr.subaddressing || "",
-    });
+    }));
   }
   if (addr.familyName) {
-    await reqPost("IAddress", "SetPerson", {
+    calls.push(bcall("IAddress", "SetPerson", {
       pIAddress: addrHandle,
       bstrFamilyname: addr.familyName,
       bstrGivenname: addr.givenName || "",
       bstrSalutation: addr.salutation || "",
       bstrTitle: addr.title || "",
       bstrSubaddressing: addr.subaddressing || "",
-    });
+    }));
   }
 
   // Postal
-  await reqPost("IAddress", "SetPostal", {
+  calls.push(bcall("IAddress", "SetPostal", {
     pIAddress: addrHandle,
     bstrStreet: addr.street || "",
     bstrPoBox: addr.poBox || "",
@@ -697,28 +746,29 @@ async function setupAddress(
     bstrStateCode: addr.stateCode || "",
     bstrCountry: addr.country || "",
     bstrCountryCode: addr.countryCode || "",
-  });
+  }));
 
   // Online
   if (addr.email || addr.url) {
-    await reqPost("IAddress", "SetOnline", {
+    calls.push(bcall("IAddress", "SetOnline", {
       pIAddress: addrHandle,
       bstrEMail: addr.email || "",
       bstrUrl: addr.url || "",
-    });
+    }));
   }
 
   // Phone
   if (addr.phone) {
-    await reqPost("IAddress", "AddPhone", {
+    calls.push(bcall("IAddress", "AddPhone", {
       pIAddress: addrHandle,
       bstrNumber: addr.phone,
       bstrLocalCode: addr.phoneLocalCode || "",
       bstrInternationalCode: "",
       bstrExt: "",
-    });
+    }));
   }
 
+  await execStrict(calls, "setupAddress");
   return addrHandle;
 }
 
@@ -736,56 +786,48 @@ async function initServiceExInput(
   handle: number,
   input: SumexInvoiceInput,
 ): Promise<void> {
-  // 1. Initialize (reset static data)
-  await reqPost("IServiceExInput", "Initialize", {
-    pIServiceExInput: handle,
-  });
-
-  // 2. SetPhysician — provider/responsible GLN, medical & billing role
-  console.log(`${LOG_PREFIX} SetPhysician for GLN: ${input.providerGln}`);
-  await reqPost("IServiceExInput", "SetPhysician", {
-    pIServiceExInput: handle,
-    eMedicalRole: MedicalRoleType.SelfEmployed,
-    eBillingRole: BillingRoleType.Both,
-    bstrProviderGLN: input.providerGln,
-    bstrResponsibleGLN: input.providerGln,
-    bstrMedicalSectionCode: "",
-  });
-
-  // 2b. AddDignity — add multiple qualitative dignities for the provider
-  // Different TARDOC services require different dignities, so we add all relevant ones
   const dignities = input.qualDignities;
   if (!dignities || dignities.length === 0) {
     throw new Error("qualDignities is required. Configure provider specialty codes in Settings > Providers & Billing.");
   }
-  console.log(`${LOG_PREFIX} Adding ${dignities.length} dignities for GLN: ${input.providerGln}`);
-  for (const dignity of dignities) {
-    await reqPost("IServiceExInput", "AddDignity", {
+
+  const cantonCode = CantonCode[input.treatmentCanton?.toUpperCase()] ?? 0;
+  const calls: SumexCall[] = [
+    // 1. Initialize (reset static data)
+    bcall("IServiceExInput", "Initialize", { pIServiceExInput: handle }),
+    // 2. SetPhysician — provider/responsible GLN, medical & billing role
+    bcall("IServiceExInput", "SetPhysician", {
+      pIServiceExInput: handle,
+      eMedicalRole: MedicalRoleType.SelfEmployed,
+      eBillingRole: BillingRoleType.Both,
+      bstrProviderGLN: input.providerGln,
+      bstrResponsibleGLN: input.providerGln,
+      bstrMedicalSectionCode: "",
+    }),
+    // 2b. AddDignity — different TARDOC services require different dignities
+    ...dignities.map((dignity) => bcall("IServiceExInput", "AddDignity", {
       pIServiceExInput: handle,
       bstrGLN: input.providerGln,
       bstrQLCode: dignity,
-    });
-    console.log(`${LOG_PREFIX} ✓ Added dignity: ${dignity}`);
-  }
+    })),
+    // 3. SetPatient — birthdate and sex
+    bcall("IServiceExInput", "SetPatient", {
+      pIServiceExInput: handle,
+      dBirthdate: input.patientBirthdate,
+      eSex: input.patientSex,
+    }),
+    // 4. SetTreatment — canton, law, treatment type
+    bcall("IServiceExInput", "SetTreatment", {
+      pIServiceExInput: handle,
+      eCanton: cantonCode,
+      eLaw: input.lawType,
+      eTreatmentType: input.treatmentType ?? TreatmentType.Ambulatory,
+      bstrGLNSection: "",
+    }),
+  ];
 
-  // 3. SetPatient — birthdate and sex
-  await reqPost("IServiceExInput", "SetPatient", {
-    pIServiceExInput: handle,
-    dBirthdate: input.patientBirthdate,
-    eSex: input.patientSex,
-  });
-
-  // 4. SetTreatment — canton, law, treatment type
-  const cantonCode = CantonCode[input.treatmentCanton?.toUpperCase()] ?? 0;
-  await reqPost("IServiceExInput", "SetTreatment", {
-    pIServiceExInput: handle,
-    eCanton: cantonCode,
-    eLaw: input.lawType,
-    eTreatmentType: input.treatmentType ?? TreatmentType.Ambulatory,
-    bstrGLNSection: "",
-  });
-
-  console.log(`${LOG_PREFIX} IServiceExInput initialized: physician=${input.providerGln}, canton=${input.treatmentCanton}(${cantonCode}), law=${input.lawType}`);
+  await execStrict(calls, "initServiceExInput");
+  console.log(`${LOG_PREFIX} IServiceExInput initialized: physician=${input.providerGln}, dignities=${dignities.length}, canton=${input.treatmentCanton}(${cantonCode}), law=${input.lawType}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1131,46 +1173,46 @@ export async function buildInvoiceRequest(
       console.log(`${LOG_PREFIX} Services: ${input.services.length} total, ${simpleServices.length} simple, ${tarmedServices.length} TARMED, ${tardocServices.length} TARDOC. Types: [${input.services.map(s => s.tariffType).join(",")}]`);
 
       // Simple tariff services (ACF 005, drugs 402, other - NOT TARMED/TARDOC)
-      for (const svc of simpleServices) {
-        const addRes = await reqPost<{ plID: number; pbStatus: boolean }>(
-          "IGeneralInvoiceRequest",
-          "AddService",
-          {
-            pIGeneralInvoiceRequest: req,
-            bstrTariffType: svc.tariffType,
-            bstrCode: svc.code,
-            bstrReferenceCode: svc.referenceCode || "",
-            dQuantity: svc.quantity,
-            lSessionNumber: svc.sessionNumber ?? 1,
-            lGroupSize: svc.groupSize ?? 1,
-            dDateBegin: svc.dateBegin,
-            dDateEnd: svc.dateEnd || "0",
-            bstrProviderGLN: svc.providerGln,
-            bstrResponsibleGLN: svc.responsibleGln,
-            eSide: svc.side ?? SideType.None,
-            bstrServiceName: svc.serviceName || "",
-            dUnit: svc.unit ?? 0,
-            dUnitFactor: svc.unitFactor ?? 1,
-            dExternalFactor: svc.externalFactor ?? 1,
-            dAmount: svc.amount ?? 0,
-            dVatRate: svc.vatRate ?? 0,
-            bstrRemark: svc.remark || "",
-            bstrSectionCode: svc.sectionCode || "",
-            eIgnoreValidate: svc.ignoreValidate ?? YesNo.Yes,
-            lServiceAttributes: svc.serviceAttributes ?? 0,
-          },
-        );
-        if (!addRes.pbStatus) {
-          const abortInfo = await getAbortInfo(mgr);
-          console.error(`${LOG_PREFIX} ❌ AddService REJECTED: ${svc.code} (${svc.serviceName}) - Reason: ${abortInfo}`);
-          rejectedServices.push({
-            code: svc.code,
-            name: svc.serviceName || "",
-            reason: abortInfo || "Unknown validation error",
-          });
-        } else {
-          console.log(`${LOG_PREFIX} ✓ AddService OK: ${svc.code}`);
-          servicesAccepted++;
+      if (simpleServices.length > 0) {
+        const addCalls = simpleServices.map((svc) => bcall("IGeneralInvoiceRequest", "AddService", {
+          pIGeneralInvoiceRequest: req,
+          bstrTariffType: svc.tariffType,
+          bstrCode: svc.code,
+          bstrReferenceCode: svc.referenceCode || "",
+          dQuantity: svc.quantity,
+          lSessionNumber: svc.sessionNumber ?? 1,
+          lGroupSize: svc.groupSize ?? 1,
+          dDateBegin: svc.dateBegin,
+          dDateEnd: svc.dateEnd || "0",
+          bstrProviderGLN: svc.providerGln,
+          bstrResponsibleGLN: svc.responsibleGln,
+          eSide: svc.side ?? SideType.None,
+          bstrServiceName: svc.serviceName || "",
+          dUnit: svc.unit ?? 0,
+          dUnitFactor: svc.unitFactor ?? 1,
+          dExternalFactor: svc.externalFactor ?? 1,
+          dAmount: svc.amount ?? 0,
+          dVatRate: svc.vatRate ?? 0,
+          bstrRemark: svc.remark || "",
+          bstrSectionCode: svc.sectionCode || "",
+          eIgnoreValidate: svc.ignoreValidate ?? YesNo.Yes,
+          lServiceAttributes: svc.serviceAttributes ?? 0,
+        }));
+        const addResults = await execTolerant(addCalls, "AddService");
+        for (let i = 0; i < simpleServices.length; i++) {
+          const svc = simpleServices[i];
+          if (!callOk(addResults[i])) {
+            const abortInfo = (await getAbortInfo(mgr)) || addResults[i].json?.pbstrAbort || "";
+            console.error(`${LOG_PREFIX} ❌ AddService REJECTED: ${svc.code} (${svc.serviceName}) - Reason: ${abortInfo}`);
+            rejectedServices.push({
+              code: svc.code,
+              name: svc.serviceName || "",
+              reason: abortInfo || "Unknown validation error",
+            });
+          } else {
+            console.log(`${LOG_PREFIX} ✓ AddService OK: ${svc.code}`);
+            servicesAccepted++;
+          }
         }
       }
 
@@ -1205,7 +1247,7 @@ export async function buildInvoiceRequest(
         // Initialize the IServiceExInput with physician, patient, treatment data
         await initServiceExInput(svcInputHandle, input);
 
-        for (const svc of tarmedServices) {
+        const tarmedCalls = tarmedServices.map((svc) => {
           const unitMT = svc.unit ?? 0;
           const unitFactorMT = svc.unitFactor ?? 1;
           const extFactorMT = svc.externalFactor ?? 1;
@@ -1214,42 +1256,41 @@ export async function buildInvoiceRequest(
           const computedAmountMT = svc.amount
             ?? Math.round(svc.quantity * unitMT * unitFactorMT * 1 * extFactorMT * 100) / 100;
           console.log(`${LOG_PREFIX} AddServiceEx TARMED ${svc.code}: qty=${svc.quantity} unitMT=${unitMT} factor=${unitFactorMT} ext=${extFactorMT} => amountMT=${computedAmountMT}`);
-
-          const addRes = await reqPost<{ plID: number; pbStatus: boolean }>(
-            "IGeneralInvoiceRequest",
-            "AddServiceEx",
-            {
-              pIGeneralInvoiceRequest: req,
-              pIServiceExInput: svcInputHandle,
-              bstrTariffType: "001",
-              bstrCode: svc.code,
-              bstrReferenceCode: svc.referenceCode || "",
-              dQuantity: svc.quantity,
-              lSessionNumber: svc.sessionNumber ?? 1,
-              lGroupSize: svc.groupSize ?? 1,
-              dDateBegin: svc.dateBegin,
-              dDateEnd: svc.dateEnd || "0",
-              eSide: svc.side ?? SideType.None,
-              bstrServiceName: svc.serviceName || "",
-              dUnitMT: unitMT,
-              dUnitFactorMT: unitFactorMT,
-              dUnitInternalScalingFactorMT: 1,
-              dUnitExternalScalingFactorMT: extFactorMT,
-              dAmountMT: computedAmountMT,
-              dUnitTT: 0,
-              dUnitFactorTT: 1,
-              dUnitInternalScalingFactorTT: 1,
-              dUnitExternalScalingFactorTT: 1,
-              dAmountTT: 0,
-              dAmount: computedAmountMT,
-              dVatRate: svc.vatRate ?? 0,
-              bstrRemark: svc.remark || "",
-              eIgnoreValidate: YesNo.Yes,
-              lServiceAttributes: svc.serviceAttributes ?? 0,
-            },
-          );
-          if (!addRes.pbStatus) {
-            const abortInfo = await getAbortInfo(mgr);
+          return bcall("IGeneralInvoiceRequest", "AddServiceEx", {
+            pIGeneralInvoiceRequest: req,
+            pIServiceExInput: svcInputHandle,
+            bstrTariffType: "001",
+            bstrCode: svc.code,
+            bstrReferenceCode: svc.referenceCode || "",
+            dQuantity: svc.quantity,
+            lSessionNumber: svc.sessionNumber ?? 1,
+            lGroupSize: svc.groupSize ?? 1,
+            dDateBegin: svc.dateBegin,
+            dDateEnd: svc.dateEnd || "0",
+            eSide: svc.side ?? SideType.None,
+            bstrServiceName: svc.serviceName || "",
+            dUnitMT: unitMT,
+            dUnitFactorMT: unitFactorMT,
+            dUnitInternalScalingFactorMT: 1,
+            dUnitExternalScalingFactorMT: extFactorMT,
+            dAmountMT: computedAmountMT,
+            dUnitTT: 0,
+            dUnitFactorTT: 1,
+            dUnitInternalScalingFactorTT: 1,
+            dUnitExternalScalingFactorTT: 1,
+            dAmountTT: 0,
+            dAmount: computedAmountMT,
+            dVatRate: svc.vatRate ?? 0,
+            bstrRemark: svc.remark || "",
+            eIgnoreValidate: YesNo.Yes,
+            lServiceAttributes: svc.serviceAttributes ?? 0,
+          });
+        });
+        const tarmedResults = await execTolerant(tarmedCalls, "AddServiceEx TARMED");
+        for (let i = 0; i < tarmedServices.length; i++) {
+          const svc = tarmedServices[i];
+          if (!callOk(tarmedResults[i])) {
+            const abortInfo = (await getAbortInfo(mgr)) || tarmedResults[i].json?.pbstrAbort || "";
             console.error(`${LOG_PREFIX} ❌ AddServiceEx TARMED REJECTED: ${svc.code} (${svc.serviceName}) - Reason: ${abortInfo}`);
             rejectedServices.push({
               code: svc.code,
@@ -1273,58 +1314,57 @@ export async function buildInvoiceRequest(
         // Initialize the IServiceExInput with physician, patient, treatment data
         await initServiceExInput(svcInputHandle, input);
 
-        for (const svc of tardocServices) {
+        const tardocCalls = tardocServices.map((svc) => {
           // Sumex validates: dAmountMT = quantity × unitMT × unitFactorMT × internalScaling × externalScaling
           const unitMT = svc.unit ?? 0;
           const unitFactorMT = svc.unitFactor ?? 1;
           const extFactorMT = svc.externalFactor ?? 1;
           const computedAmountMT = Math.round(svc.quantity * unitMT * unitFactorMT * 1 * extFactorMT * 100) / 100;
-          
+
           // TL (Technical) component for TARDOC
           const unitTT = svc.unitTT ?? 0;
           const unitFactorTT = svc.unitFactorTT ?? 1;
           const extFactorTT = svc.externalFactorTT ?? 1;
           const computedAmountTT = Math.round(svc.quantity * unitTT * unitFactorTT * 1 * extFactorTT * 100) / 100;
-          
+
           console.log(`${LOG_PREFIX} AddServiceEx ${svc.code}: qty=${svc.quantity} unitMT=${unitMT} factor=${unitFactorMT} ext=${extFactorMT} => amountMT=${computedAmountMT}, unitTT=${unitTT} factorTT=${unitFactorTT} => amountTT=${computedAmountTT} (passed amount=${svc.amount})`);
 
-          const addRes = await reqPost<{ plID: number; pbStatus: boolean }>(
-            "IGeneralInvoiceRequest",
-            "AddServiceEx",
-            {
-              pIGeneralInvoiceRequest: req,
-              pIServiceExInput: svcInputHandle,
-              bstrTariffType: svc.tariffType,
-              bstrCode: svc.code,
-              bstrReferenceCode: svc.referenceCode || "",
-              dQuantity: svc.quantity,
-              lSessionNumber: svc.sessionNumber ?? 1,
-              lGroupSize: svc.groupSize ?? 1,
-              dDateBegin: svc.dateBegin,
-              dDateEnd: svc.dateEnd || "0",
-              eSide: svc.side ?? SideType.None,
-              bstrServiceName: svc.serviceName || "",
-              dUnitMT: unitMT,
-              dUnitFactorMT: unitFactorMT,
-              dUnitInternalScalingFactorMT: 1,
-              dUnitExternalScalingFactorMT: extFactorMT,
-              dAmountMT: computedAmountMT,
-              dUnitTT: unitTT,
-              dUnitFactorTT: unitFactorTT,
-              dUnitInternalScalingFactorTT: 1,
-              dUnitExternalScalingFactorTT: extFactorTT,
-              dAmountTT: computedAmountTT,
-              dAmount: computedAmountMT + computedAmountTT,
-              dVatRate: svc.vatRate ?? 0,
-              bstrRemark: svc.remark || "",
-              eIgnoreValidate: svc.ignoreValidate ?? YesNo.Yes,
-              lServiceAttributes: svc.serviceAttributes ?? 0,
-            },
-          );
-          if (!addRes.pbStatus) {
-            const abortInfo = await getAbortInfo(mgr);
+          return bcall("IGeneralInvoiceRequest", "AddServiceEx", {
+            pIGeneralInvoiceRequest: req,
+            pIServiceExInput: svcInputHandle,
+            bstrTariffType: svc.tariffType,
+            bstrCode: svc.code,
+            bstrReferenceCode: svc.referenceCode || "",
+            dQuantity: svc.quantity,
+            lSessionNumber: svc.sessionNumber ?? 1,
+            lGroupSize: svc.groupSize ?? 1,
+            dDateBegin: svc.dateBegin,
+            dDateEnd: svc.dateEnd || "0",
+            eSide: svc.side ?? SideType.None,
+            bstrServiceName: svc.serviceName || "",
+            dUnitMT: unitMT,
+            dUnitFactorMT: unitFactorMT,
+            dUnitInternalScalingFactorMT: 1,
+            dUnitExternalScalingFactorMT: extFactorMT,
+            dAmountMT: computedAmountMT,
+            dUnitTT: unitTT,
+            dUnitFactorTT: unitFactorTT,
+            dUnitInternalScalingFactorTT: 1,
+            dUnitExternalScalingFactorTT: extFactorTT,
+            dAmountTT: computedAmountTT,
+            dAmount: computedAmountMT + computedAmountTT,
+            dVatRate: svc.vatRate ?? 0,
+            bstrRemark: svc.remark || "",
+            eIgnoreValidate: svc.ignoreValidate ?? YesNo.Yes,
+            lServiceAttributes: svc.serviceAttributes ?? 0,
+          });
+        });
+        const tardocResults = await execTolerant(tardocCalls, "AddServiceEx TARDOC");
+        for (let i = 0; i < tardocServices.length; i++) {
+          const svc = tardocServices[i];
+          if (!callOk(tardocResults[i])) {
+            const abortInfo = (await getAbortInfo(mgr)) || tardocResults[i].json?.pbstrAbort || "";
             console.error(`${LOG_PREFIX} ❌ AddServiceEx REJECTED: ${svc.code} (${svc.serviceName}) - Reason: ${abortInfo}`);
-            console.error(`${LOG_PREFIX} Service details: tariff=${svc.tariffType}, qty=${svc.quantity}, unit=${unitMT}, factor=${unitFactorMT}, ext=${extFactorMT}, amount=${computedAmountMT}`);
             rejectedServices.push({
               code: svc.code,
               name: svc.serviceName || "",
