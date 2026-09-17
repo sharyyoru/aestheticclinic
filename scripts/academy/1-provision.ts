@@ -156,9 +156,10 @@ async function main() {
     // The SQL editor runs a pasted script as one transaction and aborts on the
     // first error, so emit numbered parts that can be pasted — and re-pasted —
     // independently rather than one all-or-nothing file.
+    // Step 1 is schema.generated.sql, which is already written and committed —
+    // no point duplicating 141 KB under a second name.
     const parts: { file: string; sql: string }[] = [];
 
-    parts.push({ file: "01-schema.sql", sql: steps[0].sql });
     parts.push({
       file: "02-functions-and-policies.sql",
       sql: steps
@@ -196,7 +197,8 @@ keys cannot execute DDL (PostgREST is a data plane only).
 Run these in the Supabase SQL editor for the CAPTURE project, in order. Each is
 independent and safe to re-run:
 
-${parts.map((p, i) => `  ${i + 1}. scripts/academy/generated/${p.file}`).join("\n")}
+  1. scripts/academy/generated/schema.generated.sql
+${parts.map((p, i) => `  ${i + 2}. scripts/academy/generated/${p.file}`).join("\n")}
 
 Then verify with:
   npx tsx scripts/academy/1-provision.ts --verify
