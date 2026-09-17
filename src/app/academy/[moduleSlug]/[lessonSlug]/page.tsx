@@ -12,6 +12,7 @@ type Lesson = {
   title: string;
   content: string | null;
   video_url: string | null;
+  poster_url: string | null;
   sort_order: number;
   estimated_minutes: number;
 };
@@ -36,7 +37,7 @@ async function getLessonData(moduleSlug: string, lessonSlug: string) {
   // Get lesson
   const { data: lesson } = await supabaseAdmin
     .from("academy_lessons")
-    .select("id, slug, title, content, video_url, sort_order, estimated_minutes")
+    .select("id, slug, title, content, video_url, poster_url, sort_order, estimated_minutes")
     .eq("module_id", module.id)
     .eq("slug", lessonSlug)
     .single();
@@ -96,7 +97,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
         {/* Lesson Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Video */}
-          <VideoContainer videoUrl={lesson.video_url} title={lesson.title} />
+          <VideoContainer videoUrl={lesson.video_url} posterUrl={lesson.poster_url} title={lesson.title} />
 
           {/* Lesson Info */}
           <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">

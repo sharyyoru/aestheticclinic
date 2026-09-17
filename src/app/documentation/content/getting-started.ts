@@ -19,6 +19,12 @@ export const gettingStartedModules: DocModule[] = [
       "Email, WhatsApp and SMS from inside the patient file",
       "Automation, AI voice agents and an AI assistant for staff",
     ],
+    video: {
+      src: "/videos/platform-overview.mp4",
+      title: "Aliice platform overview",
+      duration: "1 min 14 s",
+      caption: "A short tour of the platform before you read the detail below.",
+    },
     sections: [
       {
         id: "who-uses-it",

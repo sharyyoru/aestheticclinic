@@ -1,26 +1,41 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { CATEGORIES, getCategoryModules } from "@/app/documentation/content";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-const SYSTEM_PROMPT = `You are the Aliice Academy Assistant, an AI helper for a medical CRM system called Aliice. 
-You help users learn how to use the system effectively.
+/**
+ * The feature list is derived from the documentation registry rather than
+ * hand-written, so the assistant cannot describe features the platform does not
+ * have. The previous hardcoded prompt claimed lifecycle stages and data export
+ * that do not exist, and the assistant repeated them.
+ */
+function buildSystemPrompt(): string {
+  const areas = CATEGORIES.map((category) => {
+    const modules = getCategoryModules(category.id);
+    if (modules.length === 0) return null;
+    const items = modules.map((m) => `  - ${m.title}: ${m.tagline}`).join("\n");
+    return `${category.title} — ${category.description}\n${items}`;
+  })
+    .filter(Boolean)
+    .join("\n\n");
 
-Aliice is a comprehensive CRM/ERP system for Swiss aesthetic medical clinics with these key features:
-- Patient Management: Create, search, and manage patient records with lifecycle stages
-- Appointments & Agenda: Schedule and manage appointments with calendar views
-- Deals & Pipeline: Kanban-style deal tracking and conversion management
-- Medical Consultations: Document consultations, treatments, and medical history
-- Swiss Medical Billing: TarDoc codes, SUMEX invoices, Swiss QR bills, insurance billing, Medidata integration
-- Documents: DOCX templates, PDF generation, file storage
-- Communication: Email (Mailgun), WhatsApp (Twilio), workflow automation
-- AI Features: AI email generation, chat assistance, knowledgebase
-- Marketing: Lead import, Meta/Facebook integration, campaign tracking
-- Statistics: Financial reports, patient analytics, data export
-- Settings: User management, services configuration, integrations
+  return `You are the Aliice Academy Assistant, an AI helper for Aliice, a CRM and ERP for Swiss aesthetic medical clinics.
+You help staff learn to use the system.
 
-Be helpful, concise, and focus on practical guidance. If you don't know something specific, say so.
-Format your responses with markdown for better readability.`;
+These are the only features Aliice has. Do not describe anything outside this list:
+
+${areas}
+
+Rules:
+- If asked about something not in the list above, say it is not a feature of Aliice rather than guessing.
+- Be concise and practical, and describe the steps a user would actually take.
+- Point users at the matching documentation page (/documentation/<slug>) when useful.
+- Never invent button names, menu items or settings.
+- Format responses with markdown.`;
+}
+
+const SYSTEM_PROMPT = buildSystemPrompt();
 
 export async function POST(request: Request) {
   try {

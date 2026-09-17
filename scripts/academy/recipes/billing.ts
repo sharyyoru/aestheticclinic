@@ -1,0 +1,78 @@
+import type { CaptureRecipe } from "./types";
+
+export const billingRecipes: CaptureRecipe[] = [
+  {
+    docSlug: "invoices",
+    title: "Invoices",
+    route: "/invoices",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/invoices", caption: "Every invoice carries the patient, the doctor, the amounts and a status.", waitFor: { role: "heading", name: "Invoices" } },
+      { kind: "shot", name: "list", alt: "The invoices list with status badges", sectionId: "invoice-statuses" },
+      { kind: "caption", text: "The status describes the money: open, paid, partial, overpaid, cancelled or complimentary." },
+      { kind: "shot", name: "statuses", alt: "Invoice status badges", sectionId: "invoice-statuses" },
+      { kind: "caption", text: "Tiers Garant means the patient pays you. Tiers Payant means you bill the insurer." },
+      { kind: "shot", name: "filters", alt: "Invoice filters including billing type and insurance submission", sectionId: "billing-type" },
+      { kind: "caption", text: "The insurance submission filter finds insured invoices nobody has submitted yet." },
+      { kind: "shot", name: "insurance-filter", alt: "Insurance submission status filter", sectionId: "filters" },
+    ],
+  },
+  {
+    docSlug: "financials",
+    title: "Financial overview",
+    route: "/financials",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/financials", caption: "Four numbers: billed, paid, outstanding and complimentary.", waitFor: { role: "heading", name: "Financials" } },
+      { kind: "shot", name: "headline", alt: "Total billed, paid, outstanding and complimentary figures", sectionId: "the-four-numbers" },
+      { kind: "caption", text: "Choose whether dates mean invoice date or payment date — they give different answers." },
+      { kind: "shot", name: "period", alt: "Period selection and comparison controls", sectionId: "choosing-a-period" },
+      { kind: "caption", text: "Revenue by service is computed from actual invoice lines." },
+      { kind: "shot", name: "by-service", alt: "Revenue broken down by service", sectionId: "by-service" },
+    ],
+  },
+  {
+    docSlug: "tardoc",
+    title: "TarDoc coding",
+    route: "/tardoc",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/tardoc", caption: "TarDoc is the Swiss outpatient tariff.", waitFor: { text: "Tax Point Value" } },
+      { kind: "shot", name: "overview", alt: "TarDoc showing tax point value, neutrality factor and active tariffs", sectionId: "what-is-here" },
+      { kind: "caption", text: "Search by text, or browse a chapter." },
+      { kind: "shot", name: "tariffs", alt: "TarDoc tariff positions with tax points and duration", sectionId: "finding-a-position" },
+      { kind: "caption", text: "The calculator turns tax points into francs using your clinic's values." },
+      { kind: "shot", name: "calculator", alt: "The tax point calculator", sectionId: "calculator" },
+    ],
+  },
+  {
+    docSlug: "medidata-insurance",
+    title: "Insurance & MediData",
+    route: "/medidata",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/medidata", caption: "Insured invoices are submitted electronically and tracked here.", waitFor: { role: "heading", name: "MediData Dashboard" } },
+      { kind: "shot", name: "submissions", alt: "The MediData submissions view", sectionId: "the-four-tabs" },
+      { kind: "caption", text: "Four views: submissions, responses, participants and notifications." },
+      { kind: "shot", name: "tabs", alt: "MediData tabs", sectionId: "the-four-tabs" },
+      { kind: "caption", text: "Statuses run from transmitted through to paid, rejected or collection." },
+      { kind: "shot", name: "statuses", alt: "Submission statuses", sectionId: "submission-statuses" },
+      { kind: "goto", path: "/insurers", caption: "The Swiss insurers directory keeps identifiers consistent.", waitFor: { role: "heading", name: "Swiss Insurers" } },
+      { kind: "shot", name: "insurers", alt: "The Swiss insurers directory", sectionId: "insurers-directory" },
+    ],
+  },
+  {
+    docSlug: "payments",
+    title: "Payments & reconciliation",
+    route: "/invoices",
+    video: false,
+    steps: [
+      { kind: "goto", path: "/invoices", caption: "Payment links are created from the invoice.", waitFor: { role: "heading", name: "Invoices" } },
+      { kind: "shot", name: "invoice-list", alt: "Invoices, from which payment links are created", sectionId: "payment-links" },
+      { kind: "goto", path: "/invoice-linker", caption: "The linker attaches invoices to the consultation they belong to.", settleMs: 2500 },
+      { kind: "shot", name: "linker", alt: "The invoice linker showing unlinked invoices", sectionId: "invoice-linker" },
+      { kind: "goto", path: "/invoice/payment-success", caption: "What the patient sees after paying.", settleMs: 1500 },
+      { kind: "shot", name: "payment-success", alt: "The payment successful page", sectionId: "payment-links" },
+    ],
+  },
+];

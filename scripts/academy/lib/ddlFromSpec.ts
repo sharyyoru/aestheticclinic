@@ -1,0 +1,221 @@
+/**
+ * Generates CREATE TABLE DDL from a PostgREST OpenAPI spec.
+ *
+ * Why this exists: 27 tables and 3 views the app queries have no CREATE TABLE
+ * anywhere in the repo — including the whole billing core (`invoices` has 71
+ * columns). `supabase/schema.sql` is a stale snapshot with 41 tables. So the
+ * repo cannot rebuild a working database, but the spec endpoint can: it exposes
+ * every column, type, default, primary key and foreign key while reading zero
+ * rows of data.
+ *
+ * Known gaps (acceptable for a capture database): no triggers, no check
+ * constraints beyond enums, no functions. None of these affect rendering.
+ */
+
+export type Spec = {
+  definitions: Record<
+    string,
+    {
+      required?: string[];
+      properties?: Record<
+        string,
+        {
+          type?: string;
+          format?: string;
+          default?: unknown;
+          description?: string;
+          enum?: string[];
+        }
+      >;
+    }
+  >;
+};
+
+/** Import-staging tables from historical data migrations — not needed to render. */
+const SKIP_PREFIXES = ["tmp_"];
+/** Views are created separately from views.sql; they cannot be inferred. */
+const isView = (name: string) => name.startsWith("v_");
+
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+function columnType(format: string | undefined, type: string | undefined): string {
+  if (!format) return type === "object" ? "jsonb" : "text";
+  // PostgREST reports the real Postgres type in `format`, including enums as
+  // `public.<enum_name>` and arrays as `text[]`.
+  return format;
+}
+
+/**
+ * PostgREST reports defaults with the type cast and quotes stripped, so a text
+ * column defaulting to 'OPEN' arrives as the bare word `OPEN`, which is invalid
+ * SQL if emitted verbatim. Distinguish expressions from literals.
+ */
+export function renderDefault(
+  raw: unknown,
+  format: string | undefined
+): { kind: "identity" } | { kind: "expr"; sql: string } | null {
+  if (typeof raw === "number" || typeof raw === "boolean") {
+    return { kind: "expr", sql: String(raw) };
+  }
+  if (typeof raw !== "string") return null;
+
+  const value = raw.trim();
+  if (/nextval\(/i.test(value)) return { kind: "identity" };
+  if (value === "") return { kind: "expr", sql: "''" };
+
+  // Function calls, casts and parenthesised expressions pass through untouched.
+  if (/[()]/.test(value) || value.includes("::")) return { kind: "expr", sql: value };
+  if (/^(CURRENT_DATE|CURRENT_TIMESTAMP|CURRENT_TIME|LOCALTIMESTAMP|NULL|TRUE|FALSE)$/i.test(value)) {
+    return { kind: "expr", sql: value };
+  }
+  if (/^-?\d+(\.\d+)?$/.test(value)) return { kind: "expr", sql: value };
+
+  const literal = `'${value.replace(/'/g, "''")}'`;
+  // JSON literals need an explicit cast; so do enums, or Postgres cannot infer.
+  if (/^[[{]/.test(value)) return { kind: "expr", sql: `${literal}::jsonb` };
+  if (format?.startsWith("public.")) return { kind: "expr", sql: `${literal}::${format}` };
+  return { kind: "expr", sql: literal };
+}
+
+function parseKeys(description: string | undefined): {
+  isPrimary: boolean;
+  foreign?: { table: string; column: string };
+} {
+  if (!description) return { isPrimary: false };
+  const isPrimary = /<pk\/>/.test(description);
+  const fk = description.match(/<fk table='([^']+)' column='([^']+)'\/>/);
+  return {
+    isPrimary,
+    foreign: fk ? { table: fk[1], column: fk[2] } : undefined,
+  };
+}
+
+export function generateDdl(spec: Spec): string {
+  const enums = new Map<string, string[]>();
+  const tables: string[] = [];
+  const constraints: string[] = [];
+  const skipped: string[] = [];
+
+  // Collect enum types first — tables depend on them.
+  for (const def of Object.values(spec.definitions)) {
+    for (const prop of Object.values(def.properties ?? {})) {
+      if (prop.format?.startsWith("public.") && prop.enum) {
+        enums.set(prop.format.replace(/^public\./, ""), prop.enum);
+      }
+    }
+  }
+
+  const names = Object.keys(spec.definitions).sort();
+
+  for (const name of names) {
+    if (isView(name) || SKIP_PREFIXES.some((p) => name.startsWith(p))) {
+      skipped.push(name);
+      continue;
+    }
+
+    const def = spec.definitions[name];
+    const properties = def.properties ?? {};
+    const required = new Set(def.required ?? []);
+    const primaryKeys: string[] = [];
+    const columnLines: string[] = [];
+
+    for (const [column, prop] of Object.entries(properties)) {
+      const { isPrimary, foreign } = parseKeys(prop.description);
+      if (isPrimary) primaryKeys.push(column);
+
+      let line = `  ${quoteIdent(column)} ${columnType(prop.format, prop.type)}`;
+
+      const rawDefault = prop.default;
+      const rendered = rawDefault === undefined ? null : renderDefault(rawDefault, prop.format);
+      if (rendered?.kind === "identity") {
+        // Recreate identity rather than chase sequence names.
+        line += " GENERATED BY DEFAULT AS IDENTITY";
+      } else if (rendered?.kind === "expr") {
+        line += ` DEFAULT ${rendered.sql}`;
+      }
+
+      // A primary key is implicitly NOT NULL; PostgREST lists generated columns
+      // as required even though they have defaults, so only add NOT NULL when
+      // there is no default to fall back on.
+      if (required.has(column) && !isPrimary && rawDefault === undefined) {
+        line += " NOT NULL";
+      }
+
+      columnLines.push(line);
+
+      if (foreign) {
+        constraints.push(
+          `ALTER TABLE public.${quoteIdent(name)} ADD CONSTRAINT ${quoteIdent(
+            `${name}_${column}_fkey`
+          )} FOREIGN KEY (${quoteIdent(column)}) REFERENCES public.${quoteIdent(
+            foreign.table
+          )}(${quoteIdent(foreign.column)}) ON DELETE SET NULL;`
+        );
+      }
+    }
+
+    if (columnLines.length === 0) {
+      skipped.push(`${name} (no columns)`);
+      continue;
+    }
+
+    tables.push(
+      `CREATE TABLE IF NOT EXISTS public.${quoteIdent(name)} (\n${columnLines.join(",\n")}\n);`
+    );
+
+    if (primaryKeys.length > 0) {
+      constraints.push(
+        `ALTER TABLE public.${quoteIdent(name)} ADD CONSTRAINT ${quoteIdent(
+          `${name}_pkey`
+        )} PRIMARY KEY (${primaryKeys.map(quoteIdent).join(", ")});`
+      );
+    }
+  }
+
+  const enumSql = [...enums.entries()].map(
+    ([name, values]) => `DO $$ BEGIN
+  CREATE TYPE public.${quoteIdent(name)} AS ENUM (${values
+    .map((v) => `'${v.replace(/'/g, "''")}'`)
+    .join(", ")});
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
+  );
+
+  return [
+    "-- GENERATED FILE — do not edit by hand.",
+    "-- Source: production PostgREST schema spec (schema metadata only, zero rows read).",
+    "-- Regenerate with: npm run academy:provision",
+    `-- Tables: ${tables.length} | Enums: ${enums.size} | Skipped: ${skipped.length}`,
+    `-- Skipped (views are in views.sql; tmp_* are historical import staging): ${skipped.join(", ")}`,
+    "",
+    "CREATE EXTENSION IF NOT EXISTS pgcrypto;",
+    "",
+    "-- Enum types",
+    ...enumSql,
+    "",
+    "-- Tables",
+    ...tables,
+    "",
+    "-- Keys (applied last so table order does not matter)",
+    "-- Failures here are tolerated: a missing FK relaxes integrity but does not stop a screen rendering.",
+    ...constraints,
+    "",
+  ].join("\n\n");
+}
+
+export async function fetchSpec(url: string, serviceKey: string): Promise<Spec> {
+  const res = await fetch(`${url}/rest/v1/`, {
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      Accept: "application/openapi+json",
+    },
+  });
+  if (!res.ok) {
+    throw new Error(
+      `Could not read the schema spec (HTTP ${res.status}). This endpoint requires the service_role key.`
+    );
+  }
+  return (await res.json()) as Spec;
+}

@@ -1,0 +1,75 @@
+import type { CaptureRecipe } from "./types";
+
+export const coreRecordsRecipes: CaptureRecipe[] = [
+  {
+    docSlug: "patients",
+    title: "Patients list",
+    route: "/patients",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/patients", caption: "The contacts list is how you find one person among thousands.", waitFor: { role: "heading", name: "Contacts" } },
+      { kind: "shot", name: "list", alt: "The contacts list with filters and search", sectionId: "searching" },
+      { kind: "fill", target: { placeholder: "Search name, email, phone, DOB..." }, value: "a", caption: "Search updates as you type." },
+      { kind: "wait", ms: 1200 },
+      { kind: "shot", name: "search", alt: "Searching the contacts list", sectionId: "searching" },
+      { kind: "caption", text: "The category selector narrows the search to name, email, phone or date of birth." },
+      { kind: "shot", name: "filters", alt: "Owner, created-date and status filters above the list", sectionId: "filters" },
+      { kind: "caption", text: "The last contact column shows when each patient was last reached, and on which channel." },
+      { kind: "shot", name: "last-contact", alt: "The last contact column", sectionId: "last-contact" },
+    ],
+  },
+  {
+    docSlug: "patient-record",
+    title: "The patient file",
+    route: "/patients/:patientId",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/patients/:patientId", caption: "The patient file is where most work happens.", settleMs: 3000 },
+      { kind: "shot", name: "cockpit", alt: "The patient file cockpit view", sectionId: "cockpit" },
+      { kind: "caption", text: "The CRM and Medical toggle switches which set of tabs you see." },
+      { kind: "shot", name: "mode-toggle", alt: "The CRM and Medical mode toggle on the patient header", sectionId: "two-modes" },
+      { kind: "goto", path: "/patients/:patientId?mode=medical&m_tab=invoice", caption: "The invoice tab totals this patient's billing by status.", settleMs: 2500 },
+      { kind: "shot", name: "invoices", alt: "Invoices for a single patient with totals per status", sectionId: "invoices-on-the-file" },
+      { kind: "goto", path: "/patients/:patientId?mode=medical&m_tab=rendezvous", caption: "Appointments for the patient, past and upcoming.", settleMs: 2500 },
+      { kind: "shot", name: "appointments", alt: "The patient's appointments tab", sectionId: "tabs" },
+    ],
+  },
+  {
+    docSlug: "documents",
+    title: "Documents & photos",
+    route: "/patients/:patientId?mode=medical&m_tab=documents",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/patients/:patientId?mode=medical&m_tab=documents", caption: "Every patient has document storage with folders.", settleMs: 3000 },
+      { kind: "shot", name: "documents", alt: "The patient documents tab with folders and files", sectionId: "uploading" },
+      { kind: "caption", text: "Uploads report progress per file, so a failure is visible rather than silent." },
+      { kind: "shot", name: "folders", alt: "Document folders listed before files", sectionId: "folders" },
+    ],
+  },
+  {
+    docSlug: "medical-records",
+    title: "Consultations, notes & medication",
+    route: "/patients/:patientId?mode=medical&m_tab=notes",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/patients/:patientId?mode=medical&m_tab=notes", caption: "Consultations record what happened in the room.", settleMs: 3000 },
+      { kind: "shot", name: "consultations", alt: "Consultation entries on the patient file", sectionId: "consultations" },
+      { kind: "goto", path: "/patients/:patientId?mode=medical&m_tab=medication", caption: "Medication carries a dose for morning, noon, evening and night.", settleMs: 2500 },
+      { kind: "shot", name: "medication", alt: "The medication card on the patient file", sectionId: "medication" },
+      { kind: "caption", text: "Anything flagged for eMediplan is collected into a plan you can send to the patient." },
+      { kind: "shot", name: "emediplan", alt: "Medication entries flagged for the eMediplan plan", sectionId: "emediplan" },
+    ],
+  },
+  {
+    docSlug: "3d-imaging",
+    title: "3D imaging",
+    route: "/patients/:patientId/3d",
+    video: false,
+    steps: [
+      { kind: "goto", path: "/patients/:patientId/3d", caption: "3D scans live on their own tab.", settleMs: 3000 },
+      { kind: "shot", name: "tab", alt: "The 3D imaging tab on the patient file", sectionId: "creating-a-scan" },
+      { kind: "goto", path: "/patients/:patientId/3d/setup", caption: "Setup asks whether this is a face or a body scan.", settleMs: 2500 },
+      { kind: "shot", name: "setup", alt: "3D scan setup offering Face or Body", sectionId: "creating-a-scan" },
+    ],
+  },
+];

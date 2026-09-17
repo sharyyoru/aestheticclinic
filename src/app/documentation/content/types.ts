@@ -46,6 +46,18 @@ export type DocFaq = {
   answer: string;
 };
 
+/** An introductory video shown under the module summary. */
+export type DocVideo = {
+  /** Path under /public, e.g. "/videos/platform-overview.mp4". */
+  src: string;
+  title: string;
+  /** Optional poster image path under /public. */
+  poster?: string;
+  /** Human-readable length, e.g. "1 min 14 s". */
+  duration?: string;
+  caption?: string;
+};
+
 export type DocAudience = "staff" | "admin" | "doctor" | "patient";
 
 export type DocModule = {
@@ -61,6 +73,7 @@ export type DocModule = {
   audience: DocAudience[];
   summary: string;
   keyCapabilities: string[];
+  video?: DocVideo;
   sections: DocSection[];
   faqs?: DocFaq[];
   /** Slugs of related modules. */

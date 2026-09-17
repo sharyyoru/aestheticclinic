@@ -71,6 +71,24 @@ Public, SEO-indexed end-user docs — no auth, no app shell, always light themed
 - `src/app/sitemap.ts` and `src/app/robots.ts` allow the docs + public marketing pages and disallow all app/API routes
 - Docs content must never include API endpoints, DB schema, env values or secrets
 
+### Academy Capture Pipeline (`scripts/academy/`)
+Generates the Academy from `/documentation` plus real screenshots and silent, caption-narrated screen recordings.
+
+```bash
+npm run academy:provision   # build the isolated capture DB (rare)
+npm run academy:doctor      # assert-only: verify all 50 recipes still resolve
+npm run academy:all         # capture → encode → publish → sync
+npm run typecheck:scripts   # scripts/ are excluded from the app tsconfig
+```
+
+- **Academy content is generated, not hand-written.** 10 doc categories → `academy_modules`; 50 doc modules → `academy_lessons` (lesson slug = doc slug, so re-runs are idempotent upserts). Editing lesson content in the DB will be overwritten — change the doc content file instead.
+- **NEVER capture against production.** `invoices`, `services`, insurance submissions and `leads` are not covered by the demo RLS policies, and the patient page plus 127 API routes render via the service-role key which bypasses RLS. Two guards enforce this (`lib/guards.ts`): abort if the target ref equals production, and abort if any `patients` row has `is_demo = false`. Both are load-bearing — do not weaken them.
+- Capture DB schema is **generated from production's PostgREST spec** (`lib/ddlFromSpec.ts`), because 27 tables + 3 views the app queries have no `CREATE TABLE` anywhere in the repo (including all of `invoices`), and `supabase/schema.sql` is a stale 41-table snapshot. Reads schema metadata only, zero rows.
+- `views.sql` holds **approximated** bodies for `v_debiteurs`, `v_invoices_enriched`, `v_invoice_lines_enriched` — the real definitions are not exposed by the spec. Replace them if the Debiteurs report matters.
+- Applying DDL needs `CAPTURE_DB_URL` or `SUPABASE_ACCESS_TOKEN` in `.env.capture`; the anon/service_role keys cannot run DDL.
+- Recipes (`recipes/*.ts`) drive the UI. The app has **no `data-testid` attributes**, so they use role/text selectors — run `academy:doctor` after any UI label change.
+- Media is published to the public `academy-media` bucket in the **production** project; screenshots also feed the public docs via the generated `content/screenshots.generated.ts`.
+
 ### Document Editing
 - Slate-based rich text editor for in-app DOCX editing
 - Fabric.js for canvas/image annotation

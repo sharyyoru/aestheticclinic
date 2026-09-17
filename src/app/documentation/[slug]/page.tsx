@@ -10,12 +10,13 @@ import {
   getModule,
   getRelatedModules,
 } from "../content";
-import { DOCS_URL } from "../site";
+import { DOCS_URL, SITE_URL } from "../site";
 import { DocIcon } from "../components/icons";
 import DocsAppPath from "../components/DocsAppPath";
 import DocsPager from "../components/DocsPager";
 import DocsSectionRenderer from "../components/DocsSectionRenderer";
 import DocsTableOfContents from "../components/DocsTableOfContents";
+import DocsVideo from "../components/DocsVideo";
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -80,6 +81,17 @@ export default async function DocumentationModulePage({ params }: PageProps) {
     },
   ];
 
+  if (doc.video) {
+    graph.push({
+      "@type": "VideoObject",
+      name: doc.video.title,
+      description: doc.video.caption ?? doc.tagline,
+      contentUrl: `${SITE_URL}${doc.video.src}`,
+      embedUrl: url,
+      ...(doc.video.poster ? { thumbnailUrl: `${SITE_URL}${doc.video.poster}` } : {}),
+    });
+  }
+
   if (doc.faqs && doc.faqs.length > 0) {
     graph.push({
       "@type": "FAQPage",
@@ -133,6 +145,8 @@ export default async function DocumentationModulePage({ params }: PageProps) {
 
         <p className="mt-8 text-[15px] leading-relaxed text-slate-700">{doc.summary}</p>
 
+        {doc.video && <DocsVideo video={doc.video} />}
+
         {doc.keyCapabilities.length > 0 && (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
             <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -152,7 +166,7 @@ export default async function DocumentationModulePage({ params }: PageProps) {
 
         <div className="mt-12 space-y-10">
           {doc.sections.map((section) => (
-            <DocsSectionRenderer key={section.id} section={section} />
+            <DocsSectionRenderer key={section.id} section={section} docSlug={doc.slug} />
           ))}
         </div>
 

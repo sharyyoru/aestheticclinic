@@ -1,0 +1,95 @@
+import type { CaptureRecipe } from "./types";
+
+export const adminSetupRecipes: CaptureRecipe[] = [
+  {
+    docSlug: "settings",
+    title: "Settings",
+    route: "/settings",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/settings", caption: "Eight tabs, each covering one area of configuration.", waitFor: { role: "heading", name: "Settings" } },
+      { kind: "shot", name: "tabs", alt: "The eight settings tabs", sectionId: "the-tabs" },
+      { kind: "click", target: { text: "Providers & Billing" }, caption: "The most consequential tab — these identifiers appear on every invoice.", optional: true },
+      { kind: "wait", ms: 1800 },
+      { kind: "shot", name: "providers", alt: "Providers and billing identifiers", sectionId: "providers-billing" },
+      { kind: "click", target: { text: "MediData Connection" }, caption: "Configured once, then used by every insurance submission.", optional: true },
+      { kind: "wait", ms: 1500 },
+      { kind: "shot", name: "medidata", alt: "MediData connection settings", sectionId: "medidata" },
+      { kind: "click", target: { text: "External Labs" }, caption: "The laboratories the clinic sends work to.", optional: true },
+      { kind: "wait", ms: 1500 },
+      { kind: "shot", name: "labs", alt: "External laboratory settings", sectionId: "external-labs" },
+    ],
+  },
+  {
+    docSlug: "user-management",
+    title: "User management",
+    route: "/users",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/users", caption: "Administrators create accounts and set roles.", waitFor: { role: "heading", name: "User Management" } },
+      { kind: "shot", name: "list", alt: "The user list with roles", sectionId: "creating-an-account" },
+      { kind: "caption", text: "Staff covers the day-to-day work. Admin adds user management." },
+      { kind: "shot", name: "roles", alt: "Role selection between Staff and Admin", sectionId: "changing-roles" },
+      { kind: "caption", text: "One account per person — shared logins destroy attribution." },
+      { kind: "shot", name: "search", alt: "Searching the team by name, email or role", sectionId: "changing-roles" },
+    ],
+  },
+  {
+    docSlug: "my-profile",
+    title: "Your profile",
+    route: "/profile",
+    video: false,
+    steps: [
+      { kind: "goto", path: "/profile", caption: "Your photo and the signature on your outgoing email.", waitFor: { role: "heading", name: "Your profile" } },
+      { kind: "shot", name: "profile", alt: "The profile screen with photo and email signature", sectionId: "editing" },
+    ],
+  },
+  {
+    docSlug: "client-onboarding",
+    title: "Client onboarding",
+    route: "/client-onboarding",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/client-onboarding", caption: "Onboarding a clinic is a six-step questionnaire they complete themselves.", waitFor: { role: "heading", name: "Client Onboarding" } },
+      { kind: "shot", name: "overview", alt: "Client onboarding with magic link generation", sectionId: "running-it" },
+      { kind: "caption", text: "Generate a magic link — the clinic needs no account to complete it." },
+      { kind: "shot", name: "magic-link", alt: "Magic link generation", sectionId: "running-it" },
+      { kind: "caption", text: "Progress shows the step reached out of six, so nothing stalls unnoticed." },
+      { kind: "shot", name: "progress", alt: "Onboarding submission progress", sectionId: "the-six-steps" },
+    ],
+  },
+  {
+    docSlug: "academy",
+    title: "Aliice Academy",
+    route: "/academy",
+    video: false,
+    steps: [
+      { kind: "goto", path: "/academy", caption: "Training modules with lessons, progress and certificates.", waitFor: { role: "heading", name: "Aliice Academy" } },
+      { kind: "shot", name: "academy", alt: "The Academy with training modules and progress", sectionId: "how-it-works" },
+    ],
+  },
+  {
+    docSlug: "knowledge-base",
+    title: "Knowledge base",
+    route: "/knowledgebase",
+    video: true,
+    steps: [
+      { kind: "goto", path: "/knowledgebase", caption: "The clinic's own reference material, organised by topic.", waitFor: { role: "heading", name: "Knowledge Base" } },
+      { kind: "shot", name: "topics", alt: "Knowledge base topics with icons and counts", sectionId: "topics" },
+      { kind: "caption", text: "Search, sort, and switch between grid and list." },
+      { kind: "shot", name: "controls", alt: "Knowledge base search and sort controls", sectionId: "finding-things" },
+    ],
+  },
+  {
+    docSlug: "integrations",
+    title: "Integrations",
+    route: "/settings",
+    video: false,
+    steps: [
+      { kind: "goto", path: "/settings", caption: "External services are connected once, by an administrator.", waitFor: { role: "heading", name: "Settings" } },
+      { kind: "shot", name: "settings", alt: "Settings, where integrations are configured", sectionId: "the-integrations" },
+      { kind: "goto", path: "/email-reports", caption: "When email is not arriving, the delivery log is the first place to look.", settleMs: 2500 },
+      { kind: "shot", name: "diagnosing", alt: "Email reports used to diagnose delivery problems", sectionId: "diagnosing" },
+    ],
+  },
+];

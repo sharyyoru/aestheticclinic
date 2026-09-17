@@ -3,9 +3,10 @@
 interface VideoContainerProps {
   videoUrl: string | null;
   title: string;
+  posterUrl?: string | null;
 }
 
-export default function VideoContainer({ videoUrl, title }: VideoContainerProps) {
+export default function VideoContainer({ videoUrl, title, posterUrl }: VideoContainerProps) {
   // Check if it's a YouTube URL
   const getYouTubeId = (url: string) => {
     const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
@@ -50,14 +51,17 @@ export default function VideoContainer({ videoUrl, title }: VideoContainerProps)
       );
     }
 
-    // Direct video URL
+    // Direct video URL. Generated Academy videos have no audio track — the
+    // narration is on-screen captions — so a poster frame matters more than usual.
     return (
       <div className="aspect-video w-full overflow-hidden rounded-xl bg-slate-900">
         <video
           src={videoUrl}
           controls
+          preload="metadata"
+          playsInline
           className="h-full w-full"
-          poster="/video-poster.jpg"
+          poster={posterUrl ?? undefined}
         >
           Your browser does not support the video tag.
         </video>

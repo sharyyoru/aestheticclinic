@@ -7,7 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "whatsapp": "node server/whatsapp-server.js"
+    "whatsapp": "node server/whatsapp-server.js",
+    "academy:provision": "tsx scripts/academy/1-provision.ts",
+    "academy:capture": "tsx scripts/academy/2-capture.ts",
+    "academy:encode": "tsx scripts/academy/3-encode.ts",
+    "academy:publish": "tsx scripts/academy/4-publish.ts",
+    "academy:sync": "tsx scripts/academy/5-sync.ts",
+    "academy:doctor": "tsx scripts/academy/doctor.ts",
+    "academy:all": "npm run academy:capture && npm run academy:encode && npm run academy:publish && npm run academy:sync",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -49,15 +57,20 @@
     "xlsx-js-style": "^1.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/lodash": "^4.17.24",
     "@types/node": "^20",
+    "@types/pg": "^8.15.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.5.7",
+    "ffmpeg-static": "^5.3.0",
+    "pg": "^8.16.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

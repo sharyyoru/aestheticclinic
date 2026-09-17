@@ -32,6 +32,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.capture.example
+
+# academy capture pipeline
+# prod-spec.json is a full schema dump; out/ holds large intermediate media
+scripts/academy/generated/prod-spec.json
+scripts/academy/generated/provision-all.sql
+scripts/academy/out/
 
 # vercel
 .vercel
@@ -61,6 +68,9 @@ public/forms/FR - Questionnaire d'anesthésie.pdf
 /mobile-app-patient
 /whatsapp-server
 /server
-/scripts
+# scripts/* stays excluded, except the committed Academy capture pipeline
+/scripts/*
+!/scripts/academy/
+!/scripts/tsconfig.json
 /docs
 /*.md

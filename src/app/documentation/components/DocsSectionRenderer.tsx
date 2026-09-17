@@ -1,9 +1,19 @@
 import { Check } from "lucide-react";
 import type { DocSection } from "../content/types";
+import { screenshotsFor } from "../content/screenshots.generated";
 import DocsCallout from "./DocsCallout";
 import DocsHeadingLink from "./DocsHeadingLink";
+import DocsScreenshot from "./DocsScreenshot";
 
-export default function DocsSectionRenderer({ section }: { section: DocSection }) {
+export default function DocsSectionRenderer({
+  section,
+  docSlug,
+}: {
+  section: DocSection;
+  docSlug: string;
+}) {
+  const shots = screenshotsFor(docSlug, section.id);
+
   return (
     <section id={section.id} className="scroll-mt-28 border-t border-slate-100 pt-10 first:border-t-0 first:pt-0">
       <h2 className="group flex items-center text-xl font-semibold tracking-tight text-slate-900">
@@ -14,6 +24,10 @@ export default function DocsSectionRenderer({ section }: { section: DocSection }
       </h2>
 
       {section.intro && <p className="mt-3 text-[15px] leading-relaxed text-slate-600">{section.intro}</p>}
+
+      {shots.map((shot) => (
+        <DocsScreenshot key={shot.src} shot={shot} />
+      ))}
 
       {section.features && section.features.length > 0 && (
         <dl className="mt-5 grid gap-3 sm:grid-cols-2">
