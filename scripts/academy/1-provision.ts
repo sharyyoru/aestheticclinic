@@ -164,8 +164,38 @@ async function reportRowCounts(): Promise<boolean> {
   return allPresent;
 }
 
+/** Proves the supplied credential can actually run DDL, before anything else. */
+async function testConnection(): Promise<void> {
+  const runner = await getRunner();
+  if (!runner) {
+    console.log(
+      "No DDL credential found. Add CAPTURE_DB_URL (preferred) or SUPABASE_ACCESS_TOKEN to .env.capture."
+    );
+    process.exit(1);
+  }
+
+  console.log(`→ Connected via ${runner.kind}`);
+  try {
+    await runner.run(
+      "CREATE TABLE IF NOT EXISTS public.__devin_ddl_probe (id int); DROP TABLE public.__devin_ddl_probe;",
+      "ddl probe"
+    );
+    console.log("→ DDL succeeded. Everything can be run from here.");
+  } catch (error) {
+    console.error(`→ Connected, but DDL failed: ${(error as Error).message}`);
+    process.exit(1);
+  } finally {
+    await runner.close();
+  }
+}
+
 async function main() {
   assertNotProduction();
+
+  if (process.argv.includes("--test-connection")) {
+    await testConnection();
+    return;
+  }
 
   if (process.argv.includes("--verify")) {
     const ok = await reportRowCounts();
