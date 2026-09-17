@@ -92,8 +92,32 @@ export function screenshotsFor(docSlug: string, sectionId?: string): GeneratedSc
   return count;
 }
 
+/**
+ * The academy_* tables are created by migrations/20260910_academy_tables.sql.
+ * That migration has not necessarily been applied to production — at time of
+ * writing it had not, so `/academy` rendered an empty module list and this sync
+ * would fail with a confusing 404 partway through.
+ */
+async function assertAcademyTablesExist(): Promise<void> {
+  const missing: string[] = [];
+  for (const table of ["academy_modules", "academy_lessons", "academy_progress", "academy_certificates"]) {
+    const res = await fetch(`${production.url}/rest/v1/${table}?select=count`, {
+      headers: { apikey: production.serviceKey, Authorization: `Bearer ${production.serviceKey}` },
+    });
+    if (res.status === 404) missing.push(table);
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `These tables do not exist in the target project: ${missing.join(", ")}.\n` +
+        `Apply migrations/20260910_academy_tables.sql (and ` +
+        `migrations/20260917_academy_lesson_poster_url.sql) first.`
+    );
+  }
+}
+
 async function main() {
   const manifest = readManifest();
+  await assertAcademyTablesExist();
   const byDocSlug = new Map(manifest.entries.map((e) => [e.docSlug, e]));
 
   console.log(`→ Syncing ${CATEGORIES.length} modules / ${MODULES.length} lessons`);

@@ -4,6 +4,20 @@
 
 -- Regenerate with: npm run academy:provision
 
+--
+
+-- This is a CAPTURE database: its only job is to render screens for screenshots
+
+-- and video. It is deliberately NOT a faithful copy of production:
+
+--   * NOT NULL is not reproduced (except implicit primary keys)
+
+--   * no triggers, no check constraints beyond enums, no functions
+
+-- Both make inserts more permissive, which is what we want here and would be
+
+-- wrong anywhere else. Never point an application at this database.
+
 -- Tables: 105 | Enums: 17 | PKs: 102 | FKs: 163 | Skipped: 14
 
 -- Skipped (views are in views.sql; tmp_* are historical import staging): tmp_appointments, tmp_axenita_invoice_lines, tmp_catalog_codes, tmp_contacts, tmp_deals, tmp_invoice_import, tmp_invoice_raw, tmp_notes, tmp_patient_axenita, tmp_patient_with_address_and_ssn, tmp_treatment_flat, v_debiteurs, v_invoice_lines_enriched, v_invoices_enriched
@@ -90,7 +104,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS public."appointment_categories" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "color" text DEFAULT 'bg-slate-300/70',
   "sort_order" integer DEFAULT 0,
   "is_active" boolean DEFAULT true,
@@ -104,7 +118,7 @@ CREATE TABLE IF NOT EXISTS public."appointment_history" (
   "changed_by_user_id" uuid,
   "changed_by_email" text,
   "changed_at" timestamp with time zone DEFAULT now(),
-  "change_type" text NOT NULL,
+  "change_type" text,
   "original_start_time" timestamp with time zone,
   "original_end_time" timestamp with time zone,
   "original_status" text,
@@ -127,7 +141,7 @@ CREATE TABLE IF NOT EXISTS public."appointments" (
   "id" uuid DEFAULT gen_random_uuid(),
   "patient_id" uuid,
   "provider_id" uuid,
-  "start_time" timestamp with time zone NOT NULL,
+  "start_time" timestamp with time zone,
   "end_time" timestamp with time zone,
   "status" public.appointment_status DEFAULT 'scheduled'::public.appointment_status,
   "reason" text,
@@ -162,11 +176,11 @@ CREATE TABLE IF NOT EXISTS public."appx_sessions" (
 
 CREATE TABLE IF NOT EXISTS public."article_distributions" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "article_id" text NOT NULL,
+  "article_id" text,
   "service" text DEFAULT 'prnow',
   "external_id" text,
   "status" text DEFAULT 'draft',
-  "title" text NOT NULL,
+  "title" text,
   "placements_count" integer DEFAULT 0,
   "report_url" text,
   "submitted_at" timestamp with time zone DEFAULT now(),
@@ -179,9 +193,9 @@ CREATE TABLE IF NOT EXISTS public."article_distributions" (
 
 CREATE TABLE IF NOT EXISTS public."bank_payment_import_items" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "import_id" uuid NOT NULL,
+  "import_id" uuid,
   "booking_date" date,
-  "amount" numeric NOT NULL,
+  "amount" numeric,
   "currency" text DEFAULT 'CHF',
   "reference_number" text,
   "debtor_name" text,
@@ -202,7 +216,7 @@ CREATE TABLE IF NOT EXISTS public."bank_payment_import_items" (
 
 CREATE TABLE IF NOT EXISTS public."bank_payment_imports" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "file_name" text NOT NULL,
+  "file_name" text,
   "file_url" text,
   "imported_at" timestamp with time zone DEFAULT now(),
   "imported_by_user_id" uuid,
@@ -226,7 +240,7 @@ CREATE TABLE IF NOT EXISTS public."bank_payment_imports" (
 
 CREATE TABLE IF NOT EXISTS public."booking_blocked_dates" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "blocked_date" date NOT NULL,
+  "blocked_date" date,
   "reason" text,
   "created_by" uuid,
   "created_at" timestamp with time zone DEFAULT now()
@@ -234,7 +248,7 @@ CREATE TABLE IF NOT EXISTS public."booking_blocked_dates" (
 
 CREATE TABLE IF NOT EXISTS public."booking_doctor_days_off" (
   "slug" text,
-  "days_off" smallint[] NOT NULL,
+  "days_off" smallint[],
   "updated_at" timestamp with time zone DEFAULT now()
 );
 
@@ -271,7 +285,7 @@ CREATE TABLE IF NOT EXISTS public."call_logs" (
 
 CREATE TABLE IF NOT EXISTS public."chat_conversations" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "user_id" uuid NOT NULL,
+  "user_id" uuid,
   "folder_id" uuid,
   "title" text,
   "patient_id" uuid,
@@ -285,17 +299,17 @@ CREATE TABLE IF NOT EXISTS public."chat_conversations" (
 
 CREATE TABLE IF NOT EXISTS public."chat_folders" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "user_id" uuid NOT NULL,
-  "name" text NOT NULL,
+  "user_id" uuid,
+  "name" text,
   "created_at" timestamp with time zone DEFAULT now(),
   "updated_at" timestamp with time zone DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public."chat_messages" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "conversation_id" uuid NOT NULL,
-  "role" public.chat_message_role NOT NULL,
-  "content" text NOT NULL,
+  "conversation_id" uuid,
+  "role" public.chat_message_role,
+  "content" text,
   "created_at" timestamp with time zone DEFAULT now(),
   "is_demo" boolean DEFAULT false
 );
@@ -342,19 +356,19 @@ CREATE TABLE IF NOT EXISTS public."clinic_onboarding_submissions" (
 
 CREATE TABLE IF NOT EXISTS public."clinic_onboarding_tokens" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "email" text NOT NULL,
-  "token" text NOT NULL,
-  "expires_at" timestamp with time zone NOT NULL,
+  "email" text,
+  "token" text,
+  "expires_at" timestamp with time zone,
   "used_at" timestamp with time zone,
   "created_at" timestamp with time zone DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public."consultations" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
-  "consultation_id" text NOT NULL,
-  "title" text NOT NULL,
-  "record_type" public.consultation_record_type NOT NULL,
+  "patient_id" uuid,
+  "consultation_id" text,
+  "title" text,
+  "record_type" public.consultation_record_type,
   "doctor_user_id" uuid,
   "doctor_name" text,
   "scheduled_at" timestamp with time zone,
@@ -401,19 +415,19 @@ CREATE TABLE IF NOT EXISTS public."consultations" (
 
 CREATE TABLE IF NOT EXISTS public."crisalix_reconstructions" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
-  "crisalix_patient_id" integer NOT NULL,
-  "reconstruction_type" text NOT NULL,
+  "patient_id" uuid,
+  "crisalix_patient_id" integer,
+  "reconstruction_type" text,
   "player_id" text,
   "created_at" timestamp with time zone DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public."deal_notifications" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "user_id" uuid NOT NULL,
-  "deal_id" uuid NOT NULL,
-  "patient_id" uuid NOT NULL,
-  "notification_type" text NOT NULL,
+  "user_id" uuid,
+  "deal_id" uuid,
+  "patient_id" uuid,
+  "notification_type" text,
   "old_stage_id" uuid,
   "new_stage_id" uuid,
   "old_stage_name" text,
@@ -426,17 +440,17 @@ CREATE TABLE IF NOT EXISTS public."deal_notifications" (
 
 CREATE TABLE IF NOT EXISTS public."deal_stages" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "type" public.deal_stage_type DEFAULT 'other'::public.deal_stage_type,
-  "sort_order" integer NOT NULL,
+  "sort_order" integer,
   "is_default" boolean DEFAULT false,
   "is_demo" boolean DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS public."deals" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
-  "stage_id" uuid NOT NULL,
+  "patient_id" uuid,
+  "stage_id" uuid,
   "title" text,
   "value" numeric,
   "notes" text,
@@ -453,11 +467,11 @@ CREATE TABLE IF NOT EXISTS public."deals" (
 
 CREATE TABLE IF NOT EXISTS public."distribution_backlinks" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "distribution_id" uuid NOT NULL,
-  "source_url" text NOT NULL,
-  "source_domain" text NOT NULL,
+  "distribution_id" uuid,
+  "source_url" text,
+  "source_domain" text,
   "anchor_text" text,
-  "target_url" text NOT NULL,
+  "target_url" text,
   "domain_authority" integer,
   "is_dofollow" boolean DEFAULT true,
   "first_seen" timestamp with time zone DEFAULT now(),
@@ -478,7 +492,7 @@ CREATE TABLE IF NOT EXISTS public."distribution_stats" (
 
 CREATE TABLE IF NOT EXISTS public."doctor_scheduling_settings" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "provider_id" uuid NOT NULL,
+  "provider_id" uuid,
   "time_interval_minutes" integer DEFAULT 15,
   "default_duration_minutes" integer DEFAULT 15,
   "created_at" timestamp with time zone DEFAULT now(),
@@ -487,9 +501,9 @@ CREATE TABLE IF NOT EXISTS public."doctor_scheduling_settings" (
 
 CREATE TABLE IF NOT EXISTS public."document_templates" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "description" text,
-  "file_path" text NOT NULL,
+  "file_path" text,
   "file_type" text DEFAULT 'docx',
   "category" text,
   "is_active" boolean DEFAULT true,
@@ -503,8 +517,8 @@ CREATE TABLE IF NOT EXISTS public."documents" (
   "patient_id" uuid,
   "deal_id" uuid,
   "type" public.document_type DEFAULT 'other'::public.document_type,
-  "title" text NOT NULL,
-  "content" text NOT NULL,
+  "title" text,
+  "content" text,
   "created_by_user_id" uuid,
   "created_by" text,
   "created_at" timestamp with time zone DEFAULT now(),
@@ -513,7 +527,7 @@ CREATE TABLE IF NOT EXISTS public."documents" (
 
 CREATE TABLE IF NOT EXISTS public."dropped_call_round_robin" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "user_id" uuid NOT NULL,
+  "user_id" uuid,
   "is_active" boolean DEFAULT true,
   "last_assigned_at" timestamp with time zone,
   "assignment_count" integer DEFAULT 0,
@@ -523,7 +537,7 @@ CREATE TABLE IF NOT EXISTS public."dropped_call_round_robin" (
 CREATE TABLE IF NOT EXISTS public."dropped_calls" (
   "id" uuid DEFAULT gen_random_uuid(),
   "retell_call_id" text,
-  "from_number" text NOT NULL,
+  "from_number" text,
   "to_number" text,
   "call_duration_seconds" integer,
   "disconnection_reason" text,
@@ -544,9 +558,9 @@ CREATE TABLE IF NOT EXISTS public."dropped_calls" (
 
 CREATE TABLE IF NOT EXISTS public."email_attachments" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "email_id" uuid NOT NULL,
-  "file_name" text NOT NULL,
-  "storage_path" text NOT NULL,
+  "email_id" uuid,
+  "file_name" text,
+  "storage_path" text,
   "mime_type" text,
   "file_size" bigint,
   "created_at" timestamp with time zone DEFAULT now()
@@ -554,7 +568,7 @@ CREATE TABLE IF NOT EXISTS public."email_attachments" (
 
 CREATE TABLE IF NOT EXISTS public."email_reply_notifications" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "user_id" uuid NOT NULL,
+  "user_id" uuid,
   "patient_id" uuid,
   "original_email_id" uuid,
   "reply_email_id" uuid,
@@ -564,10 +578,10 @@ CREATE TABLE IF NOT EXISTS public."email_reply_notifications" (
 
 CREATE TABLE IF NOT EXISTS public."email_templates" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
-  "type" public.email_template_type NOT NULL,
-  "subject_template" text NOT NULL,
-  "body_template" text NOT NULL,
+  "name" text,
+  "type" public.email_template_type,
+  "subject_template" text,
+  "body_template" text,
   "created_at" timestamp with time zone DEFAULT now(),
   "design_json" jsonb,
   "html_content" text,
@@ -579,10 +593,10 @@ CREATE TABLE IF NOT EXISTS public."emails" (
   "id" uuid DEFAULT gen_random_uuid(),
   "patient_id" uuid,
   "deal_id" uuid,
-  "to_address" text NOT NULL,
+  "to_address" text,
   "from_address" text,
-  "subject" text NOT NULL,
-  "body" text NOT NULL,
+  "subject" text,
+  "body" text,
   "status" public.email_status DEFAULT 'draft'::public.email_status,
   "direction" public.email_direction DEFAULT 'outbound'::public.email_direction,
   "sent_at" timestamp with time zone,
@@ -597,16 +611,16 @@ CREATE TABLE IF NOT EXISTS public."emails" (
 
 CREATE TABLE IF NOT EXISTS public."embed_form_leads" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "first_name" text NOT NULL,
-  "last_name" text NOT NULL,
-  "email" text NOT NULL,
+  "first_name" text,
+  "last_name" text,
+  "email" text,
   "phone" text,
   "country_code" text DEFAULT '+41',
   "service" text,
   "location" text,
   "message" text,
   "is_existing_patient" boolean DEFAULT false,
-  "form_type" text NOT NULL,
+  "form_type" text,
   "source_url" text,
   "referrer" text,
   "utm_source" text,
@@ -632,10 +646,10 @@ CREATE TABLE IF NOT EXISTS public."embed_form_leads" (
 
 CREATE TABLE IF NOT EXISTS public."external_labs" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
-  "url" text NOT NULL,
-  "username" text NOT NULL,
-  "password" text NOT NULL,
+  "name" text,
+  "url" text,
+  "username" text,
+  "password" text,
   "created_at" timestamp with time zone DEFAULT now(),
   "updated_at" timestamp with time zone DEFAULT now(),
   "type" text DEFAULT 'medisupport_fr'
@@ -643,9 +657,9 @@ CREATE TABLE IF NOT EXISTS public."external_labs" (
 
 CREATE TABLE IF NOT EXISTS public."invoice_installments" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "invoice_id" uuid NOT NULL,
-  "installment_number" integer NOT NULL,
-  "amount" numeric NOT NULL,
+  "invoice_id" uuid,
+  "installment_number" integer,
+  "amount" numeric,
   "due_date" date,
   "payment_method" text,
   "status" text DEFAULT 'PENDING',
@@ -665,15 +679,15 @@ CREATE TABLE IF NOT EXISTS public."invoice_installments" (
 
 CREATE TABLE IF NOT EXISTS public."invoice_line_items" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "invoice_id" uuid NOT NULL,
+  "invoice_id" uuid,
   "sort_order" integer DEFAULT 1,
   "code" text,
   "service_id" uuid,
-  "name" text NOT NULL,
+  "name" text,
   "quantity" numeric DEFAULT 1,
-  "unit_price" numeric NOT NULL,
+  "unit_price" numeric,
   "discount_percent" numeric DEFAULT 0,
-  "total_price" numeric NOT NULL,
+  "total_price" numeric,
   "vat_rate" text DEFAULT 'FREE',
   "vat_rate_value" numeric DEFAULT 0,
   "vat_amount" numeric DEFAULT 0,
@@ -711,8 +725,8 @@ CREATE TABLE IF NOT EXISTS public."invoice_line_items" (
 
 CREATE TABLE IF NOT EXISTS public."invoice_payments" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "invoice_id" uuid NOT NULL,
-  "amount" numeric NOT NULL,
+  "invoice_id" uuid,
+  "amount" numeric,
   "payment_method" text,
   "payment_date" date DEFAULT CURRENT_DATE,
   "payrexx_transaction_id" text,
@@ -726,9 +740,9 @@ CREATE TABLE IF NOT EXISTS public."invoice_payments" (
 
 CREATE TABLE IF NOT EXISTS public."invoices" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "consultation_id" uuid,
-  "invoice_number" text NOT NULL,
+  "invoice_number" text,
   "invoice_date" date DEFAULT CURRENT_DATE,
   "due_date" date,
   "treatment_date" timestamp with time zone,
@@ -800,13 +814,13 @@ CREATE TABLE IF NOT EXISTS public."invoices" (
 
 CREATE TABLE IF NOT EXISTS public."knowledge_attachments" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "message_id" uuid NOT NULL,
-  "topic_id" uuid NOT NULL,
-  "file_name" text NOT NULL,
-  "file_type" text NOT NULL,
-  "file_size" integer NOT NULL,
-  "mime_type" text NOT NULL,
-  "storage_path" text NOT NULL,
+  "message_id" uuid,
+  "topic_id" uuid,
+  "file_name" text,
+  "file_type" text,
+  "file_size" integer,
+  "mime_type" text,
+  "storage_path" text,
   "thumbnail_path" text,
   "extracted_text" text,
   "is_processed" boolean DEFAULT false,
@@ -815,9 +829,9 @@ CREATE TABLE IF NOT EXISTS public."knowledge_attachments" (
 
 CREATE TABLE IF NOT EXISTS public."knowledge_messages" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "topic_id" uuid NOT NULL,
-  "role" public.knowledge_message_role NOT NULL,
-  "content" text NOT NULL,
+  "topic_id" uuid,
+  "role" public.knowledge_message_role,
+  "content" text,
   "has_attachments" boolean DEFAULT false,
   "model_used" text,
   "tokens_used" integer,
@@ -826,7 +840,7 @@ CREATE TABLE IF NOT EXISTS public."knowledge_messages" (
 
 CREATE TABLE IF NOT EXISTS public."knowledge_topics" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "user_id" uuid NOT NULL,
+  "user_id" uuid,
   "title" text DEFAULT 'New Topic',
   "description" text,
   "icon" text DEFAULT 'sparkles',
@@ -842,8 +856,8 @@ CREATE TABLE IF NOT EXISTS public."knowledge_topics" (
 
 CREATE TABLE IF NOT EXISTS public."lead_imports" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "filename" text NOT NULL,
-  "service" text NOT NULL,
+  "filename" text,
+  "service" text,
   "total_leads" integer DEFAULT 0,
   "imported_count" integer DEFAULT 0,
   "failed_count" integer DEFAULT 0,
@@ -862,9 +876,9 @@ CREATE TABLE IF NOT EXISTS public."legacy_patient_doc_folders" (
 
 CREATE TABLE IF NOT EXISTS public."marketing_campaign_recipients" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "campaign_id" uuid NOT NULL,
+  "campaign_id" uuid,
   "patient_id" uuid,
-  "email" text NOT NULL,
+  "email" text,
   "status" text DEFAULT 'pending',
   "email_id" uuid,
   "error" text,
@@ -875,11 +889,11 @@ CREATE TABLE IF NOT EXISTS public."marketing_campaign_recipients" (
 
 CREATE TABLE IF NOT EXISTS public."marketing_campaigns" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "list_id" uuid,
   "filter_snapshot" jsonb,
   "template_id" uuid,
-  "subject" text NOT NULL,
+  "subject" text,
   "html_snapshot" text,
   "status" text DEFAULT 'draft',
   "total_recipients" integer DEFAULT 0,
@@ -895,9 +909,9 @@ CREATE TABLE IF NOT EXISTS public."marketing_campaigns" (
 
 CREATE TABLE IF NOT EXISTS public."marketing_lists" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "description" text,
-  "filter" jsonb NOT NULL,
+  "filter" jsonb,
   "created_by" uuid,
   "created_at" timestamp with time zone DEFAULT now(),
   "updated_at" timestamp with time zone DEFAULT now()
@@ -905,7 +919,7 @@ CREATE TABLE IF NOT EXISTS public."marketing_lists" (
 
 CREATE TABLE IF NOT EXISTS public."medical_records" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "ap_content" text DEFAULT '',
   "af_content" text DEFAULT '',
   "notes_content" text DEFAULT '',
@@ -922,8 +936,8 @@ CREATE TABLE IF NOT EXISTS public."medical_records" (
 
 CREATE TABLE IF NOT EXISTS public."medication_template_items" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "template_id" uuid NOT NULL,
-  "product_name" text NOT NULL,
+  "template_id" uuid,
+  "product_name" text,
   "product_number" integer,
   "product_type" text DEFAULT 'MEDICATION',
   "intake_kind" text DEFAULT 'FIXED',
@@ -939,7 +953,7 @@ CREATE TABLE IF NOT EXISTS public."medication_template_items" (
 
 CREATE TABLE IF NOT EXISTS public."medication_templates" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "description" text,
   "service_id" uuid,
   "is_active" boolean DEFAULT true,
@@ -949,7 +963,7 @@ CREATE TABLE IF NOT EXISTS public."medication_templates" (
 
 CREATE TABLE IF NOT EXISTS public."medidata_config" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "clinic_gln" text NOT NULL,
+  "clinic_gln" text,
   "medidata_client_id" text,
   "is_test_mode" boolean DEFAULT true,
   "created_at" timestamp with time zone DEFAULT now(),
@@ -992,9 +1006,9 @@ CREATE TABLE IF NOT EXISTS public."medidata_responses" (
 
 CREATE TABLE IF NOT EXISTS public."medidata_submission_history" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "submission_id" uuid NOT NULL,
+  "submission_id" uuid,
   "previous_status" text,
-  "new_status" text NOT NULL,
+  "new_status" text,
   "response_code" text,
   "response_message" text,
   "changed_by" uuid,
@@ -1005,13 +1019,13 @@ CREATE TABLE IF NOT EXISTS public."medidata_submission_history" (
 CREATE TABLE IF NOT EXISTS public."medidata_submissions" (
   "id" uuid DEFAULT gen_random_uuid(),
   "consultation_id" uuid,
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "insurer_id" uuid,
-  "invoice_number" text NOT NULL,
-  "invoice_date" date NOT NULL,
-  "invoice_amount" numeric NOT NULL,
-  "billing_type" text NOT NULL,
-  "law_type" text NOT NULL,
+  "invoice_number" text,
+  "invoice_date" date,
+  "invoice_amount" numeric,
+  "billing_type" text,
+  "law_type" text,
   "xml_content" text,
   "xml_version" text DEFAULT 4.50,
   "medidata_message_id" text,
@@ -1030,7 +1044,7 @@ CREATE TABLE IF NOT EXISTS public."medidata_submissions" (
   "created_by" uuid,
   "created_at" timestamp with time zone DEFAULT now(),
   "updated_at" timestamp with time zone DEFAULT now(),
-  "invoice_id" uuid NOT NULL,
+  "invoice_id" uuid,
   "patient_copy_ref" text,
   "is_storno" boolean DEFAULT false,
   "parent_submission_id" uuid,
@@ -1039,9 +1053,9 @@ CREATE TABLE IF NOT EXISTS public."medidata_submissions" (
 
 CREATE TABLE IF NOT EXISTS public."patient_consultation_data" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "submission_id" uuid,
-  "consultation_type" text NOT NULL,
+  "consultation_type" text,
   "selected_areas" text[],
   "measurements" jsonb,
   "upload_mode" text DEFAULT 'later',
@@ -1053,8 +1067,8 @@ CREATE TABLE IF NOT EXISTS public."patient_consultation_data" (
 
 CREATE TABLE IF NOT EXISTS public."patient_document_versions" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "document_id" uuid NOT NULL,
-  "version" integer NOT NULL,
+  "document_id" uuid,
+  "version" integer,
   "content" text,
   "changed_by" uuid,
   "changed_by_name" text,
@@ -1063,9 +1077,9 @@ CREATE TABLE IF NOT EXISTS public."patient_document_versions" (
 
 CREATE TABLE IF NOT EXISTS public."patient_documents" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "template_id" uuid,
-  "title" text NOT NULL,
+  "title" text,
   "content" text,
   "status" text DEFAULT 'draft',
   "file_path" text,
@@ -1084,7 +1098,7 @@ CREATE TABLE IF NOT EXISTS public."patient_documents" (
 
 CREATE TABLE IF NOT EXISTS public."patient_edit_locks" (
   "patient_id" uuid,
-  "user_id" uuid NOT NULL,
+  "user_id" uuid,
   "user_name" text,
   "user_avatar_url" text,
   "updated_at" timestamp with time zone DEFAULT now()
@@ -1092,10 +1106,10 @@ CREATE TABLE IF NOT EXISTS public."patient_edit_locks" (
 
 CREATE TABLE IF NOT EXISTS public."patient_form_submissions" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
-  "form_id" text NOT NULL,
-  "form_name" text NOT NULL,
-  "submission_data" jsonb NOT NULL,
+  "patient_id" uuid,
+  "form_id" text,
+  "form_name" text,
+  "submission_data" jsonb,
   "submitted_at" timestamp with time zone,
   "created_at" timestamp with time zone DEFAULT now(),
   "updated_at" timestamp with time zone DEFAULT now(),
@@ -1109,7 +1123,7 @@ CREATE TABLE IF NOT EXISTS public."patient_form_submissions" (
 
 CREATE TABLE IF NOT EXISTS public."patient_health_background" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "submission_id" uuid,
   "weight_kg" numeric,
   "height_cm" numeric,
@@ -1132,7 +1146,7 @@ CREATE TABLE IF NOT EXISTS public."patient_health_background" (
 
 CREATE TABLE IF NOT EXISTS public."patient_insurances" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "provider_name" text,
   "card_number" text,
   "insurance_type" text,
@@ -1155,11 +1169,11 @@ CREATE TABLE IF NOT EXISTS public."patient_insurances" (
 
 CREATE TABLE IF NOT EXISTS public."patient_intake_photos" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "submission_id" uuid NOT NULL,
+  "submission_id" uuid,
   "patient_id" uuid,
-  "photo_type" text NOT NULL,
+  "photo_type" text,
   "area_name" text,
-  "storage_path" text NOT NULL,
+  "storage_path" text,
   "file_name" text,
   "mime_type" text,
   "file_size" integer,
@@ -1169,7 +1183,7 @@ CREATE TABLE IF NOT EXISTS public."patient_intake_photos" (
 
 CREATE TABLE IF NOT EXISTS public."patient_intake_preferences" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "submission_id" uuid NOT NULL,
+  "submission_id" uuid,
   "patient_id" uuid,
   "preferred_language" text DEFAULT 'en',
   "consultation_type" text,
@@ -1194,7 +1208,7 @@ CREATE TABLE IF NOT EXISTS public."patient_intake_submissions" (
 
 CREATE TABLE IF NOT EXISTS public."patient_measurements" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "submission_id" uuid NOT NULL,
+  "submission_id" uuid,
   "patient_id" uuid,
   "height_cm" numeric,
   "weight_kg" numeric,
@@ -1209,13 +1223,13 @@ CREATE TABLE IF NOT EXISTS public."patient_measurements" (
 
 CREATE TABLE IF NOT EXISTS public."patient_merge_logs" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "primary_patient_id" uuid NOT NULL,
+  "primary_patient_id" uuid,
   "primary_patient_name" text,
-  "merged_patient_ids" uuid[] NOT NULL,
+  "merged_patient_ids" uuid[],
   "merged_patient_names" text[],
   "performed_by_user_id" uuid,
   "performed_by_name" text,
-  "tables_updated" text[] NOT NULL,
+  "tables_updated" text[],
   "files_copied" integer DEFAULT 0,
   "file_mappings" jsonb,
   "status" text DEFAULT 'success',
@@ -1227,19 +1241,19 @@ CREATE TABLE IF NOT EXISTS public."patient_merge_logs" (
 
 CREATE TABLE IF NOT EXISTS public."patient_note_mentions" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "note_id" uuid NOT NULL,
-  "patient_id" uuid NOT NULL,
-  "mentioned_user_id" uuid NOT NULL,
+  "note_id" uuid,
+  "patient_id" uuid,
+  "mentioned_user_id" uuid,
   "created_at" timestamp with time zone DEFAULT now(),
   "read_at" timestamp with time zone
 );
 
 CREATE TABLE IF NOT EXISTS public."patient_notes" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "author_user_id" uuid,
   "author_name" text,
-  "body" text NOT NULL,
+  "body" text,
   "created_at" timestamp with time zone DEFAULT now(),
   "is_demo" boolean DEFAULT false
 );
@@ -1276,7 +1290,7 @@ CREATE TABLE IF NOT EXISTS public."patient_prescriptions" (
 
 CREATE TABLE IF NOT EXISTS public."patient_simulations" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "submission_id" uuid NOT NULL,
+  "submission_id" uuid,
   "patient_id" uuid,
   "simulation_type" text,
   "simulation_url" text,
@@ -1289,9 +1303,9 @@ CREATE TABLE IF NOT EXISTS public."patient_simulations" (
 
 CREATE TABLE IF NOT EXISTS public."patient_treatment_areas" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "submission_id" uuid NOT NULL,
+  "submission_id" uuid,
   "patient_id" uuid,
-  "area_name" text NOT NULL,
+  "area_name" text,
   "area_category" text,
   "specific_concerns" text[],
   "priority" integer DEFAULT 1,
@@ -1301,7 +1315,7 @@ CREATE TABLE IF NOT EXISTS public."patient_treatment_areas" (
 
 CREATE TABLE IF NOT EXISTS public."patient_treatment_preferences" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "submission_id" uuid NOT NULL,
+  "submission_id" uuid,
   "patient_id" uuid,
   "interested_treatments" text[],
   "preferred_date_range_start" date,
@@ -1316,8 +1330,8 @@ CREATE TABLE IF NOT EXISTS public."patient_treatment_preferences" (
 
 CREATE TABLE IF NOT EXISTS public."patients" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "first_name" text NOT NULL,
-  "last_name" text NOT NULL,
+  "first_name" text,
+  "last_name" text,
   "email" text,
   "phone" text,
   "dob" date,
@@ -1361,7 +1375,7 @@ CREATE TABLE IF NOT EXISTS public."patients_master_stage" (
 
 CREATE TABLE IF NOT EXISTS public."providers" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "specialty" text,
   "email" text,
   "phone" text,
@@ -1379,15 +1393,15 @@ CREATE TABLE IF NOT EXISTS public."providers" (
   "vatuid" text,
   "iban" text,
   "role" text DEFAULT 'billing_entity',
-  "qual_dignities" text[] NOT NULL,
+  "qual_dignities" text[],
   "is_active" boolean DEFAULT true
 );
 
 CREATE TABLE IF NOT EXISTS public."public_chat_messages" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "session_id" uuid NOT NULL,
-  "role" text NOT NULL,
-  "content" text NOT NULL,
+  "session_id" uuid,
+  "role" text,
+  "content" text,
   "created_at" timestamp with time zone DEFAULT now()
 );
 
@@ -1420,7 +1434,7 @@ CREATE TABLE IF NOT EXISTS public."public_chat_sessions" (
 
 CREATE TABLE IF NOT EXISTS public."retell_call_logs" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "retell_call_id" text NOT NULL,
+  "retell_call_id" text,
   "patient_id" uuid,
   "deal_id" uuid,
   "scheduled_call_id" uuid,
@@ -1439,7 +1453,7 @@ CREATE TABLE IF NOT EXISTS public."retell_request_logs" (
   "call_id" text,
   "event_type" text,
   "function_name" text,
-  "request_body" jsonb NOT NULL,
+  "request_body" jsonb,
   "args" jsonb,
   "metadata" jsonb,
   "dynamic_variables" jsonb,
@@ -1454,13 +1468,13 @@ CREATE TABLE IF NOT EXISTS public."retell_request_logs" (
 
 CREATE TABLE IF NOT EXISTS public."retell_scheduled_calls" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
+  "patient_id" uuid,
   "deal_id" uuid,
-  "scheduled_for" timestamp with time zone NOT NULL,
+  "scheduled_for" timestamp with time zone,
   "status" text DEFAULT 'pending',
-  "user_name" text NOT NULL,
-  "service_name" text NOT NULL,
-  "to_number" text NOT NULL,
+  "user_name" text,
+  "service_name" text,
+  "to_number" text,
   "retell_call_id" text,
   "error_message" text,
   "created_at" timestamp with time zone DEFAULT now(),
@@ -1476,11 +1490,11 @@ CREATE TABLE IF NOT EXISTS public."scheduled_emails" (
   "id" uuid DEFAULT gen_random_uuid(),
   "patient_id" uuid,
   "appointment_id" uuid,
-  "recipient_type" text NOT NULL,
-  "recipient_email" text NOT NULL,
-  "subject" text NOT NULL,
-  "body" text NOT NULL,
-  "scheduled_for" timestamp with time zone NOT NULL,
+  "recipient_type" text,
+  "recipient_email" text,
+  "subject" text,
+  "body" text,
+  "scheduled_for" timestamp with time zone,
   "status" text DEFAULT 'pending',
   "sent_at" timestamp with time zone,
   "error" text,
@@ -1489,7 +1503,7 @@ CREATE TABLE IF NOT EXISTS public."scheduled_emails" (
 
 CREATE TABLE IF NOT EXISTS public."service_categories" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "description" text,
   "sort_order" integer DEFAULT 1,
   "created_at" timestamp with time zone DEFAULT now()
@@ -1497,8 +1511,8 @@ CREATE TABLE IF NOT EXISTS public."service_categories" (
 
 CREATE TABLE IF NOT EXISTS public."service_group_services" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "group_id" uuid NOT NULL,
-  "service_id" uuid NOT NULL,
+  "group_id" uuid,
+  "service_id" uuid,
   "created_at" timestamp with time zone DEFAULT now(),
   "discount_percent" numeric,
   "quantity" integer DEFAULT 1
@@ -1506,7 +1520,7 @@ CREATE TABLE IF NOT EXISTS public."service_group_services" (
 
 CREATE TABLE IF NOT EXISTS public."service_groups" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "description" text,
   "created_at" timestamp with time zone DEFAULT now(),
   "discount_percent" numeric
@@ -1514,8 +1528,8 @@ CREATE TABLE IF NOT EXISTS public."service_groups" (
 
 CREATE TABLE IF NOT EXISTS public."services" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "category_id" uuid NOT NULL,
-  "name" text NOT NULL,
+  "category_id" uuid,
+  "name" text,
   "description" text,
   "is_active" boolean DEFAULT true,
   "base_price" numeric,
@@ -1527,9 +1541,9 @@ CREATE TABLE IF NOT EXISTS public."services" (
 CREATE TABLE IF NOT EXISTS public."sms_logs" (
   "id" uuid DEFAULT gen_random_uuid(),
   "patient_id" uuid,
-  "to_number" text NOT NULL,
+  "to_number" text,
   "from_number" text,
-  "message" text NOT NULL,
+  "message" text,
   "message_type" text DEFAULT 'general',
   "source" text DEFAULT 'manual',
   "twilio_sid" text,
@@ -1541,16 +1555,16 @@ CREATE TABLE IF NOT EXISTS public."sms_logs" (
 
 CREATE TABLE IF NOT EXISTS public."swiss_insurer_laws" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "insurer_id" uuid NOT NULL,
-  "law_type" text NOT NULL,
+  "insurer_id" uuid,
+  "law_type" text,
   "created_at" timestamp with time zone DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public."swiss_insurers" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "gln" text NOT NULL,
+  "gln" text,
   "bag_number" text,
-  "name" text NOT NULL,
+  "name" text,
   "name_fr" text,
   "name_de" text,
   "address_street" text,
@@ -1566,8 +1580,8 @@ CREATE TABLE IF NOT EXISTS public."swiss_insurers" (
 
 CREATE TABLE IF NOT EXISTS public."tardoc_group_items" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "group_id" uuid NOT NULL,
-  "tardoc_code" text NOT NULL,
+  "group_id" uuid,
+  "tardoc_code" text,
   "description" text,
   "quantity" double precision DEFAULT 1,
   "ref_code" text,
@@ -1584,7 +1598,7 @@ CREATE TABLE IF NOT EXISTS public."tardoc_group_items" (
 
 CREATE TABLE IF NOT EXISTS public."tardoc_groups" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "description" text,
   "canton" text DEFAULT 'GE',
   "law_type" text DEFAULT 'KVG',
@@ -1601,26 +1615,26 @@ CREATE TABLE IF NOT EXISTS public."tardoc_groups" (
 
 CREATE TABLE IF NOT EXISTS public."task_comment_mentions" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "task_comment_id" uuid NOT NULL,
-  "task_id" uuid NOT NULL,
-  "mentioned_user_id" uuid NOT NULL,
+  "task_comment_id" uuid,
+  "task_id" uuid,
+  "mentioned_user_id" uuid,
   "created_at" timestamp with time zone DEFAULT now(),
   "read_at" timestamp with time zone
 );
 
 CREATE TABLE IF NOT EXISTS public."task_comments" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "task_id" uuid NOT NULL,
+  "task_id" uuid,
   "author_user_id" uuid,
   "author_name" text,
-  "body" text NOT NULL,
+  "body" text,
   "created_at" timestamp with time zone DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS public."tasks" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
-  "name" text NOT NULL,
+  "patient_id" uuid,
+  "name" text,
   "content" text,
   "status" public.task_status DEFAULT 'not_started'::public.task_status,
   "priority" public.task_priority DEFAULT 'medium'::public.task_priority,
@@ -1654,8 +1668,8 @@ CREATE TABLE IF NOT EXISTS public."temp_patient_treatment_2" (
 
 CREATE TABLE IF NOT EXISTS public."user_availability" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "user_id" uuid NOT NULL,
-  "day_of_week" integer NOT NULL,
+  "user_id" uuid,
+  "day_of_week" integer,
   "start_time" time without time zone DEFAULT '08:00:00',
   "end_time" time without time zone DEFAULT '19:00:00',
   "is_available" boolean DEFAULT true,
@@ -1689,8 +1703,8 @@ CREATE TABLE IF NOT EXISTS public."users" (
 
 CREATE TABLE IF NOT EXISTS public."webhook_queue" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "source" text NOT NULL,
-  "payload" jsonb NOT NULL,
+  "source" text,
+  "payload" jsonb,
   "status" public.webhook_status DEFAULT 'pending'::public.webhook_status,
   "attempts" integer DEFAULT 0,
   "max_attempts" integer DEFAULT 3,
@@ -1702,8 +1716,8 @@ CREATE TABLE IF NOT EXISTS public."webhook_queue" (
 
 CREATE TABLE IF NOT EXISTS public."whatsapp_conversations" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "patient_id" uuid NOT NULL,
-  "phone_number" text NOT NULL,
+  "patient_id" uuid,
+  "phone_number" text,
   "last_message_at" timestamp with time zone,
   "last_message_preview" text,
   "unread_count" integer DEFAULT 0,
@@ -1717,9 +1731,9 @@ CREATE TABLE IF NOT EXISTS public."whatsapp_conversations" (
 CREATE TABLE IF NOT EXISTS public."whatsapp_messages" (
   "id" uuid DEFAULT gen_random_uuid(),
   "patient_id" uuid,
-  "to_number" text NOT NULL,
+  "to_number" text,
   "from_number" text,
-  "body" text NOT NULL,
+  "body" text,
   "status" public.whatsapp_status DEFAULT 'queued'::public.whatsapp_status,
   "direction" public.whatsapp_direction DEFAULT 'outbound'::public.whatsapp_direction,
   "provider_message_sid" text,
@@ -1744,11 +1758,11 @@ CREATE TABLE IF NOT EXISTS public."whatsapp_messages" (
 
 CREATE TABLE IF NOT EXISTS public."whatsapp_notifications" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "user_id" uuid NOT NULL,
-  "message_id" uuid NOT NULL,
+  "user_id" uuid,
+  "message_id" uuid,
   "patient_id" uuid,
-  "title" text NOT NULL,
-  "body" text NOT NULL,
+  "title" text,
+  "body" text,
   "read" boolean DEFAULT false,
   "read_at" timestamp with time zone,
   "created_at" timestamp with time zone DEFAULT now()
@@ -1756,9 +1770,9 @@ CREATE TABLE IF NOT EXISTS public."whatsapp_notifications" (
 
 CREATE TABLE IF NOT EXISTS public."whatsapp_queue" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "sender_user_id" uuid NOT NULL,
-  "to_phone" text NOT NULL,
-  "message_body" text NOT NULL,
+  "sender_user_id" uuid,
+  "to_phone" text,
+  "message_body" text,
   "patient_id" uuid,
   "deal_id" uuid,
   "workflow_id" uuid,
@@ -1775,10 +1789,10 @@ CREATE TABLE IF NOT EXISTS public."whatsapp_queue" (
 
 CREATE TABLE IF NOT EXISTS public."whatsapp_templates" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
+  "name" text,
   "category" text DEFAULT 'MARKETING',
   "language" text DEFAULT 'en',
-  "body" text NOT NULL,
+  "body" text,
   "variables" jsonb,
   "meta_template_id" text,
   "twilio_content_sid" text,
@@ -1789,16 +1803,16 @@ CREATE TABLE IF NOT EXISTS public."whatsapp_templates" (
 
 CREATE TABLE IF NOT EXISTS public."workflow_actions" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "workflow_id" uuid NOT NULL,
-  "action_type" public.workflow_action_type NOT NULL,
-  "config" jsonb NOT NULL,
+  "workflow_id" uuid,
+  "action_type" public.workflow_action_type,
+  "config" jsonb,
   "sort_order" integer DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS public."workflow_enrollment_steps" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "enrollment_id" uuid NOT NULL,
-  "step_type" text NOT NULL,
+  "enrollment_id" uuid,
+  "step_type" text,
   "step_action" text,
   "step_config" jsonb,
   "status" text DEFAULT 'pending',
@@ -1810,8 +1824,8 @@ CREATE TABLE IF NOT EXISTS public."workflow_enrollment_steps" (
 
 CREATE TABLE IF NOT EXISTS public."workflow_enrollments" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "workflow_id" uuid NOT NULL,
-  "patient_id" uuid NOT NULL,
+  "workflow_id" uuid,
+  "patient_id" uuid,
   "deal_id" uuid,
   "enrolled_at" timestamp with time zone DEFAULT now(),
   "status" text DEFAULT 'active',
@@ -1822,11 +1836,11 @@ CREATE TABLE IF NOT EXISTS public."workflow_enrollments" (
 
 CREATE TABLE IF NOT EXISTS public."workflows" (
   "id" uuid DEFAULT gen_random_uuid(),
-  "name" text NOT NULL,
-  "trigger_type" public.workflow_trigger_type NOT NULL,
+  "name" text,
+  "trigger_type" public.workflow_trigger_type,
   "active" boolean DEFAULT true,
   "created_at" timestamp with time zone DEFAULT now(),
-  "config" jsonb NOT NULL,
+  "config" jsonb,
   "is_demo" boolean DEFAULT false
 );
 
@@ -1834,515 +1848,821 @@ CREATE TABLE IF NOT EXISTS public."workflows" (
 
 -- Primary keys — must precede the foreign keys that reference them.
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appointment_categories" ADD CONSTRAINT "appointment_categories_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appointment_history" ADD CONSTRAINT "appointment_history_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."article_distributions" ADD CONSTRAINT "article_distributions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."bank_payment_imports" ADD CONSTRAINT "bank_payment_imports_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."booking_blocked_dates" ADD CONSTRAINT "booking_blocked_dates_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."booking_doctor_days_off" ADD CONSTRAINT "booking_doctor_days_off_pkey" PRIMARY KEY ("slug");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_folders" ADD CONSTRAINT "chat_folders_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_messages" ADD CONSTRAINT "chat_messages_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."clinic_onboarding_submissions" ADD CONSTRAINT "clinic_onboarding_submissions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."clinic_onboarding_tokens" ADD CONSTRAINT "clinic_onboarding_tokens_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."crisalix_reconstructions" ADD CONSTRAINT "crisalix_reconstructions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deal_stages" ADD CONSTRAINT "deal_stages_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deals" ADD CONSTRAINT "deals_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."distribution_backlinks" ADD CONSTRAINT "distribution_backlinks_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."doctor_scheduling_settings" ADD CONSTRAINT "doctor_scheduling_settings_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."document_templates" ADD CONSTRAINT "document_templates_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."documents" ADD CONSTRAINT "documents_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."dropped_call_round_robin" ADD CONSTRAINT "dropped_call_round_robin_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."email_attachments" ADD CONSTRAINT "email_attachments_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."email_templates" ADD CONSTRAINT "email_templates_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."emails" ADD CONSTRAINT "emails_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."embed_form_leads" ADD CONSTRAINT "embed_form_leads_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."external_labs" ADD CONSTRAINT "external_labs_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoice_installments" ADD CONSTRAINT "invoice_installments_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."knowledge_messages" ADD CONSTRAINT "knowledge_messages_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."knowledge_topics" ADD CONSTRAINT "knowledge_topics_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."lead_imports" ADD CONSTRAINT "lead_imports_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."legacy_patient_doc_folders" ADD CONSTRAINT "legacy_patient_doc_folders_pkey" PRIMARY KEY ("patient_id", "folder_name");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."marketing_campaigns" ADD CONSTRAINT "marketing_campaigns_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."marketing_lists" ADD CONSTRAINT "marketing_lists_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medication_template_items" ADD CONSTRAINT "medication_template_items_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medication_templates" ADD CONSTRAINT "medication_templates_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_config" ADD CONSTRAINT "medidata_config_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_notifications_log" ADD CONSTRAINT "medidata_notifications_log_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_responses" ADD CONSTRAINT "medidata_responses_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_pkey" PRIMARY KEY ("patient_id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_intake_submissions" ADD CONSTRAINT "patient_intake_submissions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_merge_logs" ADD CONSTRAINT "patient_merge_logs_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_prescriptions" ADD CONSTRAINT "patient_prescriptions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patients" ADD CONSTRAINT "patients_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."providers" ADD CONSTRAINT "providers_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."public_chat_messages" ADD CONSTRAINT "public_chat_messages_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."public_chat_sessions" ADD CONSTRAINT "public_chat_sessions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_request_logs" ADD CONSTRAINT "retell_request_logs_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."service_categories" ADD CONSTRAINT "service_categories_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."service_groups" ADD CONSTRAINT "service_groups_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."services" ADD CONSTRAINT "services_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."sms_logs" ADD CONSTRAINT "sms_logs_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."swiss_insurer_laws" ADD CONSTRAINT "swiss_insurer_laws_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."swiss_insurers" ADD CONSTRAINT "swiss_insurers_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."tardoc_group_items" ADD CONSTRAINT "tardoc_group_items_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."tardoc_groups" ADD CONSTRAINT "tardoc_groups_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."user_availability" ADD CONSTRAINT "user_availability_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."users" ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."webhook_queue" ADD CONSTRAINT "webhook_queue_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_conversations" ADD CONSTRAINT "whatsapp_conversations_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_templates" ADD CONSTRAINT "whatsapp_templates_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflow_actions" ADD CONSTRAINT "workflow_actions_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflow_enrollment_steps" ADD CONSTRAINT "workflow_enrollment_steps_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflows" ADD CONSTRAINT "workflows_pkey" PRIMARY KEY ("id");
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
 
 
@@ -2350,818 +2670,1307 @@ EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition T
 
 -- not stop a screen rendering, and must not abort the rest of the script.
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appointment_history" ADD CONSTRAINT "appointment_history_appointment_id_fkey" FOREIGN KEY ("appointment_id") REFERENCES public."appointments"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_doctor_user_id_fkey" FOREIGN KEY ("doctor_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_import_id_fkey" FOREIGN KEY ("import_id") REFERENCES public."bank_payment_imports"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_matched_invoice_id_fkey" FOREIGN KEY ("matched_invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_matched_installment_id_fkey" FOREIGN KEY ("matched_installment_id") REFERENCES public."invoice_installments"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."booking_blocked_dates" ADD CONSTRAINT "booking_blocked_dates_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_scheduled_call_id_fkey" FOREIGN KEY ("scheduled_call_id") REFERENCES public."retell_scheduled_calls"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_folder_id_fkey" FOREIGN KEY ("folder_id") REFERENCES public."chat_folders"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_folders" ADD CONSTRAINT "chat_folders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."chat_messages" ADD CONSTRAINT "chat_messages_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES public."chat_conversations"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."clinic_onboarding_submissions" ADD CONSTRAINT "clinic_onboarding_submissions_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES public."clinic_onboarding_tokens"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."crisalix_reconstructions" ADD CONSTRAINT "crisalix_reconstructions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_old_stage_id_fkey" FOREIGN KEY ("old_stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_new_stage_id_fkey" FOREIGN KEY ("new_stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_changed_by_user_id_fkey" FOREIGN KEY ("changed_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deals" ADD CONSTRAINT "deals_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deals" ADD CONSTRAINT "deals_stage_id_fkey" FOREIGN KEY ("stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deals" ADD CONSTRAINT "deals_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."deals" ADD CONSTRAINT "deals_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."distribution_backlinks" ADD CONSTRAINT "distribution_backlinks_distribution_id_fkey" FOREIGN KEY ("distribution_id") REFERENCES public."article_distributions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."document_templates" ADD CONSTRAINT "document_templates_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."documents" ADD CONSTRAINT "documents_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."documents" ADD CONSTRAINT "documents_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."documents" ADD CONSTRAINT "documents_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."email_attachments" ADD CONSTRAINT "email_attachments_email_id_fkey" FOREIGN KEY ("email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_original_email_id_fkey" FOREIGN KEY ("original_email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_reply_email_id_fkey" FOREIGN KEY ("reply_email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."emails" ADD CONSTRAINT "emails_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."emails" ADD CONSTRAINT "emails_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."emails" ADD CONSTRAINT "emails_sent_by_user_id_fkey" FOREIGN KEY ("sent_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."embed_form_leads" ADD CONSTRAINT "embed_form_leads_converted_to_patient_id_fkey" FOREIGN KEY ("converted_to_patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoice_installments" ADD CONSTRAINT "invoice_installments_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_consultation_id_fkey" FOREIGN KEY ("consultation_id") REFERENCES public."consultations"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_parent_invoice_id_fkey" FOREIGN KEY ("parent_invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_installment_id_fkey" FOREIGN KEY ("installment_id") REFERENCES public."invoice_installments"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES public."knowledge_messages"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_topic_id_fkey" FOREIGN KEY ("topic_id") REFERENCES public."knowledge_topics"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."knowledge_messages" ADD CONSTRAINT "knowledge_messages_topic_id_fkey" FOREIGN KEY ("topic_id") REFERENCES public."knowledge_topics"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."knowledge_topics" ADD CONSTRAINT "knowledge_topics_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."legacy_patient_doc_folders" ADD CONSTRAINT "legacy_patient_doc_folders_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES public."marketing_campaigns"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."marketing_campaigns" ADD CONSTRAINT "marketing_campaigns_list_id_fkey" FOREIGN KEY ("list_id") REFERENCES public."marketing_lists"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_last_edited_by_fkey" FOREIGN KEY ("last_edited_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medication_template_items" ADD CONSTRAINT "medication_template_items_template_id_fkey" FOREIGN KEY ("template_id") REFERENCES public."medication_templates"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medication_templates" ADD CONSTRAINT "medication_templates_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_notifications_log" ADD CONSTRAINT "medidata_notifications_log_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_responses" ADD CONSTRAINT "medidata_responses_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_parent_submission_id_fkey" FOREIGN KEY ("parent_submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES public."patient_documents"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_template_id_fkey" FOREIGN KEY ("template_id") REFERENCES public."document_templates"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_last_edited_by_fkey" FOREIGN KEY ("last_edited_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_reviewed_by_fkey" FOREIGN KEY ("reviewed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_intake_submissions" ADD CONSTRAINT "patient_intake_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_merge_logs" ADD CONSTRAINT "patient_merge_logs_performed_by_user_id_fkey" FOREIGN KEY ("performed_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_note_id_fkey" FOREIGN KEY ("note_id") REFERENCES public."patient_notes"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_mentioned_user_id_fkey" FOREIGN KEY ("mentioned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_author_user_id_fkey" FOREIGN KEY ("author_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patients" ADD CONSTRAINT "patients_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."patients" ADD CONSTRAINT "patients_intake_submission_id_fkey" FOREIGN KEY ("intake_submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."public_chat_messages" ADD CONSTRAINT "public_chat_messages_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES public."public_chat_sessions"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."public_chat_sessions" ADD CONSTRAINT "public_chat_sessions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_scheduled_call_id_fkey" FOREIGN KEY ("scheduled_call_id") REFERENCES public."retell_scheduled_calls"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_request_logs" ADD CONSTRAINT "retell_request_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_appointment_id_fkey" FOREIGN KEY ("appointment_id") REFERENCES public."appointments"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES public."service_groups"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."services" ADD CONSTRAINT "services_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES public."service_categories"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."sms_logs" ADD CONSTRAINT "sms_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."swiss_insurer_laws" ADD CONSTRAINT "swiss_insurer_laws_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."tardoc_group_items" ADD CONSTRAINT "tardoc_group_items_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES public."tardoc_groups"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_task_comment_id_fkey" FOREIGN KEY ("task_comment_id") REFERENCES public."task_comments"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_mentioned_user_id_fkey" FOREIGN KEY ("mentioned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_author_user_id_fkey" FOREIGN KEY ("author_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_assigned_user_id_fkey" FOREIGN KEY ("assigned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."users" ADD CONSTRAINT "users_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_conversations" ADD CONSTRAINT "whatsapp_conversations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_staff_user_id_fkey" FOREIGN KEY ("staff_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_read_by_fkey" FOREIGN KEY ("read_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES public."whatsapp_messages"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_enrollment_id_fkey" FOREIGN KEY ("enrollment_id") REFERENCES public."workflow_enrollments"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflow_actions" ADD CONSTRAINT "workflow_actions_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflow_enrollment_steps" ADD CONSTRAINT "workflow_enrollment_steps_enrollment_id_fkey" FOREIGN KEY ("enrollment_id") REFERENCES public."workflow_enrollments"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 
-DO $$ BEGIN
+DO $$
+BEGIN
   ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;
 

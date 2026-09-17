@@ -98,10 +98,16 @@ function parseKeys(description: string | undefined): {
  * transaction: without this, the first failure rolls back all 105 tables.
  */
 function tolerant(sql: string): string {
-  return `DO $$ BEGIN
+  // A single `WHEN others` handler on purpose. A multi-condition EXCEPTION list
+  // requires a semicolon after every handler's statement list, which is easy to
+  // get wrong and produced "42601: syntax error at or near WHEN".
+  return `DO $$
+BEGIN
   ${sql}
-EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
-     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;`;
+EXCEPTION
+  WHEN others THEN RAISE NOTICE 'skipped %: %', SQLSTATE, SQLERRM;
+END
+$$;`;
 }
 
 export function generateDdl(spec: Spec): string {
@@ -156,12 +162,12 @@ export function generateDdl(spec: Spec): string {
         line += ` DEFAULT ${rendered.sql}`;
       }
 
-      // A primary key is implicitly NOT NULL; PostgREST lists generated columns
-      // as required even though they have defaults, so only add NOT NULL when
-      // there is no default to fall back on.
-      if (required.has(column) && !isPrimary && rawDefault === undefined) {
-        line += " NOT NULL";
-      }
+      // NOT NULL is deliberately NOT reproduced (beyond the implicit primary key).
+      // There are 207 non-PK NOT NULL columns without defaults across 93 tables;
+      // any of them can abort a seed insert or a record created while recording a
+      // video. A capture database only has to render screens, so relaxing this
+      // removes a large class of failures and costs nothing we care about.
+      void required;
 
       columnLines.push(line);
 
@@ -211,6 +217,13 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
     "-- GENERATED FILE — do not edit by hand.",
     "-- Source: production PostgREST schema spec (schema metadata only, zero rows read).",
     "-- Regenerate with: npm run academy:provision",
+    "--",
+    "-- This is a CAPTURE database: its only job is to render screens for screenshots",
+    "-- and video. It is deliberately NOT a faithful copy of production:",
+    "--   * NOT NULL is not reproduced (except implicit primary keys)",
+    "--   * no triggers, no check constraints beyond enums, no functions",
+    "-- Both make inserts more permissive, which is what we want here and would be",
+    "-- wrong anywhere else. Never point an application at this database.",
     `-- Tables: ${tables.length} | Enums: ${enums.size} | PKs: ${primaryKeyConstraints.length}` +
       ` | FKs: ${foreignKeyConstraints.length} | Skipped: ${skipped.length}`,
     `-- Skipped (views are in views.sql; tmp_* are historical import staging): ${skipped.join(", ")}`,
