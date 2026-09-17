@@ -41,6 +41,13 @@ export const automationAiModules: DocModule[] = [
             ["Manual trigger", "Someone runs it deliberately.", "One-off broadcasts to a selected group."],
           ],
         },
+        callouts: [
+          {
+            kind: "warning",
+            title: "Four of these cannot be saved yet",
+            body: "The database currently accepts only Deal stage changed, Appointment created, Appointment updated and Manual. Choosing Patient created, Appointment completed, Form submitted or Task completed fails on save. A migration to widen it ships as 20260917_widen_workflow_trigger_type.sql — until it is applied, use a deal-stage or manual trigger instead.",
+          },
+        ],
       },
       {
         id: "actions",

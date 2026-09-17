@@ -35,6 +35,34 @@ const MIGRATION_ALLOWLIST = [
 
 type Step = { label: string; sql: string; tolerant?: boolean };
 
+/**
+ * Widens enums that the repo writes to but production's types do not accept.
+ *
+ * `workflows.trigger_type` is `public.workflow_trigger_type`, which in production
+ * has only four values: deal_stage_changed, appointment_created,
+ * appointment_updated, manual. But:
+ *   - seed_demo_data() inserts patient_created, appointment_reminder and
+ *     consultation_completed, which is why step 5 fails with 22P02
+ *   - the workflows UI offers seven triggers, four of which the column cannot
+ *     store at all (a genuine production bug, reported separately)
+ *
+ * Widening here keeps the capture database permissive so the seed runs and the
+ * workflow screens look realistic. It does NOT fix production.
+ */
+const ENUM_WIDENING_SQL = `-- Capture-only enum widening. Run as its own statement batch:
+-- ALTER TYPE ... ADD VALUE cannot be used by a statement in the same transaction.
+
+-- Needed by seed_demo_data()
+ALTER TYPE public.workflow_trigger_type ADD VALUE IF NOT EXISTS 'patient_created';
+ALTER TYPE public.workflow_trigger_type ADD VALUE IF NOT EXISTS 'appointment_reminder';
+ALTER TYPE public.workflow_trigger_type ADD VALUE IF NOT EXISTS 'consultation_completed';
+
+-- Offered by the workflows UI but missing from the production enum
+ALTER TYPE public.workflow_trigger_type ADD VALUE IF NOT EXISTS 'appointment_completed';
+ALTER TYPE public.workflow_trigger_type ADD VALUE IF NOT EXISTS 'form_submitted';
+ALTER TYPE public.workflow_trigger_type ADD VALUE IF NOT EXISTS 'task_completed';
+`;
+
 async function buildSteps(): Promise<Step[]> {
   const steps: Step[] = [];
 
@@ -168,6 +196,9 @@ async function main() {
         .join("\n\n"),
     });
     parts.push({ file: "03-views.sql", sql: steps[steps.length - 1].sql });
+    // Must be its own paste: ALTER TYPE ... ADD VALUE cannot be used by a
+    // statement in the same transaction that added it.
+    parts.push({ file: "04-enum-widening.sql", sql: ENUM_WIDENING_SQL });
 
     // The service_role key CAN create auth users, so the seed file can be
     // emitted with a concrete id rather than a placeholder.
@@ -186,7 +217,7 @@ async function main() {
     } catch (error) {
       seedSql = `-- Could not create the capture auth user: ${(error as Error).message}\n`;
     }
-    parts.push({ file: "04-seed.sql", sql: seedSql });
+    parts.push({ file: "05-seed.sql", sql: seedSql });
 
     for (const part of parts) writeFileSync(resolve(OUT_DIR, part.file), part.sql);
 
