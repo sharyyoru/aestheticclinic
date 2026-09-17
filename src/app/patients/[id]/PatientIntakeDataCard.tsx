@@ -88,6 +88,7 @@ type PatientInsurance = {
   provider_name: string | null;
   card_number: string | null;
   insurance_type: string | null;
+  avs_number?: string | null;
 };
 
 type ConsultationData = {
@@ -582,6 +583,7 @@ export default function PatientIntakeDataCard({
         provider_name: data.provider_name || null,
         card_number: data.card_number || null,
         insurance_type: data.insurance_type || null,
+        avs_number: data.avs_number?.trim() || null,
       };
 
       if (insurance?.id) {
@@ -1793,7 +1795,7 @@ export default function PatientIntakeDataCard({
             </div>
             <h4 className="font-medium text-slate-900">Insurance Information</h4>
             <EditButton onClick={() => {
-              setEditInsurance(insurance || { provider_name: "", card_number: "", insurance_type: "" });
+              setEditInsurance(insurance || { provider_name: "", card_number: "", insurance_type: "", avs_number: "" });
               setEditingSection("insurance");
             }} />
           </div>
@@ -1817,6 +1819,10 @@ export default function PatientIntakeDataCard({
                   <option value="basic">Basic</option>
                 </select>
               </div>
+              <div>
+                <label className="text-xs text-slate-500">AVS/AHV Number</label>
+                <input type="text" value={editInsurance.avs_number || ""} onChange={(e) => setEditInsurance({ ...editInsurance, avs_number: e.target.value })} className="w-full mt-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-black" placeholder="756.XXXX.XXXX.XX" />
+              </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={() => saveInsurance(editInsurance)} disabled={saving} className="px-4 py-2 bg-black text-white text-xs rounded-lg hover:bg-slate-800 disabled:opacity-50">{saving ? "Saving..." : "Save"}</button>
                 <button onClick={() => setEditingSection(null)} className="px-4 py-2 text-slate-600 text-xs hover:bg-slate-100 rounded-lg">Cancel</button>
@@ -1827,6 +1833,7 @@ export default function PatientIntakeDataCard({
               <div className="flex justify-between"><span className="text-slate-500">Provider</span><span className="text-slate-900 font-medium">{insurance.provider_name || "N/A"}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Card Number</span><span className="text-slate-900 font-medium">{insurance.card_number || "N/A"}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Type</span><span className="text-slate-900 font-medium">{insurance.insurance_type || "N/A"}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">AVS/AHV</span><span className="text-slate-900 font-medium">{insurance.avs_number || "N/A"}</span></div>
             </div>
           ) : (
             <p className="text-sm text-slate-400 italic">No insurance information provided. Click Edit to add.</p>

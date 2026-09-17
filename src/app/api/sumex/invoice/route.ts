@@ -302,7 +302,7 @@ async function handleBuildFromConsultation(body: Record<string, unknown>) {
       : undefined,
     patientSex: mapSex(patient.sex || patient.gender || "male"),
     patientBirthdate: patient.date_of_birth || patient.birthdate || "1990-01-01",
-    patientSsn: patient.avs_number || patient.ssn || "",
+    patientSsn: patient.avs_number || patient.ssn || insurance?.avs_number || "",
     patientAddress: (() => {
       const c = (patient.country || "").trim();
       const isCH = !c || /^(ch|switzerland|suisse|schweiz|svizzera)$/i.test(c);
