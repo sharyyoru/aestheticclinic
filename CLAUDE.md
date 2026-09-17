@@ -61,6 +61,16 @@ Complex billing logic lives in `src/lib/`:
 - `medidata.ts` — Medidata patient/provider lookup (19KB)
 - `swissQrBill.ts` — Swiss QR Bill generation
 
+### Public Documentation Site (`/documentation`)
+Public, SEO-indexed end-user docs — no auth, no app shell, always light themed.
+- Pages: `src/app/documentation/page.tsx` (hub) + `[slug]/page.tsx` (one static page per module, via `generateStaticParams`)
+- Content: typed data in `src/app/documentation/content/*.ts` (one file per category, registry in `index.ts`). **When you add or change a user-facing feature, update the matching module content file.**
+- Renderers/components in `src/app/documentation/components/`; search index served statically from `src/app/documentation/search-index/route.ts` (fetched lazily by the ⌘K search)
+- Public route registration requires 4 arrays: `PUBLIC_ROUTES` (RequireAuth), `STANDALONE_ROUTES` (LayoutShellSwitch + ShellVisibility), `HIDDEN_ROUTES` (PatientTabBar)
+- `ForceLightTheme` strips `.dark` from `<html>` on docs routes — `ThemeProvider` defaults to dark globally and `globals.css` overrides `.dark [class*="rounded-xl"][class*="bg-white"]` with `!important`
+- `src/app/sitemap.ts` and `src/app/robots.ts` allow the docs + public marketing pages and disallow all app/API routes
+- Docs content must never include API endpoints, DB schema, env values or secrets
+
 ### Document Editing
 - Slate-based rich text editor for in-app DOCX editing
 - Fabric.js for canvas/image annotation
