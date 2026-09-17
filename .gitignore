@@ -35,9 +35,11 @@ yarn-error.log*
 !.env.capture.example
 
 # academy capture pipeline
-# prod-spec.json is a full schema dump; out/ holds large intermediate media
+# prod-spec.json is a full schema dump; the numbered parts are derived from
+# schema.generated.sql (which is committed); out/ holds large intermediate media
 scripts/academy/generated/prod-spec.json
 scripts/academy/generated/provision-all.sql
+scripts/academy/generated/0*.sql
 scripts/academy/out/
 
 # vercel

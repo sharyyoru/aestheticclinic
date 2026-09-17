@@ -92,11 +92,31 @@ function parseKeys(description: string | undefined): {
   };
 }
 
+/**
+ * Each constraint is wrapped so one imperfection cannot abort the whole script.
+ * This matters because the Supabase SQL editor runs a pasted script in a single
+ * transaction: without this, the first failure rolls back all 105 tables.
+ */
+function tolerant(sql: string): string {
+  return `DO $$ BEGIN
+  ${sql}
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;`;
+}
+
 export function generateDdl(spec: Spec): string {
   const enums = new Map<string, string[]>();
   const tables: string[] = [];
-  const constraints: string[] = [];
+  // Primary keys must be created before any foreign key references them, or
+  // Postgres reports "no unique constraint matching given keys".
+  const primaryKeyConstraints: string[] = [];
+  const foreignKeyConstraints: string[] = [];
   const skipped: string[] = [];
+  const creatableTables = new Set(
+    Object.keys(spec.definitions).filter(
+      (name) => !isView(name) && !SKIP_PREFIXES.some((p) => name.startsWith(p))
+    )
+  );
 
   // Collect enum types first — tables depend on them.
   for (const def of Object.values(spec.definitions)) {
@@ -145,13 +165,16 @@ export function generateDdl(spec: Spec): string {
 
       columnLines.push(line);
 
-      if (foreign) {
-        constraints.push(
-          `ALTER TABLE public.${quoteIdent(name)} ADD CONSTRAINT ${quoteIdent(
-            `${name}_${column}_fkey`
-          )} FOREIGN KEY (${quoteIdent(column)}) REFERENCES public.${quoteIdent(
-            foreign.table
-          )}(${quoteIdent(foreign.column)}) ON DELETE SET NULL;`
+      // Skip references to tables we do not create (views, import staging).
+      if (foreign && creatableTables.has(foreign.table)) {
+        foreignKeyConstraints.push(
+          tolerant(
+            `ALTER TABLE public.${quoteIdent(name)} ADD CONSTRAINT ${quoteIdent(
+              `${name}_${column}_fkey`
+            )} FOREIGN KEY (${quoteIdent(column)}) REFERENCES public.${quoteIdent(
+              foreign.table
+            )}(${quoteIdent(foreign.column)}) ON DELETE SET NULL;`
+          )
         );
       }
     }
@@ -166,10 +189,12 @@ export function generateDdl(spec: Spec): string {
     );
 
     if (primaryKeys.length > 0) {
-      constraints.push(
-        `ALTER TABLE public.${quoteIdent(name)} ADD CONSTRAINT ${quoteIdent(
-          `${name}_pkey`
-        )} PRIMARY KEY (${primaryKeys.map(quoteIdent).join(", ")});`
+      primaryKeyConstraints.push(
+        tolerant(
+          `ALTER TABLE public.${quoteIdent(name)} ADD CONSTRAINT ${quoteIdent(
+            `${name}_pkey`
+          )} PRIMARY KEY (${primaryKeys.map(quoteIdent).join(", ")});`
+        )
       );
     }
   }
@@ -186,7 +211,8 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
     "-- GENERATED FILE — do not edit by hand.",
     "-- Source: production PostgREST schema spec (schema metadata only, zero rows read).",
     "-- Regenerate with: npm run academy:provision",
-    `-- Tables: ${tables.length} | Enums: ${enums.size} | Skipped: ${skipped.length}`,
+    `-- Tables: ${tables.length} | Enums: ${enums.size} | PKs: ${primaryKeyConstraints.length}` +
+      ` | FKs: ${foreignKeyConstraints.length} | Skipped: ${skipped.length}`,
     `-- Skipped (views are in views.sql; tmp_* are historical import staging): ${skipped.join(", ")}`,
     "",
     "CREATE EXTENSION IF NOT EXISTS pgcrypto;",
@@ -197,9 +223,12 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;`
     "-- Tables",
     ...tables,
     "",
-    "-- Keys (applied last so table order does not matter)",
-    "-- Failures here are tolerated: a missing FK relaxes integrity but does not stop a screen rendering.",
-    ...constraints,
+    "-- Primary keys — must precede the foreign keys that reference them.",
+    ...primaryKeyConstraints,
+    "",
+    "-- Foreign keys. Each is tolerant: a missing one relaxes integrity but does",
+    "-- not stop a screen rendering, and must not abort the rest of the script.",
+    ...foreignKeyConstraints,
     "",
   ].join("\n\n");
 }

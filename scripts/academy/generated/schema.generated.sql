@@ -4,7 +4,7 @@
 
 -- Regenerate with: npm run academy:provision
 
--- Tables: 105 | Enums: 17 | Skipped: 14
+-- Tables: 105 | Enums: 17 | PKs: 102 | FKs: 163 | Skipped: 14
 
 -- Skipped (views are in views.sql; tmp_* are historical import staging): tmp_appointments, tmp_axenita_invoice_lines, tmp_catalog_codes, tmp_contacts, tmp_deals, tmp_invoice_import, tmp_invoice_raw, tmp_notes, tmp_patient_axenita, tmp_patient_with_address_and_ssn, tmp_treatment_flat, v_debiteurs, v_invoice_lines_enriched, v_invoices_enriched
 
@@ -1832,537 +1832,1336 @@ CREATE TABLE IF NOT EXISTS public."workflows" (
 
 
 
--- Keys (applied last so table order does not matter)
-
--- Failures here are tolerated: a missing FK relaxes integrity but does not stop a screen rendering.
-
-ALTER TABLE public."appointment_categories" ADD CONSTRAINT "appointment_categories_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."appointment_history" ADD CONSTRAINT "appointment_history_appointment_id_fkey" FOREIGN KEY ("appointment_id") REFERENCES public."appointments"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."appointment_history" ADD CONSTRAINT "appointment_history_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_doctor_user_id_fkey" FOREIGN KEY ("doctor_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."article_distributions" ADD CONSTRAINT "article_distributions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_import_id_fkey" FOREIGN KEY ("import_id") REFERENCES public."bank_payment_imports"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_matched_invoice_id_fkey" FOREIGN KEY ("matched_invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_matched_installment_id_fkey" FOREIGN KEY ("matched_installment_id") REFERENCES public."invoice_installments"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."bank_payment_imports" ADD CONSTRAINT "bank_payment_imports_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."booking_blocked_dates" ADD CONSTRAINT "booking_blocked_dates_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."booking_blocked_dates" ADD CONSTRAINT "booking_blocked_dates_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."booking_doctor_days_off" ADD CONSTRAINT "booking_doctor_days_off_pkey" PRIMARY KEY ("slug");
-
-ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_scheduled_call_id_fkey" FOREIGN KEY ("scheduled_call_id") REFERENCES public."retell_scheduled_calls"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_folder_id_fkey" FOREIGN KEY ("folder_id") REFERENCES public."chat_folders"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."chat_folders" ADD CONSTRAINT "chat_folders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."chat_folders" ADD CONSTRAINT "chat_folders_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."chat_messages" ADD CONSTRAINT "chat_messages_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES public."chat_conversations"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."chat_messages" ADD CONSTRAINT "chat_messages_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."clinic_onboarding_submissions" ADD CONSTRAINT "clinic_onboarding_submissions_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES public."clinic_onboarding_tokens"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."clinic_onboarding_submissions" ADD CONSTRAINT "clinic_onboarding_submissions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."clinic_onboarding_tokens" ADD CONSTRAINT "clinic_onboarding_tokens_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."crisalix_reconstructions" ADD CONSTRAINT "crisalix_reconstructions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."crisalix_reconstructions" ADD CONSTRAINT "crisalix_reconstructions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_old_stage_id_fkey" FOREIGN KEY ("old_stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_new_stage_id_fkey" FOREIGN KEY ("new_stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_changed_by_user_id_fkey" FOREIGN KEY ("changed_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."deal_stages" ADD CONSTRAINT "deal_stages_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."deals" ADD CONSTRAINT "deals_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deals" ADD CONSTRAINT "deals_stage_id_fkey" FOREIGN KEY ("stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deals" ADD CONSTRAINT "deals_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deals" ADD CONSTRAINT "deals_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."deals" ADD CONSTRAINT "deals_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."distribution_backlinks" ADD CONSTRAINT "distribution_backlinks_distribution_id_fkey" FOREIGN KEY ("distribution_id") REFERENCES public."article_distributions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."distribution_backlinks" ADD CONSTRAINT "distribution_backlinks_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."doctor_scheduling_settings" ADD CONSTRAINT "doctor_scheduling_settings_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."document_templates" ADD CONSTRAINT "document_templates_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."document_templates" ADD CONSTRAINT "document_templates_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."documents" ADD CONSTRAINT "documents_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."documents" ADD CONSTRAINT "documents_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."documents" ADD CONSTRAINT "documents_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."documents" ADD CONSTRAINT "documents_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."dropped_call_round_robin" ADD CONSTRAINT "dropped_call_round_robin_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."email_attachments" ADD CONSTRAINT "email_attachments_email_id_fkey" FOREIGN KEY ("email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."email_attachments" ADD CONSTRAINT "email_attachments_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_original_email_id_fkey" FOREIGN KEY ("original_email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_reply_email_id_fkey" FOREIGN KEY ("reply_email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."email_templates" ADD CONSTRAINT "email_templates_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."emails" ADD CONSTRAINT "emails_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."emails" ADD CONSTRAINT "emails_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."emails" ADD CONSTRAINT "emails_sent_by_user_id_fkey" FOREIGN KEY ("sent_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."emails" ADD CONSTRAINT "emails_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."embed_form_leads" ADD CONSTRAINT "embed_form_leads_converted_to_patient_id_fkey" FOREIGN KEY ("converted_to_patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."embed_form_leads" ADD CONSTRAINT "embed_form_leads_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."external_labs" ADD CONSTRAINT "external_labs_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."invoice_installments" ADD CONSTRAINT "invoice_installments_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoice_installments" ADD CONSTRAINT "invoice_installments_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_consultation_id_fkey" FOREIGN KEY ("consultation_id") REFERENCES public."consultations"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_parent_invoice_id_fkey" FOREIGN KEY ("parent_invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_installment_id_fkey" FOREIGN KEY ("installment_id") REFERENCES public."invoice_installments"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES public."knowledge_messages"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_topic_id_fkey" FOREIGN KEY ("topic_id") REFERENCES public."knowledge_topics"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."knowledge_messages" ADD CONSTRAINT "knowledge_messages_topic_id_fkey" FOREIGN KEY ("topic_id") REFERENCES public."knowledge_topics"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."knowledge_messages" ADD CONSTRAINT "knowledge_messages_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."knowledge_topics" ADD CONSTRAINT "knowledge_topics_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."knowledge_topics" ADD CONSTRAINT "knowledge_topics_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."lead_imports" ADD CONSTRAINT "lead_imports_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."legacy_patient_doc_folders" ADD CONSTRAINT "legacy_patient_doc_folders_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."legacy_patient_doc_folders" ADD CONSTRAINT "legacy_patient_doc_folders_pkey" PRIMARY KEY ("patient_id", "folder_name");
-
-ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES public."marketing_campaigns"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."marketing_campaigns" ADD CONSTRAINT "marketing_campaigns_list_id_fkey" FOREIGN KEY ("list_id") REFERENCES public."marketing_lists"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."marketing_campaigns" ADD CONSTRAINT "marketing_campaigns_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."marketing_lists" ADD CONSTRAINT "marketing_lists_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_last_edited_by_fkey" FOREIGN KEY ("last_edited_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."medication_template_items" ADD CONSTRAINT "medication_template_items_template_id_fkey" FOREIGN KEY ("template_id") REFERENCES public."medication_templates"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medication_template_items" ADD CONSTRAINT "medication_template_items_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."medication_templates" ADD CONSTRAINT "medication_templates_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medication_templates" ADD CONSTRAINT "medication_templates_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."medidata_config" ADD CONSTRAINT "medidata_config_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."medidata_notifications_log" ADD CONSTRAINT "medidata_notifications_log_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_notifications_log" ADD CONSTRAINT "medidata_notifications_log_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."medidata_responses" ADD CONSTRAINT "medidata_responses_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_responses" ADD CONSTRAINT "medidata_responses_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_parent_submission_id_fkey" FOREIGN KEY ("parent_submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES public."patient_documents"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_template_id_fkey" FOREIGN KEY ("template_id") REFERENCES public."document_templates"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_last_edited_by_fkey" FOREIGN KEY ("last_edited_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_pkey" PRIMARY KEY ("patient_id");
-
-ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_reviewed_by_fkey" FOREIGN KEY ("reviewed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_intake_submissions" ADD CONSTRAINT "patient_intake_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_intake_submissions" ADD CONSTRAINT "patient_intake_submissions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_merge_logs" ADD CONSTRAINT "patient_merge_logs_performed_by_user_id_fkey" FOREIGN KEY ("performed_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_merge_logs" ADD CONSTRAINT "patient_merge_logs_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_note_id_fkey" FOREIGN KEY ("note_id") REFERENCES public."patient_notes"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_mentioned_user_id_fkey" FOREIGN KEY ("mentioned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_author_user_id_fkey" FOREIGN KEY ("author_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_prescriptions" ADD CONSTRAINT "patient_prescriptions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."patients" ADD CONSTRAINT "patients_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patients" ADD CONSTRAINT "patients_intake_submission_id_fkey" FOREIGN KEY ("intake_submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."patients" ADD CONSTRAINT "patients_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."providers" ADD CONSTRAINT "providers_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."public_chat_messages" ADD CONSTRAINT "public_chat_messages_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES public."public_chat_sessions"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."public_chat_messages" ADD CONSTRAINT "public_chat_messages_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."public_chat_sessions" ADD CONSTRAINT "public_chat_sessions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."public_chat_sessions" ADD CONSTRAINT "public_chat_sessions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_scheduled_call_id_fkey" FOREIGN KEY ("scheduled_call_id") REFERENCES public."retell_scheduled_calls"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."retell_request_logs" ADD CONSTRAINT "retell_request_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."retell_request_logs" ADD CONSTRAINT "retell_request_logs_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_appointment_id_fkey" FOREIGN KEY ("appointment_id") REFERENCES public."appointments"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."service_categories" ADD CONSTRAINT "service_categories_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES public."service_groups"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."service_groups" ADD CONSTRAINT "service_groups_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."services" ADD CONSTRAINT "services_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES public."service_categories"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."services" ADD CONSTRAINT "services_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."sms_logs" ADD CONSTRAINT "sms_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."sms_logs" ADD CONSTRAINT "sms_logs_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."swiss_insurer_laws" ADD CONSTRAINT "swiss_insurer_laws_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."swiss_insurer_laws" ADD CONSTRAINT "swiss_insurer_laws_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."swiss_insurers" ADD CONSTRAINT "swiss_insurers_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."tardoc_group_items" ADD CONSTRAINT "tardoc_group_items_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES public."tardoc_groups"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."tardoc_group_items" ADD CONSTRAINT "tardoc_group_items_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."tardoc_groups" ADD CONSTRAINT "tardoc_groups_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_task_comment_id_fkey" FOREIGN KEY ("task_comment_id") REFERENCES public."task_comments"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_mentioned_user_id_fkey" FOREIGN KEY ("mentioned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_author_user_id_fkey" FOREIGN KEY ("author_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_assigned_user_id_fkey" FOREIGN KEY ("assigned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."user_availability" ADD CONSTRAINT "user_availability_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."users" ADD CONSTRAINT "users_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."users" ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."webhook_queue" ADD CONSTRAINT "webhook_queue_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."whatsapp_conversations" ADD CONSTRAINT "whatsapp_conversations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_conversations" ADD CONSTRAINT "whatsapp_conversations_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_staff_user_id_fkey" FOREIGN KEY ("staff_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_read_by_fkey" FOREIGN KEY ("read_by") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES public."whatsapp_messages"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_enrollment_id_fkey" FOREIGN KEY ("enrollment_id") REFERENCES public."workflow_enrollments"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."whatsapp_templates" ADD CONSTRAINT "whatsapp_templates_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."workflow_actions" ADD CONSTRAINT "workflow_actions_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."workflow_actions" ADD CONSTRAINT "workflow_actions_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."workflow_enrollment_steps" ADD CONSTRAINT "workflow_enrollment_steps_enrollment_id_fkey" FOREIGN KEY ("enrollment_id") REFERENCES public."workflow_enrollments"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."workflow_enrollment_steps" ADD CONSTRAINT "workflow_enrollment_steps_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
-
-ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_pkey" PRIMARY KEY ("id");
-
-ALTER TABLE public."workflows" ADD CONSTRAINT "workflows_pkey" PRIMARY KEY ("id");
+-- Primary keys — must precede the foreign keys that reference them.
+
+DO $$ BEGIN
+  ALTER TABLE public."appointment_categories" ADD CONSTRAINT "appointment_categories_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."appointment_history" ADD CONSTRAINT "appointment_history_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."article_distributions" ADD CONSTRAINT "article_distributions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."bank_payment_imports" ADD CONSTRAINT "bank_payment_imports_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."booking_blocked_dates" ADD CONSTRAINT "booking_blocked_dates_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."booking_doctor_days_off" ADD CONSTRAINT "booking_doctor_days_off_pkey" PRIMARY KEY ("slug");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_folders" ADD CONSTRAINT "chat_folders_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_messages" ADD CONSTRAINT "chat_messages_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."clinic_onboarding_submissions" ADD CONSTRAINT "clinic_onboarding_submissions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."clinic_onboarding_tokens" ADD CONSTRAINT "clinic_onboarding_tokens_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."crisalix_reconstructions" ADD CONSTRAINT "crisalix_reconstructions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deal_stages" ADD CONSTRAINT "deal_stages_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deals" ADD CONSTRAINT "deals_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."distribution_backlinks" ADD CONSTRAINT "distribution_backlinks_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."doctor_scheduling_settings" ADD CONSTRAINT "doctor_scheduling_settings_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."document_templates" ADD CONSTRAINT "document_templates_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."documents" ADD CONSTRAINT "documents_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."dropped_call_round_robin" ADD CONSTRAINT "dropped_call_round_robin_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."email_attachments" ADD CONSTRAINT "email_attachments_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."email_templates" ADD CONSTRAINT "email_templates_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."emails" ADD CONSTRAINT "emails_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."embed_form_leads" ADD CONSTRAINT "embed_form_leads_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."external_labs" ADD CONSTRAINT "external_labs_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoice_installments" ADD CONSTRAINT "invoice_installments_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."knowledge_messages" ADD CONSTRAINT "knowledge_messages_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."knowledge_topics" ADD CONSTRAINT "knowledge_topics_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."lead_imports" ADD CONSTRAINT "lead_imports_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."legacy_patient_doc_folders" ADD CONSTRAINT "legacy_patient_doc_folders_pkey" PRIMARY KEY ("patient_id", "folder_name");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."marketing_campaigns" ADD CONSTRAINT "marketing_campaigns_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."marketing_lists" ADD CONSTRAINT "marketing_lists_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medication_template_items" ADD CONSTRAINT "medication_template_items_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medication_templates" ADD CONSTRAINT "medication_templates_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_config" ADD CONSTRAINT "medidata_config_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_notifications_log" ADD CONSTRAINT "medidata_notifications_log_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_responses" ADD CONSTRAINT "medidata_responses_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_pkey" PRIMARY KEY ("patient_id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_intake_submissions" ADD CONSTRAINT "patient_intake_submissions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_merge_logs" ADD CONSTRAINT "patient_merge_logs_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_prescriptions" ADD CONSTRAINT "patient_prescriptions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patients" ADD CONSTRAINT "patients_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."providers" ADD CONSTRAINT "providers_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."public_chat_messages" ADD CONSTRAINT "public_chat_messages_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."public_chat_sessions" ADD CONSTRAINT "public_chat_sessions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_request_logs" ADD CONSTRAINT "retell_request_logs_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."service_categories" ADD CONSTRAINT "service_categories_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."service_groups" ADD CONSTRAINT "service_groups_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."services" ADD CONSTRAINT "services_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."sms_logs" ADD CONSTRAINT "sms_logs_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."swiss_insurer_laws" ADD CONSTRAINT "swiss_insurer_laws_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."swiss_insurers" ADD CONSTRAINT "swiss_insurers_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."tardoc_group_items" ADD CONSTRAINT "tardoc_group_items_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."tardoc_groups" ADD CONSTRAINT "tardoc_groups_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."user_availability" ADD CONSTRAINT "user_availability_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."users" ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."webhook_queue" ADD CONSTRAINT "webhook_queue_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_conversations" ADD CONSTRAINT "whatsapp_conversations_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_templates" ADD CONSTRAINT "whatsapp_templates_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflow_actions" ADD CONSTRAINT "workflow_actions_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflow_enrollment_steps" ADD CONSTRAINT "workflow_enrollment_steps_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflows" ADD CONSTRAINT "workflows_pkey" PRIMARY KEY ("id");
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+
+
+-- Foreign keys. Each is tolerant: a missing one relaxes integrity but does
+
+-- not stop a screen rendering, and must not abort the rest of the script.
+
+DO $$ BEGIN
+  ALTER TABLE public."appointment_history" ADD CONSTRAINT "appointment_history_appointment_id_fkey" FOREIGN KEY ("appointment_id") REFERENCES public."appointments"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."appointments" ADD CONSTRAINT "appointments_doctor_user_id_fkey" FOREIGN KEY ("doctor_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."appx_sessions" ADD CONSTRAINT "appx_sessions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_import_id_fkey" FOREIGN KEY ("import_id") REFERENCES public."bank_payment_imports"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_matched_invoice_id_fkey" FOREIGN KEY ("matched_invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."bank_payment_import_items" ADD CONSTRAINT "bank_payment_import_items_matched_installment_id_fkey" FOREIGN KEY ("matched_installment_id") REFERENCES public."invoice_installments"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."booking_blocked_dates" ADD CONSTRAINT "booking_blocked_dates_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."call_logs" ADD CONSTRAINT "call_logs_scheduled_call_id_fkey" FOREIGN KEY ("scheduled_call_id") REFERENCES public."retell_scheduled_calls"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_folder_id_fkey" FOREIGN KEY ("folder_id") REFERENCES public."chat_folders"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_conversations" ADD CONSTRAINT "chat_conversations_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_folders" ADD CONSTRAINT "chat_folders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."chat_messages" ADD CONSTRAINT "chat_messages_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES public."chat_conversations"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."clinic_onboarding_submissions" ADD CONSTRAINT "clinic_onboarding_submissions_token_id_fkey" FOREIGN KEY ("token_id") REFERENCES public."clinic_onboarding_tokens"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."consultations" ADD CONSTRAINT "consultations_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."crisalix_reconstructions" ADD CONSTRAINT "crisalix_reconstructions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_old_stage_id_fkey" FOREIGN KEY ("old_stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_new_stage_id_fkey" FOREIGN KEY ("new_stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deal_notifications" ADD CONSTRAINT "deal_notifications_changed_by_user_id_fkey" FOREIGN KEY ("changed_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deals" ADD CONSTRAINT "deals_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deals" ADD CONSTRAINT "deals_stage_id_fkey" FOREIGN KEY ("stage_id") REFERENCES public."deal_stages"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deals" ADD CONSTRAINT "deals_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."deals" ADD CONSTRAINT "deals_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."distribution_backlinks" ADD CONSTRAINT "distribution_backlinks_distribution_id_fkey" FOREIGN KEY ("distribution_id") REFERENCES public."article_distributions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."document_templates" ADD CONSTRAINT "document_templates_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."documents" ADD CONSTRAINT "documents_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."documents" ADD CONSTRAINT "documents_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."documents" ADD CONSTRAINT "documents_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."dropped_calls" ADD CONSTRAINT "dropped_calls_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."email_attachments" ADD CONSTRAINT "email_attachments_email_id_fkey" FOREIGN KEY ("email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_original_email_id_fkey" FOREIGN KEY ("original_email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."email_reply_notifications" ADD CONSTRAINT "email_reply_notifications_reply_email_id_fkey" FOREIGN KEY ("reply_email_id") REFERENCES public."emails"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."emails" ADD CONSTRAINT "emails_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."emails" ADD CONSTRAINT "emails_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."emails" ADD CONSTRAINT "emails_sent_by_user_id_fkey" FOREIGN KEY ("sent_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."embed_form_leads" ADD CONSTRAINT "embed_form_leads_converted_to_patient_id_fkey" FOREIGN KEY ("converted_to_patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoice_installments" ADD CONSTRAINT "invoice_installments_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoice_line_items" ADD CONSTRAINT "invoice_line_items_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoice_payments" ADD CONSTRAINT "invoice_payments_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_consultation_id_fkey" FOREIGN KEY ("consultation_id") REFERENCES public."consultations"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_parent_invoice_id_fkey" FOREIGN KEY ("parent_invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."invoices" ADD CONSTRAINT "invoices_installment_id_fkey" FOREIGN KEY ("installment_id") REFERENCES public."invoice_installments"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES public."knowledge_messages"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."knowledge_attachments" ADD CONSTRAINT "knowledge_attachments_topic_id_fkey" FOREIGN KEY ("topic_id") REFERENCES public."knowledge_topics"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."knowledge_messages" ADD CONSTRAINT "knowledge_messages_topic_id_fkey" FOREIGN KEY ("topic_id") REFERENCES public."knowledge_topics"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."knowledge_topics" ADD CONSTRAINT "knowledge_topics_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."legacy_patient_doc_folders" ADD CONSTRAINT "legacy_patient_doc_folders_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_campaign_id_fkey" FOREIGN KEY ("campaign_id") REFERENCES public."marketing_campaigns"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."marketing_campaign_recipients" ADD CONSTRAINT "marketing_campaign_recipients_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."marketing_campaigns" ADD CONSTRAINT "marketing_campaigns_list_id_fkey" FOREIGN KEY ("list_id") REFERENCES public."marketing_lists"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medical_records" ADD CONSTRAINT "medical_records_last_edited_by_fkey" FOREIGN KEY ("last_edited_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medication_template_items" ADD CONSTRAINT "medication_template_items_template_id_fkey" FOREIGN KEY ("template_id") REFERENCES public."medication_templates"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medication_templates" ADD CONSTRAINT "medication_templates_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_notifications_log" ADD CONSTRAINT "medidata_notifications_log_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_responses" ADD CONSTRAINT "medidata_responses_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submission_history" ADD CONSTRAINT "medidata_submission_history_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES public."invoices"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."medidata_submissions" ADD CONSTRAINT "medidata_submissions_parent_submission_id_fkey" FOREIGN KEY ("parent_submission_id") REFERENCES public."medidata_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_consultation_data" ADD CONSTRAINT "patient_consultation_data_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES public."patient_documents"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_document_versions" ADD CONSTRAINT "patient_document_versions_changed_by_fkey" FOREIGN KEY ("changed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_template_id_fkey" FOREIGN KEY ("template_id") REFERENCES public."document_templates"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_documents" ADD CONSTRAINT "patient_documents_last_edited_by_fkey" FOREIGN KEY ("last_edited_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_edit_locks" ADD CONSTRAINT "patient_edit_locks_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_form_submissions" ADD CONSTRAINT "patient_form_submissions_reviewed_by_fkey" FOREIGN KEY ("reviewed_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_health_background" ADD CONSTRAINT "patient_health_background_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_insurances" ADD CONSTRAINT "patient_insurances_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_intake_photos" ADD CONSTRAINT "patient_intake_photos_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_intake_preferences" ADD CONSTRAINT "patient_intake_preferences_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_intake_submissions" ADD CONSTRAINT "patient_intake_submissions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_measurements" ADD CONSTRAINT "patient_measurements_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_merge_logs" ADD CONSTRAINT "patient_merge_logs_performed_by_user_id_fkey" FOREIGN KEY ("performed_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_note_id_fkey" FOREIGN KEY ("note_id") REFERENCES public."patient_notes"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_note_mentions" ADD CONSTRAINT "patient_note_mentions_mentioned_user_id_fkey" FOREIGN KEY ("mentioned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_notes" ADD CONSTRAINT "patient_notes_author_user_id_fkey" FOREIGN KEY ("author_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_simulations" ADD CONSTRAINT "patient_simulations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_treatment_areas" ADD CONSTRAINT "patient_treatment_areas_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_submission_id_fkey" FOREIGN KEY ("submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patient_treatment_preferences" ADD CONSTRAINT "patient_treatment_preferences_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patients" ADD CONSTRAINT "patients_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."patients" ADD CONSTRAINT "patients_intake_submission_id_fkey" FOREIGN KEY ("intake_submission_id") REFERENCES public."patient_intake_submissions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."public_chat_messages" ADD CONSTRAINT "public_chat_messages_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES public."public_chat_sessions"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."public_chat_sessions" ADD CONSTRAINT "public_chat_sessions_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_call_logs" ADD CONSTRAINT "retell_call_logs_scheduled_call_id_fkey" FOREIGN KEY ("scheduled_call_id") REFERENCES public."retell_scheduled_calls"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_request_logs" ADD CONSTRAINT "retell_request_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."retell_scheduled_calls" ADD CONSTRAINT "retell_scheduled_calls_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."scheduled_emails" ADD CONSTRAINT "scheduled_emails_appointment_id_fkey" FOREIGN KEY ("appointment_id") REFERENCES public."appointments"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES public."service_groups"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."service_group_services" ADD CONSTRAINT "service_group_services_service_id_fkey" FOREIGN KEY ("service_id") REFERENCES public."services"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."services" ADD CONSTRAINT "services_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES public."service_categories"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."sms_logs" ADD CONSTRAINT "sms_logs_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."swiss_insurer_laws" ADD CONSTRAINT "swiss_insurer_laws_insurer_id_fkey" FOREIGN KEY ("insurer_id") REFERENCES public."swiss_insurers"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."tardoc_group_items" ADD CONSTRAINT "tardoc_group_items_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES public."tardoc_groups"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_task_comment_id_fkey" FOREIGN KEY ("task_comment_id") REFERENCES public."task_comments"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."task_comment_mentions" ADD CONSTRAINT "task_comment_mentions_mentioned_user_id_fkey" FOREIGN KEY ("mentioned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES public."tasks"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."task_comments" ADD CONSTRAINT "task_comments_author_user_id_fkey" FOREIGN KEY ("author_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."tasks" ADD CONSTRAINT "tasks_assigned_user_id_fkey" FOREIGN KEY ("assigned_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."users" ADD CONSTRAINT "users_provider_id_fkey" FOREIGN KEY ("provider_id") REFERENCES public."providers"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_conversations" ADD CONSTRAINT "whatsapp_conversations_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_staff_user_id_fkey" FOREIGN KEY ("staff_user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_read_by_fkey" FOREIGN KEY ("read_by") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES public."users"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES public."whatsapp_messages"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_notifications" ADD CONSTRAINT "whatsapp_notifications_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."whatsapp_queue" ADD CONSTRAINT "whatsapp_queue_enrollment_id_fkey" FOREIGN KEY ("enrollment_id") REFERENCES public."workflow_enrollments"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflow_actions" ADD CONSTRAINT "workflow_actions_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflow_enrollment_steps" ADD CONSTRAINT "workflow_enrollment_steps_enrollment_id_fkey" FOREIGN KEY ("enrollment_id") REFERENCES public."workflow_enrollments"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_workflow_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES public."workflows"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_patient_id_fkey" FOREIGN KEY ("patient_id") REFERENCES public."patients"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE public."workflow_enrollments" ADD CONSTRAINT "workflow_enrollments_deal_id_fkey" FOREIGN KEY ("deal_id") REFERENCES public."deals"("id") ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object OR duplicate_table OR invalid_table_definition THEN NULL
+     WHEN others THEN RAISE NOTICE 'skipped: %', SQLERRM; END $$;
 

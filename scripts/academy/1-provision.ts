@@ -104,28 +104,105 @@ async function createCaptureUser(): Promise<string> {
   return found.id;
 }
 
+const VERIFY_TABLES = [
+  "patients",
+  "appointments",
+  "consultations",
+  "deals",
+  "services",
+  "invoices",
+  "invoice_line_items",
+  "invoice_payments",
+  "dropped_calls",
+  "embed_form_leads",
+  "academy_modules",
+];
+
+async function reportRowCounts(): Promise<boolean> {
+  console.log("→ Row counts:");
+  let allPresent = true;
+  for (const table of VERIFY_TABLES) {
+    const res = await fetch(`${capture.url}/rest/v1/${table}?select=count`, {
+      headers: {
+        apikey: capture.serviceKey,
+        Authorization: `Bearer ${capture.serviceKey}`,
+        Prefer: "count=exact",
+      },
+    });
+    const total = res.ok ? (res.headers.get("content-range") ?? "?").split("/")[1] : null;
+    if (total === null) allPresent = false;
+    console.log(`  ${table.padEnd(20)} ${total ?? `MISSING (HTTP ${res.status})`}`);
+  }
+  return allPresent;
+}
+
 async function main() {
   assertNotProduction();
+
+  if (process.argv.includes("--verify")) {
+    const ok = await reportRowCounts();
+    console.log(
+      ok
+        ? "\nAll expected tables exist. Next: npm run academy:capture"
+        : "\nSome tables are missing — re-run the numbered SQL parts that failed."
+    );
+    process.exit(ok ? 0 : 1);
+  }
 
   const runner = await getRunner();
   const steps = await buildSteps();
 
   if (!runner) {
-    const combined = steps.map((s) => `-- ==== ${s.label} ====\n${s.sql}`).join("\n\n");
-    const path = resolve(OUT_DIR, "provision-all.sql");
-    writeFileSync(path, combined);
+    // The SQL editor runs a pasted script as one transaction and aborts on the
+    // first error, so emit numbered parts that can be pasted — and re-pasted —
+    // independently rather than one all-or-nothing file.
+    const parts: { file: string; sql: string }[] = [];
+
+    parts.push({ file: "01-schema.sql", sql: steps[0].sql });
+    parts.push({
+      file: "02-functions-and-policies.sql",
+      sql: steps
+        .slice(1, -1)
+        .map((s) => `-- ==== ${s.label} ====\n${s.sql}`)
+        .join("\n\n"),
+    });
+    parts.push({ file: "03-views.sql", sql: steps[steps.length - 1].sql });
+
+    // The service_role key CAN create auth users, so the seed file can be
+    // emitted with a concrete id rather than a placeholder.
+    let seedSql: string;
+    try {
+      const userId = await createCaptureUser();
+      seedSql = [
+        `INSERT INTO public.users (id, email, full_name, role, is_demo)`,
+        `VALUES ('${userId}', '${capture.userEmail}', 'Capture User', 'admin', true)`,
+        `ON CONFLICT (id) DO UPDATE SET is_demo = true, role = 'admin';`,
+        ``,
+        `SELECT public.seed_demo_data('${userId}'::uuid);`,
+        ``,
+        readFileSync(resolve(SCRIPT_DIR, "seed-capture-extras.sql"), "utf8"),
+      ].join("\n");
+    } catch (error) {
+      seedSql = `-- Could not create the capture auth user: ${(error as Error).message}\n`;
+    }
+    parts.push({ file: "04-seed.sql", sql: seedSql });
+
+    for (const part of parts) writeFileSync(resolve(OUT_DIR, part.file), part.sql);
+
     console.log(`
 Neither CAPTURE_DB_URL nor SUPABASE_ACCESS_TOKEN is set, and the anon/service_role
 keys cannot execute DDL (PostgREST is a data plane only).
 
-Everything needed has been written to:
-  ${path}
+Run these in the Supabase SQL editor for the CAPTURE project, in order. Each is
+independent and safe to re-run:
 
-To finish provisioning, either:
-  a) add CAPTURE_DB_URL to .env.capture (Supabase → Project Settings → Database →
-     Connection string → URI) and re-run this script, or
-  b) paste the file above into the Supabase SQL editor for the capture project,
-     then run: npx tsx scripts/academy/1-provision.ts --seed-only
+${parts.map((p, i) => `  ${i + 1}. scripts/academy/generated/${p.file}`).join("\n")}
+
+Then verify with:
+  npx tsx scripts/academy/1-provision.ts --verify
+
+Or skip all of this by adding CAPTURE_DB_URL to .env.capture (Supabase →
+Project Settings → Database → Connection string → URI) and re-running.
 `);
     process.exit(2);
   }
@@ -176,30 +253,7 @@ To finish provisioning, either:
     }
   }
 
-  console.log("→ Row counts:");
-  for (const table of [
-    "patients",
-    "appointments",
-    "consultations",
-    "deals",
-    "services",
-    "invoices",
-    "invoice_line_items",
-    "invoice_payments",
-    "dropped_calls",
-    "embed_form_leads",
-    "academy_modules",
-  ]) {
-    const res = await fetch(`${capture.url}/rest/v1/${table}?select=count`, {
-      headers: {
-        apikey: capture.serviceKey,
-        Authorization: `Bearer ${capture.serviceKey}`,
-        Prefer: "count=exact",
-      },
-    });
-    const range = res.headers.get("content-range") ?? "?";
-    console.log(`  ${table.padEnd(20)} ${res.ok ? range.split("/")[1] : `HTTP ${res.status}`}`);
-  }
+  await reportRowCounts();
 
   await runner.close();
   console.log(`\nDone. ${applied} statements applied, ${failed} failed (tolerated).`);
