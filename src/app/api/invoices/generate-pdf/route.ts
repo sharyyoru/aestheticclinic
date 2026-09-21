@@ -137,6 +137,20 @@ export async function POST(request: NextRequest) {
     }
 
     const patientData = patient as PatientData;
+
+    // Resolve patient AVS/AHV number: invoice snapshot first, then patient_insurances
+    let patientAvs: string = invoiceData.patient_ssn || "";
+    if (!patientAvs) {
+      const { data: avsRows } = await supabaseAdmin
+        .from("patient_insurances")
+        .select("avs_number")
+        .eq("patient_id", invoiceData.patient_id)
+        .not("avs_number", "is", null)
+        .order("is_primary", { ascending: false })
+        .limit(1);
+      patientAvs = avsRows?.[0]?.avs_number || "";
+    }
+
     
     // Fetch billing entity (clinic) data
     const fetchProvidersStart = Date.now();
@@ -315,7 +329,7 @@ export async function POST(request: NextRequest) {
         invoiceId: invoiceData.invoice_number || `INV-${invoiceId.slice(0, 8)}`,
         invoiceDate: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
         lawType: mapSumexLaw(invoiceData.health_insurance_law || "KVG"),
-        insuredId: invoiceData.patient_ssn || "",
+        insuredId: patientAvs,
         esrType: EsrType.QR,
         iban: provIban,
         paymentPeriod: 30,
@@ -350,7 +364,7 @@ export async function POST(request: NextRequest) {
         } : undefined,
         patientSex: mapSumexSex(patientData.gender || "male"),
         patientBirthdate: patientData.dob || "1990-01-01",
-        patientSsn: invoiceData.patient_ssn || "",
+        patientSsn: patientAvs,
         patientAddress: {
           familyName: patientData.last_name,
           givenName: patientData.first_name,
@@ -642,7 +656,7 @@ export async function POST(request: NextRequest) {
         // These invoices won't be sent to insurance so placeholder values are fine.
         patientSex: mapSumexSex(patientData.gender || "male"),
         patientBirthdate: patientData.dob || "1990-01-01",
-        patientSsn: invoiceData.patient_ssn || "",
+        patientSsn: patientAvs,
         patientAddress: {
           familyName: patientData.last_name || "Patient",
           givenName: patientData.first_name || "Unknown",

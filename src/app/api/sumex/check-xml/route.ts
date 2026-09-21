@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
       patientId: bodyPatientId,
       skipValidation = false,
       insurerAddress: bodyInsurerAddress,
+      avsNumber: bodyAvsNumber,
     } = body;
 
     const resolvedInvoiceId = invoiceId || consultationId;
@@ -179,6 +180,19 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+    }
+
+    // ── Resolve patient AVS/AHV number (body > invoice > patient_insurances) ──
+    let patientAvs: string = (typeof bodyAvsNumber === "string" ? bodyAvsNumber.trim() : "") || invoice.patient_ssn || "";
+    if (!patientAvs) {
+      const { data: avsRows } = await supabaseAdmin
+        .from("patient_insurances")
+        .select("avs_number")
+        .eq("patient_id", patientId)
+        .not("avs_number", "is", null)
+        .order("is_primary", { ascending: false })
+        .limit(1);
+      patientAvs = avsRows?.[0]?.avs_number || "";
     }
 
     // ── Resolve provider fields with fallbacks ──
@@ -326,7 +340,7 @@ export async function POST(request: NextRequest) {
       } : undefined,
       patientSex: mapSumexSex(patient.gender || "male"),
       patientBirthdate: patient.dob || "1990-01-01",
-      patientSsn: invoice.patient_ssn || "",
+      patientSsn: patientAvs,
       patientAddress: (() => {
         const c = patient.country?.trim() || "";
         const isCH = !c || /^(ch|switzerland|suisse|schweiz|svizzera)$/i.test(c);
