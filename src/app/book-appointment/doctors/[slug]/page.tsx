@@ -8,6 +8,14 @@ import { supabaseClient } from "@/lib/supabaseClient";
 import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString, createSwissDateTime } from "@/lib/swissTimezone";
 import { trackLeadConversion } from "@/components/GoogleTagManager";
 import MobileCalendar from "@/components/MobileCalendar";
+import {
+  composeDob,
+  invalidContactFields,
+  patientDetailsGaps,
+  splitDob,
+  REQUIRED_CONTACT_FIELDS,
+  type ContactField,
+} from "@/lib/bookingContact";
 
 const DOCTORS: Record<string, {
   name: string;
@@ -289,6 +297,18 @@ function DoctorBookingContent() {
   const [selectedTime, setSelectedTime] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Required on file so a missed first appointment can be billed. For a known
+  // (magic-link) patient, anything already on their record is hidden rather than
+  // asked for again — see `knownFields` below.
+  const [dobDay, setDobDay] = useState("");
+  const [dobMonth, setDobMonth] = useState("");
+  const [dobYear, setDobYear] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [town, setTown] = useState("");
+  const [knownFields, setKnownFields] = useState<Set<ContactField>>(new Set());
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<ContactField, string>>>({});
+
   // Fixed service - all appointments are general consultations
   const selectedService = "General Consultation";
 
@@ -319,7 +339,7 @@ function DoctorBookingContent() {
         try {
           const { data: patient } = await supabaseClient
             .from("patients")
-            .select("first_name, last_name, email, phone")
+            .select("first_name, last_name, email, phone, dob, street_address, postal_code, town")
             .eq("id", patientId)
             .single();
 
@@ -328,6 +348,19 @@ function DoctorBookingContent() {
             setLastName(patient.last_name || "");
             setEmail(patient.email || "");
             setPhone(patient.phone || "");
+            setStreetAddress(patient.street_address || "");
+            setPostalCode(patient.postal_code || "");
+            setTown(patient.town || "");
+            const parts = splitDob(patient.dob);
+            setDobDay(parts.day);
+            setDobMonth(parts.month);
+            setDobYear(parts.year);
+            // Whatever the record already holds is not asked for again.
+            const known = new Set<ContactField>();
+            for (const field of REQUIRED_CONTACT_FIELDS) {
+              if (!patientDetailsGaps(patient).includes(field)) known.add(field);
+            }
+            setKnownFields(known);
           }
         } catch (err) {
           console.error("Error fetching patient data for autofill:", err);
@@ -497,30 +530,57 @@ function DoctorBookingContent() {
     return emailRegex.test(email.trim());
   };
 
-  // Phone validation helper
-  const isValidPhone = (phone: string): boolean => {
-    const phoneRegex = /^[+]?[\d\s()-]{7,20}$/;
-    return phoneRegex.test(phone.trim());
+  // Phone validation now comes from the shared booking-contact helper, which is
+  // Swiss-aware (a bare "79 123 45 67" must become +41, not +79).
+
+  const isFrench = promoLang === "fr";
+
+  /** Fields still to collect — anything the known patient record already has is skipped. */
+  const requiredHere = REQUIRED_CONTACT_FIELDS.filter((f) => !knownFields.has(f));
+  const dobValue = composeDob(dobDay, dobMonth, dobYear);
+
+  const contactValues = {
+    phone,
+    dob: dobValue,
+    streetAddress,
+    postalCode,
+    town,
   };
 
+  /** Every detail we still need has been filled in. */
+  const contactComplete = requiredHere.every((f) => (contactValues[f] || "").trim() !== "");
+
+  const infoStepComplete =
+    Boolean(firstName) && Boolean(lastName) && Boolean(email) && contactComplete;
+
   async function handleSubmit() {
-    if (!firstName || !lastName || !email || !phone.trim() || !selectedDate || !selectedTime || !locationId) {
-      setError("Please fill in all required fields");
+    if (!firstName || !lastName || !email || !selectedDate || !selectedTime || !locationId) {
+      setError(isFrench ? "Veuillez remplir tous les champs obligatoires" : "Please fill in all required fields");
       return;
     }
 
     if (!isValidEmail(email)) {
-      setError("Please enter a valid email address");
+      setError(isFrench ? "Veuillez entrer une adresse email valide" : "Please enter a valid email address");
       return;
     }
 
-    if (!isValidPhone(phone)) {
-      setError("Please enter a valid phone number");
+    if (!contactComplete) {
+      setError(isFrench ? "Veuillez remplir tous les champs obligatoires" : "Please fill in all required fields");
+      setStep("info");
+      return;
+    }
+
+    const invalid = invalidContactFields(contactValues);
+    if (Object.keys(invalid).length > 0) {
+      setFieldErrors(invalid);
+      setError(isFrench ? "Veuillez vérifier les informations saisies" : "Please check the details you entered");
+      setStep("info");
       return;
     }
 
     setLoading(true);
     setError(null);
+    setFieldErrors({});
 
     try {
       // Create appointment date in Swiss timezone to ensure correct time
@@ -548,6 +608,10 @@ function DoctorBookingContent() {
           promo,
           promoSource,
           lang: promoLang,
+          dob: dobValue || undefined,
+          streetAddress: streetAddress.trim() || undefined,
+          postalCode: postalCode.trim() || undefined,
+          town: town.trim() || undefined,
         }),
       });
 
@@ -561,6 +625,31 @@ function DoctorBookingContent() {
           await checkAvailability(selectedDate);
           throw new Error(
             data.error || "This time is no longer available. We refreshed the times — please pick another slot."
+          );
+        }
+        // The server re-checks contact details against the stored record, so it
+        // can require a field the form thought was optional. Send the patient
+        // back to the info step with the offending fields marked.
+        if (res.status === 422) {
+          if (data?.code === "MISSING_PATIENT_DETAILS" && Array.isArray(data.missing)) {
+            const missing = data.missing as ContactField[];
+            setKnownFields((prev) => {
+              const next = new Set(prev);
+              for (const field of missing) next.delete(field);
+              return next;
+            });
+            setFieldErrors(
+              Object.fromEntries(
+                missing.map((f) => [f, isFrench ? "Champ obligatoire" : "Required"])
+              ) as Partial<Record<ContactField, string>>
+            );
+          } else if (data?.code === "INVALID_PATIENT_DETAILS" && data.fields) {
+            setFieldErrors(data.fields as Partial<Record<ContactField, string>>);
+          }
+          setStep("info");
+          throw new Error(
+            data.error ||
+              (isFrench ? "Veuillez compléter vos informations" : "Please complete your details")
           );
         }
         throw new Error(data.error || "Failed to book appointment");
@@ -733,7 +822,7 @@ function DoctorBookingContent() {
                 <button
                   key={s}
                   onClick={() => {
-                    if (s === "info" || (s === "datetime" && firstName && lastName && email && phone.trim()) ||
+                    if (s === "info" || (s === "datetime" && infoStepComplete) ||
                         (s === "confirm" && selectedDate && selectedTime)) {
                       setStep(s);
                     }
@@ -821,43 +910,188 @@ function DoctorBookingContent() {
                     style={{ fontSize: '16px' }}
                   />
                 </div>
-                <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1.5">Phone Number *</label>
-                  <input
-                    id="phone"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+41 XX XXX XX XX"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none transition-all touch-manipulation"
-                    style={{ fontSize: '16px' }}
-                  />
-                </div>
+                {!knownFields.has("phone") && (
+                  <div>
+                    <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1.5">
+                      {isFrench ? "Numéro de téléphone *" : "Phone Number *"}
+                    </label>
+                    <input
+                      id="phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+41 XX XXX XX XX"
+                      className={`w-full rounded-xl border px-4 py-3.5 text-base text-slate-900 focus:ring-2 outline-none transition-all touch-manipulation ${
+                        fieldErrors.phone
+                          ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+                          : "border-slate-200 focus:border-slate-400 focus:ring-slate-200"
+                      }`}
+                      style={{ fontSize: '16px' }}
+                    />
+                    {fieldErrors.phone && <p className="mt-1 text-xs text-red-600">{fieldErrors.phone}</p>}
+                  </div>
+                )}
+
+                {/* Date of birth and postal address: needed on file so a missed
+                    first appointment can be billed. Hidden when already on record. */}
+                {!knownFields.has("dob") && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      {isFrench ? "Date de naissance *" : "Date of Birth *"}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={dobDay}
+                        onChange={(e) => setDobDay(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                        placeholder={isFrench ? "JJ" : "DD"}
+                        aria-label={isFrench ? "Jour" : "Day"}
+                        className="w-20 rounded-xl border border-slate-200 px-3 py-3.5 text-base text-center text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none"
+                        style={{ fontSize: '16px' }}
+                      />
+                      <select
+                        value={dobMonth}
+                        onChange={(e) => setDobMonth(e.target.value)}
+                        aria-label={isFrench ? "Mois" : "Month"}
+                        className="flex-1 rounded-xl border border-slate-200 px-3 py-3.5 text-base text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none"
+                        style={{ fontSize: '16px' }}
+                      >
+                        <option value="">{isFrench ? "MM" : "MM"}</option>
+                        {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")).map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={dobYear}
+                        onChange={(e) => setDobYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                        placeholder={isFrench ? "AAAA" : "YYYY"}
+                        aria-label={isFrench ? "Année" : "Year"}
+                        className="w-24 rounded-xl border border-slate-200 px-3 py-3.5 text-base text-center text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 outline-none"
+                        style={{ fontSize: '16px' }}
+                      />
+                    </div>
+                    {fieldErrors.dob && <p className="mt-1 text-xs text-red-600">{fieldErrors.dob}</p>}
+                  </div>
+                )}
+
+                {!knownFields.has("streetAddress") && (
+                  <div>
+                    <label htmlFor="streetAddress" className="block text-sm font-medium text-slate-700 mb-1.5">
+                      {isFrench ? "Adresse (rue et numéro) *" : "Street Address & Number *"}
+                    </label>
+                    <input
+                      id="streetAddress"
+                      type="text"
+                      autoComplete="street-address"
+                      required
+                      value={streetAddress}
+                      onChange={(e) => setStreetAddress(e.target.value)}
+                      placeholder={isFrench ? "Rue du Rhône 17" : "Rue du Rhône 17"}
+                      className={`w-full rounded-xl border px-4 py-3.5 text-base text-slate-900 focus:ring-2 outline-none transition-all touch-manipulation ${
+                        fieldErrors.streetAddress
+                          ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+                          : "border-slate-200 focus:border-slate-400 focus:ring-slate-200"
+                      }`}
+                      style={{ fontSize: '16px' }}
+                    />
+                    {fieldErrors.streetAddress && (
+                      <p className="mt-1 text-xs text-red-600">{fieldErrors.streetAddress}</p>
+                    )}
+                  </div>
+                )}
+
+                {(!knownFields.has("postalCode") || !knownFields.has("town")) && (
+                  <div className="grid grid-cols-3 gap-3">
+                    {!knownFields.has("postalCode") && (
+                      <div>
+                        <label htmlFor="postalCode" className="block text-sm font-medium text-slate-700 mb-1.5">
+                          {isFrench ? "NPA *" : "Postal Code *"}
+                        </label>
+                        <input
+                          id="postalCode"
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="postal-code"
+                          required
+                          value={postalCode}
+                          onChange={(e) => setPostalCode(e.target.value)}
+                          placeholder="1204"
+                          className={`w-full rounded-xl border px-4 py-3.5 text-base text-slate-900 focus:ring-2 outline-none transition-all ${
+                            fieldErrors.postalCode
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+                              : "border-slate-200 focus:border-slate-400 focus:ring-slate-200"
+                          }`}
+                          style={{ fontSize: '16px' }}
+                        />
+                        {fieldErrors.postalCode && (
+                          <p className="mt-1 text-xs text-red-600">{fieldErrors.postalCode}</p>
+                        )}
+                      </div>
+                    )}
+                    {!knownFields.has("town") && (
+                      <div className="col-span-2">
+                        <label htmlFor="town" className="block text-sm font-medium text-slate-700 mb-1.5">
+                          {isFrench ? "Localité *" : "Town *"}
+                        </label>
+                        <input
+                          id="town"
+                          type="text"
+                          autoComplete="address-level2"
+                          required
+                          value={town}
+                          onChange={(e) => setTown(e.target.value)}
+                          placeholder="Genève"
+                          className={`w-full rounded-xl border px-4 py-3.5 text-base text-slate-900 focus:ring-2 outline-none transition-all ${
+                            fieldErrors.town
+                              ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+                              : "border-slate-200 focus:border-slate-400 focus:ring-slate-200"
+                          }`}
+                          style={{ fontSize: '16px' }}
+                        />
+                        {fieldErrors.town && <p className="mt-1 text-xs text-red-600">{fieldErrors.town}</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {requiredHere.length > 0 && (
+                  <p className="text-xs leading-relaxed text-slate-500">
+                    {isFrench
+                      ? "Ces informations sont nécessaires pour votre dossier patient et, en cas de rendez-vous manqué, pour la facturation."
+                      : "Required for your patient file and, in case of a missed appointment, for billing."}
+                  </p>
+                )}
+
                 <div className="pt-4">
                   <button
                     type="button"
                     onClick={() => {
-                      if (!firstName || !lastName || !email || !phone.trim()) {
-                        setError("Please fill in all required fields");
+                      if (!infoStepComplete) {
+                        setError(isFrench ? "Veuillez remplir tous les champs obligatoires" : "Please fill in all required fields");
                         return;
                       }
                       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                       if (!emailRegex.test(email.trim())) {
-                        setError("Please enter a valid email address");
+                        setError(isFrench ? "Veuillez entrer une adresse email valide" : "Please enter a valid email address");
                         return;
                       }
-                      const phoneRegex = /^[+]?[\d\s()-]{7,20}$/;
-                      if (!phoneRegex.test(phone.trim())) {
-                        setError("Please enter a valid phone number");
+                      const invalid = invalidContactFields(contactValues);
+                      if (Object.keys(invalid).length > 0) {
+                        setFieldErrors(invalid);
+                        setError(isFrench ? "Veuillez vérifier les informations saisies" : "Please check the details you entered");
                         return;
                       }
+                      setFieldErrors({});
                       setStep("datetime");
                       setError(null);
                     }}
-                    disabled={!firstName || !lastName || !email || !phone.trim()}
+                    disabled={!infoStepComplete}
                     className="w-full bg-slate-900 text-white py-4 rounded-xl font-medium hover:bg-slate-800 active:bg-slate-700 transition-colors touch-manipulation active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Continue

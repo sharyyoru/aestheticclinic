@@ -61,6 +61,16 @@ Complex billing logic lives in `src/lib/`:
 - `medidata.ts` — Medidata patient/provider lookup (19KB)
 - `swissQrBill.ts` — Swiss QR Bill generation
 
+### Booking Contact Rules (`src/lib/bookingContact.ts`)
+Four paths create bookings — public doctor pages, the website embed, the patient app, and the AI phone agent — so the contact-detail rules live in one helper. Do not re-implement them per path.
+- Phone, date of birth, street, postal code and town must end up on the patient record, so a missed first appointment can be billed. A field is only demanded when the **stored record** lacks it.
+- `fillOnlyEmpty()` is what persists a booking's details: it completes blank fields and **never overwrites** an existing value. Writing a matched patient's details back was the fix for online bookings silently discarding the phone number a patient had typed.
+- `normalizeBookingPhone()` — use this, **not** `normalizePhone` from `src/lib/retell.ts`. The Retell helper maps a bare `79 123 45 67` to `+79…` (Russia), and that is the format the booking placeholders suggest. The Retell one is left alone because live call paths depend on it.
+- The public API returns **422** with `code: "MISSING_PATIENT_DETAILS"` / `"INVALID_PATIENT_DETAILS"` so forms can highlight specific fields; 400 remains "identity/slot fields absent".
+- Patient resolution in `api/public/book-appointment` happens **before** validation (needed to know what the record has) but patient *creation* stays **after** the availability check, so a rejected slot never leaves an orphan patient.
+- AI phone bookings are exempt: they tag the appointment `[Details: pending]` and open a reception task instead of blocking.
+- "Missing details" is **derived** from the patient record (`patientDetailsGaps`) — there is no column to backfill or keep in sync.
+
 ### Public Documentation Site (`/documentation`)
 Public, SEO-indexed end-user docs — no auth, no app shell, always light themed.
 - Pages: `src/app/documentation/page.tsx` (hub) + `[slug]/page.tsx` (one static page per module, via `generateStaticParams`)

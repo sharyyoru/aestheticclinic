@@ -4,6 +4,7 @@ import { formatSwissDateWithWeekday, formatSwissTimeAmPm, parseSwissDateTimeLoca
 import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
 import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
 import { isHardBlock, type AppointmentRow } from "@/lib/appointmentAvailability";
+import { describeGaps, patientDetailsGaps } from "@/lib/bookingContact";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -305,9 +306,21 @@ export async function POST(request: NextRequest) {
     const locationInfo = LOCATION_DETAILS[locationId] || LOCATION_DETAILS.rhone;
     const fullLocation = `${locationInfo.name} - ${locationInfo.address}, ${locationInfo.city}`;
 
+    // A postal address and date of birth cannot realistically be collected by
+    // voice, so AI bookings are never blocked on them. Instead the appointment is
+    // tagged and a task is opened below, so reception collects them before the
+    // visit — otherwise a no-show could not be billed.
+    const { data: bookedPatient } = await supabase
+      .from("patients")
+      .select("phone, dob, street_address, postal_code, town")
+      .eq("id", patientId)
+      .maybeSingle();
+    const detailGaps = patientDetailsGaps(bookedPatient ?? null);
+
     // Create the appointment (first consultations are 30 minutes)
     const endTime = new Date(appointmentDate.getTime() + 30 * 60 * 1000); // 30 min duration
-    const reason = `${service.name}${appointment.notes ? ` - ${appointment.notes}` : ""} [Doctor: ${doctorName}] [Location: ${locationInfo.name}] [Retell AI Booking] [Call: ${effectiveCallId}]`;
+    const detailsTag = detailGaps.length > 0 ? " [Details: pending]" : "";
+    const reason = `${service.name}${appointment.notes ? ` - ${appointment.notes}` : ""} [Doctor: ${doctorName}] [Location: ${locationInfo.name}] [Retell AI Booking] [Call: ${effectiveCallId}]${detailsTag}`;
 
     // Build appointment insert data - don't include source if column doesn't exist
     const appointmentInsert: Record<string, unknown> = {
@@ -336,6 +349,34 @@ export async function POST(request: NextRequest) {
         { error: "Failed to create appointment", details: aptError?.message, code: aptError?.code },
         { status: 500 }
       );
+    }
+
+    // Reception task for the details the agent could not collect. Best-effort:
+    // a failed task must never fail the booking.
+    if (detailGaps.length > 0) {
+      try {
+        const patientLabel = `${patient?.first_name || "the patient"} ${patient?.last_name || ""}`.trim();
+        const { error: detailsTaskError } = await supabase.from("tasks").insert({
+          name: `Collect ${describeGaps(detailGaps)} from ${patientLabel}`,
+          content:
+            `Booked by the AI phone agent, which cannot collect these by voice.\n` +
+            `Needed before ${formatSwissDateWithWeekday(appointmentDate)} at ${formatSwissTimeAmPm(appointmentDate)} ` +
+            `so the appointment can be billed if missed.\n` +
+            `Missing: ${describeGaps(detailGaps)}\nCall ID: ${effectiveCallId}`,
+          status: "not_started",
+          priority: "high",
+          type: "call",
+          activity_date: appointmentDate.toISOString(),
+          patient_id: patientId,
+        });
+        if (detailsTaskError) {
+          console.error("[Retell Book] Failed to create details task:", detailsTaskError);
+        } else {
+          console.log(`[Retell Book] Details task created for patient ${patientId}: ${detailGaps.join(", ")}`);
+        }
+      } catch (err) {
+        console.error("[Retell Book] Failed to create details task:", err);
+      }
     }
 
     // Move the patient's deal to "Appointment Set" (or create it there if none

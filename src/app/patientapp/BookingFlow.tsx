@@ -11,12 +11,23 @@ import {
   getSwissDayRange,
   getSwissSlotString,
 } from "@/lib/swissTimezone";
+import {
+  composeDob,
+  invalidContactFields,
+  patientDetailsGaps,
+  splitDob,
+  type ContactField,
+} from "@/lib/bookingContact";
 
 type PatientInfo = {
   first_name: string | null;
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  dob?: string | null;
+  street_address?: string | null;
+  postal_code?: string | null;
+  town?: string | null;
 };
 
 type Doctor = { slug: string; name: string; specialty: string; email: string };
@@ -118,7 +129,13 @@ function formatDateLabel(dateStr: string): string {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 }
 
-type Step = "location" | "doctor" | "datetime" | "confirm" | "success";
+/**
+ * "details" only appears when the patient's own record is missing something the
+ * clinic needs. Previously a record with no phone made booking impossible: the
+ * flow posted an empty phone and the API rejected it with "Missing required
+ * fields", with nothing the patient could do about it.
+ */
+type Step = "location" | "doctor" | "datetime" | "details" | "confirm" | "success";
 
 export default function BookingFlow({
   patient,
@@ -140,6 +157,22 @@ export default function BookingFlow({
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Details the clinic needs but this patient's record does not have yet.
+  const gaps = patientDetailsGaps(patient);
+  const [phone, setPhone] = useState(patient.phone || "");
+  const initialDob = splitDob(patient.dob);
+  const [dobDay, setDobDay] = useState(initialDob.day);
+  const [dobMonth, setDobMonth] = useState(initialDob.month);
+  const [dobYear, setDobYear] = useState(initialDob.year);
+  const [streetAddress, setStreetAddress] = useState(patient.street_address || "");
+  const [postalCode, setPostalCode] = useState(patient.postal_code || "");
+  const [town, setTown] = useState(patient.town || "");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<ContactField, string>>>({});
+
+  const dobValue = composeDob(dobDay, dobMonth, dobYear);
+  const contactValues = { phone, dob: dobValue, streetAddress, postalCode, town };
+  const detailsComplete = gaps.every((f) => (contactValues[f] || "").trim() !== "");
 
   const doctor = doctorSlug ? DOCTORS[doctorSlug] : null;
 
@@ -200,7 +233,7 @@ export default function BookingFlow({
           firstName: patient.first_name || "",
           lastName: patient.last_name || "",
           email: patient.email || "",
-          phone: patient.phone || "",
+          phone,
           appointmentDate: appointmentDate.toISOString(),
           service: "General Consultation",
           doctorSlug: doctor.slug,
@@ -208,10 +241,24 @@ export default function BookingFlow({
           doctorEmail: doctor.email,
           notes,
           location: LOCATION_NAMES[locationId] || locationId,
+          dob: dobValue || undefined,
+          streetAddress: streetAddress.trim() || undefined,
+          postalCode: postalCode.trim() || undefined,
+          town: town.trim() || undefined,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to book appointment");
+      if (!res.ok) {
+        // The record was missing something after all — send them to the details
+        // step rather than showing a dead-end error.
+        if (res.status === 422) {
+          setStep("details");
+          if (data?.code === "INVALID_PATIENT_DETAILS" && data.fields) {
+            setFieldErrors(data.fields as Partial<Record<ContactField, string>>);
+          }
+        }
+        throw new Error(data.error || "Failed to book appointment");
+      }
       setStep("success");
       onBooked();
     } catch (err) {
@@ -221,11 +268,18 @@ export default function BookingFlow({
     }
   }
 
+  /** Details step is skipped entirely when the record is already complete. */
+  function goForwardFromDateTime() {
+    setError(null);
+    setStep(gaps.length > 0 ? "details" : "confirm");
+  }
+
   function goBack() {
     setError(null);
     if (step === "doctor") setStep("location");
     else if (step === "datetime") setStep("doctor");
-    else if (step === "confirm") setStep("datetime");
+    else if (step === "details") setStep("datetime");
+    else if (step === "confirm") setStep(gaps.length > 0 ? "details" : "datetime");
   }
 
   const stepTitle =
@@ -235,6 +289,8 @@ export default function BookingFlow({
       ? "Choose Specialist"
       : step === "datetime"
       ? "Pick Date & Time"
+      : step === "details"
+      ? "Complete Your Details"
       : step === "confirm"
       ? "Confirm Booking"
       : "Booked";
@@ -386,9 +442,151 @@ export default function BookingFlow({
             </div>
 
             <button
-              onClick={() => setStep("confirm")}
+              onClick={goForwardFromDateTime}
               disabled={!selectedDate || !selectedTime}
               className="w-full py-3.5 bg-sky-500 text-white rounded-2xl font-semibold shadow-lg shadow-sky-500/25 disabled:opacity-40"
+            >
+              Continue
+            </button>
+          </div>
+        )}
+
+        {/* DETAILS — only shown when the patient's record is missing something */}
+        {step === "details" && (
+          <div className="space-y-5">
+            <p className="text-sm leading-relaxed text-slate-500">
+              We need a few details for your patient file before confirming. They are also used
+              for billing if an appointment is missed.
+            </p>
+
+            <div className="space-y-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              {gaps.includes("phone") && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Mobile number</label>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+41 79 123 45 67"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                  />
+                  {fieldErrors.phone && <p className="mt-1 text-xs text-red-600">{fieldErrors.phone}</p>}
+                </div>
+              )}
+
+              {gaps.includes("dob") && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Date of birth</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={dobDay}
+                      onChange={(e) => setDobDay(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                      placeholder="DD"
+                      aria-label="Day"
+                      className="w-16 rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-center text-base text-slate-900 focus:border-sky-500 focus:outline-none"
+                    />
+                    <select
+                      value={dobMonth}
+                      onChange={(e) => setDobMonth(e.target.value)}
+                      aria-label="Month"
+                      className="flex-1 rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-base text-slate-900 focus:border-sky-500 focus:outline-none"
+                    >
+                      <option value="">MM</option>
+                      {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")).map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={dobYear}
+                      onChange={(e) => setDobYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="YYYY"
+                      aria-label="Year"
+                      className="w-20 rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-center text-base text-slate-900 focus:border-sky-500 focus:outline-none"
+                    />
+                  </div>
+                  {fieldErrors.dob && <p className="mt-1 text-xs text-red-600">{fieldErrors.dob}</p>}
+                </div>
+              )}
+
+              {gaps.includes("streetAddress") && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Street and number</label>
+                  <input
+                    type="text"
+                    autoComplete="street-address"
+                    value={streetAddress}
+                    onChange={(e) => setStreetAddress(e.target.value)}
+                    placeholder="Rue du Rhône 17"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                  />
+                  {fieldErrors.streetAddress && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.streetAddress}</p>
+                  )}
+                </div>
+              )}
+
+              {(gaps.includes("postalCode") || gaps.includes("town")) && (
+                <div className="grid grid-cols-3 gap-3">
+                  {gaps.includes("postalCode") && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">NPA</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="postal-code"
+                        value={postalCode}
+                        onChange={(e) => setPostalCode(e.target.value)}
+                        placeholder="1204"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-sky-500 focus:outline-none"
+                      />
+                      {fieldErrors.postalCode && (
+                        <p className="mt-1 text-xs text-red-600">{fieldErrors.postalCode}</p>
+                      )}
+                    </div>
+                  )}
+                  {gaps.includes("town") && (
+                    <div className="col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Town</label>
+                      <input
+                        type="text"
+                        autoComplete="address-level2"
+                        value={town}
+                        onChange={(e) => setTown(e.target.value)}
+                        placeholder="Genève"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-sky-500 focus:outline-none"
+                      />
+                      {fieldErrors.town && <p className="mt-1 text-xs text-red-600">{fieldErrors.town}</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {error && (
+              <div className="rounded-xl border border-red-100 bg-red-50 p-3">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                const invalid = invalidContactFields(contactValues);
+                if (Object.keys(invalid).length > 0) {
+                  setFieldErrors(invalid);
+                  setError("Please check the details you entered");
+                  return;
+                }
+                setFieldErrors({});
+                setError(null);
+                setStep("confirm");
+              }}
+              disabled={!detailsComplete}
+              className="w-full rounded-2xl bg-sky-500 py-3.5 font-semibold text-white shadow-lg shadow-sky-500/25 disabled:opacity-40"
             >
               Continue
             </button>

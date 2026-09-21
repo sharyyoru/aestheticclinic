@@ -297,6 +297,32 @@ export const schedulingModules: DocModule[] = [
         ],
       },
       {
+        id: "required-details",
+        heading: "Details the patient must provide",
+        intro:
+          "A booking cannot be confirmed without enough information to send a bill, because a missed first appointment is otherwise unbillable.",
+        table: {
+          columns: ["Detail", "Why it is required"],
+          rows: [
+            ["Name and email", "Identifies the patient and carries the confirmation."],
+            ["Mobile number", "Appointment reminders go out by WhatsApp first, then email."],
+            ["Date of birth", "Identifies the patient on the invoice and in the medical record."],
+            ["Street and number, postal code, town", "A postal address, so a missed appointment can be invoiced."],
+          ],
+        },
+        bullets: [
+          "Anything already on the patient's record is not asked for again — a returning patient reached by a personal booking link sees only the gaps",
+          "The form explains why the details are needed, rather than presenting unexplained mandatory fields",
+          "Details a patient supplies are written to the blank fields on their record, and never overwrite a value the clinic has already corrected",
+        ],
+        callouts: [
+          {
+            kind: "note",
+            body: "Appointments taken by the AI phone agent are the exception: a postal address cannot reliably be collected by voice, so the booking goes ahead, the appointment is tagged as having details pending, and a task is opened for reception to collect them before the visit.",
+          },
+        ],
+      },
+      {
         id: "doctor-pages",
         heading: "Per-doctor booking pages",
         intro:
@@ -356,6 +382,7 @@ export const schedulingModules: DocModule[] = [
         heading: "What happens after a patient books",
         bullets: [
           "A patient record is created if the person is new, or matched if they already exist",
+          "Any blank field on a matched record is completed from what the patient just entered",
           "The appointment appears in the agenda for the chosen doctor",
           "A booking confirmation is sent to the patient",
           "A reminder is scheduled for the day before",
@@ -364,6 +391,10 @@ export const schedulingModules: DocModule[] = [
           {
             kind: "tip",
             body: "Check Online Bookings at the start of the day. Self-booked patients sometimes choose a slot that is technically free but clinically wrong, and it is easier to move it early.",
+          },
+          {
+            kind: "note",
+            body: "Online Bookings flags upcoming appointments whose patient is still missing a phone number, date of birth or address, and the agenda marks them with a warning. Both are read-only prompts to chase the patient before the visit.",
           },
         ],
       },

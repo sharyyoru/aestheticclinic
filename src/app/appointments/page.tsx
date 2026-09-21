@@ -5,6 +5,7 @@ import Link from "next/link";
 import { normalizeDoctorName, fetchAllCalendarPages } from "@/lib/appointmentCalendar";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { isOperationRoomAppointment } from "@/lib/appointmentComms";
+import { describeGaps, patientDetailsGaps } from "@/lib/bookingContact";
 import { getAppointmentNotes, getAppointmentTitle, getAppointmentDisplayName } from "@/lib/appointmentUtils";
 import {
   formatSwissMonthYear,
@@ -62,6 +63,9 @@ type AppointmentPatient = {
   email: string | null;
   phone: string | null;
   dob: string | null;
+  street_address?: string | null;
+  postal_code?: string | null;
+  town?: string | null;
 };
 
 type AppointmentPatientSuggestion = {
@@ -1430,7 +1434,7 @@ export default function CalendarPage() {
         const data = await fetchAllCalendarPages((from, to) => supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, temporary_text, source, patient:patients(id, first_name, last_name, email, phone, dob), provider:providers(id, name)",
+            "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, temporary_text, source, patient:patients(id, first_name, last_name, email, phone, dob, street_address, postal_code, town), provider:providers(id, name)",
           )
           .neq("status", "cancelled")
           .gte("start_time", fromIso)
@@ -2942,7 +2946,7 @@ export default function CalendarPage() {
         .from("appointments")
         .insert(insertData)
         .select(
-          "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, source, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, source, patient:patients(id, first_name, last_name, email, phone, dob, street_address, postal_code, town), provider:providers(id, name)",
         )
         .single();
 
@@ -3229,7 +3233,7 @@ export default function CalendarPage() {
         .update(updatePayload)
         .eq("id", editingAppointment.id)
         .select(
-          "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone), provider:providers(id, name)",
+          "id, patient_id, provider_id, doctor_user_id, start_time, end_time, status, reason, title, notes, location, patient:patients(id, first_name, last_name, email, phone, dob, street_address, postal_code, town), provider:providers(id, name)",
         )
         .single();
 
@@ -4489,6 +4493,16 @@ export default function CalendarPage() {
                                     const patientName = `${appt.patient?.first_name ?? ""} ${appt.patient?.last_name ?? ""}`.trim().replace(/\s+/g, " ");
                                     const patientPhone = appt.patient?.phone ?? null;
                                     const patientEmail = appt.patient?.email ?? null;
+                                    // Details the clinic needs in order to bill a
+                                    // missed appointment. A missing phone used to
+                                    // be an absent tooltip row, i.e. invisible.
+                                    const detailGaps = appt.patient ? patientDetailsGaps(appt.patient) : [];
+                                    const patientAddress = [
+                                      appt.patient?.street_address,
+                                      [appt.patient?.postal_code, appt.patient?.town].filter(Boolean).join(" "),
+                                    ]
+                                      .filter(Boolean)
+                                      .join(", ");
                                     const durationMins = end && !Number.isNaN(end.getTime()) 
                                       ? Math.round((end.getTime() - start.getTime()) / 60000) 
                                       : null;
@@ -4525,6 +4539,14 @@ export default function CalendarPage() {
                                             {dayStatusIcon && <span className="flex-shrink-0">{dayStatusIcon}</span>}
                                             {isCopiedPatient && <span className="flex-shrink-0 text-blue-500">📋</span>}
                                             {appt.source === 'online_booking' && <span className="flex-shrink-0 inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-emerald-100 text-emerald-700 border border-emerald-300" title="Booked via online booking">🌐 Online</span>}
+                                            {detailGaps.length > 0 && (
+                                              <span
+                                                className="flex-shrink-0 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-medium bg-amber-100 text-amber-800 border border-amber-300"
+                                                title={`Missing ${describeGaps(detailGaps)} — cannot bill a no-show`}
+                                              >
+                                                ⚠ {detailGaps.length}
+                                              </span>
+                                            )}
                                             <span className={`truncate ${isCopiedPatient ? 'text-blue-600 font-semibold' : ''}`}>{patientName || serviceLabel}</span>
                                           </div>
                                           <div className="appt-pill-text truncate text-[10px]">
@@ -4561,6 +4583,16 @@ export default function CalendarPage() {
                                                 month: 'short', 
                                                 day: 'numeric' 
                                               })}
+                                            </div>
+                                          )}
+                                          {patientAddress && (
+                                            <div className="text-slate-500">
+                                              <span className="text-slate-400">adresse:</span> {patientAddress}
+                                            </div>
+                                          )}
+                                          {detailGaps.length > 0 && (
+                                            <div className="mt-1 rounded bg-amber-50 px-1.5 py-1 text-amber-800 border border-amber-200">
+                                              ⚠ Missing {describeGaps(detailGaps)}
                                             </div>
                                           )}
                                           {appt.location && <div className="text-slate-500 mt-1">📍 {appt.location}</div>}

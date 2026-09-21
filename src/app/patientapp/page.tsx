@@ -247,6 +247,23 @@ export default function PatientAppPage() {
     loadTab(activeTab);
   }, [activeTab, loadTab]);
 
+  /**
+   * The profile is normally only fetched when the profile tab is opened, but the
+   * booking flow needs it to know which details the record already holds —
+   * without it the patient would be asked for an address we already have.
+   */
+  const openBooking = useCallback(async () => {
+    if (!profile) {
+      try {
+        setProfile(await apiFetch("profile"));
+      } catch {
+        // Fall through: the booking flow will ask for the details it cannot
+        // confirm, and the server only fills blanks anyway.
+      }
+    }
+    setShowBooking(true);
+  }, [profile]);
+
   function handleLogout() {
     localStorage.removeItem("patientapp_token");
     localStorage.removeItem("patientapp_patient");
@@ -363,7 +380,7 @@ export default function PatientAppPage() {
 
                 {/* Book appointment CTA */}
                 <button
-                  onClick={() => setShowBooking(true)}
+                  onClick={() => { void openBooking(); }}
                   className="w-full py-3.5 bg-sky-500 text-white rounded-2xl font-semibold flex items-center justify-center gap-2 shadow-lg shadow-sky-500/25 active:bg-sky-600"
                 >
                   <Plus className="w-5 h-5" />
@@ -448,7 +465,7 @@ export default function PatientAppPage() {
                 <div className="flex items-center justify-between">
                   <h1 className="text-xl font-bold text-slate-900">My Appointments</h1>
                   <button
-                    onClick={() => setShowBooking(true)}
+                    onClick={() => { void openBooking(); }}
                     className="flex items-center gap-1.5 bg-sky-500 text-white text-sm font-semibold px-3 py-2 rounded-xl active:bg-sky-600"
                   >
                     <Plus className="w-4 h-4" /> Book
@@ -872,6 +889,11 @@ export default function PatientAppPage() {
             last_name: profile?.patient?.last_name ?? patient?.last_name ?? null,
             email: profile?.patient?.email ?? patient?.email ?? null,
             phone: profile?.patient?.phone ?? null,
+            // Passed so the booking flow only asks for details the record lacks.
+            dob: profile?.patient?.dob ?? null,
+            street_address: profile?.patient?.street_address ?? null,
+            postal_code: profile?.patient?.postal_code ?? null,
+            town: profile?.patient?.town ?? null,
           }}
           onClose={() => setShowBooking(false)}
           onBooked={() => {
@@ -888,7 +910,7 @@ export default function PatientAppPage() {
           onClose={() => setShowServices(false)}
           onBook={() => {
             setShowServices(false);
-            setShowBooking(true);
+            void openBooking();
           }}
           onAsk={(svc) => setAskService(svc)}
         />

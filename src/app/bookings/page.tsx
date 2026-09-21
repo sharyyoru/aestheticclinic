@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { describeGaps, patientDetailsGaps } from "@/lib/bookingContact";
 
 type BookingPatient = {
   id: string;
@@ -10,6 +11,10 @@ type BookingPatient = {
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  dob: string | null;
+  street_address: string | null;
+  postal_code: string | null;
+  town: string | null;
 };
 
 type Booking = {
@@ -74,6 +79,7 @@ export default function BookingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showOnlyMissingDetails, setShowOnlyMissingDetails] = useState(false);
   const [dateRange, setDateRange] = useState<"all" | "today" | "week" | "month">("all");
 
   useEffect(() => {
@@ -85,7 +91,7 @@ export default function BookingsPage() {
         let query = supabaseClient
           .from("appointments")
           .select(
-            "id, patient_id, start_time, end_time, status, reason, location, created_at, patient:patients(id, first_name, last_name, email, phone)"
+            "id, patient_id, start_time, end_time, status, reason, location, created_at, patient:patients(id, first_name, last_name, email, phone, dob, street_address, postal_code, town)"
           )
           .order("created_at", { ascending: false });
 
@@ -131,8 +137,20 @@ export default function BookingsPage() {
     fetchBookings();
   }, [filterStatus, dateRange]);
 
+  /**
+   * Upcoming bookings whose patient record still lacks a detail the clinic needs
+   * to bill a no-show. Read-only: nothing here writes.
+   */
+  const now = Date.now();
+  const missingDetailBookings = bookings.filter(
+    (b) =>
+      new Date(b.start_time).getTime() >= now &&
+      b.status !== "cancelled" &&
+      patientDetailsGaps(b.patient).length > 0
+  );
+
   // Filter bookings by search query
-  const filteredBookings = bookings.filter((booking) => {
+  const filteredBookings = (showOnlyMissingDetails ? missingDetailBookings : bookings).filter((booking) => {
     if (!searchQuery) return true;
     
     const query = searchQuery.toLowerCase();
@@ -179,6 +197,35 @@ export default function BookingsPage() {
             Full Calendar
           </Link>
         </div>
+
+        {/* Upcoming bookings we could not bill if the patient failed to attend. */}
+        {missingDetailBookings.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowOnlyMissingDetails((v) => !v)}
+            className={`mb-6 flex w-full items-center justify-between gap-4 rounded-xl border p-4 text-left transition-colors ${
+              showOnlyMissingDetails
+                ? "border-amber-400 bg-amber-100"
+                : "border-amber-200 bg-amber-50 hover:bg-amber-100"
+            }`}
+          >
+            <span className="flex items-center gap-3">
+              <span className="text-xl">⚠</span>
+              <span>
+                <span className="block text-sm font-semibold text-amber-900">
+                  {missingDetailBookings.length} upcoming{" "}
+                  {missingDetailBookings.length === 1 ? "booking" : "bookings"} missing patient details
+                </span>
+                <span className="block text-xs text-amber-800">
+                  Without a phone, date of birth and postal address a missed appointment cannot be billed.
+                </span>
+              </span>
+            </span>
+            <span className="shrink-0 text-xs font-medium text-amber-900 underline">
+              {showOnlyMissingDetails ? "Show all bookings" : "Show only these"}
+            </span>
+          </button>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
@@ -342,10 +389,23 @@ export default function BookingsPage() {
                               {patientName.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <div className="font-medium text-slate-900">{patientName}</div>
+                              <div className="font-medium text-slate-900">
+                                {booking.patient?.id ? (
+                                  <Link href={`/patients/${booking.patient.id}`} className="hover:underline">
+                                    {patientName}
+                                  </Link>
+                                ) : (
+                                  patientName
+                                )}
+                              </div>
                               <div className="text-sm text-slate-500">
                                 {booking.patient?.email || booking.patient?.phone || "No contact"}
                               </div>
+                              {patientDetailsGaps(booking.patient).length > 0 && (
+                                <div className="mt-1 inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+                                  ⚠ Missing {describeGaps(patientDetailsGaps(booking.patient))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>

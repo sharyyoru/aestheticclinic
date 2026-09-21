@@ -120,6 +120,24 @@ export const embedTranslations = {
       phone: "Numéro de téléphone",
       phonePlaceholder: "79 123 45 67",
       existingPatient: "Êtes-vous déjà patient?",
+      // Requis au dossier pour pouvoir facturer un rendez-vous manqué.
+      dob: "Date de naissance",
+      dobDay: "JJ",
+      dobMonth: "MM",
+      dobYear: "AAAA",
+      streetAddress: "Adresse (rue et numéro)",
+      streetAddressPlaceholder: "Rue du Rhône 17",
+      postalCode: "NPA",
+      postalCodePlaceholder: "1204",
+      town: "Localité",
+      townPlaceholder: "Genève",
+      whyWeAsk:
+        "Ces informations sont nécessaires pour votre dossier patient et, en cas de rendez-vous manqué, pour la facturation.",
+      errorPhone: "Veuillez entrer un numéro de téléphone valide",
+      errorDob: "Veuillez entrer une date de naissance valide",
+      errorPostalCode: "Veuillez entrer un NPA valide",
+      errorStreetAddress: "Veuillez entrer la rue et le numéro",
+      errorTown: "Veuillez entrer la localité",
       
       // DateTime step
       selectDateTime: "Sélectionnez une date et heure",
@@ -207,6 +225,24 @@ export const embedTranslations = {
       phone: "Phone Number",
       phonePlaceholder: "79 123 45 67",
       existingPatient: "Are you an existing patient?",
+      // Required on file so a missed appointment can be billed.
+      dob: "Date of Birth",
+      dobDay: "DD",
+      dobMonth: "MM",
+      dobYear: "YYYY",
+      streetAddress: "Street Address & Number",
+      streetAddressPlaceholder: "Rue du Rhône 17",
+      postalCode: "Postal Code",
+      postalCodePlaceholder: "1204",
+      town: "Town",
+      townPlaceholder: "Geneva",
+      whyWeAsk:
+        "Required for your patient file and, in case of a missed appointment, for billing.",
+      errorPhone: "Please enter a valid phone number",
+      errorDob: "Please enter a valid date of birth",
+      errorPostalCode: "Please enter a valid postal code",
+      errorStreetAddress: "Please enter the street and building number",
+      errorTown: "Please enter the town",
       
       // DateTime step
       selectDateTime: "Select Date & Time",

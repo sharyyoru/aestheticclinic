@@ -14,6 +14,15 @@ import {
   isHardBlock,
   resolveProviderId,
 } from "@/lib/appointmentAvailability";
+import {
+  fillOnlyEmpty,
+  invalidContactFields,
+  missingContactFields,
+  normalizeBookingPhone,
+  validateDob,
+  type BookingContactInput,
+  type PatientContactRecord,
+} from "@/lib/bookingContact";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -40,6 +49,12 @@ type BookingPayload = {
   promo?: string;
   promoSource?: string;
   lang?: "en" | "fr" | string;
+  // Required on file so a missed first appointment can be billed. Only demanded
+  // when the resolved patient record does not already have them.
+  dob?: string;
+  streetAddress?: string;
+  postalCode?: string;
+  town?: string;
 };
 
 function parseBookingAppointmentDate(value: string): Date {
@@ -291,15 +306,29 @@ export async function POST(request: Request) {
       promo,
       promoSource,
       lang,
+      dob,
+      streetAddress,
+      postalCode,
+      town,
     } = body;
 
-    // Validate required fields
-    if (!firstName || !lastName || !email || !phone?.trim() || !appointmentDate || !service || !doctorSlug || !doctorName) {
+    // Identity and slot fields are always required. Contact details (phone, dob,
+    // address) are validated further down, once we know whether the patient's
+    // existing record already has them.
+    if (!firstName || !lastName || !email || !appointmentDate || !service || !doctorSlug || !doctorName) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
+
+    const contactInput: BookingContactInput = {
+      phone,
+      dob,
+      streetAddress,
+      postalCode,
+      town,
+    };
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -344,6 +373,87 @@ export async function POST(request: Request) {
     } catch (err) {
       console.error("[Booking] Failed to check doctor days off:", err);
       // Don't hard-fail the booking if this lookup errors (e.g. table missing).
+    }
+
+    // Resolve the patient BEFORE validating contact details, because a detail is
+    // only required when the stored record does not already have it. This is a
+    // read-only lookup — the patient is still *created* after the availability
+    // check, so a rejected slot never leaves a patient record behind.
+    let patientId: string | null = null;
+    let patientRecord: PatientContactRecord | null = null;
+
+    // 1. Magic-link patient id (authoritative)
+    if (payloadPatientId) {
+      const { data: byId } = await supabase
+        .from("patients")
+        .select("id, phone, dob, street_address, postal_code, town, country")
+        .eq("id", payloadPatientId)
+        .maybeSingle();
+      if (byId) {
+        patientId = byId.id;
+        patientRecord = byId;
+      }
+    }
+
+    // 2. Exact email match
+    if (!patientId) {
+      const { data: byEmail } = await supabase
+        .from("patients")
+        .select("id, phone, dob, street_address, postal_code, town, country")
+        .eq("email", email.toLowerCase())
+        .maybeSingle();
+      if (byEmail) {
+        patientId = byEmail.id;
+        patientRecord = byEmail;
+      }
+    }
+
+    // 3. Normalised phone match (last 9 significant digits — Swiss national number)
+    if (!patientId && phone) {
+      const phoneDigits = phone.replace(/\D/g, "");
+      const phoneKey = phoneDigits.slice(-9);
+      if (phoneKey.length === 9) {
+        const { data: phoneCandidates } = await supabase
+          .from("patients")
+          .select("id, phone, dob, street_address, postal_code, town, country")
+          .not("phone", "is", null)
+          .ilike("phone", `%${phoneKey}%`);
+        const match = (phoneCandidates || []).find(
+          (p) => p.phone && p.phone.replace(/\D/g, "").slice(-9) === phoneKey
+        );
+        if (match) {
+          patientId = match.id;
+          patientRecord = match;
+        }
+      }
+    }
+
+    // Reject anything the patient typed that cannot be stored, before we start
+    // holding a slot for them.
+    const invalidFields = invalidContactFields(contactInput);
+    if (Object.keys(invalidFields).length > 0) {
+      return NextResponse.json(
+        {
+          error: "Some of the details provided are not valid",
+          code: "INVALID_PATIENT_DETAILS",
+          fields: invalidFields,
+        },
+        { status: 422 }
+      );
+    }
+
+    // The clinic needs a reachable number plus a date of birth and postal address
+    // on file so a missed first appointment can be billed.
+    const missingFields = missingContactFields(patientRecord, contactInput);
+    if (missingFields.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Please provide the missing patient details",
+          code: "MISSING_PATIENT_DETAILS",
+          missing: missingFields,
+        },
+        { status: 422 }
+      );
     }
 
     // SINGLE SOURCE OF TRUTH: use the SAME helpers as /api/appointments/check-availability
@@ -430,62 +540,26 @@ export async function POST(request: Request) {
 
     console.log(`[Booking] ALLOWED: ${doctorAppointments.length} < ${maxCapacity}`);
 
-    // Resolve the patient, reusing an existing record whenever possible so we
-    // don't create a duplicate patient (and therefore a duplicate deal). We try,
-    // in order of confidence:
-    //   1. The magic-link patient id passed from the booking page (authoritative)
-    //   2. Exact email match
-    //   3. Normalised phone match (catches leads whose email differs)
-    // Only if all of those fail do we create a brand-new patient.
-    let patientId: string | null = null;
+    // The patient was already resolved above (read-only) so contact details could
+    // be validated against the stored record. Create one only if no match was
+    // found — deliberately after the availability check, so a rejected slot never
+    // leaves an orphan patient behind.
     let isNewPatient = false;
 
-    // 1. Magic-link patient id
-    if (payloadPatientId) {
-      const { data: byId } = await supabase
-        .from("patients")
-        .select("id")
-        .eq("id", payloadPatientId)
-        .maybeSingle();
-      if (byId) patientId = byId.id;
-    }
-
-    // 2. Exact email match
     if (!patientId) {
-      const { data: byEmail } = await supabase
-        .from("patients")
-        .select("id")
-        .eq("email", email.toLowerCase())
-        .maybeSingle();
-      if (byEmail) patientId = byEmail.id;
-    }
-
-    // 3. Normalised phone match (last 9 significant digits — Swiss national number)
-    if (!patientId && phone) {
-      const phoneDigits = phone.replace(/\D/g, "");
-      const phoneKey = phoneDigits.slice(-9);
-      if (phoneKey.length === 9) {
-        const { data: phoneCandidates } = await supabase
-          .from("patients")
-          .select("id, phone")
-          .not("phone", "is", null)
-          .ilike("phone", `%${phoneKey}%`);
-        const match = (phoneCandidates || []).find(
-          (p) => p.phone && p.phone.replace(/\D/g, "").slice(-9) === phoneKey
-        );
-        if (match) patientId = match.id;
-      }
-    }
-
-    // 4. No existing patient found — create a new one
-    if (!patientId) {
+      const validatedDob = dob ? validateDob(dob) : null;
       const { data: newPatient, error: patientError } = await supabase
         .from("patients")
         .insert({
           first_name: firstName,
           last_name: lastName,
           email: email.toLowerCase(),
-          phone: phone || null,
+          phone: phone ? normalizeBookingPhone(phone) : null,
+          dob: validatedDob?.ok ? validatedDob.iso : null,
+          street_address: streetAddress?.trim() || null,
+          postal_code: postalCode?.trim() || null,
+          town: town?.trim() || null,
+          country: "CH",
           source: "online_booking",
           language_preference: lang === "fr" ? "fr" : (lang === "en" ? "en" : null),
         })
@@ -512,15 +586,36 @@ export async function POST(request: Request) {
       );
     }
 
-    // Update language preference if the booking link carried a lang param
-    if (lang) {
-      try {
-        await supabase
-          .from("patients")
-          .update({ language_preference: lang === "fr" ? "fr" : "en" })
-          .eq("id", patientId);
-      } catch (err) {
-        console.error("[Booking] Failed to update language preference:", err);
+    // Persist what the patient just told us, plus the language preference, in one
+    // round trip.
+    //
+    // This is the fix for online bookings losing the phone number: when a booking
+    // matched an existing record, this route used to write back nothing but the
+    // language, silently discarding the mobile the patient had just typed — so
+    // the agenda still showed them with no phone. `fillOnlyEmpty` completes blank
+    // fields and never overwrites a value staff may have already corrected.
+    if (!isNewPatient) {
+      const patientUpdates: Record<string, string> = fillOnlyEmpty(patientRecord, contactInput);
+      if (lang) {
+        patientUpdates.language_preference = lang === "fr" ? "fr" : "en";
+      }
+
+      if (Object.keys(patientUpdates).length > 0) {
+        try {
+          const { error: updateError } = await supabase
+            .from("patients")
+            .update(patientUpdates)
+            .eq("id", patientId);
+          if (updateError) {
+            console.error("[Booking] Failed to complete patient record:", updateError);
+          } else {
+            console.log(
+              `[Booking] Completed patient ${patientId} with: ${Object.keys(patientUpdates).join(", ")}`
+            );
+          }
+        } catch (err) {
+          console.error("[Booking] Failed to complete patient record:", err);
+        }
       }
     }
 

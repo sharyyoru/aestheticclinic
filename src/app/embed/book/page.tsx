@@ -10,6 +10,12 @@ import { captureAttribution, toLeadAttributionPayload, attributionEventParams, t
 import { useEmbedHeight } from "@/hooks/useEmbedHeight";
 import { embedTranslations, getEmbedLanguage, type EmbedLanguage } from "@/lib/embedTranslations";
 import MobileCalendar from "@/components/MobileCalendar";
+import {
+  composeDob,
+  invalidContactFields,
+  REQUIRED_CONTACT_FIELDS,
+  type ContactField,
+} from "@/lib/bookingContact";
 
 // Clinic locations
 const CLINIC_LOCATIONS = [
@@ -292,6 +298,35 @@ function EmbedBookPageContent() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  // Required on file so a missed first appointment can be billed.
+  const [dobDay, setDobDay] = useState("");
+  const [dobMonth, setDobMonth] = useState("");
+  const [dobYear, setDobYear] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [town, setTown] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<ContactField, string>>>({});
+
+  const dobValue = composeDob(dobDay, dobMonth, dobYear);
+  const contactValues = { phone, dob: dobValue, streetAddress, postalCode, town };
+  /** Anonymous embed bookings cannot know the patient, so every detail is asked for. */
+  const contactComplete = REQUIRED_CONTACT_FIELDS.every(
+    (f) => (contactValues[f] || "").trim() !== ""
+  );
+  const infoStepComplete = Boolean(firstName) && Boolean(lastName) && Boolean(email) && contactComplete;
+
+  /** Maps the helper's English reasons onto the embed's translated strings. */
+  const localiseContactErrors = (
+    errors: Partial<Record<ContactField, string>>
+  ): Partial<Record<ContactField, string>> => {
+    const localised: Partial<Record<ContactField, string>> = {};
+    if (errors.phone) localised.phone = t.errorPhone;
+    if (errors.dob) localised.dob = t.errorDob;
+    if (errors.streetAddress) localised.streetAddress = t.errorStreetAddress;
+    if (errors.postalCode) localised.postalCode = t.errorPostalCode;
+    if (errors.town) localised.town = t.errorTown;
+    return localised;
+  };
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
   const [notes, setNotes] = useState("");
@@ -456,7 +491,7 @@ function EmbedBookPageContent() {
   }
 
   async function handleSubmit() {
-    if (!firstName || !lastName || !email || !phone.trim() || !selectedDate || !selectedTime || !selectedLocation) {
+    if (!infoStepComplete || !selectedDate || !selectedTime || !selectedLocation) {
       setError(t.errorRequired);
       return;
     }
@@ -467,8 +502,17 @@ function EmbedBookPageContent() {
       return;
     }
 
+    const invalid = localiseContactErrors(invalidContactFields(contactValues));
+    if (Object.keys(invalid).length > 0) {
+      setFieldErrors(invalid);
+      setError(t.errorRequired);
+      setStep("info");
+      return;
+    }
+
     setLoading(true);
     setError(null);
+    setFieldErrors({});
 
     try {
       const [hour, minute] = selectedTime.split(":").map(Number);
@@ -489,6 +533,11 @@ function EmbedBookPageContent() {
           doctorEmail: doctor.email,
           notes,
           location: locationName,
+          lang,
+          dob: dobValue || undefined,
+          streetAddress: streetAddress.trim() || undefined,
+          postalCode: postalCode.trim() || undefined,
+          town: town.trim() || undefined,
         }),
       });
 
@@ -504,6 +553,23 @@ function EmbedBookPageContent() {
           throw new Error(
             data.error || "This time is no longer available. We refreshed the times — please pick another slot."
           );
+        }
+        // The server validates contact details against the stored record, so it
+        // can still reject what the form accepted.
+        if (res.status === 422) {
+          if (data?.code === "MISSING_PATIENT_DETAILS" && Array.isArray(data.missing)) {
+            setFieldErrors(
+              Object.fromEntries(
+                (data.missing as ContactField[]).map((f) => [f, t.errorRequired])
+              ) as Partial<Record<ContactField, string>>
+            );
+          } else if (data?.code === "INVALID_PATIENT_DETAILS" && data.fields) {
+            setFieldErrors(
+              localiseContactErrors(data.fields as Partial<Record<ContactField, string>>)
+            );
+          }
+          setStep("info");
+          throw new Error(data.error || t.errorRequired);
         }
         throw new Error(data.error || "Failed to book appointment");
       }
@@ -810,12 +876,119 @@ function EmbedBookPageContent() {
                   required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none"
+                  placeholder={t.phonePlaceholder}
+                  className={`w-full rounded-lg border px-3 py-2.5 text-slate-900 focus:ring-2 outline-none ${
+                    fieldErrors.phone
+                      ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+                      : "border-slate-200 focus:border-slate-400 focus:ring-slate-100"
+                  }`}
                 />
+                {fieldErrors.phone && <p className="mt-1 text-xs text-red-600">{fieldErrors.phone}</p>}
               </div>
+
+              {/* Date of birth and postal address: required on file so a missed
+                  first appointment can be billed. */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t.dob} *</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={dobDay}
+                    onChange={(e) => setDobDay(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                    placeholder={t.dobDay}
+                    aria-label={t.dobDay}
+                    className="w-16 rounded-lg border border-slate-200 px-2 py-2.5 text-center text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none"
+                  />
+                  <select
+                    value={dobMonth}
+                    onChange={(e) => setDobMonth(e.target.value)}
+                    aria-label={t.dobMonth}
+                    className="flex-1 rounded-lg border border-slate-200 px-2 py-2.5 text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none"
+                  >
+                    <option value="">{t.dobMonth}</option>
+                    {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")).map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={dobYear}
+                    onChange={(e) => setDobYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder={t.dobYear}
+                    aria-label={t.dobYear}
+                    className="w-20 rounded-lg border border-slate-200 px-2 py-2.5 text-center text-slate-900 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 outline-none"
+                  />
+                </div>
+                {fieldErrors.dob && <p className="mt-1 text-xs text-red-600">{fieldErrors.dob}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t.streetAddress} *</label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="street-address"
+                  value={streetAddress}
+                  onChange={(e) => setStreetAddress(e.target.value)}
+                  placeholder={t.streetAddressPlaceholder}
+                  className={`w-full rounded-lg border px-3 py-2.5 text-slate-900 focus:ring-2 outline-none ${
+                    fieldErrors.streetAddress
+                      ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+                      : "border-slate-200 focus:border-slate-400 focus:ring-slate-100"
+                  }`}
+                />
+                {fieldErrors.streetAddress && (
+                  <p className="mt-1 text-xs text-red-600">{fieldErrors.streetAddress}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t.postalCode} *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    autoComplete="postal-code"
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    placeholder={t.postalCodePlaceholder}
+                    className={`w-full rounded-lg border px-3 py-2.5 text-slate-900 focus:ring-2 outline-none ${
+                      fieldErrors.postalCode
+                        ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+                        : "border-slate-200 focus:border-slate-400 focus:ring-slate-100"
+                    }`}
+                  />
+                  {fieldErrors.postalCode && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.postalCode}</p>
+                  )}
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">{t.town} *</label>
+                  <input
+                    type="text"
+                    required
+                    autoComplete="address-level2"
+                    value={town}
+                    onChange={(e) => setTown(e.target.value)}
+                    placeholder={t.townPlaceholder}
+                    className={`w-full rounded-lg border px-3 py-2.5 text-slate-900 focus:ring-2 outline-none ${
+                      fieldErrors.town
+                        ? "border-red-400 focus:border-red-500 focus:ring-red-100"
+                        : "border-slate-200 focus:border-slate-400 focus:ring-slate-100"
+                    }`}
+                  />
+                  {fieldErrors.town && <p className="mt-1 text-xs text-red-600">{fieldErrors.town}</p>}
+                </div>
+              </div>
+
+              <p className="text-xs leading-relaxed text-slate-500">{t.whyWeAsk}</p>
+
               <button
                 onClick={() => {
-                  if (!firstName || !lastName || !email || !phone.trim()) {
+                  if (!infoStepComplete) {
                     setError(t.errorRequired);
                     return;
                   }
@@ -824,6 +997,13 @@ function EmbedBookPageContent() {
                     setError(t.errorEmail);
                     return;
                   }
+                  const invalid = localiseContactErrors(invalidContactFields(contactValues));
+                  if (Object.keys(invalid).length > 0) {
+                    setFieldErrors(invalid);
+                    setError(t.errorRequired);
+                    return;
+                  }
+                  setFieldErrors({});
                   setError(null);
                   setStep("datetime");
                 }}
@@ -971,6 +1151,22 @@ function EmbedBookPageContent() {
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">{t.phone}</span>
                   <span className="font-medium text-slate-900">{phone}</span>
+                </div>
+              )}
+              {dobValue && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">{t.dob}</span>
+                  <span className="font-medium text-slate-900">{`${dobDay}.${dobMonth}.${dobYear}`}</span>
+                </div>
+              )}
+              {(streetAddress || postalCode || town) && (
+                <div className="flex justify-between gap-4 text-sm">
+                  <span className="text-slate-600">{t.streetAddress}</span>
+                  <span className="text-right font-medium text-slate-900">
+                    {[streetAddress, [postalCode, town].filter(Boolean).join(" ")]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </span>
                 </div>
               )}
               <hr className="border-slate-200" />
