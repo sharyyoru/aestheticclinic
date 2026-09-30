@@ -68,6 +68,46 @@ type InlineAttachment = {
   contentType?: string;
 };
 
+/**
+ * Record the real outcome of a send against the emails row.
+ *
+ * `emails.error` and `emails.failed_at` arrive in
+ * migrations/20260930_email_delivery_truth.sql. Until that is applied the
+ * update is retried with only the columns that exist, because recording the
+ * status is far more important than recording the reason — and a deploy must
+ * not start failing sends just because the migration is pending.
+ *
+ * `status` is never downgraded from 'read': the tracking pixel is stronger
+ * evidence of delivery than our own bookkeeping.
+ */
+async function markEmailOutcome(
+  emailId: string,
+  fields: { status: string; error?: string | null; sent_at?: string | null; failed_at?: string | null; message_id?: string | null },
+): Promise<void> {
+  if (!supabaseUrl || !supabaseServiceKey) return;
+  try {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const attempt = (payload: Record<string, unknown>) =>
+      supabase.from("emails").update(payload).eq("id", emailId).neq("status", "read");
+
+    const { error } = await attempt(fields);
+    if (error && (error.code === "PGRST204" || error.code === "42703")) {
+      const { error: fallbackError } = await attempt({
+        status: fields.status,
+        ...(fields.sent_at ? { sent_at: fields.sent_at } : {}),
+        ...(fields.message_id ? { message_id: fields.message_id } : {}),
+      });
+      if (fallbackError) {
+        console.error("[emails/send] Could not record email outcome", fallbackError);
+      }
+      return;
+    }
+    if (error) console.error("[emails/send] Could not record email outcome", error);
+  } catch (err) {
+    console.error("[emails/send] Could not record email outcome", err);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { to, cc, subject, html, fromUserEmail, fromUserName, fromUserId, emailId, patientId, inlineAttachments } = (await request.json()) as {
@@ -260,7 +300,6 @@ export async function POST(request: Request) {
     if (patientId && !emailId && supabaseUrl && supabaseServiceKey) {
       try {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        const nowIso = new Date().toISOString();
         
         const { data: insertedEmail, error: insertError } = await supabase
           .from("emails")
@@ -271,8 +310,9 @@ export async function POST(request: Request) {
             subject: trimmedSubject,
             body: trimmedHtml,
             direction: "outbound",
-            status: "sent",
-            sent_at: nowIso,
+            // 'sending' until Mailgun accepts it. Writing 'sent' up front is
+            // what made undelivered mail indistinguishable from delivered.
+            status: "sending",
             sent_by_user_id: fromUserId || null,
           })
           .select("id")
@@ -300,23 +340,24 @@ export async function POST(request: Request) {
       body: formData,
     });
 
+    // Mark the row the caller gave us as well as one we created ourselves.
+    // Previously only `createdEmailId` was updated, so a caller that
+    // pre-inserted its own row (every appointment confirmation) kept a 'sent'
+    // status no matter what Mailgun answered.
+    const targetEmailId = emailId || createdEmailId;
+
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       console.error("Error sending email via Mailgun", response.status, text);
-      
-      // If we created an email record, mark it as failed
-      if (createdEmailId && supabaseUrl && supabaseServiceKey) {
-        try {
-          const supabase = createClient(supabaseUrl, supabaseServiceKey);
-          await supabase
-            .from("emails")
-            .update({ status: "failed" })
-            .eq("id", createdEmailId);
-        } catch (updateError) {
-          console.error("Error updating email status to failed:", updateError);
-        }
+
+      if (targetEmailId) {
+        await markEmailOutcome(targetEmailId, {
+          status: "failed",
+          error: `Mailgun ${response.status}: ${text.slice(0, 400)}`,
+          failed_at: new Date().toISOString(),
+        });
       }
-      
+
       return NextResponse.json(
         {
           error: "Failed to send email via Mailgun",
@@ -331,7 +372,18 @@ export async function POST(request: Request) {
     const mailgunResponse = await response.json();
     const messageId = mailgunResponse.id || null;
 
-    return NextResponse.json({ ok: true, messageId, emailId: createdEmailId || emailId });
+    if (targetEmailId) {
+      // Accepted by Mailgun. Note this is not proof of delivery: a suppressed
+      // address is accepted with 2xx and fails asynchronously, which
+      // /api/cron/sync-email-delivery reconciles from the event log.
+      await markEmailOutcome(targetEmailId, {
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        message_id: messageId,
+      });
+    }
+
+    return NextResponse.json({ ok: true, messageId, emailId: targetEmailId });
   } catch (error) {
     console.error("Error sending email via Mailgun", error);
     return NextResponse.json(

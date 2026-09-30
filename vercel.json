@@ -26,6 +26,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/sync-email-delivery",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/send-scheduled-whatsapp",
       "schedule": "0 * * * *"
     }

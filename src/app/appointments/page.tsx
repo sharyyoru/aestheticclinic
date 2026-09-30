@@ -768,6 +768,28 @@ function calculateOverlapPositions(
   return result;
 }
 
+/**
+ * Turn an /api/emails/send failure body into something a receptionist can act
+ * on — "previously bounced address" tells them to phone the patient, whereas
+ * "HTTP 502" does not.
+ */
+function describeSendFailure(status: number, body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: string; mailgunBody?: string };
+    let providerMessage: string | undefined;
+    if (parsed.mailgunBody) {
+      try {
+        providerMessage = (JSON.parse(parsed.mailgunBody) as { message?: string }).message;
+      } catch {
+        providerMessage = parsed.mailgunBody;
+      }
+    }
+    return providerMessage || parsed.error || `HTTP ${status}`;
+  } catch {
+    return body.trim().slice(0, 200) || `HTTP ${status}`;
+  }
+}
+
 async function sendAppointmentConfirmationEmail(
   appointment: CalendarAppointment,
   variant: "created" | "updated" = "created",
@@ -779,6 +801,8 @@ async function sendAppointmentConfirmationEmail(
     console.warn(`[Email Confirmation] No email address for patient ${appointment.patient_id} (${appointment.patient?.first_name} ${appointment.patient?.last_name}). Skipping confirmation email.`);
     return { success: false, error: "No email address on file" };
   }
+
+  let deliveryError: string | null = null;
 
   try {
     const { data: authData } = await supabaseClient.auth.getUser();
@@ -843,8 +867,6 @@ async function sendAppointmentConfirmationEmail(
       </p>
     `;
 
-    const nowIso = new Date().toISOString();
-
     const { data, error } = await supabaseClient
       .from("emails")
       .insert({
@@ -856,8 +878,11 @@ async function sendAppointmentConfirmationEmail(
         subject,
         body: htmlBody,
         direction: "outbound",
-        status: "sent",
-        sent_at: nowIso,
+        // 'sending' until /api/emails/send hears back from Mailgun, which then
+        // records 'sent' or 'failed' with the reason. This row used to be
+        // written as 'sent' before the provider was even called, so a rejected
+        // appointment email looked identical to a delivered one.
+        status: "sending",
       })
       .select("id")
       .single();
@@ -886,13 +911,19 @@ async function sendAppointmentConfirmationEmail(
       });
 
       if (!sendResponse.ok) {
-        const errorText = await sendResponse.text().catch(() => "Unknown error");
+        const errorText = await sendResponse.text().catch(() => "");
+        // Reported to the caller, not just the console. The provider refuses
+        // roughly one appointment email in seven (hard-bounced or suppressed
+        // addresses), and swallowing that is why nobody knew.
+        deliveryError = describeSendFailure(sendResponse.status, errorText);
         console.error(`[Email Confirmation] Send failed (${sendResponse.status}):`, errorText);
-        // Don't throw - the email is saved as "sent" in DB, but log the failure
       } else {
         console.log(`[Email Confirmation] Email sent successfully to ${patientEmail} for appointment ${appointment.id}`);
       }
     } catch (sendError) {
+      deliveryError = sendError instanceof Error
+        ? sendError.message
+        : "Could not reach the email service";
       console.error(
         "[Email Confirmation] Appointment confirmation email saved but failed to send via provider:",
         sendError,
@@ -926,7 +957,7 @@ async function sendAppointmentConfirmationEmail(
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
 
-  return { success: true };
+  return { success: !deliveryError, error: deliveryError ?? undefined };
 }
 
 async function sendAppointmentRescheduledEmail(
@@ -941,6 +972,8 @@ async function sendAppointmentRescheduledEmail(
     console.warn(`[Email Rescheduled] No email address for patient ${newAppointment.patient_id}. Skipping.`);
     return { success: false, error: "No email address on file" };
   }
+
+  let deliveryError: string | null = null;
 
   try {
     const { data: authData } = await supabaseClient.auth.getUser();
@@ -995,8 +1028,6 @@ async function sendAppointmentRescheduledEmail(
       </p>
     `;
 
-    const nowIso = new Date().toISOString();
-
     const { data, error } = await supabaseClient
       .from("emails")
       .insert({
@@ -1007,8 +1038,11 @@ async function sendAppointmentRescheduledEmail(
         subject,
         body: htmlBody,
         direction: "outbound",
-        status: "sent",
-        sent_at: nowIso,
+        // 'sending' until /api/emails/send hears back from Mailgun, which then
+        // records 'sent' or 'failed' with the reason. This row used to be
+        // written as 'sent' before the provider was even called, so a rejected
+        // appointment email looked identical to a delivered one.
+        status: "sending",
       })
       .select("id")
       .single();
@@ -1035,12 +1069,16 @@ async function sendAppointmentRescheduledEmail(
       });
 
       if (!sendResponse.ok) {
-        const errorText = await sendResponse.text().catch(() => "Unknown error");
+        const errorText = await sendResponse.text().catch(() => "");
+        deliveryError = describeSendFailure(sendResponse.status, errorText);
         console.error(`[Email Rescheduled] Send failed (${sendResponse.status}):`, errorText);
       } else {
         console.log(`[Email Rescheduled] Email sent successfully to ${patientEmail}`);
       }
     } catch (sendError) {
+      deliveryError = sendError instanceof Error
+        ? sendError.message
+        : "Could not reach the email service";
       console.error("[Email Rescheduled] Failed to send via provider:", sendError);
     }
 
@@ -1068,7 +1106,7 @@ async function sendAppointmentRescheduledEmail(
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
 
-  return { success: true };
+  return { success: !deliveryError, error: deliveryError ?? undefined };
 }
 
 // Defense-in-depth: immediately retire any pending reminder/confirmation
@@ -1097,6 +1135,8 @@ async function sendAppointmentCancellationEmail(
     console.warn(`[Email Cancellation] No email address for patient ${appointment.patient_id}. Skipping.`);
     return { success: false, error: "No email address on file" };
   }
+
+  let deliveryError: string | null = null;
 
   try {
     const { data: authData } = await supabaseClient.auth.getUser();
@@ -1147,8 +1187,6 @@ async function sendAppointmentCancellationEmail(
       </p>
     `;
 
-    const nowIso = new Date().toISOString();
-
     const { data, error } = await supabaseClient
       .from("emails")
       .insert({
@@ -1159,8 +1197,11 @@ async function sendAppointmentCancellationEmail(
         subject,
         body: htmlBody,
         direction: "outbound",
-        status: "sent",
-        sent_at: nowIso,
+        // 'sending' until /api/emails/send hears back from Mailgun, which then
+        // records 'sent' or 'failed' with the reason. This row used to be
+        // written as 'sent' before the provider was even called, so a rejected
+        // appointment email looked identical to a delivered one.
+        status: "sending",
       })
       .select("id")
       .single();
@@ -1187,12 +1228,16 @@ async function sendAppointmentCancellationEmail(
       });
 
       if (!sendResponse.ok) {
-        const errorText = await sendResponse.text().catch(() => "Unknown error");
+        const errorText = await sendResponse.text().catch(() => "");
+        deliveryError = describeSendFailure(sendResponse.status, errorText);
         console.error(`[Email Cancellation] Send failed (${sendResponse.status}):`, errorText);
       } else {
         console.log(`[Email Cancellation] Email sent successfully to ${patientEmail}`);
       }
     } catch (sendError) {
+      deliveryError = sendError instanceof Error
+        ? sendError.message
+        : "Could not reach the email service";
       console.error("[Email Cancellation] Failed to send via provider:", sendError);
     }
 
@@ -1220,7 +1265,7 @@ async function sendAppointmentCancellationEmail(
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
   }
 
-  return { success: true };
+  return { success: !deliveryError, error: deliveryError ?? undefined };
 }
 
 export default function CalendarPage() {
@@ -1228,6 +1273,34 @@ export default function CalendarPage() {
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The provider refuses mail to hard-bounced and suppressed addresses, and
+  // that used to reach the console only — so staff believed every confirmation
+  // had gone out and patients silently missed appointments.
+  const [emailWarnings, setEmailWarnings] = useState<string[]>([]);
+  // Patients whose address the email provider permanently refuses, so booking
+  // them without a phone call means they are never told about the appointment.
+  // Loaded in its own query, and tolerant of failure on purpose: the column
+  // arrives with migrations/20260930_email_delivery_truth.sql, and folding it
+  // into the calendar's own select would break the whole agenda until then.
+  const [undeliverableEmailPatientIds, setUndeliverableEmailPatientIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const { data, error } = await supabaseClient
+        .from("patients")
+        .select("id")
+        .eq("email_undeliverable", true)
+        .limit(10000);
+      if (!active || error || !data) return;
+      setUndeliverableEmailPatientIds(new Set(data.map(row => row.id as string)));
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
   const [patientSearch, setPatientSearch] = useState("");
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [providersLoading, setProvidersLoading] = useState(false);
@@ -2966,7 +3039,9 @@ export default function CalendarPage() {
         setVisibleMonth(swissMonthAnchor(insertedStart));
       }
 
-      void sendAppointmentConfirmationEmail(inserted);
+      void sendAppointmentConfirmationEmail(inserted).then(result =>
+        reportEmailOutcome("Appointment confirmation", inserted.patient?.email ?? null, result),
+      );
 
       // Log the creation to appointment_history
       const { data: authData } = await supabaseClient.auth.getUser();
@@ -3267,14 +3342,18 @@ export default function CalendarPage() {
       // Do NOT send generic "updated" emails - they're confusing without specific details
       if (wasCancelled) {
         // Send cancellation email
-        void sendAppointmentCancellationEmail(updated);
+        void sendAppointmentCancellationEmail(updated).then(result =>
+          reportEmailOutcome("Cancellation notice", updated.patient?.email ?? null, result),
+        );
         // Defense-in-depth: retire any pending reminder/confirmation emails
         void cancelScheduledReminders(updated.id, "cancelled");
       } else if (startTimeChanged && updated.status !== "cancelled") {
         // Send rescheduling email with new date/time
         // Only when the appointment START changes - duration-only (end_time) changes
         // must NOT notify the patient per clinic policy
-        void sendAppointmentRescheduledEmail(updated, editingAppointment);
+        void sendAppointmentRescheduledEmail(updated, editingAppointment).then(result =>
+          reportEmailOutcome("Reschedule notice", updated.patient?.email ?? null, result),
+        );
         // Defense-in-depth: retire the now-stale pending reminder emails so
         // the old date/time can never be sent. The day-before reminder cron
         // will issue a fresh reminder using the live appointment data.
@@ -3503,6 +3582,21 @@ export default function CalendarPage() {
     setView("day");
   }
 
+  function reportEmailOutcome(
+    label: string,
+    recipient: string | null,
+    result: { success: boolean; error?: string },
+  ) {
+    if (result.success) return;
+    // "No email address on file" is already visible elsewhere and is not a
+    // delivery failure, so it would just be noise here.
+    if (result.error === "No email address on file") return;
+    setEmailWarnings(previous => [
+      ...previous,
+      `${label} could NOT be delivered to ${recipient || "the patient"}${result.error ? ` — ${result.error}` : ""}. Contact them by phone.`,
+    ]);
+  }
+
   return (
     <div 
       className="flex gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2"
@@ -3512,6 +3606,31 @@ export default function CalendarPage() {
         WebkitOverflowScrolling: 'touch',
       } as React.CSSProperties}
     >
+      {/* Undelivered patient email. Fixed position so it cannot disturb the
+          calendar's flex layout. Dismissed manually — a missed appointment is
+          worth an explicit acknowledgement rather than an auto-hiding toast. */}
+      {emailWarnings.length > 0 && (
+        <div className="fixed left-1/2 top-3 z-[100] w-[min(680px,92vw)] -translate-x-1/2 space-y-2">
+          {emailWarnings.map((message, index) => (
+            <div
+              key={`${index}-${message}`}
+              className="flex items-start gap-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800 shadow-lg"
+            >
+              <span aria-hidden>⚠️</span>
+              <span className="flex-1">{message}</span>
+              <button
+                type="button"
+                onClick={() => setEmailWarnings(previous => previous.filter((_, i) => i !== index))}
+                className="shrink-0 rounded px-1 text-sm font-semibold leading-none hover:bg-red-100"
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Left sidebar similar to Google Calendar */}
       <aside className={`hidden shrink-0 flex-col rounded-3xl border border-slate-200/80 bg-white/95 text-xs text-slate-700 shadow-[0_18px_40px_rgba(15,23,42,0.10)] transition-all duration-200 md:flex ${leftPanelOpen ? 'w-64 p-3' : 'w-10 items-center py-2 px-1'}`} style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
         <div className={`mb-3 flex items-center ${leftPanelOpen ? 'justify-between gap-2' : 'justify-center'}`}>
@@ -4497,6 +4616,10 @@ export default function CalendarPage() {
                                     // missed appointment. A missing phone used to
                                     // be an absent tooltip row, i.e. invisible.
                                     const detailGaps = appt.patient ? patientDetailsGaps(appt.patient) : [];
+                                    // The provider refuses this address outright, so no
+                                    // confirmation or reminder can ever arrive.
+                                    const emailUndeliverable = !!appt.patient?.id
+                                      && undeliverableEmailPatientIds.has(appt.patient.id);
                                     const patientAddress = [
                                       appt.patient?.street_address,
                                       [appt.patient?.postal_code, appt.patient?.town].filter(Boolean).join(" "),
@@ -4547,6 +4670,14 @@ export default function CalendarPage() {
                                                 ⚠ {detailGaps.length}
                                               </span>
                                             )}
+                                            {emailUndeliverable && (
+                                              <span
+                                                className="flex-shrink-0 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-medium bg-red-100 text-red-800 border border-red-300"
+                                                title="Email cannot be delivered to this patient — confirmations and reminders will not arrive. Phone them."
+                                              >
+                                                ✉✗
+                                              </span>
+                                            )}
                                             <span className={`truncate ${isCopiedPatient ? 'text-blue-600 font-semibold' : ''}`}>{patientName || serviceLabel}</span>
                                           </div>
                                           <div className="appt-pill-text truncate text-[10px]">
@@ -4593,6 +4724,12 @@ export default function CalendarPage() {
                                           {detailGaps.length > 0 && (
                                             <div className="mt-1 rounded bg-amber-50 px-1.5 py-1 text-amber-800 border border-amber-200">
                                               ⚠ Missing {describeGaps(detailGaps)}
+                                            </div>
+                                          )}
+                                          {emailUndeliverable && (
+                                            <div className="mt-1 rounded bg-red-50 px-1.5 py-1 text-red-800 border border-red-200">
+                                              ✉ Email undeliverable — this patient receives no
+                                              confirmations or reminders. Phone them to confirm.
                                             </div>
                                           )}
                                           {appt.location && <div className="text-slate-500 mt-1">📍 {appt.location}</div>}
