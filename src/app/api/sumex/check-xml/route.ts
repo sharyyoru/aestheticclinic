@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
       skipValidation = false,
       insurerAddress: bodyInsurerAddress,
       avsNumber: bodyAvsNumber,
+      diagnosisCodes: bodyDiagnosisCodes,
     } = body;
 
     const resolvedInvoiceId = invoiceId || consultationId;
@@ -262,9 +263,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Diagnosis codes from invoice ──
+    // ── Diagnosis codes: request body → invoice record → ACF ref_codes ──
     // Filter to valid ICD codes only (must be at least 2 chars, e.g. "Z42.1")
-    let diagCodes: string[] = Array.isArray(invoice.diagnosis_codes)
+    let diagCodes: string[] = Array.isArray(bodyDiagnosisCodes)
+      ? (bodyDiagnosisCodes as string[]).filter((c) => typeof c === "string" && c.length >= 2)
+      : [];
+    if (diagCodes.length === 0) diagCodes = Array.isArray(invoice.diagnosis_codes)
       ? invoice.diagnosis_codes
           .filter((d: any) => d.type === "ICD" || typeof d === "string")
           .map((d: any) => (typeof d === "string" ? d : d.code))

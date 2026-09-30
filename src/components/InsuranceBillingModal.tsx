@@ -343,7 +343,21 @@ export default function InsuranceBillingModal({
     setDiagnosisCodes(diagnosisCodes.filter((c) => c !== code));
   };
 
+  // Include any diagnosis code typed in the input but not yet added via the
+  // "Add" button, so it is never silently dropped on submit/preview.
+  const collectDiagnosisCodes = (): string[] => {
+    const pending = diagnosisInput.trim().toUpperCase();
+    if (pending && !diagnosisCodes.includes(pending)) {
+      const codes = [...diagnosisCodes, pending];
+      setDiagnosisCodes(codes);
+      setDiagnosisInput("");
+      return codes;
+    }
+    return diagnosisCodes;
+  };
+
   const handleCheckXml = async () => {
+    const codes = collectDiagnosisCodes();
     setIsCheckingXml(true);
     setXmlError(null);
     setXmlPreview(null);
@@ -358,7 +372,7 @@ export default function InsuranceBillingModal({
           billingType,
           lawType,
           reminderLevel,
-          diagnosisCodes,
+          diagnosisCodes: codes,
           treatmentReason: lawType === 'UVG' ? 'accident' : treatmentReason,
           insurerGln: selectedInsurerGln,
           insurerName: selectedInsurerName,
@@ -394,6 +408,7 @@ export default function InsuranceBillingModal({
       return;
     }
 
+    const codes = collectDiagnosisCodes();
     setIsSubmitting(true);
     setError(null);
 
@@ -407,7 +422,7 @@ export default function InsuranceBillingModal({
           billingType,
           lawType,
           reminderLevel,
-          diagnosisCodes,
+          diagnosisCodes: codes,
           treatmentReason: lawType === 'UVG' ? 'accident' : treatmentReason,
           insurerGln: selectedInsurerGln,
           insurerName: selectedInsurerName,
@@ -451,7 +466,7 @@ export default function InsuranceBillingModal({
           insurance_gln: selectedInsurerGln,
           insurance_name: selectedInsurerName,
           patient_ssn: avsNumber || null,
-          diagnosis_codes: diagnosisCodes.map((c) => ({ code: c, type: "ICD" })),
+          diagnosis_codes: codes.map((c) => ({ code: c, type: "ICD" })),
           medical_case_number: caseNumber || null,
           accident_date: lawType === 'UVG' && accidentDate ? accidentDate : null,
         })
