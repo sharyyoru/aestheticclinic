@@ -134,13 +134,28 @@ export async function fetchAudience(
     query = query.in("id", patientIdFilter);
   }
 
-  query = query.order("created_at", { ascending: false }).limit(hardCap);
+  // The secondary sort on `id` is load-bearing. `created_at` is not unique —
+  // bulk imports share a timestamp — and offset pagination over a non-unique
+  // sort key lets a row appear on two pages while another is never returned.
+  query = query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(hardCap);
   if (opts.offset && opts.offset > 0) {
     query = query.range(opts.offset, opts.offset + hardCap - 1);
   }
 
   const { data, error, count } = await query;
-  if (error) throw error;
+  if (error) {
+    // PostgREST answers an offset past the final row with 416/PGRST103 rather
+    // than an empty list, so a paginating caller has to read it as
+    // end-of-data. Only reachable when an offset was requested, where the
+    // meaning is unambiguous.
+    if (error.code === "PGRST103" && opts.offset && opts.offset > 0) {
+      return { rows: [], count: count ?? 0, fetchedCount: 0 };
+    }
+    throw error;
+  }
   const fetchedCount = data?.length ?? 0;
   let rows = (data ?? []) as PatientRow[];
 
@@ -161,6 +176,101 @@ export async function fetchAudience(
   }
 
   return { rows, count: count ?? rows.length, fetchedCount };
+}
+
+export type CampaignAudience = {
+  recipients: PatientRow[];
+  /** True when more patients matched the filter than the cap allows. */
+  capped: boolean;
+  /** Rows dropped because pagination returned the same patient more than once. */
+  duplicatePatientsRemoved: number;
+  /** Rows dropped because another patient record shares the email address. */
+  sharedAddressesRemoved: number;
+};
+
+/**
+ * Resolve the definitive recipient list for a campaign.
+ *
+ * Use this for both previewing and sending, so the number shown to the user
+ * is the number actually emailed. `fetchAudience` alone is not enough:
+ *
+ *  - it returns at most one page, so callers used to paginate by hand and
+ *    crash on PGRST103 at the end of the data;
+ *  - `MAX_CAMPAIGN_RECIPIENTS` capped the page, not the campaign, so paging
+ *    past it silently blew through the cap the UI advertises;
+ *  - one person can hold several patient records, and sending per-record
+ *    delivers the same campaign to them repeatedly.
+ */
+export async function fetchCampaignAudience(
+  supabase: SupabaseClient,
+  filter: MarketingFilter | null | undefined,
+  opts: { cap?: number } = {},
+): Promise<CampaignAudience> {
+  const cap = Math.max(
+    1,
+    Math.min(opts.cap ?? MAX_CAMPAIGN_RECIPIENTS, MAX_CAMPAIGN_RECIPIENTS),
+  );
+  const PAGE_SIZE = 1000;
+
+  const recipients: PatientRow[] = [];
+  const seenPatientIds = new Set<string>();
+  const seenAddresses = new Set<string>();
+  let duplicatePatientsRemoved = 0;
+  let sharedAddressesRemoved = 0;
+  let offset = 0;
+  let reachedCap = false;
+
+  while (!reachedCap) {
+    const page = await fetchAudience(supabase, filter, { limit: PAGE_SIZE, offset });
+    if (page.fetchedCount === 0) break;
+    offset += page.fetchedCount;
+
+    for (const row of page.rows) {
+      if (recipients.length >= cap) {
+        reachedCap = true;
+        break;
+      }
+      if (seenPatientIds.has(row.id)) {
+        duplicatePatientsRemoved += 1;
+        continue;
+      }
+      seenPatientIds.add(row.id);
+
+      const address = (row.email ?? "").trim().toLowerCase();
+      if (address) {
+        if (seenAddresses.has(address)) {
+          sharedAddressesRemoved += 1;
+          continue;
+        }
+        seenAddresses.add(address);
+      }
+      recipients.push(row);
+    }
+
+    if (!reachedCap && page.fetchedCount < PAGE_SIZE) break;
+  }
+
+  return { recipients, capped: reachedCap, duplicatePatientsRemoved, sharedAddressesRemoved };
+}
+
+/**
+ * A Supabase `PostgrestError` is a plain object, not an `Error`, so the usual
+ * `error instanceof Error ? error.message : "Unknown error"` throws away the
+ * entire cause. Every database failure then reaches the user as
+ * "Unknown error", which is undiagnosable from the UI.
+ */
+export function describeSupabaseError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object") {
+    const e = error as { message?: string; code?: string; details?: string; hint?: string };
+    const parts = [e.message, e.details, e.hint].filter(
+      (part): part is string => typeof part === "string" && part.length > 0,
+    );
+    if (parts.length > 0) {
+      return e.code ? `${parts.join(" — ")} (${e.code})` : parts.join(" — ");
+    }
+  }
+  return "Unknown error";
 }
 
 /**

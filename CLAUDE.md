@@ -71,6 +71,14 @@ Four paths create bookings — public doctor pages, the website embed, the patie
 - AI phone bookings are exempt: they tag the appointment `[Details: pending]` and open a reception task instead of blocking.
 - "Missing details" is **derived** from the patient record (`patientDetailsGaps`) — there is no column to backfill or keep in sync.
 
+### Marketing Audience Rules (`src/lib/marketingFilters.ts`)
+- **Resolve a campaign audience with `fetchCampaignAudience()`, never by paginating `fetchAudience()` by hand.** Both the preview and the send route must call it so the number shown to the user is the number actually emailed.
+- `MAX_CAMPAIGN_RECIPIENTS` (5,000) caps the **campaign**, not the page. Paging past it silently emailed the full 28,687-patient list while the button read "Send to 5000".
+- `fetchAudience` orders by `created_at, id`. The `id` tiebreak is load-bearing: `created_at` is not unique (bulk imports share a timestamp) and offset pagination over a non-unique key made rows repeat on one page and vanish from another — 16,000 rows contained only 15,791 patients.
+- PostgREST answers an offset past the final row with **416/PGRST103**, not an empty list. `fetchAudience` translates that to end-of-data; anything paginating PostgREST must do the same or it throws at the end of every dataset.
+- One person can hold several patient records, so recipients are de-duplicated by **email address** as well as patient id. Duplicate recipient rows also broke delivery: the claim query used `.maybeSingle()`, which errors on two matches, and the patient was then silently skipped while the campaign hung on `sending` forever.
+- **Use `describeSupabaseError()` in `catch` blocks that can see a Supabase error.** A `PostgrestError` is a plain object, so `error instanceof Error ? error.message : "Unknown error"` discards the entire cause — this is why a broken campaign reported only "Unknown error" for two months.
+
 ### Public Documentation Site (`/documentation`)
 Public, SEO-indexed end-user docs — no auth, no app shell, always light themed.
 - Pages: `src/app/documentation/page.tsx` (hub) + `[slug]/page.tsx` (one static page per module, via `generateStaticParams`)

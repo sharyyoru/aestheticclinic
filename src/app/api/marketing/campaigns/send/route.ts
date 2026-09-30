@@ -1,7 +1,9 @@
 import { after, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  fetchAudience,
+  describeSupabaseError,
+  fetchCampaignAudience,
+  MAX_CAMPAIGN_RECIPIENTS,
   substitutePatientVariables,
   type MarketingFilter,
   type PatientRow,
@@ -172,7 +174,11 @@ async function processCampaign(
             return;
           }
 
-          const { data: claimedRecipient } = await supabaseAdmin
+          // Deliberately not `.maybeSingle()`: legacy campaigns can hold more
+          // than one pending row per patient, and `maybeSingle()` answers that
+          // with an error, which read as "nothing to claim" and silently
+          // dropped the patient while leaving the campaign stuck on `sending`.
+          const { data: claimedRecipients } = await supabaseAdmin
             .from("marketing_campaign_recipients")
             .update({
               status: "processing",
@@ -181,9 +187,8 @@ async function processCampaign(
             .eq("campaign_id", campaignId)
             .eq("patient_id", patient.id)
             .eq("status", "pending")
-            .select("id")
-            .maybeSingle();
-          if (!claimedRecipient) return;
+            .select("id");
+          if (!claimedRecipients || claimedRecipients.length === 0) return;
 
           let emailId: string | null = null;
           try {
@@ -258,7 +263,8 @@ async function processCampaign(
       }
     }
   } catch (error) {
-    firstError ||= error instanceof Error ? error.message : "Background campaign failed";
+    firstError ||= describeSupabaseError(error);
+    console.error("[marketing/send] Background campaign threw", error);
     failed = Math.max(failed, recipients.length - sent);
   }
 
@@ -296,25 +302,6 @@ async function processCampaign(
     status: finalStatus,
     firstError,
   });
-}
-
-async function fetchCompleteAudience(filter: MarketingFilter): Promise<PatientRow[]> {
-  const PAGE_SIZE = 1000;
-  const recipients: PatientRow[] = [];
-  let offset = 0;
-
-  while (true) {
-    const page = await fetchAudience(supabaseAdmin, filter, {
-      limit: PAGE_SIZE,
-      offset,
-    });
-    recipients.push(...page.rows);
-    offset += page.fetchedCount;
-
-    if (page.fetchedCount < PAGE_SIZE) break;
-  }
-
-  return recipients;
 }
 
 async function loadProcessedPatientIds(workflowId: string): Promise<Set<string>> {
@@ -423,19 +410,23 @@ export async function POST(request: Request) {
     }
 
     // ----- REAL CAMPAIGN: fan out to all recipients -----
-    const completeAudience = await fetchCompleteAudience(filter);
+    const audience = await fetchCampaignAudience(supabaseAdmin, filter);
     const processedPatientIds = body.workflowId
       ? await loadProcessedPatientIds(body.workflowId)
       : new Set<string>();
-    const recipients = completeAudience.filter(
+    const recipients = audience.recipients.filter(
       patient => !processedPatientIds.has(patient.id),
     );
-    const skippedPreviouslyProcessed = completeAudience.length - recipients.length;
+    const skippedPreviouslyProcessed = audience.recipients.length - recipients.length;
     console.log("[marketing/send] Campaign start", {
       campaignName: body.campaignName,
       templateId: body.templateId,
       subject: subjectToUse,
       recipientCount: recipients.length,
+      capped: audience.capped,
+      cap: MAX_CAMPAIGN_RECIPIENTS,
+      duplicatePatientsRemoved: audience.duplicatePatientsRemoved,
+      sharedAddressesRemoved: audience.sharedAddressesRemoved,
       skippedPreviouslyProcessed,
       sampleEmails: recipients.slice(0, 3).map((r) => r.email),
     });
@@ -539,10 +530,14 @@ export async function POST(request: Request) {
       campaignId: campaign.id,
       totalRecipients: recipients.length,
       skippedPreviouslyProcessed,
+      capped: audience.capped,
+      cap: MAX_CAMPAIGN_RECIPIENTS,
+      duplicatePatientsRemoved: audience.duplicatePatientsRemoved,
+      sharedAddressesRemoved: audience.sharedAddressesRemoved,
       status: "sending",
     }, { status: 202 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = describeSupabaseError(error);
     console.error("[/api/marketing/campaigns/send] Error:", error);
     return NextResponse.json(
       { error: `Campaign send failed: ${message}` },

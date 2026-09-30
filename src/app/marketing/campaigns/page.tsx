@@ -60,6 +60,8 @@ export default function MarketingCampaignsPage() {
 
   // Preview state
   const [previewCount, setPreviewCount] = useState(0);
+  const [previewCapped, setPreviewCapped] = useState(false);
+  const [previewCap, setPreviewCap] = useState(0);
   const [previewSample, setPreviewSample] = useState<PatientRow[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -148,10 +150,13 @@ export default function MarketingCampaignsPage() {
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Preview failed");
       setPreviewCount(data.count);
+      setPreviewCapped(!!data.capped);
+      setPreviewCap(data.cap ?? 0);
       setPreviewSample(data.sample ?? []);
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : "Preview failed");
       setPreviewCount(0);
+      setPreviewCapped(false);
       setPreviewSample([]);
     } finally {
       setPreviewLoading(false);
@@ -224,9 +229,24 @@ export default function MarketingCampaignsPage() {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || "Send failed");
-      const failMsg = data.firstError ? ` — first error: ${data.firstError}` : "";
+      if (!data.queued) {
+        setSendResult(data.message || "No recipients matched this filter.");
+        return;
+      }
+      // Delivery runs in the background, so there are no sent/failed totals
+      // to report yet — only what was queued.
+      const notes: string[] = [];
+      if (data.capped) notes.push(`capped at ${Number(data.cap).toLocaleString()}`);
+      if (data.sharedAddressesRemoved) {
+        notes.push(`${data.sharedAddressesRemoved} duplicate address(es) skipped`);
+      }
+      if (data.skippedPreviouslyProcessed) {
+        notes.push(`${data.skippedPreviouslyProcessed} already contacted`);
+      }
       setSendResult(
-        `Campaign ${data.status} — ${data.sent} delivered${data.failed ? `, ${data.failed} failed` : ""}.${failMsg}`,
+        `Queued for ${Number(data.totalRecipients).toLocaleString()} recipients` +
+          `${notes.length ? ` (${notes.join("; ")})` : ""}. ` +
+          `Sending continues in the background — reload to see progress.`,
       );
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Send failed");
@@ -631,7 +651,16 @@ export default function MarketingCampaignsPage() {
               <p className="text-3xl font-bold text-slate-900">
                 {previewLoading ? "…" : previewCount.toLocaleString()}
               </p>
-              <p className="text-xs text-slate-500">matching recipients</p>
+              <p className="text-xs text-slate-500">
+                {previewCapped ? "recipients (limit reached)" : "matching recipients"}
+              </p>
+              {previewCapped && (
+                <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                  More patients match this filter than one campaign may contact.
+                  Only the {previewCap.toLocaleString()} most recently added will
+                  be emailed — narrow the filter to reach the rest.
+                </p>
+              )}
             </div>
             {previewError && (
               <p className="mb-2 rounded bg-red-50 px-2 py-1 text-[11px] text-red-700">{previewError}</p>
