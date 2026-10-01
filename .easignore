@@ -1,0 +1,37 @@
+# Which files EAS Build uploads. When this file exists, eas-cli uses it
+# INSTEAD of .gitignore to build the archive.
+#
+# It has to exist because .gitignore excludes /mobile-app and
+# /mobile-app-patient so they stay out of the Vercel web build. EAS archives
+# from the repository root and then looks for the app at
+# projectRootDirectory ("mobile-app"), so those rules stripped the whole app
+# out of the upload and the builder failed with:
+#   "package.json does not exist in /Users/expo/workingdir/build/mobile-app"
+# mobile-app/assets and mobile-app/plugins are also untracked, so they would
+# have gone missing even though app.json references both.
+#
+# Because .gitignore is bypassed, every secret has to be re-excluded here.
+# Do not remove the .env rules.
+
+# Secrets — never upload to a build worker
+.env
+.env.*
+.env.local
+.env.capture
+
+# Dependencies and build output — EAS installs and builds these itself
+node_modules/
+.next/
+.vercel/
+.git/
+dist/
+build/
+
+# Local tooling and scratch files
+.devin/
+.claude/
+.windsurf/
+.codeium/
+*.log
+build-log*.txt
+tsconfig.tsbuildinfo
