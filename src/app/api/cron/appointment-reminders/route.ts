@@ -4,6 +4,7 @@ import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTime
 import { isOperationRoomAppointment, reminderSuppressionReason } from "@/lib/appointmentComms";
 import { logEmailSent } from "@/lib/logEmail";
 import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
+import { sendSms } from "@/lib/messaging";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -22,33 +23,31 @@ const CRON_SECRET = process.env.CRON_SECRET;
  * Appointment Reminders Cron Job
  * 
  * Sends reminders:
- * 1. 1 day before appointment - via WhatsApp (priority) AND email
- * 2. 1 hour after booking - via WhatsApp (priority) AND email
+ * 1. 1 day before appointment - via SMS (priority) AND email
+ * 2. 1 hour after booking - via SMS (priority) AND email
  * 
  * Run this cron every 15 minutes
  */
 
-async function sendWhatsAppMessage(
+async function sendAppointmentSms(
   toPhone: string,
   message: string,
-  patientId?: string
+  patientId: string | undefined,
+  messageType: string,
 ): Promise<boolean> {
-  try {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
-    const response = await fetch(`${baseUrl}/api/whatsapp/queue`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        toPhone,
-        messageBody: message,
-        patientId,
-      }),
-    });
-    return response.ok;
-  } catch (error) {
-    console.error("[Reminder] WhatsApp send failed:", error);
-    return false;
+  // SMS via Twilio — server-to-server, no WhatsApp session to keep alive, and
+  // every send is logged in sms_logs by /api/sms/send.
+  const result = await sendSms({
+    to: toPhone,
+    body: message,
+    patientId,
+    source: "appointment_reminder",
+    metadata: { message_type: messageType },
+  });
+  if (!result.ok) {
+    console.error(`[Reminder] SMS send failed to ${toPhone}:`, result.error);
   }
+  return result.ok;
 }
 
 async function sendEmail(
@@ -133,8 +132,8 @@ export async function GET(request: Request) {
     const oneHourAgoStart = new Date(oneHourAgo.getTime() - 5 * 60 * 1000); // 5 min window
     
     const results = {
-      dayBefore: { whatsapp: 0, email: 0, failed: 0 },
-      bookingConfirm: { whatsapp: 0, email: 0, failed: 0 },
+      dayBefore: { sms: 0, email: 0, failed: 0 },
+      bookingConfirm: { sms: 0, email: 0, failed: 0 },
     };
 
     // ─────────────────────────────────────────────────────────────────────
@@ -187,29 +186,17 @@ export async function GET(request: Request) {
         const dateStr = formatSwissDateWithWeekday(appointmentDate);
         const timeStr = formatSwissTimeAmPm(appointmentDate);
         
-        // WhatsApp message (priority)
-        const whatsappMessage = `⏰ Appointment Reminder - Aesthetics Clinic
+        // SMS message (priority) — ASCII only so it stays GSM-7 and doesn't
+        // get billed as multiple UCS-2 segments.
+        const smsMessage = `Aesthetics Clinic reminder: appointment TOMORROW ${dateStr} at ${timeStr}${doctorName ? ` with ${doctorName}` : ""}${location ? `, ${location}` : ""}. To reschedule call +41 22 732 22 23.`;
 
-Dear ${patientName},
-
-This is a friendly reminder that you have an appointment TOMORROW:
-
-📅 Date: ${dateStr}
-🕐 Time: ${timeStr}
-${doctorName ? `👨‍⚕️ Doctor: ${doctorName}` : ""}
-${location ? `📍 Location: ${location}` : ""}
-
-If you need to reschedule, please call us at +41 22 732 22 23.
-
-We look forward to seeing you!`;
-
-        let whatsappSent = false;
+        let smsSent = false;
         let emailSent = false;
 
-        // Send WhatsApp FIRST (priority)
+        // Send SMS FIRST (priority)
         if (patientPhone && patientPhone.trim().length > 0) {
-          whatsappSent = await sendWhatsAppMessage(patientPhone, whatsappMessage, patient.id);
-          if (whatsappSent) results.dayBefore.whatsapp++;
+          smsSent = await sendAppointmentSms(patientPhone, smsMessage, patient.id, "appointment_reminder");
+          if (smsSent) results.dayBefore.sms++;
         }
 
         // Send email as backup/copy
@@ -234,7 +221,7 @@ We look forward to seeing you!`;
         }
 
         // Mark reminder as sent
-        if (whatsappSent || emailSent) {
+        if (smsSent || emailSent) {
           await supabase
             .from("appointments")
             .update({ reminder_sent_at: now.toISOString() })
@@ -293,31 +280,16 @@ We look forward to seeing you!`;
         const dateStr = formatSwissDateWithWeekday(appointmentDate);
         const timeStr = formatSwissTimeAmPm(appointmentDate);
         
-        // WhatsApp booking confirmation
-        const whatsappMessage = `✓ Booking Confirmed - Aesthetics Clinic
+        // SMS booking confirmation
+        const smsMessage = `Aesthetics Clinic: appointment confirmed for ${dateStr} at ${timeStr}${doctorName ? ` with ${doctorName}` : ""}${location ? `, ${location}` : ""}. Reminder the day before. To reschedule call +41 22 732 22 23.`;
 
-Dear ${patientName},
-
-Your appointment has been successfully booked!
-
-📅 Date: ${dateStr}
-🕐 Time: ${timeStr}
-${doctorName ? `👨‍⚕️ Doctor: ${doctorName}` : ""}
-${location ? `📍 Location: ${location}` : ""}
-
-We will send you a reminder the day before your appointment.
-
-If you need to reschedule, please call us at +41 22 732 22 23.
-
-Thank you for choosing Aesthetics Clinic!`;
-
-        let whatsappSent = false;
+        let smsSent = false;
         let emailSent = false;
 
-        // Send WhatsApp FIRST (priority)
+        // Send SMS FIRST (priority)
         if (patientPhone && patientPhone.trim().length > 0) {
-          whatsappSent = await sendWhatsAppMessage(patientPhone, whatsappMessage, patient.id);
-          if (whatsappSent) results.bookingConfirm.whatsapp++;
+          smsSent = await sendAppointmentSms(patientPhone, smsMessage, patient.id, "booking_confirmation");
+          if (smsSent) results.bookingConfirm.sms++;
         }
 
         // Send email as backup/copy
@@ -341,7 +313,7 @@ Thank you for choosing Aesthetics Clinic!`;
         }
 
         // Mark confirmation as sent
-        if (whatsappSent || emailSent) {
+        if (smsSent || emailSent) {
           await supabase
             .from("appointments")
             .update({ booking_confirmation_sent_at: now.toISOString() })

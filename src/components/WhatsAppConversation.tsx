@@ -95,11 +95,15 @@ export default function WhatsAppConversation({
       setSending(true);
       setError(null);
 
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`;
+      }
+
       const response = await fetch("/api/whatsapp/queue", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           toPhone: patientPhone,
           messageBody: body,

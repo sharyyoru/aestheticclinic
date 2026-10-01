@@ -56,6 +56,35 @@ function getAppointmentStatusColorClasses(status: AppointmentStatus): string {
   }
 }
 
+// Patient-facing appointment notifications go out as SMS via Twilio
+// (/api/sms/send). The WhatsApp Web queue needs a per-user session on the
+// Railway server, which made these silent no-ops for most staff — SMS is the
+// reliable channel here and is logged in sms_logs.
+async function sendAppointmentSmsNotification(payload: {
+  toPhone: string;
+  messageBody: string;
+  patientId?: string | null;
+}): Promise<void> {
+  try {
+    const res = await fetch("/api/sms/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: payload.toPhone,
+        body: payload.messageBody,
+        patientId: payload.patientId,
+        metadata: { message_type: "appointment_notification", source: "agenda" },
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`[SMS] Send rejected (${res.status}):`, text);
+    }
+  } catch (error) {
+    console.error("[SMS] Failed to send notification", error);
+  }
+}
+
 type AppointmentPatient = {
   id: string;
   first_name: string | null;
@@ -936,21 +965,11 @@ async function sendAppointmentConfirmationEmail(
         ? `Appointment updated to ${dateTimeLabel} for ${serviceLabel} with ${doctorName} at ${location}`
         : `Appointment confirmation on ${dateTimeLabel} for ${serviceLabel} with ${doctorName} at ${location}`;
 
-      try {
-        await fetch("/api/whatsapp/queue", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            toPhone: patientPhone,
-            messageBody: whatsappText,
-            patientId: appointment.patient_id,
-          }),
-        });
-      } catch (error) {
-        console.error("Failed to enqueue WhatsApp appointment notification", error);
-      }
+      await sendAppointmentSmsNotification({
+        toPhone: patientPhone,
+        messageBody: whatsappText,
+        patientId: appointment.patient_id,
+      });
     }
   } catch (error) {
     console.error("[Email Confirmation] Failed to prepare appointment confirmation email:", error);
@@ -1087,19 +1106,11 @@ async function sendAppointmentRescheduledEmail(
     if (patientPhone && patientPhone.trim().length > 0) {
       const whatsappText = `Your appointment has been rescheduled from ${oldDateLabel} ${oldTimeLabel} to ${newDateLabel} ${newTimeLabel} with ${doctorName} at ${location}`;
 
-      try {
-        await fetch("/api/whatsapp/queue", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            toPhone: patientPhone,
-            messageBody: whatsappText,
-            patientId: newAppointment.patient_id,
-          }),
-        });
-      } catch (error) {
-        console.error("Failed to enqueue WhatsApp rescheduling notification", error);
-      }
+      await sendAppointmentSmsNotification({
+        toPhone: patientPhone,
+        messageBody: whatsappText,
+        patientId: newAppointment.patient_id,
+      });
     }
   } catch (error) {
     console.error("[Email Rescheduled] Failed to prepare email:", error);
@@ -1246,19 +1257,11 @@ async function sendAppointmentCancellationEmail(
     if (patientPhone && patientPhone.trim().length > 0) {
       const whatsappText = `Your appointment on ${dateLabel} at ${timeLabel} with ${doctorName} at ${location} has been cancelled. Please contact the clinic if you would like to reschedule.`;
 
-      try {
-        await fetch("/api/whatsapp/queue", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            toPhone: patientPhone,
-            messageBody: whatsappText,
-            patientId: appointment.patient_id,
-          }),
-        });
-      } catch (error) {
-        console.error("Failed to enqueue WhatsApp cancellation notification", error);
-      }
+      await sendAppointmentSmsNotification({
+        toPhone: patientPhone,
+        messageBody: whatsappText,
+        patientId: appointment.patient_id,
+      });
     }
   } catch (error) {
     console.error("[Email Cancellation] Failed to prepare email:", error);
