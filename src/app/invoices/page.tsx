@@ -795,7 +795,7 @@ export default function InvoicesPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="space-y-4 p-1">
+    <div className="space-y-4 p-1" data-tour="invoices.page">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -813,7 +813,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-tour="invoices.summary">
         <div className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
           <p className="text-[11px] font-medium text-slate-500">Invoices</p>
           <p className="mt-0.5 text-lg font-semibold text-slate-900">{summary.count}</p>
@@ -833,7 +833,7 @@ export default function InvoicesPage() {
       </div>
 
       {/* Filters bar */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" data-tour="invoices.filters">
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <svg className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" strokeWidth={2} /><path strokeLinecap="round" strokeWidth={2} d="M21 21l-4.35-4.35" /></svg>
           <input

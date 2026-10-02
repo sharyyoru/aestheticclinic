@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { postAcademyEngagement } from "@/lib/academy/engagementClient";
 
 interface LessonCompleteButtonProps {
   lessonId: string;
@@ -41,20 +42,9 @@ export default function LessonCompleteButton({ lessonId }: LessonCompleteButtonP
     setSaving(true);
 
     try {
-      if (isCompleted) {
-        // Remove completion
-        await supabaseClient
-          .from("academy_progress")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("lesson_id", lessonId);
-        setIsCompleted(false);
-      } else {
-        // Mark as complete
-        await supabaseClient
-          .from("academy_progress")
-          .insert({ user_id: user.id, lesson_id: lessonId });
-        setIsCompleted(true);
+      if (!isCompleted) {
+        const result = await postAcademyEngagement({ type: "manual_complete", lessonId });
+        if (result) setIsCompleted(true);
       }
     } catch (error) {
       console.error("Error updating progress:", error);

@@ -10,11 +10,12 @@
     "whatsapp": "node server/whatsapp-server.js",
     "academy:provision": "tsx scripts/academy/1-provision.ts",
     "academy:capture": "tsx scripts/academy/2-capture.ts",
+    "academy:scripts": "tsx scripts/academy/generate-scripts.ts",
     "academy:encode": "tsx scripts/academy/3-encode.ts",
     "academy:publish": "tsx scripts/academy/4-publish.ts",
     "academy:sync": "tsx scripts/academy/5-sync.ts",
     "academy:doctor": "tsx scripts/academy/doctor.ts",
-    "academy:all": "npm run academy:capture && npm run academy:encode && npm run academy:publish && npm run academy:sync",
+    "academy:all": "npm run academy:capture && npm run academy:scripts && npm run academy:encode && npm run academy:publish && npm run academy:sync",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "docx": "^9.5.1",
     "docx-preview": "^0.3.7",
     "dotenv": "^17.2.3",
+    "driver.js": "^1.8.0",
     "fabric": "^6.9.0",
     "framer-motion": "^12.40.0",
     "fuse.js": "^7.1.0",

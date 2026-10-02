@@ -187,7 +187,7 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "Failed to queue message" }, { status: 500 });
         }
 
-        return NextResponse.json({ ok: true, queued: true, id: (data as any).id as string });
+        return NextResponse.json({ ok: true, queued: true, id: data.id as string });
       }
     }
 
@@ -293,7 +293,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, id: (data as any).id as string });
+    return NextResponse.json({ ok: true, id: data.id as string });
   } catch (error) {
     console.error("Unexpected error in /api/whatsapp/send", error);
     return NextResponse.json(

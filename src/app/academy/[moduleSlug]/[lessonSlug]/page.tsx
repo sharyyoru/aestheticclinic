@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import LessonContent from "./LessonContent";
 import VideoContainer from "../../components/VideoContainer";
+import LessonExperienceControls from "./LessonExperienceControls";
 
 export const dynamic = "force-dynamic";
 
@@ -13,14 +14,9 @@ type Lesson = {
   content: string | null;
   video_url: string | null;
   poster_url: string | null;
+  captions_url: string | null;
   sort_order: number;
   estimated_minutes: number;
-};
-
-type Module = {
-  id: string;
-  slug: string;
-  title: string;
 };
 
 async function getLessonData(moduleSlug: string, lessonSlug: string) {
@@ -35,12 +31,23 @@ async function getLessonData(moduleSlug: string, lessonSlug: string) {
   if (!module) return null;
 
   // Get lesson
-  const { data: lesson } = await supabaseAdmin
+  const lessonResult = await supabaseAdmin
     .from("academy_lessons")
-    .select("id, slug, title, content, video_url, poster_url, sort_order, estimated_minutes")
+    .select("id, slug, title, content, video_url, poster_url, captions_url, sort_order, estimated_minutes")
     .eq("module_id", module.id)
     .eq("slug", lessonSlug)
     .single();
+
+  let lesson = lessonResult.data as Lesson | null;
+  if (!lesson && lessonResult.error?.code === "42703") {
+    const fallback = await supabaseAdmin
+      .from("academy_lessons")
+      .select("id, slug, title, content, video_url, poster_url, sort_order, estimated_minutes")
+      .eq("module_id", module.id)
+      .eq("slug", lessonSlug)
+      .single();
+    lesson = fallback.data ? { ...fallback.data, captions_url: null } as Lesson : null;
+  }
 
   if (!lesson) return null;
 
@@ -97,7 +104,9 @@ export default async function LessonPage({ params }: LessonPageProps) {
         {/* Lesson Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Video */}
-          <VideoContainer videoUrl={lesson.video_url} posterUrl={lesson.poster_url} title={lesson.title} />
+          <VideoContainer videoUrl={lesson.video_url} posterUrl={lesson.poster_url} captionsUrl={lesson.captions_url} title={lesson.title} lessonId={lesson.id} />
+
+          <LessonExperienceControls lessonId={lesson.id} lessonSlug={lesson.slug} moduleSlug={module.slug} />
 
           {/* Lesson Info */}
           <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">

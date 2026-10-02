@@ -415,7 +415,7 @@ export default function PatientsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="patients.page">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Contacts</h1>
@@ -429,7 +429,7 @@ export default function PatientsPage() {
       </div>
 
       {/* Top filters row */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3" data-tour="patients.filters">
         {/* Filter by Owner */}
         <select
           value={ownerFilter === "owner" && ownerNameFilter ? ownerNameFilter : "all"}
@@ -524,7 +524,7 @@ export default function PatientsPage() {
             </div>
             
             {/* Search Input */}
-            <div className="relative flex-1">
+            <div className="relative flex-1" data-tour="patients.search">
               <input
                 type="text"
                 value={searchQuery}

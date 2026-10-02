@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-const smsFrom = process.env.TWILIO_SMS_FROM || process.env.TWILIO_WHATSAPP_FROM?.replace("whatsapp:", "");
+const smsFrom = process.env.TWILIO_SMS_FROM;
 
 /**
  * POST /api/sms/send

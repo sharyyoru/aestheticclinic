@@ -17,6 +17,7 @@ import { CATEGORIES, MODULES, getCategoryModules } from "../../src/app/documenta
 import { production, REPO_ROOT } from "./lib/env";
 import { readManifest, type ManifestEntry } from "./lib/manifest";
 import { estimateMinutes, lessonHtml } from "./lib/docsHtml";
+import { getAcademyExperience } from "../../src/lib/academy/experiences";
 
 const DOCS_URL = "/documentation";
 const dryRun = process.argv.includes("--dry-run");
@@ -134,10 +135,8 @@ async function main() {
     return;
   }
 
-  // Wipe progress and certificates first: they reference the legacy lessons.
-  await rest("academy_progress?id=neq.00000000-0000-0000-0000-000000000000", { method: "DELETE" });
-  await rest("academy_certificates?id=neq.00000000-0000-0000-0000-000000000000", { method: "DELETE" });
-  console.log("  Cleared academy_progress and academy_certificates");
+  // Preserve progress and certificates during routine syncs. Lesson upserts keep stable IDs through the module/slug constraints.
+  console.log("  Preserving academy_progress and academy_certificates");
 
   const keptSlugs = CATEGORIES.map((c) => c.id);
   const existing = await (await rest("academy_modules?select=id,slug")).json();
@@ -184,16 +183,25 @@ async function main() {
     });
     const [moduleRow] = (await upsert.json()) as { id: string }[];
 
-    const lessonRows = lessons.map(({ doc, entry, minutes }, lessonIndex) => ({
-      module_id: moduleRow.id,
-      slug: doc.slug,
-      title: doc.title,
-      content: lessonHtml(doc, entry?.shots ?? [], DOCS_URL),
-      video_url: entry?.video?.publicUrl ?? null,
-      poster_url: entry?.video?.posterUrl ?? null,
-      sort_order: lessonIndex + 1,
-      estimated_minutes: minutes,
-    }));
+    const lessonRows = lessons.map(({ doc, entry, minutes }, lessonIndex) => {
+      const experience = getAcademyExperience(doc.slug);
+      return {
+        module_id: moduleRow.id,
+        slug: doc.slug,
+        title: doc.title,
+        content: lessonHtml(doc, entry?.shots ?? [], DOCS_URL),
+        video_url: entry?.video?.publicUrl ?? null,
+        poster_url: entry?.video?.posterUrl ?? null,
+        captions_url: entry?.video?.captionsUrl ?? null,
+        video_duration_seconds: entry?.video?.durationSeconds ?? null,
+        tour_available: Boolean(experience),
+        tour_version: experience?.version ?? 1,
+        minimum_tour_width: experience?.minimumWidth ?? 768,
+        experience_status: experience?.status ?? "draft",
+        sort_order: lessonIndex + 1,
+        estimated_minutes: minutes,
+      };
+    });
 
     await rest("academy_lessons?on_conflict=module_id,slug", {
       method: "POST",

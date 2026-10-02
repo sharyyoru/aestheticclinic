@@ -25,6 +25,11 @@ export type ManifestEntry = {
     localPoster?: string;
     publicUrl?: string;
     posterUrl?: string;
+    captionsUrl?: string;
+    localNarration?: string;
+    localCaptions?: string;
+    localPresenter?: string;
+    scriptVersion?: string;
     durationSeconds?: number;
     stepCount?: number;
   };

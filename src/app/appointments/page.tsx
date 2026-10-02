@@ -3602,6 +3602,7 @@ export default function CalendarPage() {
 
   return (
     <div 
+      data-tour="agenda.page"
       className="flex gap-4 px-0 pb-4 pt-2 sm:px-1 lg:px-2"
       style={{ 
         height: `calc(${viewportHeight} - 96px)`,
@@ -3972,10 +3973,10 @@ export default function CalendarPage() {
       </aside>
 
       {/* Main month view */}
-      <div className="flex min-w-0 flex-1 flex-col space-y-4">
+      <div className="flex min-w-0 flex-1 flex-col space-y-4" data-tour="agenda.calendar">
         {/* Calendar header controls */}
         {/* Mobile-first header like Google Calendar / Calendly */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" data-tour="agenda.toolbar">
           {/* Top row: Navigation and date */}
           <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
             <div className="flex items-center gap-2">

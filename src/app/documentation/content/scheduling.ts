@@ -415,17 +415,17 @@ export const schedulingModules: DocModule[] = [
   {
     slug: "appointment-reminders",
     title: "Appointment reminders",
-    tagline: "Automatic confirmations and day-before reminders on WhatsApp and email.",
+    tagline: "Automatic confirmations and day-before reminders by SMS and email.",
     category: "scheduling",
     icon: "phone",
     appPath: ["Automatic"],
     audience: ["staff", "admin"],
     summary:
-      "Reminders run by themselves. Every new appointment produces a confirmation shortly after booking, and every upcoming appointment produces a reminder the day before. Both go out on WhatsApp where possible and by email as well, and both are suppressed for appointments that have been moved or cancelled.",
+      "Reminders run by themselves. Every new appointment produces a confirmation shortly after booking, and every upcoming appointment produces a reminder the day before. Both go out by SMS and email, and both are suppressed for appointments that have been moved or cancelled.",
     keyCapabilities: [
       "Booking confirmation about an hour after the appointment is created",
       "Reminder the day before the appointment",
-      "WhatsApp first, with email in parallel",
+      "SMS first, with email in parallel",
       "Automatic suppression for moved and cancelled appointments",
       "No patient messages for internal calendars such as the operation room",
       "Every send recorded against the patient",
@@ -437,8 +437,8 @@ export const schedulingModules: DocModule[] = [
         table: {
           columns: ["Message", "Timing", "Channels"],
           rows: [
-            ["Booking confirmation", "Around an hour after the appointment is created.", "WhatsApp and email"],
-            ["Appointment reminder", "The day before the appointment.", "WhatsApp and email"],
+            ["Booking confirmation", "Around an hour after the appointment is created.", "SMS and email"],
+            ["Appointment reminder", "The day before the appointment.", "SMS and email"],
           ],
         },
         bullets: [
@@ -470,8 +470,8 @@ export const schedulingModules: DocModule[] = [
         heading: "How the channels are chosen",
         steps: [
           {
-            title: "WhatsApp is attempted first",
-            body: "It has the highest read rate, and the message is queued rather than sent blindly so delivery can be retried.",
+            title: "SMS is attempted first",
+            body: "It is sent through Twilio and recorded in the patient communication log.",
           },
           {
             title: "Email is sent as well",
@@ -485,7 +485,7 @@ export const schedulingModules: DocModule[] = [
         callouts: [
           {
             kind: "note",
-            body: "WhatsApp requires the clinic's WhatsApp connection to be active. If it drops, reminders still go out by email.",
+            body: "If an SMS cannot be sent, the email is still attempted independently.",
           },
         ],
       },
@@ -493,7 +493,7 @@ export const schedulingModules: DocModule[] = [
         id: "reducing-no-shows",
         heading: "Using reminders to reduce no-shows",
         bullets: [
-          "Keep patient phone numbers in international format so WhatsApp can reach them — imported numbers are normalised for Switzerland automatically",
+          "Keep patient phone numbers in international format so SMS can reach them — imported numbers are normalised for Switzerland automatically",
           "Mark no-shows honestly in the agenda so the pattern is visible in reporting",
           "Use a workflow to create a follow-up task when an appointment is cancelled, so the slot gets refilled",
           "Check the Missed Calls page — a patient trying to reach you to move an appointment often shows up there first",

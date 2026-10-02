@@ -1,12 +1,27 @@
 "use client";
 
+import { useRef } from "react";
+import { postAcademyEngagement } from "@/lib/academy/engagementClient";
+
 interface VideoContainerProps {
   videoUrl: string | null;
   title: string;
+  lessonId?: string;
   posterUrl?: string | null;
+  captionsUrl?: string | null;
 }
 
-export default function VideoContainer({ videoUrl, title, posterUrl }: VideoContainerProps) {
+export default function VideoContainer({ videoUrl, title, lessonId, posterUrl, captionsUrl }: VideoContainerProps) {
+  const lastReportedPercent = useRef(0);
+
+  const reportProgress = (video: HTMLVideoElement) => {
+    if (!lessonId || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    const percent = Math.min(100, (video.currentTime / video.duration) * 100);
+    if (percent < 80 && percent - lastReportedPercent.current < 10) return;
+    if (percent >= 80 && lastReportedPercent.current >= 80) return;
+    lastReportedPercent.current = percent;
+    void postAcademyEngagement({ type: "video_progress", lessonId, percent, seconds: Math.round(video.currentTime) });
+  };
   // Check if it's a YouTube URL
   const getYouTubeId = (url: string) => {
     const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
@@ -62,7 +77,10 @@ export default function VideoContainer({ videoUrl, title, posterUrl }: VideoCont
           playsInline
           className="h-full w-full"
           poster={posterUrl ?? undefined}
+          onTimeUpdate={(event) => reportProgress(event.currentTarget)}
+          onEnded={(event) => reportProgress(event.currentTarget)}
         >
+          {captionsUrl && <track kind="captions" src={captionsUrl} srcLang="en" label="English" default />}
           Your browser does not support the video tag.
         </video>
       </div>

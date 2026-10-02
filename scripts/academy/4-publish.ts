@@ -51,7 +51,7 @@ async function ensureBucket(): Promise<void> {
       name: BUCKET,
       public: true,
       file_size_limit: 52428800,
-      allowed_mime_types: ["image/png", "image/jpeg", "image/webp", "video/mp4"],
+      allowed_mime_types: ["image/png", "image/jpeg", "image/webp", "video/mp4", "text/vtt"],
     }),
   });
   if (!res.ok) throw new Error(`Could not create the bucket: ${await res.text()}`);
@@ -60,6 +60,7 @@ async function ensureBucket(): Promise<void> {
 
 function contentType(path: string): string {
   if (path.endsWith(".mp4")) return "video/mp4";
+  if (path.endsWith(".vtt")) return "text/vtt";
   if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
   return "image/png";
 }
@@ -111,6 +112,11 @@ async function main() {
     if (entry.video?.localPoster && existsSync(entry.video.localPoster)) {
       const objectPath = hashed(entry.video.localPoster, `poster/${entry.docSlug}.jpg`);
       entry.video.posterUrl = await upload(entry.video.localPoster, objectPath);
+      files += 1;
+    }
+    if (entry.video?.localCaptions && existsSync(entry.video.localCaptions)) {
+      const objectPath = hashed(entry.video.localCaptions, `captions/${entry.docSlug}.vtt`);
+      entry.video.captionsUrl = await upload(entry.video.localCaptions, objectPath);
       files += 1;
     }
 

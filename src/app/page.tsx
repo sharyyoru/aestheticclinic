@@ -600,7 +600,7 @@ export default function Home() {
   const maxBarValue = Math.max(...chartData.map((d) => d.completed), 1);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-tour="app.dashboard">
       <header className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">

@@ -525,7 +525,7 @@ export default function WorkflowsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950" data-tour="workflows.page">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -619,7 +619,7 @@ export default function WorkflowsPage() {
         </div>
 
         {/* Filters Bar */}
-        <div className="mb-6 flex flex-col sm:flex-row gap-3">
+        <div className="mb-6 flex flex-col sm:flex-row gap-3" data-tour="workflows.filters">
           <div className="relative flex-1">
             <svg
               className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
@@ -694,7 +694,7 @@ export default function WorkflowsPage() {
             )}
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-tour="workflows.list">
             {filteredWorkflows.map((workflow) => (
               <div
                 key={workflow.id}

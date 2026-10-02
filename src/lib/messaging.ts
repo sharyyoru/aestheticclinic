@@ -209,12 +209,16 @@ export async function sendWhatsAppTemplate(options: {
 
     const result = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 
-    if (!res.ok && !(result as any).skipped) {
+    if (!res.ok && result.skipped !== true) {
       console.error(`[WhatsApp] Failed to send ${templateName} to ${normalized}:`, result);
       return { ok: false, error: (result.error as string) || `HTTP ${res.status}` };
     }
 
-    console.log(`[WhatsApp] Sent ${templateName} to ${normalized}`);
+    if (result.skipped === true) {
+      return { ok: false, error: (result.reason as string) || "WhatsApp send skipped" };
+    }
+
+    console.log(`[WhatsApp] Sent ${templateName} to ${normalized} from ${source}`);
     return { ok: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

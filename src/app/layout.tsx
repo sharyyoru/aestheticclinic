@@ -30,6 +30,7 @@ import { LayoutModeProvider } from "@/components/LayoutModeContext";
 import { ThemeProvider } from "@/components/ThemeContext";
 import LayoutShellSwitch from "@/components/LayoutShellSwitch";
 import ClassicLayoutToggle from "@/components/ClassicLayoutToggle";
+import AcademyTourProvider from "@/components/academy-tour/AcademyTourProvider";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -80,6 +81,7 @@ export default function RootLayout({
         <EmailNotificationsProvider>
         <DealNotificationsProvider>
         <PatientTabsProvider>
+        <AcademyTourProvider>
         <LayoutShellSwitch
           classicShell={
             <ShellBackground>
@@ -595,7 +597,7 @@ export default function RootLayout({
               <RequireAuth>
                 <div className="flex h-full flex-col">
                 <ShellHeader>
-                  <header className="flex items-center justify-between border-b border-slate-100/80 bg-white/70 px-4 py-3 sm:px-6 lg:px-8 app-shell-header">
+                  <header data-tour="app.primary-navigation" className="flex items-center justify-between border-b border-slate-100/80 bg-white/70 px-4 py-3 sm:px-6 lg:px-8 app-shell-header">
                     <div className="flex items-center gap-4">
                       <label
                         htmlFor="sidebar-toggle"
@@ -652,6 +654,7 @@ export default function RootLayout({
         >
           {children}
         </LayoutShellSwitch>
+        </AcademyTourProvider>
         </PatientTabsProvider>
         </DealNotificationsProvider>
         </EmailNotificationsProvider>
