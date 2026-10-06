@@ -290,6 +290,15 @@ const laserFormIdsByLanguage = {
   ],
 };
 
+const hbotFormIdsByLanguage = {
+  en: [
+    "consentement-hbot-en",
+  ],
+  fr: [
+    "consentement-hbot-fr",
+  ],
+};
+
 type BreastFormsSendModalProps = {
   patientId: string;
   patientEmail: string | null;
@@ -318,6 +327,10 @@ function BreastFormsSendModal({
     {
       title: "Laser",
       formIds: laserFormIdsByLanguage[language],
+    },
+    {
+      title: "HBOT",
+      formIds: hbotFormIdsByLanguage[language],
     },
   ].map((group) => ({
     ...group,
