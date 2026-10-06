@@ -2393,6 +2393,163 @@ cloneFormForFolder("consentement-eclaire-fr", "surgery-consentement-eclaire-fr",
 cloneFormForFolder("consentement-eclaire-en", "surgery-consentement-eclaire-en", "surgery", "INFORMED CONSENT.docx");
 cloneFormForFolder("preoperative-instructions-en", "surgery-preoperative-instructions-en", "surgery", "Preoperative instruction OP ENG (1).docx");
 
+const HBOT_CONSENT_FR_SOURCE = `
+CONSENTEMENT ÉCLAIRÉ — OXYGÉNOTHÉRAPIE HYPERBARE (HBOT)
+
+AESTHETICS CLINIC
+Chemin Rieu 18
+1208 Genève
+Suisse
+
+NOM ET PRÉNOM : ______________________________________
+
+DATE DE NAISSANCE : __________________________________
+
+DATE : ______________________________________________
+
+1. DESCRIPTION DU TRAITEMENT
+
+L'oxygénothérapie hyperbare (HBOT) consiste à respirer de l'oxygène à concentration élevée à l'intérieur d'une caisson hyperbare soumis à une pression supérieure à la pression atmosphérique normale. L'augmentation de la pression permet une dissolution accrue de l'oxygène dans le sang et les tissus, ce qui favorise les processus de récupération et de régénération.
+
+Une séance dure généralement entre 60 et 90 minutes. Pendant la montée et la descente en pression, vous pouvez ressentir une sensation de pression dans les oreilles, comparable à celle ressentie en avion ; elle se soulage en déglutissant, en bâillant ou en effectuant la manœuvre de Valsalva.
+
+2. INDICATIONS
+
+L'HBOT peut être proposée dans le cadre de la récupération après intervention chirurgicale ou traitement esthétique, de la cicatrisation, du bien-être général ou de la performance. Votre médecin vous a expliqué l'objectif du traitement dans votre cas.
+
+3. CONTRE-INDICATIONS
+
+Vous devez informer le personnel soignant avant la séance si vous présentez l'une des situations suivantes :
+
+- Pneumothorax non traité (contre-indication absolue)
+- Grossesse ou suspicion de grossesse
+- Infections ou obstruction des voies respiratoires supérieures, sinusites, rhume important
+- Antécédents de chirurgie de l'oreille ou troubles de l'équilibre pression des oreilles
+- Épilepsie ou antécédents de convulsions
+- Claustrophobie sévère
+- Traitement en cours par certains médicaments (notamment certains agents de chimiothérapie)
+- Pacemaker ou implant non compatible avec l'environnement hyperbare
+- Douleur thoracique, maladie pulmonaire obstructive sévère (BPCO avec rétention de CO2)
+
+4. RISQUES ET EFFETS SECONDAIRES
+
+Comme tout traitement médical, l'HBOT comporte des risques, généralement rares et bénins :
+
+- Barotraumatisme de l'oreille moyenne ou des sinus (douleur, sensation de plénitude, plus rarement perforation du tympan)
+- Modification temporaire de la vision (myopie transitoire), réversible dans la majorité des cas
+- Crise liée à la toxicité de l'oxygène (très rare) ; la séance est alors interrompue immédiatement
+- Fatigue ou sensation de vertige après la séance
+- Aggravation d'une claustrophobie
+- Risque d'incendie lié à l'environnement enrichi en oxygène : les consignes de sécurité doivent être strictement respectées
+
+5. CONSIGNES DE SÉCURITÉ
+
+Pour votre sécurité, il est interdit d'introduire dans le caisson : briquets, allumettes, appareils électroniques, produits inflammables, cosmétiques ou produits capillaires gras. Vous portez les vêtements fournis ou autorisés par la clinique. Vous devez signaler immédiatement toute douleur, pression auriculaire persistante ou malaise au personnel, qui peut interrompre la séance à tout moment.
+
+6. CONSENTEMENT
+
+Je déclare avoir reçu et compris les informations ci-dessus. J'ai pu poser toutes mes questions et obtenir des réponses satisfaisantes. Je confirme avoir signalé l'ensemble de mes antécédents médicaux, traitements en cours et éventuelles contre-indications.
+
+Je consens librement à recevoir des séances d'oxygénothérapie hyperbare. Je sais que je peux retirer mon consentement à tout moment, sans avoir à me justifier et sans que cela n'affecte la qualité de ma prise en charge.
+`;
+
+const HBOT_CONSENT_EN_SOURCE = `
+INFORMED CONSENT — HYPERBARIC OXYGEN THERAPY (HBOT)
+
+AESTHETICS CLINIC
+Chemin Rieu 18
+1208 Geneva
+Switzerland
+
+FULL NAME : ______________________________________
+
+DATE OF BIRTH : __________________________________
+
+DATE : ___________________________________________
+
+1. DESCRIPTION OF THE TREATMENT
+
+Hyperbaric oxygen therapy (HBOT) consists of breathing oxygen at a high concentration inside a hyperbaric chamber pressurised above normal atmospheric pressure. The increased pressure allows more oxygen to dissolve into the blood and tissues, supporting recovery and regenerative processes.
+
+A session usually lasts between 60 and 90 minutes. During pressurisation and depressurisation you may feel pressure in your ears, similar to what you feel on an aeroplane; this is relieved by swallowing, yawning or performing the Valsalva manoeuvre.
+
+2. INDICATIONS
+
+HBOT may be offered to support recovery after surgery or aesthetic treatment, wound healing, general wellbeing or performance. Your doctor has explained the purpose of the treatment in your case.
+
+3. CONTRAINDICATIONS
+
+You must inform the care team before the session if any of the following applies to you:
+
+- Untreated pneumothorax (absolute contraindication)
+- Pregnancy or suspected pregnancy
+- Upper respiratory infection or blockage, sinusitis, heavy cold
+- Previous ear surgery or difficulty equalising ear pressure
+- Epilepsy or history of seizures
+- Severe claustrophobia
+- Current treatment with certain medicines (in particular some chemotherapy agents)
+- Pacemaker or implant not compatible with the hyperbaric environment
+- Chest pain, severe obstructive lung disease (COPD with CO2 retention)
+
+4. RISKS AND SIDE EFFECTS
+
+Like any medical treatment, HBOT carries risks, which are generally rare and mild:
+
+- Barotrauma of the middle ear or sinuses (pain, feeling of fullness, more rarely eardrum perforation)
+- Temporary change in vision (transient myopia), reversible in most cases
+- Seizure related to oxygen toxicity (very rare); the session is stopped immediately if this occurs
+- Fatigue or dizziness after the session
+- Worsening of claustrophobia
+- Fire risk associated with the oxygen-enriched environment: safety rules must be strictly followed
+
+5. SAFETY RULES
+
+For your safety, it is forbidden to bring into the chamber: lighters, matches, electronic devices, flammable products, cosmetics or oily hair products. You will wear the clothing provided or authorised by the clinic. You must immediately report any pain, persistent ear pressure or discomfort to the staff, who may stop the session at any time.
+
+6. CONSENT
+
+I confirm that I have received and understood the information above. I have been able to ask all my questions and have received satisfactory answers. I confirm that I have disclosed all my medical history, current treatments and any possible contraindications.
+
+I freely consent to receive hyperbaric oxygen therapy sessions. I understand that I may withdraw my consent at any time, without having to justify myself and without affecting the quality of my care.
+`;
+
+// HBOT informed-consent form, in French and English. Content is rendered via
+// exactDocumentSections like the other consent forms (source document +
+// acknowledgment + signature).
+FORM_DEFINITIONS.push({
+  id: "consentement-hbot-fr",
+  name: "HBOT Consent",
+  nameFr: "Consentement oxygénothérapie hyperbare",
+  description: "Informed consent form for hyperbaric oxygen therapy",
+  descriptionFr: "Formulaire de consentement éclairé pour l'oxygénothérapie hyperbare",
+  language: "fr",
+  category: "consent",
+  originalFile: "HBOT consent.docx",
+  sections: exactDocumentSections(
+    "fr",
+    "HBOT Informed Consent",
+    "Consentement éclairé – Oxygénothérapie hyperbare (HBOT)",
+    HBOT_CONSENT_FR_SOURCE,
+  ),
+});
+
+FORM_DEFINITIONS.push({
+  id: "consentement-hbot-en",
+  name: "HBOT Consent",
+  nameFr: "Consentement oxygénothérapie hyperbare",
+  description: "Informed consent form for hyperbaric oxygen therapy",
+  descriptionFr: "Formulaire de consentement éclairé pour l'oxygénothérapie hyperbare",
+  language: "en",
+  category: "consent",
+  originalFile: "HBOT consent.docx",
+  sections: exactDocumentSections(
+    "en",
+    "HBOT Informed Consent",
+    undefined,
+    HBOT_CONSENT_EN_SOURCE,
+  ),
+});
+
 const ALTERNATE_LANGUAGE_FORM_IDS: Record<string, string> = {
   "questionnaire-anesthesie-fr": "questionnaire-anesthesie-en",
   "questionnaire-anesthesie-en": "questionnaire-anesthesie-fr",
@@ -2414,6 +2571,8 @@ const ALTERNATE_LANGUAGE_FORM_IDS: Record<string, string> = {
   "surgery-consentement-anesthesie-en": "surgery-consentement-anesthesie-fr",
   "surgery-consentement-eclaire-fr": "surgery-consentement-eclaire-en",
   "surgery-consentement-eclaire-en": "surgery-consentement-eclaire-fr",
+  "consentement-hbot-fr": "consentement-hbot-en",
+  "consentement-hbot-en": "consentement-hbot-fr",
 };
 
 export function getAlternateLanguageFormId(formId: string): string | undefined {

@@ -1,3 +1,5 @@
+import { clinicAddressForLocation } from "@/lib/clinicLocations";
+
 export type PatientAppointmentEmailType = "confirmation" | "day_before";
 
 export type PatientAppointmentEmailOptions = {
@@ -81,6 +83,7 @@ export function generatePatientAppointmentEmailHtml({
           ${doctorName ? `<p style="margin:0 0 8px;"><strong>Doctor / Médecin:</strong> ${safe(doctorName)}</p>` : ""}
           ${service ? `<p style="margin:0 0 8px;"><strong>Service:</strong> ${safe(service)}</p>` : ""}
           ${location ? `<p style="margin:0 0 8px;"><strong>Location / Lieu:</strong> ${safe(location)}</p>` : ""}
+          <p style="margin:0 0 8px;"><strong>Address / Adresse:</strong> ${safe(clinicAddressForLocation(location))}</p>
           ${notes ? `<p style="margin:0;"><strong>Notes:</strong> ${safe(notes)}</p>` : ""}
         </div>
         <p>We look forward to seeing you. / Nous nous réjouissons de vous accueillir.</p>

@@ -5,6 +5,7 @@ import { syncDealToAppointmentSet } from "@/lib/dealAppointmentSync";
 import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
 import { isHardBlock, type AppointmentRow } from "@/lib/appointmentAvailability";
 import { describeGaps, patientDetailsGaps } from "@/lib/bookingContact";
+import { CLINIC_LOCATIONS } from "@/lib/clinicLocations";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -18,29 +19,23 @@ const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailg
 // Doctor-specific capacity: these doctors can have 2 concurrent bookings.
 const MULTI_CAPACITY_DOCTORS = ["xavier-tenorio", "cesar-rodriguez", "yulia-raspertova"];
 
-// Clinic location details for emails
-const LOCATION_DETAILS: Record<string, { name: string; address: string; city: string }> = {
-  rhone: { 
-    name: "Rhône", 
-    address: "Rue du Rhône 17", 
-    city: "1204 Geneva" 
-  },
-  champel: { 
-    name: "Champel", 
-    address: "Avenue de Champel 4", 
-    city: "1206 Geneva" 
-  },
-  gstaad: { 
-    name: "Gstaad", 
-    address: "Promenade 52", 
-    city: "3780 Gstaad" 
-  },
-  montreux: { 
-    name: "Montreux", 
-    address: "Grand-Rue 80", 
-    city: "1820 Montreux" 
-  },
-};
+// Clinic location details for emails — derived from the shared map in
+// @/lib/clinicLocations so the address spoken back to callers matches the
+// addresses used everywhere else.
+const LOCATION_DETAILS: Record<string, { name: string; address: string; city: string }> =
+  Object.fromEntries(
+    Object.entries(CLINIC_LOCATIONS).map(([key, loc]) => {
+      const comma = loc.address.indexOf(",");
+      return [
+        key,
+        {
+          name: loc.name,
+          address: comma === -1 ? loc.address : loc.address.slice(0, comma),
+          city: comma === -1 ? "" : loc.address.slice(comma + 1).trim(),
+        },
+      ];
+    }),
+  );
 
 export const runtime = "nodejs";
 
