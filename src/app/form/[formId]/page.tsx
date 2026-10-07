@@ -4,7 +4,12 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { getAlternateLanguageFormId, getFormById, FormDefinition, FormField, FormSection, FormContentBlock } from "@/lib/formDefinitions";
 import { getUnansweredPatientFormFields, isPatientFormFieldRequired } from "@/lib/patientFormValidation";
-import { cleanDocumentText, getPatientResponseFields, isConfirmationDocument } from "@/lib/patientFormPresentation";
+import {
+  cleanDocumentText,
+  getConfirmationIdentityFields,
+  getPatientResponseFields,
+  isConfirmationDocument,
+} from "@/lib/patientFormPresentation";
 import Image from "next/image";
 
 type FormData = Record<string, string | boolean | string[]>;
@@ -947,7 +952,12 @@ function GenericPdfDocumentForm({
   if (sourceText.includes("authoriz") || sourceText.includes("autorise")) {
     embeddedFieldIds.add("photo_video_authorization");
   }
-  const fields = getPatientResponseFields(form).filter((field) => !embeddedFieldIds.has(field.id));
+  const responseFields = getPatientResponseFields(form).filter((field) => !embeddedFieldIds.has(field.id));
+  // The signature goes last, as it does on the paper original: read the
+  // document, confirm your details, answer any questions, then sign.
+  const signatureField = responseFields.find((field) => field.type === "signature");
+  const fields = responseFields.filter((field) => field.type !== "signature");
+  const identityFields = getConfirmationIdentityFields(form);
   const title = form.language === "fr" && form.nameFr ? form.nameFr : form.name;
 
   return (
@@ -957,6 +967,12 @@ function GenericPdfDocumentForm({
         {sourceBlocks.length > 0 && (
           <PdfDocumentContent blocks={sourceBlocks} formData={formData} onChange={onChange} fieldIds={fieldIds} />
         )}
+        <ConfirmationIdentityBlock
+          fields={identityFields}
+          formData={formData}
+          onChange={onChange}
+          language={form.language}
+        />
         {fields.length > 0 && (
           <div className="space-y-2 border-t border-slate-200 pt-4">
             {fields.map((field) => {
@@ -975,7 +991,103 @@ function GenericPdfDocumentForm({
             })}
           </div>
         )}
+        {signatureField && (
+          // cleanDocumentText strips the paper original's "SIGNATURE : ____"
+          // line, so the canvas needs its own heading or it appears unlabelled.
+          <div className="space-y-2 border-t border-slate-200 pt-4">
+            <p className="font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              {form.language === "fr" ? "Signature du patient" : "Patient signature"}
+            </p>
+            <SignatureCanvas
+              value={(formData[signatureField.id] as string) || ""}
+              onChange={(signature) => onChange(signatureField.id, signature)}
+              label={
+                getFieldLabel(signatureField, form.language) +
+                (signatureField.required ? " *" : "")
+              }
+            />
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The patient's details on a consent document.
+ *
+ * Shown read-only, straight from the patient record, so nobody retypes what
+ * the clinic already holds. A value the record does not have becomes a
+ * required input instead — otherwise the document gets signed with a blank
+ * identity, which is how an HBOT consent was stored with no date of birth.
+ */
+function ConfirmationIdentityBlock({
+  fields,
+  formData,
+  onChange,
+  language,
+}: {
+  fields: FormField[];
+  formData: FormData;
+  onChange: (fieldId: string, value: string | boolean | string[]) => void;
+  language: "en" | "fr";
+}) {
+  if (fields.length === 0) return null;
+  const isFr = language === "fr";
+
+  const formatDisplayDate = (raw: string) => {
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toLocaleDateString(isFr ? "fr-CH" : "en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
+  return (
+    <div className="space-y-2 border-t border-slate-200 pt-4">
+      <p className="font-sans text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {isFr ? "Identité du patient" : "Patient details"}
+      </p>
+      <dl className="space-y-2">
+        {fields.map((field) => {
+          const label = getFieldLabel(field, language);
+          const raw = formData[field.id];
+          const value = typeof raw === "string" ? raw.trim() : "";
+
+          if (value) {
+            return (
+              <div key={field.id} className="flex flex-wrap items-baseline gap-x-2">
+                <dt className="text-slate-600">{label}:</dt>
+                <dd className="font-semibold text-slate-950">
+                  {field.type === "date" ? formatDisplayDate(value) : value}
+                </dd>
+              </div>
+            );
+          }
+
+          return (
+            <div key={field.id} className="space-y-1">
+              <div className="flex flex-wrap items-end gap-2">
+                <span className="text-slate-600">{label} *</span>
+                <PdfTextInput
+                  id={field.id}
+                  value={raw ?? ""}
+                  onChange={onChange}
+                  type={field.type === "date" ? "date" : "text"}
+                  className={field.type === "date" ? "w-44" : "min-w-40 flex-1"}
+                />
+              </div>
+              <p className="font-sans text-[11px] text-amber-700">
+                {isFr
+                  ? "Cette information ne figure pas dans votre dossier — merci de la compléter."
+                  : "We do not have this on file — please complete it."}
+              </p>
+            </div>
+          );
+        })}
+      </dl>
     </div>
   );
 }

@@ -1,22 +1,28 @@
 /**
  * Regression tests for the consent/instructions form presentation policy.
  *
- * Consent and instruction forms are rendered as read-only documents: the
- * copied source text may contain blank lines from the paper original
- * ("NOM: ____", "Date: ____", signature rules) that must never appear as
- * inputs, because patient identity is prefilled and completion is a single
- * "I have read and agree" confirmation. Questionnaires are untouched.
+ * Consent and instruction forms render as documents: blank lines copied from
+ * the paper original ("NOM: ____", "Date: ____") must never appear as inputs,
+ * because the clinic already holds that information.
+ *
+ * But a consent is a medical-legal record, so two things are non-negotiable:
+ *   - the patient's drawn signature is collected and required;
+ *   - the patient's identity is shown on the document, prefilled from the
+ *     record, and only asked for when the record has no value.
+ * Dropping either on 2026-10-07 produced an HBOT consent with no signature on
+ * file. Questionnaires are untouched throughout.
  *
  * Run with:  npx tsx src/__tests__/patientFormPresentation.test.ts
  */
 
 import {
   cleanDocumentText,
+  getConfirmationIdentityFields,
   getPatientResponseFields,
   isConfirmationDocument,
 } from "../lib/patientFormPresentation";
 import { getUnansweredPatientFormFields } from "../lib/patientFormValidation";
-import { getFormById, type FormDefinition } from "../lib/formDefinitions";
+import { getFormById, FORM_DEFINITIONS, type FormDefinition } from "../lib/formDefinitions";
 
 let passed = 0;
 let failed = 0;
@@ -112,18 +118,42 @@ function testValidation() {
     console.log("  ✗ consentement-anesthesie-fr not found");
     return;
   }
-  const unanswered = getUnansweredPatientFormFields(consent, {
+  // What autofill supplies for a patient whose record is complete.
+  const prefilled = {
     document_acknowledged: true,
-  }).map((f) => f.id);
+    full_name: "Xavier Tenorio",
+    date_of_birth: "1980-04-25",
+    signature_date: "2026-10-07",
+  };
+  const signature = "data:image/png;base64,iVBORw0KGgo=";
+
+  const unanswered = getUnansweredPatientFormFields(consent, prefilled).map((f) => f.id);
   // Agreeing is not signing: an unsigned consent must not be submittable.
   check("UNSIGNED CONSENT REJECTED", unanswered.includes("signature"), true);
   check("document acknowledgment not required as a field", unanswered.includes("document_acknowledged"), false);
+  check("prefilled identity does not block", unanswered.join(","), "signature");
 
-  const signed = getUnansweredPatientFormFields(consent, {
-    document_acknowledged: true,
-    signature: "data:image/png;base64,iVBORw0KGgo=",
-  });
-  check("signed confirmation passes", signed.length, 0);
+  check(
+    "signed confirmation passes",
+    getUnansweredPatientFormFields(consent, { ...prefilled, signature }).length,
+    0,
+  );
+
+  // Identity the record does not hold must be asked for, so a consent is
+  // never signed with a blank date of birth.
+  const noDob = getUnansweredPatientFormFields(consent, {
+    ...prefilled,
+    signature,
+    date_of_birth: "",
+  }).map((f) => f.id);
+  check("MISSING DATE OF BIRTH BLOCKS", noDob.includes("date_of_birth"), true);
+
+  const noName = getUnansweredPatientFormFields(consent, {
+    ...prefilled,
+    signature,
+    full_name: "   ",
+  }).map((f) => f.id);
+  check("missing name blocks", noName.includes("full_name"), true);
 
   const eclaire = getFormById("consentement-eclaire-fr");
   if (eclaire) {
@@ -136,19 +166,116 @@ function testValidation() {
 
     const complete = getUnansweredPatientFormFields(eclaire, {
       document_acknowledged: true,
+      first_name: "Xavier",
+      last_name: "Tenorio",
+      date_of_birth: "1980-04-25",
+      signature_date: "2026-10-07",
       treatment: "Rhinoplastie",
       photo_video_authorization: "authorized",
-      signature: "data:image/png;base64,iVBORw0KGgo=",
+      signature,
     });
     check("complete consent submission passes", complete.length, 0);
   }
+}
+
+function testIdentityFields() {
+  console.log("--- getConfirmationIdentityFields ---");
+
+  // The 12-form shape: a single full_name.
+  const anesthesia = getFormById("consentement-anesthesie-fr");
+  if (anesthesia) {
+    const ids = getConfirmationIdentityFields(anesthesia).map((f) => f.id);
+    check("full_name shape resolved in order", ids.join(","), "full_name,date_of_birth,signature_date");
+  }
+
+  // The consentement-eclaire shape: first_name + last_name, no full_name.
+  const eclaire = getFormById("consentement-eclaire-fr");
+  if (eclaire) {
+    const ids = getConfirmationIdentityFields(eclaire).map((f) => f.id);
+    check(
+      "first/last-name shape resolved in order",
+      ids.join(","),
+      "first_name,last_name,date_of_birth,signature_date",
+    );
+  }
+
+  const questionnaire = getFormById("questionnaire-anesthesie-fr");
+  if (questionnaire) {
+    check("questionnaires have no identity block", getConfirmationIdentityFields(questionnaire).length, 0);
+  }
+
+  // Identity and response sets must stay disjoint, or a field renders twice.
+  let overlapping = 0;
+  for (const form of FORM_DEFINITIONS) {
+    if (!isConfirmationDocument(form)) continue;
+    const identity = new Set(getConfirmationIdentityFields(form).map((f) => f.id));
+    if (getPatientResponseFields(form).some((f) => identity.has(f.id))) overlapping++;
+  }
+  check("identity and response sets never overlap", overlapping, 0);
+}
+
+function testEveryConfirmationFormIsSignable() {
+  console.log("--- every consent/instruction form ---");
+  let total = 0;
+  let notCollected = 0;
+  let notRequired = 0;
+
+  for (const form of FORM_DEFINITIONS) {
+    if (!isConfirmationDocument(form)) continue;
+    const declares = form.sections.flatMap((s) => s.fields).some((f) => f.type === "signature");
+    if (!declares) continue;
+    total++;
+    if (!getPatientResponseFields(form).some((f) => f.type === "signature")) notCollected++;
+    // An "agreed but unsigned" payload must still be rejected.
+    const unanswered = getUnansweredPatientFormFields(form, {
+      document_acknowledged: true,
+      full_name: "Test Patient",
+      first_name: "Test",
+      last_name: "Patient",
+      date_of_birth: "1980-01-01",
+      signature_date: "2026-10-07",
+    }).map((f) => f.id);
+    if (!unanswered.includes("signature")) notRequired++;
+  }
+
+  check("forms declaring a signature", total > 0, true);
+  check("every one collects it", notCollected, 0);
+  check("every one rejects an unsigned submission", notRequired, 0);
+}
+
+function testIndividualAcknowledgments() {
+  console.log("--- individual acknowledgments ---");
+  // Seven separately-required affirmations were collapsed into the single
+  // confirmation button. Each is its own consent and must be collected.
+  const form = getFormById("consentement-lift-reduction-en");
+  if (!form) {
+    failed++;
+    console.log("  ✗ consentement-lift-reduction-en not found");
+    return;
+  }
+  const kept = new Set(getPatientResponseFields(form).map((f) => f.id));
+  for (const id of [
+    "risk_scarring",
+    "risk_sensation",
+    "risk_breastfeeding",
+    "risk_asymmetry",
+    "risk_necrosis",
+    "procedure_explained",
+    "consent_given",
+  ]) {
+    check(`${id} collected`, kept.has(id), true);
+  }
+  check("the generic confirmation checkbox stays replaced", kept.has("document_acknowledged"), false);
 }
 
 console.log("=== Patient Form Presentation Tests ===\n");
 testClassification();
 testCleanDocumentText();
 testResponseFields();
+testIdentityFields();
 testValidation();
+testEveryConfirmationFormIsSignable();
+testIndividualAcknowledgments();
 
 console.log("\n=== Test Summary ===");
 console.log(`${passed} passed, ${failed} failed`);

@@ -7,38 +7,58 @@ export function isConfirmationDocument(form: FormDefinition): boolean {
   return form.category === "consent" || form.category === "instructions";
 }
 
-// Fields that are already known from the patient record, or that the single
-// "I have read and agree" confirmation replaces.
-//
-// "signature" is deliberately NOT in this list. A consent document is a
-// medical-legal record and has to carry the patient's own signature; the
-// confirmation button records agreement, not a signature. Excluding it on
-// 2026-10-07 produced an HBOT consent with nothing on file and the clinic had
-// to ask the patient to sign a second time.
-const AUTOFILLED_OR_CONFIRMED_FIELD_IDS = new Set([
+/**
+ * Identity fields, in the order a signed document should present them.
+ *
+ * These come from the patient record rather than from the patient: they are
+ * rendered read-only above the signature, and only turn into an input when the
+ * record has no value to show. They are kept out of the *response* set so the
+ * two lists stay disjoint, but they are still validated and still printed.
+ */
+const IDENTITY_FIELD_ORDER = [
   "full_name",
+  "patient_name",
   "first_name",
   "last_name",
-  "patient_name",
   "date_of_birth",
   "signature_date",
-  "document_acknowledged",
-]);
+];
+
+const IDENTITY_FIELD_IDS = new Set(IDENTITY_FIELD_ORDER);
+
+/**
+ * The only checkbox the "I have read and agree" button legitimately replaces.
+ *
+ * Every other checkbox on a consent document is a distinct affirmation — the
+ * individual risk acknowledgments on consentement-lift-reduction-en, for
+ * instance — and collapsing those into one button loses consent the clinic is
+ * meant to hold.
+ */
+const CONFIRMATION_CHECKBOX_FIELD_ID = "document_acknowledged";
+
+export function getConfirmationIdentityFields(form: FormDefinition): FormField[] {
+  if (!isConfirmationDocument(form)) return [];
+  return form.sections
+    .flatMap((section) => section.fields)
+    .filter((field) => IDENTITY_FIELD_IDS.has(field.id))
+    .sort((a, b) => IDENTITY_FIELD_ORDER.indexOf(a.id) - IDENTITY_FIELD_ORDER.indexOf(b.id));
+}
 
 export function getPatientResponseFields(form: FormDefinition): FormField[] {
   const fields = form.sections.flatMap((section) => section.fields);
   if (!isConfirmationDocument(form)) return fields;
   return fields.filter((field) => {
-    if (AUTOFILLED_OR_CONFIRMED_FIELD_IDS.has(field.id)) return false;
+    // Rendered by the identity block instead, not re-asked of the patient.
+    if (IDENTITY_FIELD_IDS.has(field.id)) return false;
+    if (field.id === CONFIRMATION_CHECKBOX_FIELD_ID) return false;
     // Always collect the drawn signature. Every consent and instruction form
     // the clinic sends was signed before this policy existed, and the signed
-    // copy is what they rely on.
+    // copy is what they rely on. Excluding it on 2026-10-07 produced an HBOT
+    // consent with nothing on file and the clinic had to ask the patient to
+    // sign a second time.
     if (field.type === "signature") return true;
-    if (field.type === "radio" || field.type === "select") return true;
-    // Checkboxes on consent documents are covered by the single confirmation.
-    if (field.type === "checkbox") return false;
-    // Keep genuine patient responses that are not prefilled (procedure date,
-    // treatment description, emergency contact, ...).
+    // Everything else is a genuine patient response: risk acknowledgments,
+    // photo authorization, procedure date, treatment description, ...
     return true;
   });
 }

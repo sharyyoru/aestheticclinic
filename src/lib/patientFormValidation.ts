@@ -1,5 +1,9 @@
 import type { FormDefinition, FormField } from "@/lib/formDefinitions";
-import { getPatientResponseFields } from "@/lib/patientFormPresentation";
+import {
+  getConfirmationIdentityFields,
+  getPatientResponseFields,
+  isConfirmationDocument,
+} from "@/lib/patientFormPresentation";
 
 type SubmissionValue = string | boolean | string[] | null | undefined;
 export type PatientFormData = Record<string, SubmissionValue>;
@@ -37,7 +41,16 @@ export function getUnansweredPatientFormFields(
   form: FormDefinition,
   submissionData: PatientFormData
 ): FormField[] {
-  return getPatientResponseFields(form).filter(
+  // Identity is validated alongside the patient's own answers, which is what
+  // gives "prompt only when the record has no value": a prefilled name or date
+  // of birth already counts as answered, while a missing one blocks the
+  // submission so a consent is never signed with a blank identity.
+  // `document_acknowledged` is in neither list — the API enforces it directly.
+  const fields = isConfirmationDocument(form)
+    ? [...getConfirmationIdentityFields(form), ...getPatientResponseFields(form)]
+    : getPatientResponseFields(form);
+
+  return fields.filter(
     (field) =>
       isPatientFormFieldRequired(field, submissionData) &&
       !isFieldAnswered(field, submissionData[field.id])

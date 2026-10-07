@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getFormById, FormContentBlock } from "@/lib/formDefinitions";
-import { cleanDocumentText, getPatientResponseFields, isConfirmationDocument } from "@/lib/patientFormPresentation";
+import { getFormById, FormContentBlock, FormDefinition } from "@/lib/formDefinitions";
+import {
+  cleanDocumentText,
+  getConfirmationIdentityFields,
+  getPatientResponseFields,
+  isConfirmationDocument,
+} from "@/lib/patientFormPresentation";
 import { FileText, Eye, Clock, CheckCircle, AlertCircle, Copy, Download, ExternalLink, Send, Trash2, X } from "lucide-react";
 
 type FormSubmission = {
@@ -24,6 +29,27 @@ type ViewSubmissionModalProps = {
   submission: FormSubmission;
   onClose: () => void;
 };
+
+/**
+ * A submitted consent or instruction document with no signature on file.
+ *
+ * Staff-facing only: it tells reception the document has to be sent again.
+ * Deliberately not printed on the PDF, which goes to patients and insurers.
+ */
+function isSubmissionMissingSignature(
+  submission: Pick<FormSubmission, "status" | "submission_data">,
+  form: FormDefinition | undefined,
+): boolean {
+  if (!form) return false;
+  if (!isConfirmationDocument(form)) return false;
+  if (submission.status === "pending") return false;
+  const declaresSignature = form.sections
+    .flatMap((section) => section.fields)
+    .some((field) => field.type === "signature");
+  if (!declaresSignature) return false;
+  const value = submission.submission_data?.signature;
+  return !(typeof value === "string" && value.startsWith("data:image"));
+}
 
 async function getClinicLogoDataUrl(): Promise<string> {
   const response = await fetch("/logos/aesthetics-logo.svg");
@@ -59,7 +85,14 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const confirmationDocument = isConfirmationDocument(form);
-  const responseFieldIds = new Set(getPatientResponseFields(form).map((field) => field.id));
+  // Identity as well as the patient's own answers: a consent that leaves the
+  // clinic has to say who signed it. Filtering to response fields alone left
+  // the exported PDF with no name, no date of birth and no signature.
+  const displayFieldIds = new Set(
+    [...getConfirmationIdentityFields(form), ...getPatientResponseFields(form)].map(
+      (field) => field.id,
+    ),
+  );
   const margin = 16;
   const contentWidth = pageWidth - margin * 2;
   const labelWidth = 82;
@@ -131,7 +164,7 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
         return { ...block, text: cleanDocumentText(text), textFr: undefined };
       })
       .filter((block) => block.type !== "paragraph" || block.text.length > 0);
-    const sectionFields = section.fields.filter((field) => responseFieldIds.has(field.id));
+    const sectionFields = section.fields.filter((field) => displayFieldIds.has(field.id));
     if (sectionContent.length === 0 && sectionFields.length === 0) continue;
 
     ensureSpace(16);
@@ -551,9 +584,14 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
   const form = getFormById(submission.form_id);
   const data = submission.submission_data;
   const confirmationDocument = form ? isConfirmationDocument(form) : false;
-  const responseFieldIds = form
-    ? new Set(getPatientResponseFields(form).map((field) => field.id))
+  const displayFieldIds = form
+    ? new Set(
+        [...getConfirmationIdentityFields(form), ...getPatientResponseFields(form)].map(
+          (field) => field.id,
+        ),
+      )
     : new Set<string>();
+  const missingSignature = form ? isSubmissionMissingSignature(submission, form) : false;
 
   const formatValue = (value: unknown): string => {
     if (value === true) return "Yes";
@@ -584,6 +622,18 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
 
         {form ? (
           <div className="space-y-6">
+            {missingSignature && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-4">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
+                <div>
+                  <p className="text-xs font-semibold text-red-800">No patient signature on file</p>
+                  <p className="mt-1 text-xs text-red-700">
+                    This document was confirmed but never signed, so it is not a complete
+                    consent. Send the form again and ask the patient to sign.
+                  </p>
+                </div>
+              </div>
+            )}
             {form.sections.map((section) => (
               <div key={section.id} className="rounded-lg border border-slate-200 p-4">
                 <h3 className="mb-3 text-sm font-semibold text-slate-900">
@@ -612,7 +662,7 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
                   </div>
                 )}
                 <dl className="space-y-2">
-                  {section.fields.filter((field) => responseFieldIds.has(field.id)).map((field) => {
+                  {section.fields.filter((field) => displayFieldIds.has(field.id)).map((field) => {
                     const label = form.language === "fr" && field.labelFr ? field.labelFr : field.label;
                     const value = data[field.id];
 
@@ -945,6 +995,15 @@ export default function PatientFormsTab({
                       {getStatusIcon(submission.status)}
                       {getStatusLabel(submission.status)}
                     </span>
+                    {isSubmissionMissingSignature(submission, getFormById(submission.form_id)) && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700"
+                        title="Confirmed but never signed — this is not a complete consent. Send the form again."
+                      >
+                        <AlertCircle className="h-3 w-3" />
+                        No signature
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
                     <span>Created {new Date(submission.created_at).toLocaleDateString()}</span>
