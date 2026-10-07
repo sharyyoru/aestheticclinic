@@ -7,13 +7,20 @@ export function isConfirmationDocument(form: FormDefinition): boolean {
   return form.category === "consent" || form.category === "instructions";
 }
 
+// Fields that are already known from the patient record, or that the single
+// "I have read and agree" confirmation replaces.
+//
+// "signature" is deliberately NOT in this list. A consent document is a
+// medical-legal record and has to carry the patient's own signature; the
+// confirmation button records agreement, not a signature. Excluding it on
+// 2026-10-07 produced an HBOT consent with nothing on file and the clinic had
+// to ask the patient to sign a second time.
 const AUTOFILLED_OR_CONFIRMED_FIELD_IDS = new Set([
   "full_name",
   "first_name",
   "last_name",
   "patient_name",
   "date_of_birth",
-  "signature",
   "signature_date",
   "document_acknowledged",
 ]);
@@ -23,9 +30,13 @@ export function getPatientResponseFields(form: FormDefinition): FormField[] {
   if (!isConfirmationDocument(form)) return fields;
   return fields.filter((field) => {
     if (AUTOFILLED_OR_CONFIRMED_FIELD_IDS.has(field.id)) return false;
+    // Always collect the drawn signature. Every consent and instruction form
+    // the clinic sends was signed before this policy existed, and the signed
+    // copy is what they rely on.
+    if (field.type === "signature") return true;
     if (field.type === "radio" || field.type === "select") return true;
     // Checkboxes on consent documents are covered by the single confirmation.
-    if (field.type === "checkbox" || field.type === "signature") return false;
+    if (field.type === "checkbox") return false;
     // Keep genuine patient responses that are not prefilled (procedure date,
     // treatment description, emergency contact, ...).
     return true;

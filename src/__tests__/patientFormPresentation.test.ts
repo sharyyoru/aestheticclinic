@@ -80,10 +80,13 @@ function testResponseFields() {
 
   check("identity fields removed", keptIds.includes("full_name"), false);
   check("date of birth removed", keptIds.includes("date_of_birth"), false);
-  check("signature removed", keptIds.includes("signature"), false);
+  // A consent document must carry the patient's own signature. Excluding it
+  // produced a real HBOT consent with nothing on file (2026-10-07) and the
+  // clinic had to ask the patient to sign again.
+  check("SIGNATURE KEPT", keptIds.includes("signature"), true);
   check("signature date removed", keptIds.includes("signature_date"), false);
   check("acknowledgment checkbox removed", keptIds.includes("document_acknowledged"), false);
-  check("pure document form keeps no fields", keptIds.length, 0);
+  check("document form keeps only the signature", keptIds.join(","), "signature");
   check("fields are a subset of the definition", keptIds.every((id) => allIds.includes(id)), true);
 
   const photoConsent = getFormById("consentement-eclaire-fr");
@@ -112,9 +115,15 @@ function testValidation() {
   const unanswered = getUnansweredPatientFormFields(consent, {
     document_acknowledged: true,
   }).map((f) => f.id);
-  check("signature not required anymore", unanswered.includes("signature"), false);
+  // Agreeing is not signing: an unsigned consent must not be submittable.
+  check("UNSIGNED CONSENT REJECTED", unanswered.includes("signature"), true);
   check("document acknowledgment not required as a field", unanswered.includes("document_acknowledged"), false);
-  check("pure document confirmation passes", unanswered.length, 0);
+
+  const signed = getUnansweredPatientFormFields(consent, {
+    document_acknowledged: true,
+    signature: "data:image/png;base64,iVBORw0KGgo=",
+  });
+  check("signed confirmation passes", signed.length, 0);
 
   const eclaire = getFormById("consentement-eclaire-fr");
   if (eclaire) {
@@ -123,11 +132,13 @@ function testValidation() {
     }).map((f) => f.id);
     check("treatment still required", missing.includes("treatment"), true);
     check("photo authorization still required", missing.includes("photo_video_authorization"), true);
+    check("signature still required", missing.includes("signature"), true);
 
     const complete = getUnansweredPatientFormFields(eclaire, {
       document_acknowledged: true,
       treatment: "Rhinoplastie",
       photo_video_authorization: "authorized",
+      signature: "data:image/png;base64,iVBORw0KGgo=",
     });
     check("complete consent submission passes", complete.length, 0);
   }
