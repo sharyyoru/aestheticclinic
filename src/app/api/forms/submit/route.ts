@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAlternateLanguageFormId, getFormById } from "@/lib/formDefinitions";
 import { getUnansweredPatientFormFields } from "@/lib/patientFormValidation";
+import { isConfirmationDocument } from "@/lib/patientFormPresentation";
 
 // POST /api/forms/submit - Submit form data using token
 export async function POST(request: Request) {
@@ -77,6 +78,14 @@ export async function POST(request: Request) {
       );
     }
 
+    const isConfirmation = isConfirmationDocument(form);
+    if (isConfirmation && submissionData.document_acknowledged !== true) {
+      return NextResponse.json(
+        { error: "Please confirm that you have read and agree to this document" },
+        { status: 400 }
+      );
+    }
+
     const unansweredFields = getUnansweredPatientFormFields(form, submissionData);
     if (unansweredFields.length > 0) {
       return NextResponse.json(
@@ -88,14 +97,19 @@ export async function POST(request: Request) {
       );
     }
 
+    const submittedAt = new Date().toISOString();
+    const storedSubmissionData = isConfirmation
+      ? { ...submissionData, document_acknowledged: true, acknowledged_at: submittedAt }
+      : submissionData;
+
     // Update the submission with the form data
     const { error: updateError } = await supabaseAdmin
       .from("patient_form_submissions")
       .update({
         form_id: validatedFormId,
-        submission_data: submissionData,
+        submission_data: storedSubmissionData,
         status: "submitted",
-        submitted_at: new Date().toISOString(),
+        submitted_at: submittedAt,
       })
       .eq("id", submission.id);
 

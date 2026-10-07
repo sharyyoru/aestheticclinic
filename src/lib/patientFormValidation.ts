@@ -1,4 +1,5 @@
 import type { FormDefinition, FormField } from "@/lib/formDefinitions";
+import { getPatientResponseFields } from "@/lib/patientFormPresentation";
 
 type SubmissionValue = string | boolean | string[] | null | undefined;
 export type PatientFormData = Record<string, SubmissionValue>;
@@ -36,11 +37,9 @@ export function getUnansweredPatientFormFields(
   form: FormDefinition,
   submissionData: PatientFormData
 ): FormField[] {
-  return form.sections
-    .flatMap((section) => section.fields)
-    .filter(
-      (field) =>
-        isPatientFormFieldRequired(field, submissionData) &&
-        !isFieldAnswered(field, submissionData[field.id])
-    );
+  return getPatientResponseFields(form).filter(
+    (field) =>
+      isPatientFormFieldRequired(field, submissionData) &&
+      !isFieldAnswered(field, submissionData[field.id])
+  );
 }

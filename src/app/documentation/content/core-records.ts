@@ -216,7 +216,7 @@ export const coreRecordsModules: DocModule[] = [
             ["3D", "Crisalix 3D scans and simulations for this patient."],
             ["Documents", "Uploaded files organised in folders."],
             ["Appointments", "Past and upcoming appointments for the patient."],
-            ["Forms", "Forms the patient submitted, including photos attached to them."],
+            ["Forms", "Consent documents, instructions and questionnaires sent to the patient, with their completion status and submitted answers."],
             ["Patient information", "The full identity, address, employment and source data."],
             ["CRM", "Ownership, lifecycle stage, communication preferences and deals."],
           ],

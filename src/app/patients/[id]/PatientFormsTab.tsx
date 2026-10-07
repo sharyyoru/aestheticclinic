@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getFormById, FormContentBlock } from "@/lib/formDefinitions";
+import { cleanDocumentText, getPatientResponseFields, isConfirmationDocument } from "@/lib/patientFormPresentation";
 import { FileText, Eye, Clock, CheckCircle, AlertCircle, Copy, Download, ExternalLink, Send, Trash2, X } from "lucide-react";
 
 type FormSubmission = {
@@ -57,6 +58,8 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
+  const confirmationDocument = isConfirmationDocument(form);
+  const responseFieldIds = new Set(getPatientResponseFields(form).map((field) => field.id));
   const margin = 16;
   const contentWidth = pageWidth - margin * 2;
   const labelWidth = 82;
@@ -121,6 +124,16 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
   y += 8;
 
   for (const section of form.sections) {
+    const sectionContent = (section.content || [])
+      .map((block) => {
+        if (block.type !== "paragraph" || !confirmationDocument) return block;
+        const text = form.language === "fr" && block.textFr ? block.textFr : block.text;
+        return { ...block, text: cleanDocumentText(text), textFr: undefined };
+      })
+      .filter((block) => block.type !== "paragraph" || block.text.length > 0);
+    const sectionFields = section.fields.filter((field) => responseFieldIds.has(field.id));
+    if (sectionContent.length === 0 && sectionFields.length === 0) continue;
+
     ensureSpace(16);
     const sectionTitle =
       form.language === "fr" && section.titleFr ? section.titleFr : section.title;
@@ -134,8 +147,8 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
     y += 13;
 
     // Render document content blocks (legal text, lists) before fields
-    if (section.content && section.content.length > 0) {
-      for (const block of section.content) {
+    if (sectionContent.length > 0) {
+      for (const block of sectionContent) {
         if (block.type === "paragraph") {
           const text = form.language === "fr" && block.textFr ? block.textFr : block.text;
           const lines = doc.splitTextToSize(text, contentWidth);
@@ -166,7 +179,7 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
       }
 
       // Separator between document content and fields
-      if (section.fields.length > 0) {
+      if (sectionFields.length > 0) {
         y += 2;
         doc.setDrawColor(226, 232, 240);
         doc.setLineWidth(0.3);
@@ -175,7 +188,7 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
       }
     }
 
-    for (const field of section.fields) {
+    for (const field of sectionFields) {
       const label =
         form.language === "fr" && field.labelFr ? field.labelFr : field.label;
       const value = submission.submission_data[field.id];
@@ -237,6 +250,22 @@ async function exportSubmissionToPdf(submission: FormSubmission) {
     }
 
     y += 4;
+  }
+
+  if (confirmationDocument && submission.submission_data.document_acknowledged === true) {
+    const acknowledgedAt = submission.submission_data.acknowledged_at || submission.submitted_at;
+    const label = form.language === "fr" ? "Document lu et accepté" : "Document read and accepted";
+    const value = acknowledgedAt
+      ? new Date(String(acknowledgedAt)).toLocaleString(form.language === "fr" ? "fr-CH" : "en-GB")
+      : form.language === "fr" ? "Oui" : "Yes";
+    ensureSpace(14);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text(label, margin, y + 4);
+    doc.setTextColor(15, 23, 42);
+    doc.text(value, pageWidth - margin, y + 4, { align: "right" });
+    y += 10;
   }
 
   addFooter();
@@ -521,6 +550,10 @@ function BreastFormsSendModal({
 function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) {
   const form = getFormById(submission.form_id);
   const data = submission.submission_data;
+  const confirmationDocument = form ? isConfirmationDocument(form) : false;
+  const responseFieldIds = form
+    ? new Set(getPatientResponseFields(form).map((field) => field.id))
+    : new Set<string>();
 
   const formatValue = (value: unknown): string => {
     if (value === true) return "Yes";
@@ -560,7 +593,9 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
                   <div className="mb-4 space-y-3 rounded-lg border border-slate-100 bg-slate-50 p-4">
                     {section.content.map((block: FormContentBlock, idx: number) => {
                       if (block.type === "paragraph") {
-                        const text = form.language === "fr" && block.textFr ? block.textFr : block.text;
+                        const rawText = form.language === "fr" && block.textFr ? block.textFr : block.text;
+                        const text = confirmationDocument ? cleanDocumentText(rawText) : rawText;
+                        if (!text) return null;
                         return <p key={idx} className="whitespace-pre-line text-xs leading-5 text-slate-700">{text}</p>;
                       }
                       const items = form.language === "fr" && block.itemsFr ? block.itemsFr : block.items;
@@ -577,7 +612,7 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
                   </div>
                 )}
                 <dl className="space-y-2">
-                  {section.fields.map((field) => {
+                  {section.fields.filter((field) => responseFieldIds.has(field.id)).map((field) => {
                     const label = form.language === "fr" && field.labelFr ? field.labelFr : field.label;
                     const value = data[field.id];
 
@@ -602,6 +637,18 @@ function ViewSubmissionModal({ submission, onClose }: ViewSubmissionModalProps) 
                 </dl>
               </div>
             ))}
+            {confirmationDocument && data.document_acknowledged === true && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-xs font-semibold text-emerald-800">
+                  {form.language === "fr" ? "Document lu et accepté" : "Document read and accepted"}
+                  {(data.acknowledged_at || submission.submitted_at) && (
+                    <span className="ml-2 font-normal text-emerald-700">
+                      {new Date(String(data.acknowledged_at || submission.submitted_at)).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">

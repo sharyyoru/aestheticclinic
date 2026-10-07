@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { getAlternateLanguageFormId, getFormById, FormDefinition, FormField, FormSection, FormContentBlock } from "@/lib/formDefinitions";
 import { getUnansweredPatientFormFields, isPatientFormFieldRequired } from "@/lib/patientFormValidation";
+import { cleanDocumentText, getPatientResponseFields, isConfirmationDocument } from "@/lib/patientFormPresentation";
 import Image from "next/image";
 
 type FormData = Record<string, string | boolean | string[]>;
@@ -30,30 +31,6 @@ type PatientInfo = {
   emergency_contact_relation?: string | null;
   language_preference?: string | null;
 };
-
-const BREAST_SURGERY_FORM_IDS = new Set([
-  "questionnaire-anesthesie-fr",
-  "questionnaire-anesthesie-en",
-  "consentement-anesthesie-fr",
-  "consentement-anesthesie-en",
-  "consentement-augmentation-mammaire-fr",
-  "consentement-augmentation-mammaire-en",
-  "consentement-lift-reduction-fr",
-  "consentement-lift-reduction-en",
-  "consentement-eclaire-fr",
-  "consentement-eclaire-en",
-  "consentement-laser-fr",
-  "consentement-laser-en",
-  "preoperative-instructions-en",
-  "consignes-pre-post-op-fr",
-  "surgery-questionnaire-anesthesie-fr",
-  "surgery-questionnaire-anesthesie-en",
-  "surgery-consentement-anesthesie-fr",
-  "surgery-consentement-anesthesie-en",
-  "surgery-consentement-eclaire-fr",
-  "surgery-consentement-eclaire-en",
-  "surgery-preoperative-instructions-en",
-]);
 
 function getFormFieldIds(form: FormDefinition): Set<string> {
   return new Set(form.sections.flatMap((section) => section.fields.map((field) => field.id)));
@@ -950,14 +927,27 @@ function GenericPdfDocumentForm({
   formData: FormData;
   onChange: (fieldId: string, value: string | boolean | string[]) => void;
 }) {
-  const sourceBlocks = form.sections.flatMap((section) => section.content || []);
+  const sourceBlocks = form.sections
+    .flatMap((section) => section.content || [])
+    .map((block) => {
+      if (block.type !== "paragraph") return block;
+      return {
+        ...block,
+        text: cleanDocumentText(block.text),
+        textFr: block.textFr ? cleanDocumentText(block.textFr) : undefined,
+      };
+    })
+    .filter((block) => block.type !== "paragraph" || block.text.length > 0);
   const fieldIds = getFormFieldIds(form);
-  const fields = form.sections
-    .flatMap((section) => section.fields)
-    .filter((field) => {
-      if (sourceBlocks.length === 0) return true;
-      return !["full_name", "first_name", "last_name", "date_of_birth", "signature_date"].includes(field.id);
-    });
+  const sourceText = sourceBlocks
+    .flatMap((block) => block.type === "paragraph" ? [block.text, block.textFr || ""] : block.items)
+    .join("\n")
+    .toLowerCase();
+  const embeddedFieldIds = new Set<string>();
+  if (sourceText.includes("authoriz") || sourceText.includes("autorise")) {
+    embeddedFieldIds.add("photo_video_authorization");
+  }
+  const fields = getPatientResponseFields(form).filter((field) => !embeddedFieldIds.has(field.id));
   const title = form.language === "fr" && form.nameFr ? form.nameFr : form.name;
 
   return (
@@ -1361,7 +1351,10 @@ export default function PublicFormPage() {
       return;
     }
 
-    const unansweredFields = getUnansweredPatientFormFields(form, formData);
+    const submissionData = isConfirmationDocument(form)
+      ? { ...formData, document_acknowledged: true }
+      : formData;
+    const unansweredFields = getUnansweredPatientFormFields(form, submissionData);
     if (unansweredFields.length > 0) {
       const firstField = unansweredFields[0];
       const firstFieldLabel =
@@ -1385,7 +1378,7 @@ export default function PublicFormPage() {
         body: JSON.stringify({
           token,
           formId: form.id,
-          submissionData: formData,
+          submissionData,
         }),
       });
 
@@ -1497,7 +1490,14 @@ export default function PublicFormPage() {
     form.id === "questionnaire-anesthesie-en" ||
     form.id === "surgery-questionnaire-anesthesie-fr" ||
     form.id === "surgery-questionnaire-anesthesie-en";
-  const isBreastSurgeryForm = BREAST_SURGERY_FORM_IDS.has(form.id);
+  const isConfirmation = isConfirmationDocument(form);
+  const submitLabel = submitting
+    ? form.language === "fr" ? "Envoi en cours..." : "Submitting..."
+    : isConfirmation
+      ? form.category === "instructions"
+        ? form.language === "fr" ? "Je confirme avoir lu ces instructions" : "I confirm that I have read these instructions"
+        : form.language === "fr" ? "J’ai lu et j’accepte" : "I have read and agree"
+      : form.language === "fr" ? "Soumettre le formulaire" : "Submit Form";
 
   return (
     <div className="min-h-screen bg-slate-50 py-8">
@@ -1546,7 +1546,7 @@ export default function PublicFormPage() {
               formData={formData}
               onChange={handleFieldChange}
             />
-          ) : isBreastSurgeryForm ? (
+          ) : isConfirmation ? (
             <GenericPdfDocumentForm
               form={form}
               formData={formData}
@@ -1571,13 +1571,7 @@ export default function PublicFormPage() {
               disabled={submitting}
               className="rounded-full bg-sky-500 px-8 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitting
-                ? form.language === "fr"
-                  ? "Envoi en cours..."
-                  : "Submitting..."
-                : form.language === "fr"
-                ? "Soumettre le formulaire"
-                : "Submit Form"}
+              {submitLabel}
             </button>
           </div>
         </form>
