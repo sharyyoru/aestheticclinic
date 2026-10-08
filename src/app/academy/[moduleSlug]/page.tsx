@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import LessonList from "./LessonList";
 import VideoContainer from "../components/VideoContainer";
+import { resolveAcademyMedia } from "@/lib/academy/media";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export default async function ModulePage({ params }: ModulePageProps) {
   }
 
   const { module, lessons } = result;
+  const moduleVideoUrl = await resolveAcademyMedia(module.video_url);
 
   return (
     <div className="space-y-8">
@@ -75,7 +77,7 @@ export default async function ModulePage({ params }: ModulePageProps) {
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Video Container */}
           <div className="lg:w-1/2">
-            <VideoContainer videoUrl={module.video_url} title={module.title} />
+            <VideoContainer videoUrl={moduleVideoUrl} title={module.title} />
           </div>
 
           {/* Module Info */}

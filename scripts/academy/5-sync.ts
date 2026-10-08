@@ -1,222 +1,116 @@
 /**
- * Rebuilds the Academy from the documentation registry and the capture manifest,
- * and writes the screenshot map used by the public documentation pages.
+ * Attaches captured media to the Academy lessons that already exist.
  *
- *   10 documentation categories → 10 academy_modules
- *   50 documentation modules    → 50 academy_lessons
+ * This script used to rebuild the Academy from the documentation registry:
+ * it deleted every module whose slug was not a documentation category, which
+ * cascaded to the lessons. Against today's database that is all 12 modules
+ * and all 43 lessons, including their hand-written content. The Academy is
+ * now the source of truth and this only ever UPDATES media columns on rows
+ * matched by slug. It never inserts, never deletes, and never touches
+ * titles, content, module structure, progress or certificates.
  *
- * Lesson slugs are the documentation slugs, so re-runs are idempotent upserts.
- * The 12 legacy hand-seeded modules are removed, and progress/certificates are
- * wiped as agreed — they referenced lessons whose content was partly invented.
- *
- * Run: npm run academy:sync
+ * Run: npm run academy:sync [-- --dry-run]
  */
-import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { CATEGORIES, MODULES, getCategoryModules } from "../../src/app/documentation/content";
-import { production, REPO_ROOT } from "./lib/env";
-import { readManifest, type ManifestEntry } from "./lib/manifest";
-import { estimateMinutes, lessonHtml } from "./lib/docsHtml";
-import { getAcademyExperience } from "../../src/lib/academy/experiences";
+import { production } from "./lib/env";
+import { readManifest } from "./lib/manifest";
 
-const DOCS_URL = "/documentation";
 const dryRun = process.argv.includes("--dry-run");
 
-const headers = {
-  apikey: production.serviceKey,
-  Authorization: `Bearer ${production.serviceKey}`,
-  "Content-Type": "application/json",
+type LessonRow = {
+  id: string;
+  slug: string;
+  title: string;
+  video_url: string | null;
+  poster_url: string | null;
+  captions_url: string | null;
+  video_duration_seconds: number | null;
 };
 
 async function rest(path: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(`${production.url}/rest/v1/${path}`, {
     ...init,
-    headers: { ...headers, ...(init.headers ?? {}) },
+    headers: {
+      apikey: production.serviceKey,
+      Authorization: `Bearer ${production.serviceKey}`,
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
   });
-  if (!res.ok && res.status !== 404) {
-    throw new Error(`${init.method ?? "GET"} ${path} → ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    throw new Error(`${init.method ?? "GET"} ${path} -> ${res.status} ${await res.text()}`);
   }
   return res;
 }
 
-/** Maps documentation category icons onto the icon names the Academy card uses. */
-const CATEGORY_ICONS: Record<string, string> = {
-  "getting-started": "home",
-  "core-records": "users",
-  scheduling: "calendar",
-  "sales-leads": "trending-up",
-  billing: "credit-card",
-  communication: "message-circle",
-  "automation-ai": "sparkles",
-  analytics: "bar-chart",
-  "patient-facing": "heart",
-  "admin-setup": "settings",
-};
-
-function writeScreenshotMap(entries: ManifestEntry[]): number {
-  const map: Record<string, { src: string; alt: string; sectionId?: string }[]> = {};
-  let count = 0;
-
-  for (const entry of entries) {
-    const published = entry.shots.filter((s) => s.publicUrl);
-    if (published.length === 0) continue;
-    map[entry.docSlug] = published.map((s) => ({
-      src: s.publicUrl!,
-      alt: s.alt,
-      sectionId: s.sectionId,
-    }));
-    count += published.length;
-  }
-
-  const file = `// GENERATED FILE — do not edit by hand.
-// Written by scripts/academy/5-sync.ts from the capture manifest.
-// Screenshots come from the isolated capture project and contain only synthetic data.
-
-export type GeneratedScreenshot = { src: string; alt: string; sectionId?: string };
-
-export const GENERATED_SCREENSHOTS: Record<string, GeneratedScreenshot[]> = ${JSON.stringify(
-    map,
-    null,
-    2
-  )};
-
-export function screenshotsFor(docSlug: string, sectionId?: string): GeneratedScreenshot[] {
-  const all = GENERATED_SCREENSHOTS[docSlug] ?? [];
-  return sectionId ? all.filter((s) => s.sectionId === sectionId) : all;
-}
-`;
-
-  writeFileSync(
-    resolve(REPO_ROOT, "src/app/documentation/content/screenshots.generated.ts"),
-    file
-  );
-  return count;
-}
-
-/**
- * The academy_* tables are created by migrations/20260910_academy_tables.sql.
- * That migration has not necessarily been applied to production — at time of
- * writing it had not, so `/academy` rendered an empty module list and this sync
- * would fail with a confusing 404 partway through.
- */
-async function assertAcademyTablesExist(): Promise<void> {
-  const missing: string[] = [];
-  for (const table of ["academy_modules", "academy_lessons", "academy_progress", "academy_certificates"]) {
-    const res = await fetch(`${production.url}/rest/v1/${table}?select=count`, {
-      headers: { apikey: production.serviceKey, Authorization: `Bearer ${production.serviceKey}` },
-    });
-    if (res.status === 404) missing.push(table);
-  }
-  if (missing.length > 0) {
-    throw new Error(
-      `These tables do not exist in the target project: ${missing.join(", ")}.\n` +
-        `Apply migrations/20260910_academy_tables.sql (and ` +
-        `migrations/20260917_academy_lesson_poster_url.sql) first.`
-    );
-  }
-}
-
 async function main() {
   const manifest = readManifest();
-  await assertAcademyTablesExist();
-  const byDocSlug = new Map(manifest.entries.map((e) => [e.docSlug, e]));
+  const lessons = (await (
+    await rest("academy_lessons?select=id,slug,title,video_url,poster_url,captions_url,video_duration_seconds")
+  ).json()) as LessonRow[];
 
-  console.log(`→ Syncing ${CATEGORIES.length} modules / ${MODULES.length} lessons`);
-  if (dryRun) console.log("  (dry run — nothing will be written)");
+  const bySlug = new Map(lessons.map((lesson) => [lesson.slug, lesson]));
+  console.log(`→ ${lessons.length} lessons in the Academy, ${manifest.entries.length} captured`);
+  if (dryRun) console.log("  (dry run — nothing will be written)\n");
 
-  const shotCount = dryRun ? 0 : writeScreenshotMap(manifest.entries);
-  if (!dryRun) console.log(`  Wrote screenshots.generated.ts (${shotCount} screenshots)`);
-
-  if (dryRun) {
-    for (const category of CATEGORIES) {
-      const docs = getCategoryModules(category.id);
-      console.log(`  ${category.title} — ${docs.length} lessons`);
-    }
-    return;
-  }
-
-  // Preserve progress and certificates during routine syncs. Lesson upserts keep stable IDs through the module/slug constraints.
-  console.log("  Preserving academy_progress and academy_certificates");
-
-  const keptSlugs = CATEGORIES.map((c) => c.id);
-  const existing = await (await rest("academy_modules?select=id,slug")).json();
-  const legacy = (existing as { id: string; slug: string }[]).filter(
-    (m) => !keptSlugs.includes(m.slug)
-  );
-  for (const legacyModule of legacy) {
-    // Lessons cascade on module delete.
-    await rest(`academy_modules?id=eq.${legacyModule.id}`, { method: "DELETE" });
-  }
-  if (legacy.length) console.log(`  Removed ${legacy.length} legacy modules`);
-
-  let lessonTotal = 0;
-
-  for (const [index, category] of CATEGORIES.entries()) {
-    const docs = getCategoryModules(category.id);
-    if (docs.length === 0) continue;
-
-    const lessons = docs.map((doc) => {
-      const entry = byDocSlug.get(doc.slug);
-      return {
-        doc,
-        entry,
-        minutes: estimateMinutes(doc, entry?.video?.durationSeconds),
-      };
-    });
-
-    const moduleMinutes = lessons.reduce((total, l) => total + l.minutes, 0);
-
-    const upsert = await rest("academy_modules?on_conflict=slug", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify([
-        {
-          slug: category.id,
-          title: category.title,
-          description: category.description,
-          icon: CATEGORY_ICONS[category.id] ?? "book",
-          sort_order: index + 1,
-          estimated_minutes: moduleMinutes,
-          is_published: true,
-        },
-      ]),
-    });
-    const [moduleRow] = (await upsert.json()) as { id: string }[];
-
-    const lessonRows = lessons.map(({ doc, entry, minutes }, lessonIndex) => {
-      const experience = getAcademyExperience(doc.slug);
-      return {
-        module_id: moduleRow.id,
-        slug: doc.slug,
-        title: doc.title,
-        content: lessonHtml(doc, entry?.shots ?? [], DOCS_URL),
-        video_url: entry?.video?.publicUrl ?? null,
-        poster_url: entry?.video?.posterUrl ?? null,
-        captions_url: entry?.video?.captionsUrl ?? null,
-        video_duration_seconds: entry?.video?.durationSeconds ?? null,
-        tour_available: Boolean(experience),
-        tour_version: experience?.version ?? 1,
-        minimum_tour_width: experience?.minimumWidth ?? 768,
-        experience_status: experience?.status ?? "draft",
-        sort_order: lessonIndex + 1,
-        estimated_minutes: minutes,
-      };
-    });
-
-    await rest("academy_lessons?on_conflict=module_id,slug", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify(lessonRows),
-    });
-
-    lessonTotal += lessonRows.length;
-    console.log(
-      `  ${category.title.padEnd(24)} ${lessonRows.length} lessons, ${moduleMinutes} min, ` +
-        `${lessonRows.filter((l) => l.video_url).length} with video`
+  // A manifest entry with no matching lesson means the recipe and the Academy
+  // have drifted. Fail rather than silently producing media nothing renders.
+  const orphans = manifest.entries
+    .map((entry) => entry.docSlug)
+    .filter((slug) => !bySlug.has(slug));
+  if (orphans.length > 0) {
+    throw new Error(
+      `No Academy lesson matches: ${orphans.join(", ")}.\n` +
+        `Recipes are keyed by lesson slug; run academy:doctor to see the drift.`
     );
   }
 
-  console.log(`\n${CATEGORIES.length} modules and ${lessonTotal} lessons synced.`);
+  let updated = 0;
+  let unchanged = 0;
+
+  for (const entry of manifest.entries) {
+    const lesson = bySlug.get(entry.docSlug);
+    if (!lesson) continue;
+
+    // Keep whatever is already published when this run produced nothing for a
+    // field. A partial capture (one failed recipe, or --only) must not blank
+    // media that is live and working.
+    const next = {
+      video_url: entry.video?.publicUrl ?? lesson.video_url,
+      poster_url: entry.video?.posterUrl ?? lesson.poster_url,
+      captions_url: entry.video?.captionsUrl ?? lesson.captions_url,
+      video_duration_seconds: entry.video?.durationSeconds ?? lesson.video_duration_seconds,
+    };
+
+    const changed =
+      next.video_url !== lesson.video_url ||
+      next.poster_url !== lesson.poster_url ||
+      next.captions_url !== lesson.captions_url ||
+      next.video_duration_seconds !== lesson.video_duration_seconds;
+
+    if (!changed) {
+      unchanged += 1;
+      continue;
+    }
+
+    console.log(
+      `  ${lesson.slug.padEnd(24)} video:${lesson.video_url ? "yes" : "no "} -> ${next.video_url ? "yes" : "no "}` +
+        `  ${next.video_duration_seconds ?? "?"}s`
+    );
+
+    if (!dryRun) {
+      await rest(`academy_lessons?id=eq.${lesson.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(next),
+      });
+    }
+    updated += 1;
+  }
+
+  const withVideo = manifest.entries.filter((entry) => entry.video?.publicUrl).length;
+  console.log(
+    `\n${dryRun ? "Would update" : "Updated"} ${updated} lesson(s), ${unchanged} already current. ` +
+      `${withVideo} of ${lessons.length} lessons have video.`
+  );
 }
 
 main().catch((error) => {

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import LessonContent from "./LessonContent";
 import VideoContainer from "../../components/VideoContainer";
+import { resolveLessonMedia } from "@/lib/academy/media";
 import LessonExperienceControls from "./LessonExperienceControls";
 
 export const dynamic = "force-dynamic";
@@ -80,6 +81,11 @@ export default async function LessonPage({ params }: LessonPageProps) {
 
   const { module, lesson, prevLesson, nextLesson, totalLessons, currentIndex } = result;
 
+  // Recordings live in a private bucket because they contain real patient
+  // data, so the stored values are object paths that have to be signed. The
+  // page is force-dynamic, so every visit gets a fresh, short-lived URL.
+  const media = await resolveLessonMedia(lesson);
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
@@ -104,7 +110,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
         {/* Lesson Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Video */}
-          <VideoContainer videoUrl={lesson.video_url} posterUrl={lesson.poster_url} captionsUrl={lesson.captions_url} title={lesson.title} lessonId={lesson.id} />
+          <VideoContainer videoUrl={media.videoUrl} posterUrl={media.posterUrl} captionsUrl={media.captionsUrl} title={lesson.title} lessonId={lesson.id} />
 
           <LessonExperienceControls lessonId={lesson.id} lessonSlug={lesson.slug} moduleSlug={module.slug} />
 
