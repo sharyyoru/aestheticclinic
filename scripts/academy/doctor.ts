@@ -11,7 +11,7 @@
 import { chromium } from "@playwright/test";
 import { resolve } from "node:path";
 import { capture } from "./lib/env";
-import { assertNotProduction } from "./lib/guards";
+import { assertCaptureCredentials, reportCaptureTarget } from "./lib/guards";
 import { RECIPES, assertRecipesMatchDocs } from "./recipes";
 import { describeTarget, type Target } from "./recipes/types";
 import { locateOne } from "./lib/targets";
@@ -19,7 +19,8 @@ import { signIn, hasStoredSession } from "./lib/auth";
 import { ensureOutDir } from "./lib/manifest";
 
 async function main() {
-  assertNotProduction();
+  reportCaptureTarget();
+  assertCaptureCredentials();
   assertRecipesMatchDocs();
   console.log(`→ Checking ${RECIPES.length} recipes against ${capture.appUrl}\n`);
 

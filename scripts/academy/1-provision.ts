@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { capture, production, REPO_ROOT } from "./lib/env";
-import { assertNotProduction } from "./lib/guards";
+import { assertNotProductionForDDL } from "./lib/guards";
 import { fetchSpec, generateDdl } from "./lib/ddlFromSpec";
 import { getRunner, splitStatements } from "./lib/sql";
 
@@ -190,7 +190,7 @@ async function testConnection(): Promise<void> {
 }
 
 async function main() {
-  assertNotProduction();
+  assertNotProductionForDDL();
 
   if (process.argv.includes("--test-connection")) {
     await testConnection();

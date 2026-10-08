@@ -38,16 +38,27 @@ function require_(name: string, source: Record<string, string>, hint: string): s
   return value;
 }
 
-/** The isolated project screenshots and video are captured from. */
+/**
+ * Where screenshots and video are captured from.
+ *
+ * Originally an isolated project; that project was deleted and the clinic
+ * accepted recording production, so these fall back to the production
+ * credentials in .env.local rather than duplicating a service-role key into a
+ * second file. Safety is no longer "capture a different database" — it is
+ * `lib/readonly.ts`, which blocks every write in the browser.
+ */
 export const capture = {
   get url() {
-    return require_("CAPTURE_SUPABASE_URL", captureEnv, "Add it to .env.capture");
+    return read("CAPTURE_SUPABASE_URL", captureEnv) || production.url;
   },
   get anonKey() {
-    return require_("CAPTURE_SUPABASE_ANON_KEY", captureEnv, "Add it to .env.capture");
+    return (
+      read("CAPTURE_SUPABASE_ANON_KEY", captureEnv) ||
+      require_("NEXT_PUBLIC_SUPABASE_ANON_KEY", localEnv, "Expected in .env.local")
+    );
   },
   get serviceKey() {
-    return require_("CAPTURE_SUPABASE_SERVICE_ROLE_KEY", captureEnv, "Add it to .env.capture");
+    return read("CAPTURE_SUPABASE_SERVICE_ROLE_KEY", captureEnv) || production.serviceKey;
   },
   /** Optional: direct Postgres connection, required to apply DDL. */
   get dbUrl() {
@@ -58,17 +69,42 @@ export const capture = {
     return read("SUPABASE_ACCESS_TOKEN", captureEnv);
   },
   get userEmail() {
-    return read("CAPTURE_USER_EMAIL", captureEnv) || "capture@aliice.local";
+    return require_("CAPTURE_USER_EMAIL", captureEnv, "Add the capture account to .env.capture");
   },
   get userPassword() {
     return require_(
       "CAPTURE_USER_PASSWORD",
       captureEnv,
-      "Add any password to .env.capture — it only exists on the isolated capture project"
+      "Add the capture account password to .env.capture"
     );
   },
   get appUrl() {
-    return read("CAPTURE_APP_URL", captureEnv) || "http://localhost:3100";
+    return require_(
+      "CAPTURE_APP_URL",
+      captureEnv,
+      "Add the app URL to capture from to .env.capture"
+    );
+  },
+  /** True when capture is pointed at the production project. */
+  get isProduction() {
+    try {
+      return projectRef(capture.url) === projectRef(production.url);
+    } catch {
+      return false;
+    }
+  },
+};
+
+/** Narration settings. */
+export const narration = {
+  get provider(): "gemini" | "none" {
+    return read("NARRATION_PROVIDER", captureEnv) === "none" ? "none" : "gemini";
+  },
+  get voice() {
+    return read("NARRATION_VOICE", captureEnv) || "Kore";
+  },
+  get geminiApiKey() {
+    return read("GEMINI_API_KEY", localEnv);
   },
 };
 

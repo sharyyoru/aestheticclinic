@@ -8,7 +8,7 @@ import { chromium, type BrowserContext, type Page } from "@playwright/test";
 import { resolve } from "node:path";
 import { rmSync, existsSync, renameSync } from "node:fs";
 import { capture, projectRef } from "./lib/env";
-import { assertNotProduction, assertNoRealPatients } from "./lib/guards";
+import { assertCaptureCredentials, reportCaptureTarget } from "./lib/guards";
 import { RECIPES, assertRecipesMatchDocs } from "./recipes";
 import type { CaptureRecipe, CaptureStep } from "./recipes/types";
 import { describeTarget } from "./recipes/types";
@@ -208,8 +208,8 @@ async function captureRecipe(
 }
 
 async function main() {
-  assertNotProduction();
-  await assertNoRealPatients();
+  reportCaptureTarget();
+  assertCaptureCredentials();
   assertRecipesMatchDocs();
 
   const recipes = only ? RECIPES.filter((r) => r.docSlug === only) : RECIPES;

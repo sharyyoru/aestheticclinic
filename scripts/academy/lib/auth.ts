@@ -1,28 +1,58 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Browser, BrowserContext } from "@playwright/test";
-import { capture } from "./env";
+import { capture, projectRef } from "./env";
 import { ensureOutDir } from "./manifest";
 
 const STATE_PATH = resolve(ensureOutDir(), "storage-state.json");
 
+type SupabaseSession = {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  expires_at?: number;
+  token_type: string;
+  user: unknown;
+};
+
 /**
- * Signs in through the real UI once and reuses the session for every recipe.
- * The account exists only on the isolated capture project.
+ * Obtains a session once and reuses it for every recipe.
+ *
+ * Deliberately does NOT drive the login form. Playwright reliably wins the
+ * race against React hydration, and the un-hydrated form submits natively as
+ * a GET — which puts the account password into the URL, and therefore into
+ * the server's request logs. Exchanging credentials for a token over the auth
+ * API and injecting the session is both deterministic and keeps the password
+ * out of any log.
  */
 export async function signIn(browser: Browser): Promise<void> {
+  const response = await fetch(`${capture.url}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: capture.anonKey },
+    body: JSON.stringify({ email: capture.userEmail, password: capture.userPassword }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Sign-in failed for ${capture.userEmail} (HTTP ${response.status}): ` +
+        `${(await response.text()).slice(0, 200)}`
+    );
+  }
+
+  const session = (await response.json()) as SupabaseSession;
+  session.expires_at ??= Math.floor(Date.now() / 1000) + session.expires_in;
+
+  // supabase-js v2 keeps the session in localStorage under sb-<ref>-auth-token.
+  const storageKey = `sb-${projectRef(capture.url)}-auth-token`;
+
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
-
+  // The origin must be loaded before localStorage for it can be written.
   await page.goto(`${capture.appUrl}/login`, { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Email").fill(capture.userEmail);
-  await page.getByLabel("Password").fill(capture.userPassword);
-  await page.getByRole("button", { name: "Sign in" }).click();
-
-  // The app navigates with window.location, so wait for the dashboard rather
-  // than a client-side route change.
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
-  await page.waitForLoadState("networkidle").catch(() => undefined);
+  await page.evaluate(
+    ([key, value]) => window.localStorage.setItem(key, value),
+    [storageKey, JSON.stringify(session)] as const
+  );
 
   await context.storageState({ path: STATE_PATH });
   await context.close();
