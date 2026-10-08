@@ -78,6 +78,37 @@ const pilotExperiences: AcademyExperience[] = [
 
 export const ACADEMY_EXPERIENCES = Object.fromEntries(pilotExperiences.map((experience) => [experience.slug, experience])) as Record<string, AcademyExperience>;
 
+/**
+ * Interactive tutorials are keyed by Academy lesson slug, but the published
+ * lessons use the seeded slugs from scripts/academy/generated (for example
+ * "navigation-basics"), while the experiences were named after documentation
+ * slugs ("navigating-the-app"). Without this map every lookup returned null
+ * and the tutorial button never rendered on any lesson.
+ */
+const EXPERIENCE_LESSON_ALIASES: Record<string, string> = {
+  // Getting Started
+  "dashboard-overview": "navigating-the-app",
+  "navigation-basics": "navigating-the-app",
+  // Patient Management
+  "patient-list": "patients",
+  "creating-patients": "patients",
+  "patient-details": "patients",
+  "lifecycle-stages": "patients",
+  // Appointments & Agenda
+  "calendar-view": "agenda",
+  "booking-appointments": "agenda",
+  "appointment-reminders": "agenda",
+  "ai-calls": "agenda",
+  // Swiss Billing
+  "tardoc-codes": "invoices",
+  "sumex-invoices": "invoices",
+  "qr-bills": "invoices",
+  "insurance-billing": "invoices",
+  "medidata": "invoices",
+  // Communication
+  "workflow-automation": "workflows",
+};
+
 export function getAcademyExperience(slug: string): AcademyExperience | null {
-  return ACADEMY_EXPERIENCES[slug] ?? null;
+  return ACADEMY_EXPERIENCES[slug] ?? ACADEMY_EXPERIENCES[EXPERIENCE_LESSON_ALIASES[slug] ?? ""] ?? null;
 }
