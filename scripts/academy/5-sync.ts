@@ -13,6 +13,7 @@
  */
 import { production } from "./lib/env";
 import { readManifest } from "./lib/manifest";
+import { DOC_TO_LESSON_SLUG } from "./lessonAliases";
 
 const dryRun = process.argv.includes("--dry-run");
 
@@ -52,15 +53,21 @@ async function main() {
   console.log(`→ ${lessons.length} lessons in the Academy, ${manifest.entries.length} captured`);
   if (dryRun) console.log("  (dry run — nothing will be written)\n");
 
-  // A manifest entry with no matching lesson means the recipe and the Academy
-  // have drifted. Fail rather than silently producing media nothing renders.
-  const orphans = manifest.entries
+  // Resolve each captured doc slug to a lesson: an explicit alias first, then
+  // a lesson sharing the slug. The Academy keeps its own curated slugs, so
+  // captures with no matching lesson are reported but never fatal — the
+  // alternative is producing media nothing renders, and that is worth seeing,
+  // not hiding.
+  const lessonSlugFor = (docSlug: string) => DOC_TO_LESSON_SLUG[docSlug] ?? docSlug;
+
+  const unmapped = manifest.entries
     .map((entry) => entry.docSlug)
-    .filter((slug) => !bySlug.has(slug));
-  if (orphans.length > 0) {
-    throw new Error(
-      `No Academy lesson matches: ${orphans.join(", ")}.\n` +
-        `Recipes are keyed by lesson slug; run academy:doctor to see the drift.`
+    .filter((slug) => !bySlug.has(lessonSlugFor(slug)));
+  if (unmapped.length > 0) {
+    console.log(
+      `  ${unmapped.length} capture(s) have no Academy lesson and will be skipped:\n` +
+        `    ${unmapped.join(", ")}\n` +
+        `  (map them in scripts/academy/lessonAliases.ts if a lesson should use them)`
     );
   }
 
@@ -68,7 +75,7 @@ async function main() {
   let unchanged = 0;
 
   for (const entry of manifest.entries) {
-    const lesson = bySlug.get(entry.docSlug);
+    const lesson = bySlug.get(lessonSlugFor(entry.docSlug));
     if (!lesson) continue;
 
     // Keep whatever is already published when this run produced nothing for a
