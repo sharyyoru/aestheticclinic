@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import QRCode from "qrcode";
-import { generateSwissReference } from "@/lib/swissQrBill";
 import type { Invoice, InvoiceLineItem } from "@/lib/invoiceTypes";
 import { createPayrexxGateway } from "@/lib/payrexx";
+import { buildFallbackInvoicePdf } from "@/lib/fallbackInvoicePdf";
 import {
   buildInvoiceRequest,
   mapLawType as mapSumexLaw,
@@ -204,6 +204,47 @@ export async function POST(request: NextRequest) {
         `[GeneratePDF] No provider_id on invoice; using doctor (${staffData.name}) as billing entity.`,
       );
     }
+
+    const generateFallbackPdf = async () => {
+      const biller = billingEntityData || staffData;
+      const pdfBuffer = await buildFallbackInvoicePdf({
+        invoice: invoiceData,
+        lineItems,
+        patient: patientData,
+        biller: {
+          name: biller?.name || invoiceData.provider_name || "Aesthetics Clinic XT SA",
+          street: biller?.street,
+          streetNo: biller?.street_no,
+          postalCode: biller?.zip_code,
+          town: biller?.city,
+          iban: biller?.iban || invoiceData.provider_iban,
+          phone: biller?.phone,
+        },
+      });
+      const patientName = `${patientData.last_name}_${patientData.first_name}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const filePath = `${invoiceData.patient_id}/Facture_${invoiceData.invoice_number}_${patientName}_${timestamp}_fallback.pdf`;
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("invoice-pdfs")
+        .upload(filePath, pdfBuffer, { contentType: "application/pdf", cacheControl: "3600" });
+      if (uploadError) throw uploadError;
+      const generatedAt = new Date().toISOString();
+      const { error: updateError } = await supabaseAdmin
+        .from("invoices")
+        .update({ pdf_path: filePath, pdf_generated_at: generatedAt })
+        .eq("id", invoiceId);
+      if (updateError) throw updateError;
+      const { data: publicUrlData } = supabaseAdmin.storage.from("invoice-pdfs").getPublicUrl(filePath);
+      return NextResponse.json({
+        success: true,
+        pdfUrl: publicUrlData.publicUrl,
+        pdfPath: filePath,
+        qrCodeType: "local-fallback",
+        degradedMode: true,
+        warning: "The Sumex service is unavailable. A local patient PDF was generated; insurance transmission still requires Sumex.",
+      });
+    };
+
     // ── Detect insurance (Tiers Payant / Tiers Garant) invoice and generate specialized PDF ──
     // Treat as insurance if:
     // 1. There's an actual insurer OR payment method is Insurance
@@ -414,11 +455,7 @@ export async function POST(request: NextRequest) {
           
           // Check for server offline error
           if (sumexResult.error === 'SUMEX_SERVER_OFFLINE') {
-            return NextResponse.json({ 
-              error: "Sumex1 server is offline", 
-              details: "The invoice generation server is currently unavailable. Please contact your system administrator for support.",
-              technicalDetails: "Connection timeout to Sumex server at 34.100.230.253:8080"
-            }, { status: 503 });
+            return generateFallbackPdf();
           }
           
           return NextResponse.json({ 
@@ -487,11 +524,7 @@ export async function POST(request: NextRequest) {
         
         // Check for server offline error
         if (sumexErr?.message === 'SUMEX_SERVER_OFFLINE') {
-          return NextResponse.json({ 
-            error: "Sumex1 server is offline", 
-            details: "The invoice generation server is currently unavailable. Please contact your system administrator for support.",
-            technicalDetails: "Connection timeout to Sumex server at 34.100.230.253:8080"
-          }, { status: 503 });
+          return generateFallbackPdf();
         }
         
         return NextResponse.json({ 
@@ -812,11 +845,7 @@ export async function POST(request: NextRequest) {
           
           // Check for server offline error
           if (sumexResult2.error === 'SUMEX_SERVER_OFFLINE') {
-            return NextResponse.json({ 
-              error: "Sumex1 server is offline", 
-              details: "The invoice generation server is currently unavailable. Please contact your system administrator for support.",
-              technicalDetails: "Connection timeout to Sumex server at 34.100.230.253:8080"
-            }, { status: 503 });
+            return generateFallbackPdf();
           }
           
           return NextResponse.json({ 
@@ -829,11 +858,7 @@ export async function POST(request: NextRequest) {
         
         // Check for server offline error
         if (sumex2Err?.message === 'SUMEX_SERVER_OFFLINE') {
-          return NextResponse.json({ 
-            error: "Sumex1 server is offline", 
-            details: "The invoice generation server is currently unavailable. Please contact your system administrator for support.",
-            technicalDetails: "Connection timeout to Sumex server at 34.100.230.253:8080"
-          }, { status: 503 });
+          return generateFallbackPdf();
         }
         
         return NextResponse.json({ 
