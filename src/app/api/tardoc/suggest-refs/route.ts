@@ -162,6 +162,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: out });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
+    if (message === "SUMEX_SERVER_OFFLINE") {
+      return NextResponse.json(
+        { success: false, error: "TarDoc service temporarily unavailable", offline: true },
+        { status: 503 },
+      );
+    }
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

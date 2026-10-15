@@ -57,12 +57,17 @@ export async function GET() {
     // Filter out service/bot/cron accounts so they don't appear in UI dropdowns.
     // Kept in Supabase Auth for their functional purpose; hidden from human-facing lists.
     const SERVICE_ROLES = new Set(["service", "bot", "cron"]);
+    // Name patterns that indicate automation / non-human accounts
+    const AUTOMATION_NAME_PATTERNS = /\b(close reminders?|create reminders?|sync|cron|scheduler|automation|webhook)\b/i;
     const humanUsers = data.users.filter((user) => {
       const meta = (user.user_metadata || {}) as Record<string, unknown>;
       const role = ((meta["role"] as string) ?? "").toLowerCase();
       if (SERVICE_ROLES.has(role)) return false;
       // Accounts with no email are almost always programmatic
       if (!user.email) return false;
+      // Filter by name — catches automation accounts that lack a proper role tag
+      const fullName = (meta["full_name"] as string) ?? "";
+      if (fullName && AUTOMATION_NAME_PATTERNS.test(fullName)) return false;
       return true;
     });
 

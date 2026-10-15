@@ -489,9 +489,16 @@ export async function POST(request: NextRequest) {
       sentAt: new Date().toISOString(),
     });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg === "SUMEX_SERVER_OFFLINE") {
+      return NextResponse.json(
+        { error: "Billing service offline", offline: true },
+        { status: 503 },
+      );
+    }
     console.error("[test-send] Error:", error);
     return NextResponse.json(
-      { error: "Internal server error", details: String(error) },
+      { error: "Internal server error", details: msg },
       { status: 500 },
     );
   }

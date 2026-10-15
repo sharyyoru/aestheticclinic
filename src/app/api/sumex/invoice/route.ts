@@ -65,6 +65,9 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
+    if (msg === "SUMEX_SERVER_OFFLINE") {
+      return NextResponse.json({ success: false, error: "Billing service offline", offline: true }, { status: 503 });
+    }
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
@@ -97,6 +100,9 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
+    if (msg === "SUMEX_SERVER_OFFLINE") {
+      return NextResponse.json({ success: false, error: "Billing service offline", offline: true }, { status: 503 });
+    }
     console.error("Sumex invoice API error:", error);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
