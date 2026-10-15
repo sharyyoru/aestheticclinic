@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
 import Link from "next/link";
 import InsuranceBillingModal from "@/components/InsuranceBillingModal";
+import SumexStatusBanner from "@/components/SumexStatusBanner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -796,6 +797,7 @@ export default function InvoicesPage() {
 
   return (
     <div className="space-y-4 p-1" data-tour="invoices.page">
+      <SumexStatusBanner />
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

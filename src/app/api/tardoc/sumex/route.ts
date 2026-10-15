@@ -152,8 +152,19 @@ export async function GET(request: NextRequest) {
         );
     }
   } catch (error) {
-    console.error("Error in /api/tardoc/sumex:", error);
     const message = error instanceof Error ? error.message : "Internal server error";
+    if (message === "SUMEX_SERVER_OFFLINE") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "TarDoc service temporarily unavailable",
+          offline: true,
+          details: "The billing server is offline. TarDoc code lookup will resume when the service returns. You can still add services manually.",
+        },
+        { status: 503 },
+      );
+    }
+    console.error("Error in /api/tardoc/sumex:", error);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

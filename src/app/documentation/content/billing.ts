@@ -89,7 +89,7 @@ export const billingModules: DocModule[] = [
             title: "Add TarDoc codes if the treatment is medically indicated",
             body: "Required for anything you intend to bill to an insurer.",
           },
-          { title: "Issue it", body: "A PDF is produced, and the invoice appears on the patient file and in the list. If the certified billing service is temporarily unavailable, a local patient copy is produced automatically; electronic insurer transmission remains pending until the service returns." },
+          { title: "Issue it", body: "A PDF is produced, and the invoice appears on the patient file and in the list. If the certified billing service is temporarily unavailable, a local patient copy is produced automatically with the treating doctor's name, title, ZSR number and treatment details. A banner at the top of the invoice and consultation pages shows the current service status. Electronic insurer transmission is queued and will be submitted automatically when the service returns." },
         ],
       },
       {

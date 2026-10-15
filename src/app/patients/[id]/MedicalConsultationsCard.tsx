@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 import { useAuth } from "@/components/AuthContext";
+import SumexStatusBanner from "@/components/SumexStatusBanner";
 import {
   TARDOC_MEDICINES,
   TARDOC_TARIFF_ITEMS,
@@ -3070,6 +3071,7 @@ export default function MedicalConsultationsCard({
   return (
     <>
       <div className="rounded-xl border border-slate-200/80 bg-white/90 p-4 text-sm shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+        <SumexStatusBanner />
         {/* Sub-tab navigation for Consultations vs Medical Records */}
         <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
           <button

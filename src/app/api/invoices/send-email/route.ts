@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     if (isPaid) subject = `Receipt ${invoice.invoice_number} — ${providerName}`;
     else if (isPartial) subject = `Invoice ${invoice.invoice_number} (Partial Payment) — ${providerName}`;
 
-    let bodyHtml = `
+    const bodyHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #1e293b; font-size: 18px; margin-bottom: 16px;">${isPaid ? "Payment Receipt" : "Invoice"} ${invoice.invoice_number}</h2>
         <p style="color: #475569; font-size: 14px; line-height: 1.6;">Dear ${patientName},</p>
@@ -100,17 +100,56 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    // Send via Mailgun with PDF attachment
+    // Build Mailgun request
     const fromAddress = mailgunFromEmail || `clinic@${mailgunDomain}`;
+    const pdfFileName = `${isPaid ? "receipt" : "invoice"}-${invoice.invoice_number}.pdf`;
+    const pdfFile = new File([pdfBlob], pdfFileName, { type: "application/pdf" });
+
+    // Pre-insert email row as 'sending' so sync-email-delivery can reconcile
+    // if Mailgun accepts but then bounces/suppresses the address.
+    let emailId: string | null = null;
+    try {
+      const { data: insertedEmail } = await supabaseAdmin
+        .from("emails")
+        .insert({
+          patient_id: invoice.patient_id,
+          to_address: recipientEmail.trim(),
+          from_address: fromAddress,
+          subject,
+          body: bodyHtml,
+          direction: "outbound",
+          status: "sending",
+        })
+        .select("id")
+        .single();
+      emailId = insertedEmail?.id || null;
+
+      // Log the PDF attachment
+      if (emailId && invoice.pdf_path) {
+        await supabaseAdmin
+          .from("email_attachments")
+          .insert({
+            email_id: emailId,
+            file_name: pdfFileName,
+            storage_path: `invoice-pdfs/${invoice.pdf_path}`,
+            mime_type: "application/pdf",
+            file_size: pdfBlob.size,
+          })
+          .then(() => {}, (err) => console.error("[InvoiceSendEmail] Failed to log attachment:", err));
+      }
+    } catch (emailLogErr) {
+      console.error("[InvoiceSendEmail] Failed to pre-insert email row:", emailLogErr);
+    }
+
     const formData = new FormData();
     formData.append("from", `${providerName} <${fromAddress}>`);
     formData.append("to", recipientEmail.trim());
     formData.append("subject", subject);
     formData.append("html", bodyHtml);
-
-    const pdfFileName = `${isPaid ? "receipt" : "invoice"}-${invoice.invoice_number}.pdf`;
-    const pdfFile = new File([pdfBlob], pdfFileName, { type: "application/pdf" });
     formData.append("attachment", pdfFile, pdfFileName);
+    // Tag with email-id so sync-email-delivery cron can map Mailgun events back
+    if (emailId) formData.append("v:email-id", emailId);
+    if (invoice.patient_id) formData.append("v:patient-id", invoice.patient_id);
 
     const mgResponse = await fetch(
       `${mailgunApiBaseUrl}/v3/${mailgunDomain}/messages`,
@@ -126,6 +165,15 @@ export async function POST(request: NextRequest) {
     if (!mgResponse.ok) {
       const mgErr = await mgResponse.text().catch(() => "");
       console.error("[InvoiceSendEmail] Mailgun error:", mgResponse.status, mgErr);
+      // Mark the email row as failed
+      if (emailId) {
+        await supabaseAdmin
+          .from("emails")
+          .update({ status: "failed", failed_at: new Date().toISOString() })
+          .eq("id", emailId)
+          .neq("status", "read")
+          .then(() => {}, (err) => console.error("[InvoiceSendEmail] Could not mark email failed:", err));
+      }
       return NextResponse.json(
         { error: "Failed to send email", details: mgErr },
         { status: 500 },
@@ -134,58 +182,24 @@ export async function POST(request: NextRequest) {
 
     const nowIso = new Date().toISOString();
 
-    // Get the Message-ID from Mailgun response for tracking
+    // Parse Mailgun response for message-id tracking
     let messageId: string | null = null;
     try {
       const mailgunResponseData = await mgResponse.json();
       messageId = mailgunResponseData.id || null;
     } catch (jsonErr) {
       console.error("[InvoiceSendEmail] Failed to parse Mailgun response:", jsonErr);
-      // Continue anyway - email was sent successfully
     }
 
-    // Log email to emails table for patient email history
-    let emailId: string | null = null;
-    try {
-      const { data: insertedEmail } = await supabaseAdmin
+    // Mailgun accepted — upgrade to 'sent'. A suppressed address is accepted
+    // with 2xx and fails asynchronously; sync-email-delivery reconciles that.
+    if (emailId) {
+      await supabaseAdmin
         .from("emails")
-        .insert({
-          patient_id: invoice.patient_id,
-          to_address: recipientEmail.trim(),
-          from_address: fromAddress,
-          subject,
-          body: bodyHtml,
-          direction: "outbound",
-          status: "sent",
-          sent_at: nowIso,
-          message_id: messageId,
-        })
-        .select("id")
-        .single();
-      
-      emailId = insertedEmail?.id || null;
-
-      // Log the PDF attachment to email_attachments table
-      if (emailId && invoice.pdf_path) {
-        try {
-          await supabaseAdmin
-            .from("email_attachments")
-            .insert({
-              email_id: emailId,
-              file_name: pdfFileName,
-              // Prefix with bucket name so the frontend knows which bucket to use
-              storage_path: `invoice-pdfs/${invoice.pdf_path}`,
-              mime_type: "application/pdf",
-              file_size: pdfBlob.size,
-            });
-        } catch (attachErr) {
-          console.error("[InvoiceSendEmail] Failed to log attachment:", attachErr);
-          // Continue anyway
-        }
-      }
-    } catch (emailLogErr) {
-      console.error("[InvoiceSendEmail] Failed to log email:", emailLogErr);
-      // Continue anyway - email was sent successfully
+        .update({ status: "sent", sent_at: nowIso, message_id: messageId })
+        .eq("id", emailId)
+        .neq("status", "read")
+        .then(() => {}, (err) => console.error("[InvoiceSendEmail] Could not mark email sent:", err));
     }
 
     // Update email_sent_at timestamp on invoice
@@ -196,13 +210,13 @@ export async function POST(request: NextRequest) {
         .eq("id", invoiceId);
     } catch (updateErr) {
       console.error("[InvoiceSendEmail] Failed to update invoice timestamp:", updateErr);
-      // Continue anyway - email was sent successfully
     }
 
     return NextResponse.json({ 
       success: true, 
       sentTo: recipientEmail.trim(),
-      messageId 
+      messageId,
+      emailId,
     });
   } catch (err) {
     console.error("[InvoiceSendEmail] Error:", err);

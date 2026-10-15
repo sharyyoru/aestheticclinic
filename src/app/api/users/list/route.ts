@@ -54,7 +54,19 @@ export async function GET() {
         .upsert(syncRecords, { onConflict: "id", ignoreDuplicates: true });
     }
 
-    const users = data.users.map((user) => {
+    // Filter out service/bot/cron accounts so they don't appear in UI dropdowns.
+    // Kept in Supabase Auth for their functional purpose; hidden from human-facing lists.
+    const SERVICE_ROLES = new Set(["service", "bot", "cron"]);
+    const humanUsers = data.users.filter((user) => {
+      const meta = (user.user_metadata || {}) as Record<string, unknown>;
+      const role = ((meta["role"] as string) ?? "").toLowerCase();
+      if (SERVICE_ROLES.has(role)) return false;
+      // Accounts with no email are almost always programmatic
+      if (!user.email) return false;
+      return true;
+    });
+
+    const users = humanUsers.map((user) => {
       const meta = (user.user_metadata || {}) as Record<string, unknown>;
       const firstName = (meta["first_name"] as string) ?? null;
       const lastName = (meta["last_name"] as string) ?? null;

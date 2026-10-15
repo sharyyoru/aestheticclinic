@@ -13,6 +13,15 @@ type Party = {
   phone?: string | null;
 };
 
+type Doctor = {
+  name: string;
+  title?: string | null;
+  salutation?: string | null;
+  specialty?: string | null;
+  zsr?: string | null;
+  gln?: string | null;
+};
+
 type Patient = {
   first_name: string;
   last_name: string;
@@ -20,6 +29,7 @@ type Patient = {
   street_address: string | null;
   postal_code: string | null;
   town: string | null;
+  gender?: string | null;
 };
 
 type FallbackInvoicePdfInput = {
@@ -27,12 +37,16 @@ type FallbackInvoicePdfInput = {
   lineItems: InvoiceLineItem[];
   patient: Patient;
   biller: Party;
+  doctor?: Doctor | null;
+  treatmentDate?: string | null;
+  treatmentCanton?: string | null;
+  billingType?: string | null;
 };
 
 const money = (value: number | null | undefined) => `${(Number(value) || 0).toFixed(2)} CHF`;
 const date = (value: string | null | undefined) => value ? new Date(value).toLocaleDateString("fr-CH") : "";
 
-export async function buildFallbackInvoicePdf({ invoice, lineItems, patient, biller }: FallbackInvoicePdfInput): Promise<Buffer> {
+export async function buildFallbackInvoicePdf({ invoice, lineItems, patient, biller, doctor, treatmentDate, treatmentCanton, billingType }: FallbackInvoicePdfInput): Promise<Buffer> {
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const width = pdf.internal.pageSize.getWidth();
   const margin = 16;
@@ -40,6 +54,7 @@ export async function buildFallbackInvoicePdf({ invoice, lineItems, patient, bil
   const paid = Number(invoice.paid_amount) || 0;
   const remaining = Math.max(0, total - paid);
 
+  // ── Header: clinic / billing entity ──
   pdf.setFillColor(35, 45, 60);
   pdf.rect(0, 0, width, 38, "F");
   pdf.setTextColor(255, 255, 255);
@@ -49,6 +64,21 @@ export async function buildFallbackInvoicePdf({ invoice, lineItems, patient, bil
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9);
   pdf.text([`${biller.street || ""} ${biller.streetNo || ""}`.trim(), `${biller.postalCode || ""} ${biller.town || ""}`.trim(), biller.phone || ""].filter(Boolean), margin, 21);
+
+  // Doctor details in the header (right side)
+  if (doctor?.name) {
+    const doctorLabel = [doctor.title, doctor.name].filter(Boolean).join(" ");
+    pdf.setFontSize(9);
+    pdf.text(doctorLabel, width - margin, 14, { align: "right" });
+    const doctorMeta: string[] = [];
+    if (doctor.specialty) doctorMeta.push(doctor.specialty);
+    if (doctor.zsr) doctorMeta.push(`ZSR: ${doctor.zsr}`);
+    if (doctor.gln) doctorMeta.push(`GLN: ${doctor.gln}`);
+    if (doctorMeta.length) {
+      pdf.setFontSize(7.5);
+      pdf.text(doctorMeta, width - margin, 20, { align: "right" });
+    }
+  }
 
   pdf.setTextColor(0, 0, 0);
   pdf.setFont("helvetica", "bold");
@@ -60,13 +90,39 @@ export async function buildFallbackInvoicePdf({ invoice, lineItems, patient, bil
   pdf.text(`Date: ${date(invoice.invoice_date)}`, width - margin, 55, { align: "right" });
   if (invoice.due_date) pdf.text(`Échéance: ${date(invoice.due_date)}`, width - margin, 61, { align: "right" });
 
+  // Treatment metadata line
+  const metaLine: string[] = [];
+  if (treatmentDate) metaLine.push(`Traitement: ${date(treatmentDate)}`);
+  if (treatmentCanton) metaLine.push(`Canton: ${treatmentCanton}`);
+  if (billingType) metaLine.push(`Type: ${billingType}`);
+  if (metaLine.length) {
+    pdf.setFontSize(8);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text(metaLine.join("  |  "), width - margin, 67, { align: "right" });
+    pdf.setTextColor(0, 0, 0);
+  }
+
+  // ── Patient section ──
   pdf.setFont("helvetica", "bold");
-  pdf.text("Patient", margin, 70);
+  pdf.setFontSize(10);
+  pdf.text("Patient", margin, 74);
   pdf.setFont("helvetica", "normal");
-  pdf.text(`${patient.first_name} ${patient.last_name}`, margin, 76);
+  const patientNameLine = `${patient.first_name} ${patient.last_name}`;
+  pdf.text(patientNameLine, margin, 80);
   const patientAddress = [patient.street_address, `${patient.postal_code || ""} ${patient.town || ""}`.trim()].filter(Boolean) as string[];
-  if (patientAddress.length) pdf.text(patientAddress, margin, 82);
-  if (patient.dob) pdf.text(`Date de naissance: ${date(patient.dob)}`, width - margin, 76, { align: "right" });
+  if (patientAddress.length) pdf.text(patientAddress, margin, 86);
+
+  // Patient details on the right
+  const patientRightLines: string[] = [];
+  if (patient.dob) patientRightLines.push(`Né(e) le: ${date(patient.dob)}`);
+  if (patient.gender) {
+    const genderLabel = patient.gender.toLowerCase() === "female" ? "F" : patient.gender.toLowerCase() === "male" ? "M" : patient.gender;
+    patientRightLines.push(`Sexe: ${genderLabel}`);
+  }
+  if (patientRightLines.length) {
+    pdf.setFontSize(9);
+    pdf.text(patientRightLines, width - margin, 80, { align: "right" });
+  }
 
   let y = 101;
   pdf.setFillColor(232, 235, 239);

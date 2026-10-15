@@ -426,10 +426,18 @@ export async function POST(request: NextRequest) {
       reconciliation,
     });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : "Internal server error";
+    if (msg === "SUMEX_SERVER_OFFLINE") {
+      return NextResponse.json(
+        {
+          error: "Billing service offline",
+          offline: true,
+          details: "The certified billing server is temporarily unavailable. XML validation will resume when the service returns.",
+        },
+        { status: 503 },
+      );
+    }
     console.error("[CheckXML] Error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

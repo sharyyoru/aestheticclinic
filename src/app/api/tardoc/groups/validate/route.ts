@@ -154,6 +154,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
+    if (message === "SUMEX_SERVER_OFFLINE") {
+      return NextResponse.json(
+        { error: "Validation service temporarily unavailable", offline: true },
+        { status: 503 },
+      );
+    }
     console.error("TarDoc group validation error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }

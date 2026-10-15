@@ -207,6 +207,7 @@ export async function POST(request: NextRequest) {
 
     const generateFallbackPdf = async () => {
       const biller = billingEntityData || staffData;
+      const doctorName = staffData?.name || invoiceData.doctor_name || (billingEntityData?.name !== biller?.name ? billingEntityData?.name : null) || "";
       const pdfBuffer = await buildFallbackInvoicePdf({
         invoice: invoiceData,
         lineItems,
@@ -220,6 +221,17 @@ export async function POST(request: NextRequest) {
           iban: biller?.iban || invoiceData.provider_iban,
           phone: biller?.phone,
         },
+        doctor: doctorName ? {
+          name: doctorName,
+          title: staffData?.title || billingEntityData?.title || null,
+          salutation: staffData?.salutation || billingEntityData?.salutation || null,
+          specialty: staffData?.specialty || billingEntityData?.specialty || null,
+          zsr: staffData?.zsr || invoiceData.provider_zsr || null,
+          gln: staffData?.gln || invoiceData.provider_gln || null,
+        } : null,
+        treatmentDate: invoiceData.treatment_date || invoiceData.invoice_date || null,
+        treatmentCanton: billingEntityData?.canton || invoiceData.treatment_canton || null,
+        billingType: invoiceData.billing_type || null,
       });
       const patientName = `${patientData.last_name}_${patientData.first_name}`.replace(/[^a-zA-Z0-9_-]/g, "_");
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);

@@ -627,7 +627,34 @@ export async function POST(request: NextRequest) {
 
     // Generate XML + PDF via Sumex1 server (no fallback — this is the only path)
     console.log(`[SendInvoice] Calling Sumex1 with ${sumexServices.length} services`);
-    const sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true });
+    let sumexResult;
+    try {
+      sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true });
+    } catch (sumexErr: unknown) {
+      const msg = sumexErr instanceof Error ? sumexErr.message : String(sumexErr);
+      if (msg === "SUMEX_SERVER_OFFLINE") {
+        console.warn(`[SendInvoice] Sumex offline — marking invoice ${invoiceNumber} for retry`);
+        // Persist the intent so a future cron/manual retry can pick it up
+        if (resolvedInvoiceId) {
+          await supabaseAdmin
+            .from("invoices")
+            .update({ medidata_status: "sumex_offline_queued" })
+            .eq("id", resolvedInvoiceId)
+            .then(() => {}, (err) => console.error("[SendInvoice] Could not mark retry:", err));
+        }
+        return NextResponse.json(
+          {
+            error: "Billing service offline",
+            details:
+              "The certified billing server is temporarily unavailable. " +
+              "This invoice has been queued and will be submitted automatically when the service returns.",
+            queued: true,
+          },
+          { status: 503 },
+        );
+      }
+      throw sumexErr;
+    }
 
     if (!sumexResult.success || !sumexResult.xmlContent) {
       console.error(`[SendInvoice] Sumex1 XML generation FAILED for ${invoiceNumber}: error=${sumexResult.error}, abort=${sumexResult.abortInfo}, validErr=${sumexResult.validationError}`);
