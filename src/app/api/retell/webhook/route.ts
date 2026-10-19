@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
             .select("twilio_content_sid, status")
             .eq("name", templateRowName)
             .not("twilio_content_sid", "is", null)
-            .order("status", { ascending: false }) // 'approved' sorts before 'pending'/'unsubmitted'
+            .order("status", { ascending: true }) // approved -> pending -> rejected -> unsubmitted
             .limit(1)
             .maybeSingle();
           if (templateRow?.twilio_content_sid) {

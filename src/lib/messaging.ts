@@ -181,7 +181,7 @@ export async function sendWhatsAppTemplate(options: {
       .select("id, twilio_content_sid, body, status")
       .eq("name", templateName)
       .not("twilio_content_sid", "is", null)
-      .order("status", { ascending: false })
+      .order("status", { ascending: true }) // approved -> pending -> rejected -> unsubmitted
       .limit(1)
       .maybeSingle();
 
