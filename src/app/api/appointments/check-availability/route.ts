@@ -83,6 +83,22 @@ export async function GET(request: NextRequest) {
       .filter(([, count]) => count >= maxCapacity)
       .map(([slot]) => slot);
 
+    // Log summary for production diagnostics without exposing PII.
+    console.log("[check-availability]", {
+      start,
+      end,
+      doctorName,
+      doctorSlug,
+      location,
+      providerResolved: Boolean(providerId),
+      providerId,
+      totalAppointments: appointments.length,
+      doctorAppointments: doctorAppts.length,
+      slotsChecked: Object.keys(slotCounts).length,
+      fullSlotsCount: fullSlots.length,
+      maxCapacity,
+    });
+
     return NextResponse.json({
       slotCounts,
       fullSlots,

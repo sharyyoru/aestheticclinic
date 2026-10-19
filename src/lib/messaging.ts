@@ -255,7 +255,7 @@ export async function sendCancellationPolicyMessages(options: {
   language?: "en" | "fr";
   appointmentDate?: Date | string | null;
   appointmentId?: string | null;
-}): Promise<{ smsOk: boolean; whatsappOk: boolean }> {
+}): Promise<{ smsOk: boolean; whatsappOk: boolean; smsError?: string; whatsappError?: string }> {
   const { patient, language: lang, appointmentDate, appointmentId } = options;
   const language = lang || getLanguage(patient);
   const firstName = patient.first_name;
@@ -283,6 +283,9 @@ export async function sendCancellationPolicyMessages(options: {
     },
   });
   smsOk = smsResult.ok;
+  if (!smsOk) {
+    console.error("[CancellationPolicy] SMS failed:", smsResult.error);
+  }
 
   // WhatsApp (only works once the cancellation policy template is approved in Twilio)
   const templateName = language === "fr" ? "cancellation_policy_fr" : "cancellation_policy_en";
@@ -294,6 +297,9 @@ export async function sendCancellationPolicyMessages(options: {
     source: "online_booking",
   });
   whatsappOk = whatsappResult.ok;
+  if (!whatsappOk) {
+    console.error("[CancellationPolicy] WhatsApp failed:", whatsappResult.error);
+  }
 
-  return { smsOk, whatsappOk };
+  return { smsOk, whatsappOk, smsError: smsResult.error, whatsappError: whatsappResult.error };
 }

@@ -6,6 +6,10 @@ interface MobileCalendarProps {
   selectedDate: string; // YYYY-MM-DD
   onDateSelect: (date: string) => void;
   availableDates?: Set<string>; // Set of YYYY-MM-DD strings that are available
+  /** Dates that have slots configured but are currently fully booked. Shown
+   *  in the calendar so patients can see the schedule exists, but they cannot
+   *  be selected. */
+  fullyBookedDates?: Set<string>;
   minDate?: Date;
   maxDate?: Date;
   blockedDates?: Set<string>;
@@ -41,6 +45,7 @@ export default function MobileCalendar({
   selectedDate,
   onDateSelect,
   availableDates,
+  fullyBookedDates,
   minDate,
   maxDate,
   blockedDates,
@@ -119,6 +124,10 @@ export default function MobileCalendar({
     setViewDate(new Date(currentYear, currentMonth + 1, 1, 12));
   }, [currentMonth, currentYear]);
 
+  const isDateFullyBooked = useCallback((dateStr: string): boolean => {
+    return fullyBookedDates?.has(dateStr) ?? false;
+  }, [fullyBookedDates]);
+
   const isDateDisabled = useCallback((dateStr: string, date: Date): boolean => {
     // Check if before minDate
     if (minDate && date < minDate) return true;
@@ -126,10 +135,12 @@ export default function MobileCalendar({
     if (maxDate && date > maxDate) return true;
     // Check if blocked
     if (blockedDates?.has(dateStr)) return true;
+    // Fully-booked dates are not selectable but are shown.
+    if (isDateFullyBooked(dateStr)) return true;
     // Check if not in available dates (if specified)
     if (availableDates && availableDates.size > 0 && !availableDates.has(dateStr)) return true;
     return false;
-  }, [minDate, maxDate, blockedDates, availableDates]);
+  }, [minDate, maxDate, blockedDates, availableDates, isDateFullyBooked]);
 
   const isDateAvailable = useCallback((dateStr: string): boolean => {
     if (!availableDates || availableDates.size === 0) return true;
@@ -286,6 +297,7 @@ export default function MobileCalendar({
         {calendarDays.map(({ date, dateStr, isCurrentMonth }, index) => {
           const disabled = isDateDisabled(dateStr, date);
           const available = isDateAvailable(dateStr);
+          const fullyBooked = isDateFullyBooked(dateStr);
           const isSelected = dateStr === selectedDate;
           const isToday = dateStr === today;
 
@@ -299,7 +311,8 @@ export default function MobileCalendar({
                 relative ${compact ? "h-9" : "aspect-square"} flex flex-col items-center justify-center bg-white
                 transition-all duration-150 touch-manipulation
                 ${!isCurrentMonth ? "opacity-30 cursor-default" : ""}
-                ${disabled && isCurrentMonth ? "opacity-40 cursor-not-allowed bg-slate-50" : ""}
+                ${disabled && isCurrentMonth && !fullyBooked ? "opacity-40 cursor-not-allowed bg-slate-50" : ""}
+                ${fullyBooked && isCurrentMonth ? "bg-amber-50 cursor-not-allowed" : ""}
                 ${!disabled && isCurrentMonth && available ? "hover:bg-slate-100 active:bg-slate-200 cursor-pointer" : ""}
                 ${isSelected ? "!bg-slate-900 text-white" : ""}
                 ${isToday && !isSelected ? "ring-2 ring-inset ring-slate-300" : ""}
@@ -315,6 +328,12 @@ export default function MobileCalendar({
               {available && isCurrentMonth && !disabled && !isSelected && (
                 <span className="absolute bottom-1 w-1 h-1 rounded-full bg-emerald-500" />
               )}
+              {/* Fully booked indicator */}
+              {fullyBooked && isCurrentMonth && !isSelected && (
+                <span className="absolute bottom-0.5 text-[8px] font-semibold text-amber-600 uppercase tracking-tight">
+                  Full
+                </span>
+              )}
             </button>
           );
         })}
@@ -325,6 +344,10 @@ export default function MobileCalendar({
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
           <span className="text-slate-600">Available</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span className="text-slate-600">Full</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-4 h-4 rounded bg-slate-900" />

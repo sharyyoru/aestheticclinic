@@ -816,14 +816,14 @@ export async function POST(request: Request) {
         language_preference: lang as "en" | "fr" | undefined,
       };
 
-      const { smsOk, whatsappOk } = await sendCancellationPolicyMessages({
+      const { smsOk, whatsappOk, smsError, whatsappError } = await sendCancellationPolicyMessages({
         patient: patientContact,
         language: (lang as "en" | "fr") || "en",
         appointmentId: appointment.id,
         appointmentDate: appointmentDateObj,
       });
       console.log(
-        `✓ Cancellation policy messages sent. SMS: ${smsOk}, WhatsApp: ${whatsappOk}`
+        `✓ Cancellation policy messages attempted. SMS: ${smsOk}${smsError ? ` (${smsError})` : ""}, WhatsApp: ${whatsappOk}${whatsappError ? ` (${whatsappError})` : ""}`
       );
     } catch (err) {
       console.error("✗ Error sending cancellation policy messages:", err);

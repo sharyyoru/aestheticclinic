@@ -290,6 +290,7 @@ function DoctorBookingContent() {
   const [phone, setPhone] = useState(searchParams.get("phone") || "");
   const [selectedDate, setSelectedDate] = useState("");
   const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set());
+  const [fullyBookedDatesSet, setFullyBookedDatesSet] = useState<Set<string>>(new Set());
   const [nearestAvailableDate, setNearestAvailableDate] = useState<string | null>(null);
   const [isLoadingDates, setIsLoadingDates] = useState(true);
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
@@ -423,7 +424,8 @@ function DoctorBookingContent() {
 
     async function computeBookableDates() {
       const doctorName = doctor?.name || "";
-      let bookable = candidateDates;
+      let bookable: string[] = [];
+      let fullyBooked: string[] = candidateDates;
 
       if (candidateDates.length > 0) {
         const rangeStart = getSwissDayRange(candidateDates[0]).start;
@@ -444,16 +446,24 @@ function DoctorBookingContent() {
           bookable = candidateDates.filter((d) => {
             const full = fullByDate.get(d);
             const slots = generateTimeSlots(slug, locationId, d);
-            return slots.some((s) => !full || !full.has(s));
+            return slots.length > 0 && slots.some((s) => !full || !full.has(s));
+          });
+          fullyBooked = candidateDates.filter((d) => {
+            const full = fullByDate.get(d);
+            const slots = generateTimeSlots(slug, locationId, d);
+            return slots.length > 0 && slots.every((s) => full && full.has(s));
           });
         } catch (err) {
           console.error("Failed to precompute date availability:", err);
-          // Graceful fallback: keep all candidate dates (per-date check still guards).
+          // Graceful fallback: treat all candidate dates as bookable.
+          bookable = candidateDates.filter((d) => generateTimeSlots(slug, locationId, d).length > 0);
+          fullyBooked = [];
         }
       }
 
       if (cancelled) return;
       setAvailableDatesSet(new Set(bookable));
+      setFullyBookedDatesSet(new Set(fullyBooked));
       const nearest = bookable.length > 0 ? bookable[0] : null;
       setNearestAvailableDate(nearest);
       setSelectedDate(nearest || "");
@@ -1105,10 +1115,11 @@ function DoctorBookingContent() {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Select Date & Time</h3>
                 <p className="text-sm text-slate-600 mb-4">
-                  Please select a date when {doctor.name} is available at {locationLabel}. 
-                  <span className="text-emerald-600 font-medium"> Green dots</span> indicate available dates.
+                  Please select a date when {doctor.name} is available at {locationLabel}.
+                  <span className="text-emerald-600 font-medium"> Green dots</span> indicate available dates;
+                  <span className="text-amber-600 font-medium"> amber</span> dates are fully booked.
                 </p>
-                
+
                 {/* Custom iOS-friendly Calendar */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-3">Select a Date *</label>
@@ -1119,6 +1130,7 @@ function DoctorBookingContent() {
                       setSelectedTime("");
                     }}
                     availableDates={availableDatesSet}
+                    fullyBookedDates={fullyBookedDatesSet}
                     minDate={(() => {
                       const tomorrow = new Date();
                       tomorrow.setDate(tomorrow.getDate() + 1);
