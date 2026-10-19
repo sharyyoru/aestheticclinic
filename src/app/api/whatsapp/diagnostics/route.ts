@@ -50,12 +50,25 @@ export async function GET() {
     };
   });
 
+  // Show every synced template so we can spot approved ones with different names.
+  const allSyncedTemplates = (templates || [])
+    .filter((t) => t.twilio_content_sid && t.status)
+    .map((t) => ({
+      name: t.name,
+      language: t.language,
+      status: t.status,
+      content_sid: t.twilio_content_sid,
+      body_preview: t.body?.slice(0, 80) || null,
+    }));
+
   return NextResponse.json({
     ok: true,
     credentials: credentialStatus,
     templates: templateStatus,
+    allSyncedTemplates,
     note:
       "For WhatsApp to work, every template listed above must have status='approved' and a non-null twilio_content_sid. " +
-      "Create and submit the templates in Twilio Content Template Builder, then call POST /api/whatsapp/templates/sync.",
+      "Create and submit the templates in Twilio Content Template Builder, then call POST /api/whatsapp/templates/sync. " +
+      "If your approved templates have different names, use allSyncedTemplates to find them and update the code accordingly.",
   });
 }
