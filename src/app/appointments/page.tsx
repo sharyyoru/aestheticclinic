@@ -439,7 +439,9 @@ const DAY_VIEW_END_MINUTES = 20 * 60; // 8 PM
 const DAY_VIEW_SLOT_MINUTES = 15;
 const DAY_VIEW_SLOT_HEIGHT = 40;
 
-// Priority doctors to show first in the list
+// Priority doctors to show first in the list. When the sidebar is collapsed
+// (showAllDoctors=false), only priority calendars are visible, so new doctors
+// must be added here to appear by default.
 const PRIORITY_DOCTOR_NAMES = [
   "xavier tenorio",
   "cesar rodrigues",
@@ -451,6 +453,8 @@ const PRIORITY_DOCTOR_NAMES = [
   "lily radionova",
   "yosra",
   "sofien",
+  "vladislava gladysheva",
+  "vlada gladysheva",
 ];
 
 type ProviderOption = {
@@ -1724,6 +1728,8 @@ export default function CalendarPage() {
     "Ngadande Vera",
     "Sofien Seneina",
     "Ekaterina Iosipoi",
+    "Vladislava Gladysheva",
+    "Vlada Gladysheva",
   ];
 
   useEffect(() => {
