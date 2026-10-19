@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { formatSwissPhone } from "@/lib/phoneFormatter";
+import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
 
@@ -197,6 +198,22 @@ export async function sendWhatsAppTemplate(options: {
       };
     }
 
+    // Only pass variables that the template actually references (e.g. the
+    // approved bookinglink template has no variables, so passing {1: name}
+    // would cause Twilio to reject the send).
+    const usedKeys = new Set<string>();
+    const varRegex = /\{\{(\d+)\}\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = varRegex.exec(template.body || "")) !== null) {
+      usedKeys.add(match[1]);
+    }
+    const filteredVariables: Record<string, string> = {};
+    for (const [key, value] of Object.entries(contentVariables)) {
+      if (usedKeys.has(key)) {
+        filteredVariables[key] = value;
+      }
+    }
+
     const res = await fetch(`${APP_URL}/api/whatsapp/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -204,7 +221,7 @@ export async function sendWhatsAppTemplate(options: {
         patientId,
         to: normalized,
         contentSid: template.twilio_content_sid,
-        contentVariables,
+        contentVariables: filteredVariables,
         templateId: template.id,
         _skipWindowCheck: true,
       }),
@@ -287,12 +304,23 @@ export async function sendCancellationPolicyMessages(options: {
     console.error("[CancellationPolicy] SMS failed:", smsResult.error);
   }
 
-  // WhatsApp (only works once the cancellation policy template is approved in Twilio)
+  // WhatsApp appointment confirmation using the approved consultation_booked_* template.
+  // The approved template expects: {{1}} name, {{2}} date, {{3}} time, {{4}} doctor.
   const templateName = language === "fr" ? "cancellation_policy_fr" : "cancellation_policy_en";
+
+  const apptDate = appointmentDate ? new Date(appointmentDate) : null;
+  const dateStr = apptDate ? formatSwissDateWithWeekday(apptDate) : "";
+  const timeStr = apptDate ? formatSwissTimeAmPm(apptDate) : "";
+
   const whatsappResult = await sendWhatsAppTemplate({
     to: phone,
     templateName,
-    contentVariables: { "1": firstName || (language === "fr" ? "vous" : "there") },
+    contentVariables: {
+      "1": firstName || (language === "fr" ? "vous" : "there"),
+      "2": dateStr,
+      "3": timeStr,
+      "4": "Aesthetics Clinic",
+    },
     patientId: patient.id,
     source: "online_booking",
   });
