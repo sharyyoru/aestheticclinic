@@ -58,7 +58,7 @@ export async function GET() {
       language: t.language,
       status: t.status,
       content_sid: t.twilio_content_sid,
-      body_preview: t.body?.slice(0, 80) || null,
+      body: t.body || null,
     }));
 
   return NextResponse.json({
