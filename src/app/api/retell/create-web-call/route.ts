@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  RETELL_ENGLISH_VOICE_AGENT,
+  RETELL_FRENCH_VOICE_AGENT,
+} from "@/lib/retellAgents";
 
 export const runtime = "nodejs";
 
 const RETELL_API_KEY = process.env.RETELL_API_KEY ?? "";
 const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER ?? "";
 
-// Voice agents by language
+// Voice agents by language. Centralised in @/lib/retellAgents so outbound,
+// scheduled and web-call routes use the same IDs and can be overridden by env.
 const VOICE_AGENTS = {
-  en: "agent_c753d21834b3e1f19f8536b3dc",
-  fr: "agent_cede618e4c574cb4e481461be7",
+  en: RETELL_ENGLISH_VOICE_AGENT,
+  fr: RETELL_FRENCH_VOICE_AGENT,
 };
 
 // Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).
@@ -66,6 +71,10 @@ export async function POST(req: NextRequest) {
       book_url: "https://aestheticclinic.vercel.app/book-appointment/location",
       language: lang === "fr" ? "French" : "English",
       customer_phone: normalizedNumber,
+    },
+    metadata: {
+      agent_language: lang === "fr" ? "french" : "english",
+      source: "web_call",
     },
   };
 

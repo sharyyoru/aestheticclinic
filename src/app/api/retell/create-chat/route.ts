@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  RETELL_ENGLISH_CHAT_AGENT,
+  RETELL_FRENCH_CHAT_AGENT,
+} from "@/lib/retellAgents";
 
 export const runtime = "nodejs";
 
@@ -19,10 +23,12 @@ export async function OPTIONS() {
   });
 }
 
-// Chat agents by language (separate agents with language-specific prompts)
+// Chat agents by language (separate agents with language-specific prompts).
+// Centralised in @/lib/retellAgents so the web chat and language detection
+// webhook use the same IDs and can be overridden by env.
 const CHAT_AGENTS = {
-  en: "agent_49322ed02ae4ea55665d81536c",
-  fr: "agent_a51872ec8ad4ab730a41c8ad38",
+  en: RETELL_ENGLISH_CHAT_AGENT,
+  fr: RETELL_FRENCH_CHAT_AGENT,
 };
 
 export async function POST(req: NextRequest) {

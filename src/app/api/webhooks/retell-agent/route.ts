@@ -120,6 +120,48 @@ function describeDisconnection(reason: string | null | undefined): {
   return { connected: true, label: "" };
 }
 
+const BOOKING_URL = "https://aestheticclinic.vercel.app/book-appointment/location";
+const CLINIC_PHONE = "+41 22 732 22 23";
+
+/**
+ * When Retell reaches voicemail it can leave an empty/fragmented message. Send
+ * a real SMS follow-up with the booking link so the patient gets a useful
+ * message instead of an empty voicemail.
+ */
+async function sendVoicemailSmsFollowUp(options: {
+  phone: string;
+  patientId?: string | null;
+  firstName?: string | null;
+  isFrench?: boolean;
+}) {
+  const { phone, patientId, firstName, isFrench } = options;
+  const name = firstName?.trim() || (isFrench ? "vous" : "there");
+  const body = isFrench
+    ? `Bonjour ${name}, nous avons tenté de vous joindre depuis la Clinique Esthétique. Réservez en ligne : ${BOOKING_URL} ou rappelez-nous au ${CLINIC_PHONE}.`
+    : `Hi ${name}, we tried to reach you from Aesthetics Clinic. Book online: ${BOOKING_URL} or call us back at ${CLINIC_PHONE}.`;
+
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app"}/api/sms/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: phone,
+        body,
+        patientId: patientId || null,
+        metadata: { source: "retell_voicemail_followup" },
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      console.error("[Retell Agent] Voicemail SMS follow-up failed:", data);
+    } else {
+      console.log("[Retell Agent] Voicemail SMS follow-up sent to:", phone);
+    }
+  } catch (err) {
+    console.error("[Retell Agent] Voicemail SMS follow-up error:", err);
+  }
+}
+
 /**
  * Update the task linked to a scheduled AI call. We mark it completed when the
  * call finishes successfully, failed when Retell reports failure or the call
@@ -813,6 +855,26 @@ export async function POST(request: NextRequest) {
       } catch (taskErr) {
         console.error("[Retell Agent] updateLinkedAiTask failed:", taskErr);
       }
+    }
+
+    // If the call reached voicemail, send a real SMS with the booking link
+    // instead of relying on Retell's potentially empty voicemail message.
+    if (
+      payload.event === "call_ended" &&
+      call.disconnection_reason?.toLowerCase() === "voicemail_reached"
+    ) {
+      const agentLang = String(call.metadata?.agent_language || "").toLowerCase();
+      const dynLang = String(call.retell_llm_dynamic_variables?.language || "").toLowerCase();
+      const isFrench =
+        agentLang === "french" ||
+        dynLang.startsWith("fr") ||
+        dynLang === "french";
+      void sendVoicemailSmsFollowUp({
+        phone: normalizedPhone,
+        patientId,
+        firstName,
+        isFrench,
+      });
     }
 
     return NextResponse.json({

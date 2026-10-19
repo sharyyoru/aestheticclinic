@@ -14,12 +14,16 @@ import {
   normalizePhone,
   RETELL_FROM_NUMBER,
 } from "@/lib/retell";
+import {
+  RETELL_ENGLISH_OUTBOUND_AGENT,
+  RETELL_FRENCH_OUTBOUND_AGENT,
+} from "@/lib/retellAgents";
 
-// Clinic outbound AI call agents by language. Scheduled calls that store an
-// explicit `agent_id` use that value; otherwise the English agent is the default.
+// Clinic outbound AI call agents by language. Centralised in
+// @/lib/retellAgents so scheduled, workflow and web-call routes stay in sync.
 const OUTBOUND_AGENTS = {
-  english: "agent_eae6c598f3b68c71c9e1ae6aad",
-  french: "agent_b347fa0d08519c114af295671d",
+  english: RETELL_ENGLISH_OUTBOUND_AGENT,
+  french: RETELL_FRENCH_OUTBOUND_AGENT,
 } as const;
 
 // Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).

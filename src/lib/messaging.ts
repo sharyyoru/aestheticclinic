@@ -180,6 +180,9 @@ export async function sendWhatsAppTemplate(options: {
       .from("whatsapp_templates")
       .select("id, twilio_content_sid, body, status")
       .eq("name", templateName)
+      .not("twilio_content_sid", "is", null)
+      .order("status", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error || !template?.twilio_content_sid) {

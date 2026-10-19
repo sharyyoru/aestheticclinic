@@ -278,6 +278,22 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                 throw new Error(pdfData.error || "Failed to generate eMediplan PDF");
             }
 
+            if (!pdfData.pdf || typeof pdfData.pdf !== "string") {
+                throw new Error("Generated PDF is empty");
+            }
+
+            const isPrescription = tabType === "prescription";
+            const subject = isPrescription ? "Your Prescription / Votre ordonnance" : "Your Medication Plan / Votre plan de médication";
+            const bodyHtml = isPrescription
+                ? `<p>Hello,</p><p>Please find attached your prescription (ordonnance).</p><p>Best regards,<br/>Your Medical Team</p>`
+                : `<p>Hello,</p><p>Please find attached your medication plan (eMediplan).</p><p>Best regards,<br/>Your Medical Team</p>`;
+
+            // Sanitise the filename so Mailgun never receives a name with spaces
+            // or special characters that can break the attachment multipart part.
+            const safeFilename = (pdfData.filename || "document.pdf")
+                .replace(/[^a-zA-Z0-9._-]/g, "_")
+                .replace(/_+/g, "_");
+
             // Send email with attachment
             const emailResponse = await fetch("/api/emails/send", {
                 method: "POST",
@@ -285,10 +301,10 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                 body: JSON.stringify({
                     patientId,
                     to: patientEmail,
-                    subject: `Your Medication Plan`,
-                    html: `<p>Hello,</p><p>Please find attached your medication plan (eMediplan).</p><p>Best regards,<br/>Your Medical Team</p>`,
+                    subject,
+                    html: bodyHtml,
                     inlineAttachments: [{
-                        filename: pdfData.filename,
+                        filename: safeFilename,
                         content: pdfData.pdf,
                         encoding: "base64",
                         contentType: "application/pdf",
@@ -304,7 +320,7 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
 
             // Update last_emailed_at for the medications that were sent
             const now = new Date().toISOString();
-            if (tabType === "prescription" && prescriptionSheetId) {
+            if (isPrescription && prescriptionSheetId) {
                 await supabaseClient
                     .from("patient_prescriptions")
                     .update({ last_emailed_at: now })
@@ -790,7 +806,7 @@ export default function MedicationCard({ patientId: propPatientId }: { patientId
                                                                     }}
                                                                     className="w-full px-3 py-2 text-left text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-b border-slate-100"
                                                                 >
-                                                                    <span className="font-medium">Use custom text:</span> "{product.searchQuery}"
+                                                                    <span className="font-medium">Use custom text:</span> &ldquo;{product.searchQuery}&rdquo;
                                                                 </button>
                                                             </li>
                                                         )}

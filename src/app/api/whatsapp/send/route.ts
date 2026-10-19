@@ -7,12 +7,6 @@ const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const whatsappFromEnv = process.env.TWILIO_WHATSAPP_FROM; // e.g. "whatsapp:+14155238886" or "+14155238886"
 
-if (!accountSid || !authToken || !whatsappFromEnv) {
-  throw new Error(
-    "Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_WHATSAPP_FROM environment variables",
-  );
-}
-
 const whatsappFrom = whatsappFromEnv as string;
 
 function normalizeWhatsAppAddress(value: string): string {
@@ -33,6 +27,16 @@ function normalizeWhatsAppAddress(value: string): string {
 }
 
 export async function POST(request: Request) {
+  if (!accountSid || !authToken || !whatsappFromEnv) {
+    return NextResponse.json(
+      {
+        error:
+          "Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_WHATSAPP_FROM environment variables",
+      },
+      { status: 500 },
+    );
+  }
+
   try {
     const {
       patientId,

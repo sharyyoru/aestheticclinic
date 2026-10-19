@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/retell";
+import {
+  RETELL_ENGLISH_OUTBOUND_AGENT,
+  RETELL_FRENCH_OUTBOUND_AGENT,
+} from "@/lib/retellAgents";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -9,11 +13,11 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const RETELL_API_KEY = process.env.RETELL_API_KEY;
 const RETELL_FROM_NUMBER = process.env.RETELL_FROM_NUMBER;
 
-// Clinic outbound AI call agents by language. The workflow can request a
-// language via `agent_language`; if none is provided the English agent is used.
+// Clinic outbound AI call agents by language. Centralised in
+// @/lib/retellAgents so workflow, scheduled and web-call routes stay in sync.
 const OUTBOUND_AGENTS = {
-  english: "agent_eae6c598f3b68c71c9e1ae6aad",
-  french: "agent_b347fa0d08519c114af295671d",
+  english: RETELL_ENGLISH_OUTBOUND_AGENT,
+  french: RETELL_FRENCH_OUTBOUND_AGENT,
 } as const;
 
 // Webhook URL for Retell call lifecycle events (call_started/ended/analyzed).

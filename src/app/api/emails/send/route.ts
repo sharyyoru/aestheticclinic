@@ -48,10 +48,6 @@ function sanitizeTelLinks(html: string): string {
   return result;
 }
 
-if (!mailgunApiKey || !mailgunDomain) {
-  throw new Error("Missing MAILGUN_API_KEY or MAILGUN_DOMAIN environment variables");
-}
-
 type EmailAttachmentRow = {
   id: string;
   email_id: string;
@@ -109,6 +105,13 @@ async function markEmailOutcome(
 }
 
 export async function POST(request: Request) {
+  if (!mailgunApiKey || !mailgunDomain) {
+    return NextResponse.json(
+      { error: "Missing MAILGUN_API_KEY or MAILGUN_DOMAIN environment variables" },
+      { status: 500 },
+    );
+  }
+
   try {
     const { to, cc, subject, html, fromUserEmail, fromUserName, fromUserId, emailId, patientId, inlineAttachments } = (await request.json()) as {
       to?: string;
@@ -217,10 +220,22 @@ export async function POST(request: Request) {
         try {
           // Convert base64 to buffer
           const buffer = Buffer.from(att.content, (att.encoding as BufferEncoding) || "base64");
-          const file = new File([buffer], att.filename, {
+          if (!buffer || buffer.length === 0) {
+            console.error("[emails/send] Inline attachment is empty:", att.filename);
+            continue;
+          }
+
+          // Mailgun is safest with ASCII filenames; replace anything exotic.
+          const safeFilename = att.filename
+            .replace(/[^\x00-\x7F]/g, "_")
+            .replace(/[\\/:*?"<>|]/g, "_")
+            .replace(/\s+/g, "_");
+
+          const file = new File([buffer], safeFilename, {
             type: att.contentType || "application/octet-stream",
           });
-          formData.append("attachment", file, att.filename);
+          formData.append("attachment", file, safeFilename);
+          console.log(`[emails/send] Attached inline file: ${safeFilename} (${buffer.length} bytes)`);
         } catch (attError) {
           console.error("Error processing inline attachment:", att.filename, attError);
         }

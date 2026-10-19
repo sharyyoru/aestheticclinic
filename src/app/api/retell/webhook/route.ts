@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { RETELL_FRENCH_AGENT_IDS } from "@/lib/retellAgents";
 
 export const runtime = "nodejs";
 
-const BOOKING_URL = "https://aestheticclinic.vercel.app/book-appointment";
+const BOOKING_URL = "https://aestheticclinic.vercel.app/book-appointment/location";
 
-// Retell agent IDs. Used to detect the call language so the French agent
-// sends French SMS/WhatsApp content (the webhook itself is agent-agnostic).
-const FRENCH_AGENT_ID = "agent_16738cdb79c26e811fc1cffcc6";
-
-// Twilio WhatsApp booking-link templates. The French agent uses a French
-// template if one has been approved and configured via env; otherwise it
-// falls back to the English template so the function still works today.
-const WHATSAPP_TEMPLATE_EN = "HXdff188b222fe82c18233b2422dd04792";
-const WHATSAPP_TEMPLATE_FR = process.env.RETELL_WHATSAPP_TEMPLATE_FR || WHATSAPP_TEMPLATE_EN;
+// Legacy English booking-link template SID used when no named template row
+// exists in whatsapp_templates. Replace with env var or approved template.
+const WHATSAPP_TEMPLATE_EN =
+  process.env.RETELL_WHATSAPP_TEMPLATE_EN || "HXdff188b222fe82c18233b2422dd04792";
+const WHATSAPP_TEMPLATE_FR =
+  process.env.RETELL_WHATSAPP_TEMPLATE_FR || WHATSAPP_TEMPLATE_EN;
 
 // Helper to log Retell requests to database
 async function logRetellRequest(
@@ -151,17 +149,22 @@ export async function POST(request: NextRequest) {
       console.log(`[Retell Webhook] Function call: ${funcName}`, args);
 
       // Detect the call language so French calls send French messaging.
-      // Priority: explicit `language` arg from the agent (most reliable for the
-      // language-switcher agent), then call metadata, then the agent ID.
+      // Priority: explicit `language` arg/dynamic variable, then call metadata,
+      // then the agent ID. create-web-call passes "French"/"English" as a
+      // dynamic variable, so we must check that too.
       const callAgentId = (call?.agent_id || (body as Record<string, unknown>).agent_id) as
         | string
         | undefined;
       const argLanguage =
         typeof args.language === "string" ? args.language.toLowerCase() : "";
+      const dynLanguage =
+        typeof dynVars.language === "string" ? dynVars.language.toLowerCase() : "";
       const isFrench =
         argLanguage.startsWith("fr") ||
+        dynLanguage.startsWith("fr") ||
+        dynLanguage === "french" ||
         metadata?.agent_language === "french" ||
-        callAgentId === FRENCH_AGENT_ID;
+        (typeof callAgentId === "string" && RETELL_FRENCH_AGENT_IDS.has(callAgentId));
 
       // ── Handle send_sms function
       if (funcName === "send_sms") {
@@ -272,14 +275,16 @@ export async function POST(request: NextRequest) {
       // ── Handle send_whatsapp function - Send WhatsApp message via Twilio template
       if (funcName === "send_whatsapp") {
         const { phone_number, message_type } = args;
-        
+
         // Get phone from args or from call metadata
         const toPhone = phone_number || metadata?.patient_phone || call?.to_number;
-        const patientName = retell_llm_dynamic_variables?.first_name || 
-                           metadata?.patient_first_name || 
-                           metadata?.patient_name?.split(" ")[0] || 
-                           (isFrench ? "" : "there");
-        
+        const patientName =
+          retell_llm_dynamic_variables?.first_name ||
+          dynVars.first_name ||
+          metadata?.patient_first_name ||
+          metadata?.patient_name?.split(" ")[0] ||
+          (isFrench ? "" : "there");
+
         if (!toPhone) {
           console.error("[Retell Webhook] No phone number for WhatsApp");
           return NextResponse.json({
@@ -291,32 +296,105 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Template SID for the booking-link message (French agent uses the
-        // French template when configured, otherwise falls back to English).
-        const templateSid = isFrench ? WHATSAPP_TEMPLATE_FR : WHATSAPP_TEMPLATE_EN;
-        const templateName = patientName || (isFrench ? "" : "there");
+        // Resolve the best available template. Prefer named rows in
+        // whatsapp_templates so SIDs can be updated without redeploying.
+        let templateSid: string | null = null;
+        const templateRowName = isFrench ? "booking_link_fr" : "booking_link_en";
+        try {
+          const { data: templateRow } = await supabaseAdmin
+            .from("whatsapp_templates")
+            .select("twilio_content_sid, status")
+            .eq("name", templateRowName)
+            .not("twilio_content_sid", "is", null)
+            .order("status", { ascending: false }) // 'approved' sorts before 'pending'/'unsubmitted'
+            .limit(1)
+            .maybeSingle();
+          if (templateRow?.twilio_content_sid) {
+            templateSid = templateRow.twilio_content_sid;
+            console.log(`[Retell Webhook] Using ${templateRowName} SID ${templateSid} (status: ${templateRow.status})`);
+          } else {
+            console.warn(
+              `[Retell Webhook] Template ${templateRowName} not found or missing SID. Falling back to legacy/env SID.`,
+            );
+          }
+        } catch (templateLookupError) {
+          console.error("[Retell Webhook] Failed to look up WhatsApp template:", templateLookupError);
+        }
+
+        // Final fallback to the hardcoded/env SID if the DB has no usable row.
+        if (!templateSid) {
+          templateSid = isFrench ? WHATSAPP_TEMPLATE_FR : WHATSAPP_TEMPLATE_EN;
+        }
+
+        const firstName = patientName || (isFrench ? "" : "there");
+        const bookingLink = BOOKING_URL;
+
+        async function sendSmsFallback(): Promise<NextResponse> {
+          const smsBody = isFrench
+            ? `Bonjour${firstName ? ` ${firstName}` : ""} ! Voici votre lien de réservation pour la Clinique Esthétique : ${bookingLink}\n\nVotre première consultation est offerte. Au plaisir de vous voir !`
+            : `Hi${firstName ? ` ${firstName}` : " there"}! Here's your booking link for Aesthetics Clinic: ${bookingLink}\n\nYour first consultation is complimentary. We look forward to seeing you!`;
+          try {
+            const smsResponse = await fetch(new URL("/api/sms/send", request.url).toString(), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: toPhone,
+                body: smsBody,
+                patientId: metadata?.patient_id,
+                metadata: {
+                  source: "retell_ai",
+                  call_id,
+                  message_type: message_type || "booking_link",
+                  fallback_from: "whatsapp",
+                },
+              }),
+            });
+            if (smsResponse.ok) {
+              console.log(`[Retell Webhook] SMS fallback sent to ${toPhone}`);
+              return NextResponse.json({
+                success: true,
+                result: isFrench
+                  ? "Je n'ai pas pu envoyer WhatsApp, mais un SMS avec le lien de réservation a été envoyé."
+                  : "I couldn't send WhatsApp, but an SMS with the booking link has been sent.",
+              });
+            }
+            const errorData = await smsResponse.json().catch(() => ({}));
+            console.error("[Retell Webhook] SMS fallback failed:", errorData);
+          } catch (smsError) {
+            console.error("[Retell Webhook] SMS fallback error:", smsError);
+          }
+          return NextResponse.json({
+            success: false,
+            error: "Failed to send WhatsApp and SMS fallback",
+            result: isFrench
+              ? "Je suis désolée, je n'ai pas pu envoyer le lien pour le moment. Vous pouvez réserver en ligne sur aestheticclinic.vercel.app."
+              : "I apologize, I couldn't send the link right now. You can book online at aestheticclinic.vercel.app.",
+          });
+        }
 
         try {
-          const whatsappResponse = await fetch(new URL("/api/whatsapp/send", request.url).toString(), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to: toPhone,
-              templateSid: templateSid,
-              templateVariables: {
-                "1": templateName, // Variable for patient name in template
-              },
-              patientId: metadata?.patient_id,
-            }),
-          });
+          const whatsappResponse = await fetch(
+            new URL("/api/whatsapp/send", request.url).toString(),
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: toPhone,
+                templateSid: templateSid,
+                templateVariables: {
+                  "1": firstName,
+                },
+                patientId: metadata?.patient_id,
+              }),
+            },
+          );
 
           if (whatsappResponse.ok) {
             console.log(`[Retell Webhook] WhatsApp sent to ${toPhone}`);
-            
+
             // Log WhatsApp to activity AND whatsapp_queue for patient history
             if (metadata?.patient_id) {
               try {
-                // Log to activity_log
                 await supabaseAdmin.from("activity_log").insert({
                   patient_id: metadata.patient_id,
                   activity_type: "whatsapp_sent",
@@ -329,12 +407,11 @@ export async function POST(request: NextRequest) {
                   },
                 });
 
-                // Also log to whatsapp_queue so it appears in patient's sent messages
                 await supabaseAdmin.from("whatsapp_queue").insert({
                   to_phone: toPhone,
                   message_body: isFrench
-                    ? `📅 Lien de réservation envoyé via appel IA (Modèle : booking_link)\n\nBonjour ${patientName}, voici votre lien de réservation pour la Clinique Esthétique.`
-                    : `📅 Booking link sent via AI call (Template: booking_link)\n\nHi ${patientName}, here's your booking link for Aesthetics Clinic.`,
+                    ? `📅 Lien de réservation envoyé via appel IA (Modèle : booking_link)\n\nBonjour ${firstName}, voici votre lien de réservation pour la Clinique Esthétique.`
+                    : `📅 Booking link sent via AI call (Template: booking_link)\n\nHi ${firstName}, here's your booking link for Aesthetics Clinic.`,
                   patient_id: metadata.patient_id,
                   status: "sent",
                   sent_at: new Date().toISOString(),
@@ -350,26 +427,32 @@ export async function POST(request: NextRequest) {
                 ? "Message WhatsApp envoyé avec succès. Le patient devrait recevoir le lien de réservation sur WhatsApp sous peu."
                 : "WhatsApp message sent successfully. The patient should receive the booking link on WhatsApp shortly.",
             });
-          } else {
-            const errorData = await whatsappResponse.json().catch(() => ({}));
-            console.error("[Retell Webhook] WhatsApp send failed:", errorData);
-            return NextResponse.json({
-              success: false,
-              error: "Failed to send WhatsApp",
-              result: isFrench
-                ? "Je suis désolée, il y a eu un problème lors de l'envoi du message WhatsApp. Souhaitez-vous que j'essaie par SMS, ou vous pouvez réserver en ligne sur aestheticclinic.vercel.app."
-                : "I apologize, but there was an issue sending the WhatsApp message. Would you like me to try SMS instead, or you can visit aestheticclinic.vercel.app to book online.",
-            });
           }
-        } catch (whatsappError) {
-          console.error("[Retell Webhook] WhatsApp error:", whatsappError);
+
+          const errorData = await whatsappResponse.json().catch(() => ({}));
+          console.error("[Retell Webhook] WhatsApp send failed:", errorData);
+
+          // If the WhatsApp template is missing/unapproved, send SMS fallback
+          // so the patient still receives the booking link.
+          if (
+            errorData.windowClosed ||
+            (errorData.error &&
+              /template|content|approved|21617|63016|63018/i.test(String(errorData.error)))
+          ) {
+            console.log(`[Retell Webhook] WhatsApp failed with template/window error; trying SMS fallback`);
+            return await sendSmsFallback();
+          }
+
           return NextResponse.json({
             success: false,
-            error: whatsappError instanceof Error ? whatsappError.message : "WhatsApp error",
+            error: "Failed to send WhatsApp",
             result: isFrench
-              ? "Je suis désolée, je n'ai pas pu envoyer le message WhatsApp pour le moment. Vous pouvez réserver en ligne sur aestheticclinic.vercel.app."
-              : "I apologize, but I couldn't send the WhatsApp message right now. You can book online at aestheticclinic.vercel.app.",
+              ? "Je suis désolée, il y a eu un problème lors de l'envoi du message WhatsApp. Souhaitez-vous que j'essaie par SMS, ou vous pouvez réserver en ligne sur aestheticclinic.vercel.app."
+              : "I apologize, but there was an issue sending the WhatsApp message. Would you like me to try SMS instead, or you can visit aestheticclinic.vercel.app to book online.",
           });
+        } catch (whatsappError) {
+          console.error("[Retell Webhook] WhatsApp error:", whatsappError);
+          return await sendSmsFallback();
         }
       }
 
