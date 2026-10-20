@@ -4,10 +4,39 @@ import { TEMPLATE_NAME_MAP } from "@/lib/messaging";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const whatsappFrom = process.env.TWILIO_WHATSAPP_FROM;
+
+  // ?sid=MMxxx -> fetch the live delivery status of a message from Twilio so
+  // delivery failures can be diagnosed without dashboard access.
+  const { searchParams } = new URL(request.url);
+  const sid = searchParams.get("sid");
+  if (sid) {
+    if (!accountSid || !authToken) {
+      return NextResponse.json({ ok: false, error: "Twilio credentials not set" }, { status: 500 });
+    }
+    const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages/${sid}.json`,
+      { headers: { Authorization: `Basic ${auth}` } },
+    );
+    const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!res.ok) {
+      return NextResponse.json({ ok: false, twilioStatus: res.status, body }, { status: 502 });
+    }
+    return NextResponse.json({
+      ok: true,
+      sid,
+      status: body?.status ?? null,
+      error_code: body?.error_code ?? null,
+      error_message: body?.error_message ?? null,
+      to: body?.to ?? null,
+      from: body?.from ?? null,
+      date_sent: body?.date_sent ?? null,
+    });
+  }
 
   const credentialStatus = {
     accountSid_set: Boolean(accountSid),

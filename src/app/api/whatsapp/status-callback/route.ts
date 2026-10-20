@@ -63,7 +63,17 @@ export async function POST(request: NextRequest) {
       .eq("message_sid", messageSid);
 
     if (error) {
+      // error_code may not exist as a column yet — retry without it so the
+      // status/error_message still get recorded instead of being lost.
       console.error("Failed to update whatsapp_messages status:", error);
+      delete updates.error_code;
+      const { error: retryError } = await supabaseAdmin
+        .from("whatsapp_messages")
+        .update(updates)
+        .eq("message_sid", messageSid);
+      if (retryError) {
+        console.error("Retry without error_code also failed:", retryError);
+      }
       // Still return 204 so Twilio does not retry indefinitely
     }
 

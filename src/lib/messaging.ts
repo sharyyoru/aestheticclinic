@@ -34,17 +34,18 @@ async function sendWhatsAppFailureAlert(details: {
   templateName: string;
   error?: string;
   smsOk?: boolean;
+  smsError?: string;
 }): Promise<void> {
   try {
-    const { patient, templateName, error, smsOk } = details;
+    const { patient, templateName, error, smsOk, smsError } = details;
     const name = `${patient.first_name || ""} ${patient.last_name || ""}`.trim() || "Unknown";
-    const html = `<p>WhatsApp notification <strong>${templateName}</strong> could not be sent to a patient.</p>
+    const html = `<p>Patient notification <strong>${templateName}</strong> could not be fully delivered.</p>
 <ul>
   <li>Patient: ${name}</li>
   <li>Phone: ${patient.phone || "—"}</li>
   <li>Email: ${patient.email || "—"}</li>
-  <li>SMS fallback: ${smsOk ? "sent" : "failed / not attempted"}</li>
-  <li>Error: ${error || "unknown"}</li>
+  <li>SMS: ${smsOk ? "sent" : `failed${smsError ? ` — ${smsError}` : " / not attempted"}`}</li>
+  <li>WhatsApp error: ${error || "unknown"}</li>
 </ul>`;
     await fetch(`${APP_URL}/api/emails/send`, {
       method: "POST",
@@ -359,6 +360,15 @@ export async function sendCancellationPolicyMessages(options: {
   smsOk = smsResult.ok;
   if (!smsOk) {
     console.error("[CancellationPolicy] SMS failed:", smsResult.error);
+    // Alert reception immediately — if WhatsApp also fails the patient gets
+    // nothing at all, and even if it succeeds the SMS issue needs fixing.
+    await sendWhatsAppFailureAlert({
+      patient,
+      templateName: "cancellation_policy_sms",
+      error: undefined,
+      smsOk: false,
+      smsError: smsResult.error,
+    });
   }
 
   // WhatsApp appointment confirmation using the approved consultation_booked_* template.
@@ -390,6 +400,7 @@ export async function sendCancellationPolicyMessages(options: {
       templateName,
       error: whatsappResult.error,
       smsOk,
+      smsError: smsResult.error,
     });
   }
 

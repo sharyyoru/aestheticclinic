@@ -61,9 +61,26 @@ export async function POST(request: Request) {
     }
 
     // Determine from number
-    let fromNumber = smsFrom;
+    // Determine from number — fall back to the WhatsApp sender (same Twilio
+    // number) when TWILIO_SMS_FROM is not configured, and record failures so
+    // undelivered SMS are visible instead of silent.
+    let fromNumber = smsFrom || process.env.TWILIO_WHATSAPP_FROM;
     if (!fromNumber) {
       console.error("[SMS] No SMS from number configured");
+      try {
+        await supabaseAdmin.from("sms_logs").insert({
+          to_number: normalizedPhone,
+          message: messageBody,
+          message_type: (metadata?.message_type as string) || "general",
+          source: (metadata?.source as string) || "manual",
+          status: "failed",
+          metadata: { ...(metadata || {}), error: "SMS from number not configured" },
+          created_at: new Date().toISOString(),
+          ...(patientId ? { patient_id: patientId } : {}),
+        });
+      } catch (logErr) {
+        console.warn("[SMS] Could not log failed send:", logErr);
+      }
       return NextResponse.json(
         { error: "SMS from number not configured" },
         { status: 500 }
@@ -98,6 +115,27 @@ export async function POST(request: Request) {
 
     if (!twilioResponse.ok) {
       console.error("[SMS] Twilio error:", twilioResponse.status, twilioBody);
+      // Record the failure so undelivered SMS are visible in sms_logs
+      // instead of vanishing silently.
+      try {
+        await supabaseAdmin.from("sms_logs").insert({
+          to_number: normalizedPhone,
+          from_number: fromNumber,
+          message: messageBody,
+          message_type: (metadata?.message_type as string) || "general",
+          source: (metadata?.source as string) || "manual",
+          status: "failed",
+          metadata: {
+            ...(metadata || {}),
+            twilio_status: twilioResponse.status,
+            twilio_error: twilioBody,
+          },
+          created_at: new Date().toISOString(),
+          ...(patientId ? { patient_id: patientId } : {}),
+        });
+      } catch (logErr) {
+        console.warn("[SMS] Could not log failed send:", logErr);
+      }
       return NextResponse.json(
         {
           error: "Failed to send SMS via Twilio",
