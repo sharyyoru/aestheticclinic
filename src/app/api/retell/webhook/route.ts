@@ -296,25 +296,30 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Resolve the best available template. Prefer named rows in
-        // whatsapp_templates so SIDs can be updated without redeploying.
+        // Resolve the approved booking-link template. Both languages use the
+        // approved `bookinglink` template (no approved French variant exists).
         let templateSid: string | null = null;
-        const templateRowName = isFrench ? "booking_link_fr" : "booking_link_en";
+        let templateVarKeys = new Set<string>();
         try {
           const { data: templateRow } = await supabaseAdmin
             .from("whatsapp_templates")
-            .select("twilio_content_sid, status")
-            .eq("name", templateRowName)
+            .select("twilio_content_sid, status, body")
+            .eq("name", "bookinglink")
             .not("twilio_content_sid", "is", null)
             .order("status", { ascending: true }) // approved -> pending -> rejected -> unsubmitted
             .limit(1)
             .maybeSingle();
           if (templateRow?.twilio_content_sid) {
             templateSid = templateRow.twilio_content_sid;
-            console.log(`[Retell Webhook] Using ${templateRowName} SID ${templateSid} (status: ${templateRow.status})`);
+            const varRegex = /\{\{(\d+)\}\}/g;
+            let m: RegExpExecArray | null;
+            while ((m = varRegex.exec(templateRow.body || "")) !== null) {
+              templateVarKeys.add(m[1]);
+            }
+            console.log(`[Retell Webhook] Using bookinglink SID ${templateSid} (status: ${templateRow.status})`);
           } else {
             console.warn(
-              `[Retell Webhook] Template ${templateRowName} not found or missing SID. Falling back to legacy/env SID.`,
+              "[Retell Webhook] bookinglink template not found or missing SID. Falling back to legacy/env SID.",
             );
           }
         } catch (templateLookupError) {
@@ -363,6 +368,28 @@ export async function POST(request: NextRequest) {
           } catch (smsError) {
             console.error("[Retell Webhook] SMS fallback error:", smsError);
           }
+          // Neither channel reached the patient — alert reception so they can
+          // follow up manually instead of the contact being lost silently.
+          try {
+            await fetch(new URL("/api/emails/send", request.url).toString(), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: "info@aesthetics-ge.ch",
+                subject: `Booking-link delivery failed${patientName ? ` for ${patientName}` : ""}`,
+                html: `<p>Could not send the booking link to a caller by WhatsApp or SMS.</p>
+<ul>
+  <li>Phone: ${toPhone}</li>
+  <li>Name: ${patientName || "unknown"}</li>
+  <li>Language: ${isFrench ? "French" : "English"}</li>
+  <li>Call ID: ${call_id || "unknown"}</li>
+  <li>Booking link: ${bookingLink}</li>
+</ul>`,
+              }),
+            });
+          } catch (alertError) {
+            console.error("[Retell Webhook] Info-email fallback failed:", alertError);
+          }
           return NextResponse.json({
             success: false,
             error: "Failed to send WhatsApp and SMS fallback",
@@ -381,9 +408,10 @@ export async function POST(request: NextRequest) {
               body: JSON.stringify({
                 to: toPhone,
                 templateSid: templateSid,
-                templateVariables: {
-                  "1": firstName,
-                },
+                // Only pass variables the template actually uses — the
+                // approved bookinglink template has none, and extra
+                // ContentVariables make Twilio reject the send.
+                templateVariables: templateVarKeys.has("1") ? { "1": firstName } : {},
                 patientId: metadata?.patient_id,
               }),
             },

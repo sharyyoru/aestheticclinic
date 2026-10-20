@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { TEMPLATE_NAME_MAP } from "@/lib/messaging";
 
 export const runtime = "nodejs";
 
@@ -37,11 +38,15 @@ export async function GET() {
   ];
 
   const templateStatus = requiredTemplates.map((name) => {
-    const rows = templates?.filter((t) => t.name === name) || [];
+    // Logical names resolve to the approved Twilio templates that already
+    // exist under their real friendly names (see TEMPLATE_NAME_MAP).
+    const resolvedName = TEMPLATE_NAME_MAP[name] || name;
+    const rows = templates?.filter((t) => t.name === resolvedName) || [];
     const approved = rows.find((t) => t.status === "approved" && t.twilio_content_sid);
     const anyRow = rows[0];
     return {
       name,
+      resolved_name: resolvedName,
       found: rows.length > 0,
       approved: Boolean(approved),
       content_sid: approved?.twilio_content_sid || anyRow?.twilio_content_sid || null,

@@ -4,6 +4,62 @@ import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTime
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
 
+const WHATSAPP_FAILURE_ALERT_TO = "info@aesthetics-ge.ch";
+
+/**
+ * Maps the app's logical template names to the approved Twilio Content
+ * templates that already exist in the account (synced into
+ * whatsapp_templates under their real friendly names).
+ *
+ * There is no approved French booking-link template, so French callers use
+ * the same approved English `bookinglink` template.
+ */
+export const TEMPLATE_NAME_MAP: Record<string, string> = {
+  booking_link_en: "bookinglink",
+  booking_link_fr: "bookinglink",
+  cancellation_policy_en: "consultation_booked_en",
+  cancellation_policy_fr: "consultation_booked_fr",
+};
+
+function resolveTemplateName(logicalName: string): string {
+  return TEMPLATE_NAME_MAP[logicalName] || logicalName;
+}
+
+/**
+ * Best-effort front-desk alert when a WhatsApp notification could not be
+ * sent, so reception knows to follow up with the patient another way.
+ */
+async function sendWhatsAppFailureAlert(details: {
+  patient: PatientContact;
+  templateName: string;
+  error?: string;
+  smsOk?: boolean;
+}): Promise<void> {
+  try {
+    const { patient, templateName, error, smsOk } = details;
+    const name = `${patient.first_name || ""} ${patient.last_name || ""}`.trim() || "Unknown";
+    const html = `<p>WhatsApp notification <strong>${templateName}</strong> could not be sent to a patient.</p>
+<ul>
+  <li>Patient: ${name}</li>
+  <li>Phone: ${patient.phone || "—"}</li>
+  <li>Email: ${patient.email || "—"}</li>
+  <li>SMS fallback: ${smsOk ? "sent" : "failed / not attempted"}</li>
+  <li>Error: ${error || "unknown"}</li>
+</ul>`;
+    await fetch(`${APP_URL}/api/emails/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: WHATSAPP_FAILURE_ALERT_TO,
+        subject: `WhatsApp delivery failed for ${name}`,
+        html,
+      }),
+    });
+  } catch (err) {
+    console.error("[WhatsApp] Failure alert email failed:", err);
+  }
+}
+
 export type PatientContact = {
   id?: string | null;
   first_name?: string | null;
@@ -177,10 +233,11 @@ export async function sendWhatsAppTemplate(options: {
   }
 
   try {
+    const resolvedName = resolveTemplateName(templateName);
     const { data: template, error } = await supabaseAdmin
       .from("whatsapp_templates")
       .select("id, twilio_content_sid, body, status")
-      .eq("name", templateName)
+      .eq("name", resolvedName)
       .not("twilio_content_sid", "is", null)
       .order("status", { ascending: true }) // approved -> pending -> rejected -> unsubmitted
       .limit(1)
@@ -327,6 +384,13 @@ export async function sendCancellationPolicyMessages(options: {
   whatsappOk = whatsappResult.ok;
   if (!whatsappOk) {
     console.error("[CancellationPolicy] WhatsApp failed:", whatsappResult.error);
+    // Alert reception so the patient can be followed up with manually.
+    await sendWhatsAppFailureAlert({
+      patient,
+      templateName,
+      error: whatsappResult.error,
+      smsOk,
+    });
   }
 
   return { smsOk, whatsappOk, smsError: smsResult.error, whatsappError: whatsappResult.error };
