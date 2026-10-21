@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { intakeApiClient } from "@/lib/intakeApi";
 import { getSwissToday, formatSwissYmd, parseSwissDate, getSwissDayOfWeek, formatSwissDateWithWeekday, getSwissDayRange, getSwissSlotString, createSwissDateTime } from "@/lib/swissTimezone";
 import { trackLeadConversion } from "@/components/GoogleTagManager";
 import MobileCalendar from "@/components/MobileCalendar";
@@ -338,11 +338,7 @@ function DoctorBookingContent() {
     if (autofill === "true" && patientId) {
       const fetchPatientData = async () => {
         try {
-          const { data: patient } = await supabaseClient
-            .from("patients")
-            .select("first_name, last_name, email, phone, dob, street_address, postal_code, town")
-            .eq("id", patientId)
-            .single();
+          const { patient } = await intakeApiClient.getPatientContact(patientId).catch(() => ({ patient: null as Record<string, string> | null }));
 
           if (patient) {
             setFirstName(patient.first_name || "");

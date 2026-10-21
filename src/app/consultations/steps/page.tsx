@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { intakeApiClient } from "@/lib/intakeApi";
 import Image from "next/image";
 import { Language, getTranslation } from "@/lib/intakeTranslations";
 
@@ -68,11 +68,7 @@ function ConsultationStepsContent() {
       setLoading(true);
       try {
         // Fetch patient data
-        const { data: patient } = await supabaseClient
-          .from("patients")
-          .select("*")
-          .eq("id", patientId)
-          .single();
+        const { patient } = await intakeApiClient.getPatient(patientId).catch(() => ({ patient: null as Record<string, string> | null }));
 
         if (patient) {
           setPatientData({
@@ -91,11 +87,7 @@ function ConsultationStepsContent() {
         }
 
         // Fetch insurance data
-        const { data: insurance } = await supabaseClient
-          .from("patient_insurances")
-          .select("*")
-          .eq("patient_id", patientId)
-          .maybeSingle();
+        const { record: insurance } = await intakeApiClient.getRecord("patient_insurances", { patient_id: patientId });
 
         if (insurance) {
           setInsuranceData({
@@ -106,13 +98,7 @@ function ConsultationStepsContent() {
         }
 
         // Fetch health background
-        const { data: health } = await supabaseClient
-          .from("patient_health_background")
-          .select("*")
-          .eq("patient_id", patientId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const { record: health } = await intakeApiClient.getRecord("patient_health_background", { patient_id: patientId });
 
         if (health) {
           setHealthData({
@@ -141,13 +127,10 @@ function ConsultationStepsContent() {
 
     try {
       // Update submission with consultation category
-      await supabaseClient
-        .from("patient_intake_submissions")
-        .update({
-          consultation_category: category,
-          status: "in_progress",
-        })
-        .eq("id", submissionId);
+      await intakeApiClient.updateSubmission(submissionId!, {
+        consultation_category: category,
+        status: "in_progress",
+      });
 
       // Redirect to the specific consultation path
       router.push(`/intake/consultation/${category}?pid=${patientId}&sid=${submissionId}`);

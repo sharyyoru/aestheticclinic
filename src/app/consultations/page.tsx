@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { intakeApiClient } from "@/lib/intakeApi";
 import Image from "next/image";
 import { Language, getTranslation } from "@/lib/intakeTranslations";
 
@@ -27,25 +27,15 @@ export default function ConsultationsPage() {
 
     try {
       // Check if patient exists
-      const { data: patient } = await supabaseClient
-        .from("patients")
-        .select("id, first_name, last_name, email")
-        .ilike("email", email.trim())
-        .maybeSingle();
+      const { patient } = await intakeApiClient.lookupPatient(email.trim());
 
       if (patient) {
         // Patient exists - create consultation submission and go to steps
-        const { data: submission, error: subError } = await supabaseClient
-          .from("patient_intake_submissions")
-          .insert({
-            patient_id: patient.id,
-            status: "in_progress",
-            current_step: 1,
-          })
-          .select("id")
-          .single();
-
-        if (subError) throw subError;
+        const submission = await intakeApiClient.createSubmission({
+          patient_id: patient.id,
+          status: "in_progress",
+          current_step: 1,
+        });
 
         // Redirect to consultation steps with submission ID and language
         router.push(`/consultations/steps?sid=${submission?.id}&pid=${patient.id}&lang=${language}`);

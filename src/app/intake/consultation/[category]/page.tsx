@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense, useRef, useCallback } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { intakeApiClient } from "@/lib/intakeApi";
 import { trackLeadConversion } from "@/components/GoogleTagManager";
 
 const LIPOSUCTION_AREAS = [
@@ -234,9 +234,7 @@ function ConsultationContent() {
         };
       }
 
-      await supabaseClient
-        .from("patient_consultation_data")
-        .upsert(consultationData, { onConflict: "patient_id,consultation_type" });
+      await intakeApiClient.upsertConsultationData(consultationData);
 
       console.log("Consultation auto-save completed");
     } catch (err) {
@@ -329,11 +327,7 @@ function ConsultationContent() {
         };
       }
 
-      const { error: saveError } = await supabaseClient
-        .from("patient_consultation_data")
-        .upsert(consultationData, { onConflict: "patient_id,consultation_type" });
-
-      if (saveError) throw saveError;
+      await intakeApiClient.upsertConsultationData(consultationData);
 
       // Upload photos if mode is "now"
       if (uploadMode === "now") {
@@ -348,10 +342,13 @@ function ConsultationContent() {
             setUploadProgress(prev => ({ ...prev, [position]: 50 }));
             
             const fileName = `${patientId}/${category}/${position}_${Date.now()}.${file.name.split('.').pop()}`;
-            const { error: uploadError } = await supabaseClient.storage
-              .from("patient-photos")
-              .upload(fileName, file);
-            
+            const form = new FormData();
+            form.append("action", "upload_photo");
+            form.append("file_name", fileName);
+            form.append("file", file);
+            const uploadRes = await fetch("/api/public/intake", { method: "POST", body: form });
+            const uploadError = uploadRes.ok ? null : new Error((await uploadRes.json().catch(() => ({}))).error || "Upload failed");
+
             if (uploadError) {
               console.error(`Failed to upload ${position}:`, uploadError);
               setUploadProgress(prev => ({ ...prev, [position]: 0 }));

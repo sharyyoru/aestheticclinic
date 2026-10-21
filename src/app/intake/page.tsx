@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { intakeApiClient } from "@/lib/intakeApi";
 import Image from "next/image";
 import { Language, getTranslation } from "@/lib/intakeTranslations";
 import { trackLeadConversion } from "@/components/GoogleTagManager";
@@ -222,11 +222,7 @@ export default function IntakePage() {
 
     try {
       // Check if patient exists
-      const { data: patient } = await supabaseClient
-        .from("patients")
-        .select("id, first_name, last_name, email")
-        .ilike("email", email.trim())
-        .maybeSingle();
+      const { patient } = await intakeApiClient.lookupPatient(email.trim());
 
       if (patient) {
         await beginIntake(patient.id);
@@ -243,13 +239,11 @@ export default function IntakePage() {
   }
 
   async function beginIntake(patientId: string) {
-    const { data: submission, error: subError } = await supabaseClient
-      .from("patient_intake_submissions")
-      .insert({ patient_id: patientId, status: "in_progress", current_step: 1 })
-      .select("id")
-      .single();
-
-    if (subError) throw subError;
+    const submission = await intakeApiClient.createSubmission({
+      patient_id: patientId,
+      status: "in_progress",
+      current_step: 1,
+    });
 
     trackLeadConversion({ formType: "intake" });
     router.push(`/intake/steps?sid=${submission.id}&pid=${patientId}&lang=${language}`);
@@ -270,13 +264,7 @@ export default function IntakePage() {
       const normalizedEmail = regEmail.trim().toLowerCase();
       const normalizedPhone = `${countryCode}${phone.trim().replace(/\D/g, "").replace(/^0+/, "")}`;
 
-      const { data: existingPatient, error: existingPatientError } = await supabaseClient
-        .from("patients")
-        .select("id")
-        .ilike("email", normalizedEmail)
-        .maybeSingle();
-
-      if (existingPatientError) throw existingPatientError;
+      const { patient: existingPatient } = await intakeApiClient.lookupPatient(normalizedEmail);
 
       if (existingPatient) {
         await beginIntake(existingPatient.id);
@@ -287,13 +275,7 @@ export default function IntakePage() {
       // last nine significant phone digits before creating a duplicate record.
       const phoneKey = normalizedPhone.replace(/\D/g, "").slice(-9);
       if (phoneKey.length === 9) {
-        const { data: phoneCandidates, error: phoneLookupError } = await supabaseClient
-          .from("patients")
-          .select("id, phone")
-          .not("phone", "is", null)
-          .ilike("phone", `%${phoneKey}%`);
-
-        if (phoneLookupError) throw phoneLookupError;
+        const { candidates: phoneCandidates } = await intakeApiClient.lookupPatientByPhone(phoneKey);
 
         const phoneMatch = (phoneCandidates || []).find(
           (candidate) => candidate.phone?.replace(/\D/g, "").slice(-9) === phoneKey
@@ -309,35 +291,23 @@ export default function IntakePage() {
       const isWhatsAppEligible = selectedCountry?.whatsappEligible ?? false;
 
       // Create new patient
-      const { data: newPatient, error: patientError } = await supabaseClient
-        .from("patients")
-        .insert({
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          email: normalizedEmail,
-          phone: normalizedPhone,
-          country_code: countryCode,
-          whatsapp_opt_in: isWhatsAppEligible,
-          source: "intake_form",
-          lifecycle_stage: "new_patient",
-        })
-        .select("id")
-        .single();
-
-      if (patientError) throw patientError;
+      const newPatient = await intakeApiClient.createPatient({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        country_code: countryCode,
+        whatsapp_opt_in: isWhatsAppEligible,
+        source: "intake_form",
+        lifecycle_stage: "new_patient",
+      });
 
       // Create intake submission
-      const { data: submission, error: subError } = await supabaseClient
-        .from("patient_intake_submissions")
-        .insert({
-          patient_id: newPatient?.id,
-          status: "in_progress",
-          current_step: 1,
-        })
-        .select("id")
-        .single();
-
-      if (subError) throw subError;
+      const submission = await intakeApiClient.createSubmission({
+        patient_id: newPatient?.id,
+        status: "in_progress",
+        current_step: 1,
+      });
 
       // Trigger patient_created workflow ONLY for new patients
       // This will create a deal under "Request for Information" stage

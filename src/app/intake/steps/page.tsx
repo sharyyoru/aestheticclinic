@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabaseClient } from "@/lib/supabaseClient";
+import { intakeApiClient } from "@/lib/intakeApi";
 import Image from "next/image";
 import { Language, getTranslation } from "@/lib/intakeTranslations";
 import InsurerSearchSelect from "@/components/InsurerSearchSelect";
@@ -136,7 +136,7 @@ function IntakeStepsContent() {
         ? `${dobYear}-${dobMonth.padStart(2, '0')}-${dobDay.padStart(2, '0')}`
         : null;
 
-      await supabaseClient.from("patients").update({
+      await intakeApiClient.updatePatient(patientId, {
         first_name: firstName || undefined,
         last_name: lastName || undefined,
         email: email || undefined,
@@ -150,15 +150,11 @@ function IntakeStepsContent() {
         profession: profession || null,
         current_employer: currentEmployer || null,
         gender: gender || null,
-      }).eq("id", patientId);
+      });
 
       // Save insurance if any data exists
       if (insuranceProvider || insuranceCardNumber || insuranceType) {
-        const { data: existingIns } = await supabaseClient
-          .from("patient_insurances")
-          .select("id")
-          .eq("patient_id", patientId)
-          .maybeSingle();
+        const { record: existingIns } = await intakeApiClient.getRecord("patient_insurances", { patient_id: patientId });
 
         const insData = {
           patient_id: patientId,
@@ -167,11 +163,7 @@ function IntakeStepsContent() {
           insurance_type: insuranceType || null,
         };
 
-        if (existingIns?.id) {
-          await supabaseClient.from("patient_insurances").update(insData).eq("id", existingIns.id);
-        } else {
-          await supabaseClient.from("patient_insurances").insert(insData);
-        }
+        await intakeApiClient.upsertRecord("patient_insurances", insData, existingIns?.id as string | undefined);
       }
 
       // Save health background if any data exists
@@ -197,11 +189,7 @@ function IntakeStepsContent() {
           }
         }
         
-        const { data: existingHealth } = await supabaseClient
-          .from("patient_health_background")
-          .select("id")
-          .eq("submission_id", submissionId)
-          .maybeSingle();
+        const { record: existingHealth } = await intakeApiClient.getRecord("patient_health_background", { submission_id: submissionId });
 
         const healthData = {
           patient_id: patientId,
@@ -223,20 +211,12 @@ function IntakeStepsContent() {
           birth_type_2: isMalePatient ? null : birthType2 || null,
         };
 
-        if (existingHealth?.id) {
-          await supabaseClient.from("patient_health_background").update(healthData).eq("id", existingHealth.id);
-        } else {
-          await supabaseClient.from("patient_health_background").insert(healthData);
-        }
+        await intakeApiClient.upsertRecord("patient_health_background", healthData, existingHealth?.id as string | undefined);
       }
 
       // Save contact preference
       if (contactPreference) {
-        const { data: existingPrefs } = await supabaseClient
-          .from("patient_intake_preferences")
-          .select("id")
-          .eq("submission_id", submissionId)
-          .maybeSingle();
+        const { record: existingPrefs } = await intakeApiClient.getRecord("patient_intake_preferences", { submission_id: submissionId });
 
         const prefsData = {
           submission_id: submissionId,
@@ -244,11 +224,7 @@ function IntakeStepsContent() {
           preferred_contact_method: contactPreference,
         };
 
-        if (existingPrefs?.id) {
-          await supabaseClient.from("patient_intake_preferences").update(prefsData).eq("id", existingPrefs.id);
-        } else {
-          await supabaseClient.from("patient_intake_preferences").insert(prefsData);
-        }
+        await intakeApiClient.upsertRecord("patient_intake_preferences", prefsData, existingPrefs?.id as string | undefined);
       }
 
       console.log("Auto-save completed successfully");
@@ -312,12 +288,8 @@ function IntakeStepsContent() {
     } else {
       const fetchExistingData = async () => {
         // Fetch patient data
-        const { data: patientData } = await supabaseClient
-          .from("patients")
-          .select("*")
-          .eq("id", patientId)
-          .single();
-        
+        const { patient: patientData } = await intakeApiClient.getPatient(patientId).catch(() => ({ patient: null as Record<string, string> | null }));
+
         if (patientData) {
           setPatientName(`${patientData.first_name} ${patientData.last_name}`);
           setPatientEmail(patientData.email || "");
@@ -346,13 +318,7 @@ function IntakeStepsContent() {
         }
 
         // Fetch existing insurance data
-        const { data: insuranceData } = await supabaseClient
-          .from("patient_insurances")
-          .select("*")
-          .eq("patient_id", patientId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const { record: insuranceData } = await intakeApiClient.getRecord("patient_insurances", { patient_id: patientId });
         
         if (insuranceData) {
           setInsuranceProvider(insuranceData.provider_name || "");
@@ -361,13 +327,7 @@ function IntakeStepsContent() {
         }
 
         // Fetch existing health background data
-        const { data: healthData } = await supabaseClient
-          .from("patient_health_background")
-          .select("*")
-          .eq("patient_id", patientId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const { record: healthData } = await intakeApiClient.getRecord("patient_health_background", { patient_id: patientId });
         
         if (healthData) {
           setWeight(healthData.weight_kg?.toString() || "");
@@ -387,13 +347,7 @@ function IntakeStepsContent() {
         }
 
         // Fetch existing preferences data
-        const { data: prefsData } = await supabaseClient
-          .from("patient_intake_preferences")
-          .select("*")
-          .eq("patient_id", patientId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const { record: prefsData } = await intakeApiClient.getRecord("patient_intake_preferences", { patient_id: patientId });
         
         if (prefsData) {
           setContactPreference(prefsData.preferred_contact_method || "");
@@ -514,9 +468,8 @@ function IntakeStepsContent() {
           ? `${dobYear}-${dobMonth.padStart(2, '0')}-${dobDay.padStart(2, '0')}`
           : null;
 
-        const { error: patientError } = await supabaseClient
-          .from("patients")
-          .update({
+        try {
+          await intakeApiClient.updatePatient(patientId, {
             first_name: firstName,
             last_name: lastName,
             email: email,
@@ -530,21 +483,15 @@ function IntakeStepsContent() {
             profession: profession || null,
             current_employer: currentEmployer || null,
             gender: gender || null,
-          })
-          .eq("id", patientId);
-
-        if (patientError) {
-          throw new Error(`Failed to save personal information: ${patientError.message}`);
+          });
+        } catch (e) {
+          throw new Error(`Failed to save personal information: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
 
       // Save insurance information
       if (currentStep === 2) {
-        const { data: existingInsurance } = await supabaseClient
-          .from("patient_insurances")
-          .select("id")
-          .eq("patient_id", patientId)
-          .maybeSingle();
+        const { record: existingInsurance } = await intakeApiClient.getRecord("patient_insurances", { patient_id: patientId });
 
         const insuranceData = {
           patient_id: patientId,
@@ -553,17 +500,10 @@ function IntakeStepsContent() {
           insurance_type: insuranceType,
         };
 
-        let insuranceError;
-        if (existingInsurance?.id) {
-          const { error } = await supabaseClient.from("patient_insurances").update(insuranceData).eq("id", existingInsurance.id);
-          insuranceError = error;
-        } else {
-          const { error } = await supabaseClient.from("patient_insurances").insert(insuranceData);
-          insuranceError = error;
-        }
-
-        if (insuranceError) {
-          throw new Error(`Failed to save insurance information: ${insuranceError.message}`);
+        try {
+          await intakeApiClient.upsertRecord("patient_insurances", insuranceData, existingInsurance?.id as string | undefined);
+        } catch (e) {
+          throw new Error(`Failed to save insurance information: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
 
@@ -580,11 +520,7 @@ function IntakeStepsContent() {
         const bmi = calculateBMI();
         const normalizedHeight = height ? normalizeHeight(height) : null;
         
-        const { data: existingHealth } = await supabaseClient
-          .from("patient_health_background")
-          .select("id")
-          .eq("submission_id", submissionId)
-          .single();
+        const { record: existingHealth } = await intakeApiClient.getRecord("patient_health_background", { submission_id: submissionId });
 
         const healthData = {
           patient_id: patientId,
@@ -606,36 +542,22 @@ function IntakeStepsContent() {
           birth_type_2: isMalePatient ? null : birthType2 || null,
         };
 
-        let healthError;
-        if (existingHealth?.id) {
-          const { error } = await supabaseClient.from("patient_health_background").update(healthData).eq("id", existingHealth.id);
-          healthError = error;
-        } else {
-          const { error } = await supabaseClient.from("patient_health_background").insert(healthData);
-          healthError = error;
+        try {
+          await intakeApiClient.upsertRecord("patient_health_background", healthData, existingHealth?.id as string | undefined);
+        } catch (e) {
+          throw new Error(`Failed to save health information: ${e instanceof Error ? e.message : String(e)}. Please contact support.`);
         }
 
-        if (healthError) {
-          throw new Error(`Failed to save health information: ${healthError.message}. Please contact support.`);
-        }
-
-        const { error: genderError } = await supabaseClient
-          .from("patients")
-          .update({ gender: gender || null })
-          .eq("id", patientId);
-
-        if (genderError) {
-          throw new Error(`Failed to save gender information: ${genderError.message}. Please contact support.`);
+        try {
+          await intakeApiClient.updatePatient(patientId, { gender: gender || null });
+        } catch (e) {
+          throw new Error(`Failed to save gender information: ${e instanceof Error ? e.message : String(e)}. Please contact support.`);
         }
       }
 
       // Save contact preference and preferred language
       if (currentStep === 4) {
-        const { data: existingPrefs } = await supabaseClient
-          .from("patient_intake_preferences")
-          .select("id")
-          .eq("submission_id", submissionId)
-          .single();
+        const { record: existingPrefs } = await intakeApiClient.getRecord("patient_intake_preferences", { submission_id: submissionId });
 
         const prefsData = {
           submission_id: submissionId,
@@ -644,28 +566,18 @@ function IntakeStepsContent() {
           preferred_language: language === "fr" ? "French" : "English",
         };
 
-        let prefsError;
-        if (existingPrefs?.id) {
-          const { error } = await supabaseClient.from("patient_intake_preferences").update(prefsData).eq("id", existingPrefs.id);
-          prefsError = error;
-        } else {
-          const { error } = await supabaseClient.from("patient_intake_preferences").insert(prefsData);
-          prefsError = error;
-        }
-
-        if (prefsError) {
-          throw new Error(`Failed to save contact preferences: ${prefsError.message}`);
+        try {
+          await intakeApiClient.upsertRecord("patient_intake_preferences", prefsData, existingPrefs?.id as string | undefined);
+        } catch (e) {
+          throw new Error(`Failed to save contact preferences: ${e instanceof Error ? e.message : String(e)}`);
         }
       }
 
       // Update submission progress
-      const { error: progressError } = await supabaseClient
-        .from("patient_intake_submissions")
-        .update({ current_step: currentStep + 1 })
-        .eq("id", submissionId);
-
-      if (progressError) {
-        throw new Error(`Failed to update progress: ${progressError.message}`);
+      try {
+        await intakeApiClient.updateSubmission(submissionId, { current_step: currentStep + 1 });
+      } catch (e) {
+        throw new Error(`Failed to update progress: ${e instanceof Error ? e.message : String(e)}`);
       }
 
     } catch (err) {
@@ -797,24 +709,18 @@ function IntakeStepsContent() {
       setLoading(true);
 
       // Mark submission as completed
-      await supabaseClient
-        .from("patient_intake_submissions")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-          terms_accepted: true,
-          terms_accepted_at: new Date().toISOString(),
-        })
-        .eq("id", submissionId);
+      await intakeApiClient.updateSubmission(submissionId, {
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        terms_accepted: true,
+        terms_accepted_at: new Date().toISOString(),
+      });
 
       // Update patient record
-      await supabaseClient
-        .from("patients")
-        .update({
-          intake_submission_id: submissionId,
-          intake_completed_at: new Date().toISOString(),
-        })
-        .eq("id", patientId);
+      await intakeApiClient.updatePatient(patientId, {
+        intake_submission_id: submissionId,
+        intake_completed_at: new Date().toISOString(),
+      });
 
       // Push rich GTM conversion event (auto-captures utm/gclid attribution)
       trackLeadConversion({ formType: "intake" });
@@ -1019,24 +925,18 @@ function IntakeStepsContent() {
       
       try {
         // Mark submission as completed
-        await supabaseClient
-          .from("patient_intake_submissions")
-          .update({
-            status: "completed",
-            completed_at: new Date().toISOString(),
-            terms_accepted: true,
-            terms_accepted_at: new Date().toISOString(),
-          })
-          .eq("id", submissionId);
+        await intakeApiClient.updateSubmission(submissionId, {
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          terms_accepted: true,
+          terms_accepted_at: new Date().toISOString(),
+        });
 
         // Update patient record
-        await supabaseClient
-          .from("patients")
-          .update({
-            intake_submission_id: submissionId,
-            intake_completed_at: new Date().toISOString(),
-          })
-          .eq("id", patientId);
+        await intakeApiClient.updatePatient(patientId, {
+          intake_submission_id: submissionId,
+          intake_completed_at: new Date().toISOString(),
+        });
 
         // Show confirmation
         setShowConfirmation(true);
