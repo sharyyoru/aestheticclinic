@@ -154,7 +154,13 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";
-    if (message === "SUMEX_SERVER_OFFLINE") {
+    if (
+      message === "SUMEX_SERVER_OFFLINE" ||
+      message.includes("fetch failed") ||
+      message.includes("ECONNREFUSED") ||
+      message.includes("Sumex") ||
+      message.includes("UND_ERR")
+    ) {
       // Server offline — fall back to the local catalogue (bundled TARDOC
       // items + clinic's saved tardoc_group_items) so the code browser and
       // search keep working. Coverage is partial but usable.
