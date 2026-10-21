@@ -477,11 +477,10 @@ export async function POST(request: NextRequest) {
           }, { status: 500 });
         }      // Use Sumex1-generated PDF
       if (!sumexResult.pdfContent) {
-        console.error(`[GeneratePDF] Sumex1 XML OK but PDF not available`);
-        return NextResponse.json({ 
-          error: "Sumex1 PDF generation failed - no PDF content returned",
-          xmlGenerated: true
-        }, { status: 500 });
+        // Native XML path (no Sumex server): the official print template is
+        // unavailable, so produce the local patient PDF instead.
+        console.warn(`[GeneratePDF] XML generated natively — no server print; using local fallback PDF`);
+        return generateFallbackPdf();
       }
 
       const pdfBuffer = sumexResult.pdfContent;
@@ -853,13 +852,19 @@ export async function POST(request: NextRequest) {
             });
           }
         } else {
+          // Native XML path (no Sumex server): no official print template, so
+          // produce the local patient PDF instead of erroring.
+          if (sumexResult2.success && !sumexResult2.pdfContent) {
+            console.warn(`[GeneratePDF] XML generated natively — using local fallback PDF`);
+            return generateFallbackPdf();
+          }
           console.error(`[GeneratePDF] Sumex1 unified failed: ${sumexResult2.error}`);
-          
+
           // Check for server offline error
           if (sumexResult2.error === 'SUMEX_SERVER_OFFLINE') {
             return generateFallbackPdf();
           }
-          
+
           return NextResponse.json({ 
             error: "Sumex1 PDF generation failed", 
             details: sumexResult2.error 
