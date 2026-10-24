@@ -91,6 +91,14 @@ export default function InsuranceBillingModal({
   const [xmlPreview, setXmlPreview] = useState<string | null>(null);
   const [xmlError, setXmlError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when the API refuses a duplicate upload, so the UI can stop offering
+  // a button whose only possible outcome is an insurer rejection.
+  const [alreadySubmitted, setAlreadySubmitted] = useState<{
+    id: string;
+    status: string;
+    createdAt: string;
+    transmissionReference?: string | null;
+  } | null>(null);
   const [success, setSuccess] = useState<any | null>(null);
 
   // Real invoice line items loaded from DB
@@ -442,6 +450,14 @@ export default function InsuranceBillingModal({
         // Parse specific error types for user-friendly messages
         const errMsg = data.error || "Unknown error";
         const details = data.details || data.abortInfo || "";
+        // Already with MediData. Surfaced plainly rather than as a failure:
+        // pressing send again is what produced hundreds of "facture déjà
+        // payée" rejections, so the user needs to understand this is a stop,
+        // not something to retry.
+        if (response.status === 409 || data.code === "ALREADY_SUBMITTED") {
+          setAlreadySubmitted(data.existingSubmission ?? null);
+          throw new Error(details || "This invoice has already been sent to MediData.");
+        }
         if (errMsg.includes("Sumex") || errMsg.includes("XML")) {
           throw new Error(`XML generation failed: ${details || errMsg}. Please check invoice line items and try again.`);
         } else if (errMsg.includes("Patient not found")) {
@@ -1002,6 +1018,24 @@ export default function InsuranceBillingModal({
             </div>
 
             {/* Error Message */}
+            {alreadySubmitted && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+                <p className="text-sm font-semibold text-amber-900">
+                  Already sent to MediData
+                </p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Sent on{" "}
+                  {new Date(alreadySubmitted.createdAt).toLocaleString("fr-CH")} and currently{" "}
+                  <span className="font-medium">{alreadySubmitted.status}</span>
+                  {alreadySubmitted.transmissionReference
+                    ? ` (ref ${alreadySubmitted.transmissionReference})`
+                    : ""}
+                  . Sending it again would be rejected by the insurer as a duplicate — this is
+                  what produced the &quot;facture déjà payée&quot; rejections. To correct an
+                  invoice already with the insurer, cancel it first (storno).
+                </p>
+              </div>
+            )}
             {error && (
               <div className="rounded-xl bg-red-50 border border-red-200 p-4">
                 <div className="flex items-start gap-3">
@@ -1102,7 +1136,12 @@ export default function InsuranceBillingModal({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isSubmitting || isCheckingXml}
+                disabled={isSubmitting || isCheckingXml || !!alreadySubmitted}
+                title={
+                  alreadySubmitted
+                    ? "Already sent to MediData — re-sending would be rejected as a duplicate"
+                    : undefined
+                }
                 className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
               >
                 {isSubmitting ? (

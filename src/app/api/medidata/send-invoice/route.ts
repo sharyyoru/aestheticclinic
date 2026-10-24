@@ -103,6 +103,9 @@ export async function POST(request: NextRequest) {
       durationMinutes,
       language,
       skipValidation = false,
+      // Deliberate re-send of an invoice that already reached MediData. Only
+      // legitimate for a correction; see the idempotency guard below.
+      forceResend = false,
     } = body as {
       invoiceId?: string;
       consultationId?: string;
@@ -122,6 +125,7 @@ export async function POST(request: NextRequest) {
       durationMinutes?: number;
       language?: 1 | 2 | 3;
       skipValidation?: boolean;
+      forceResend?: boolean;
     };
 
     // ── Resolve the invoice (primary) or fall back to consultation ──
@@ -164,6 +168,59 @@ export async function POST(request: NextRequest) {
       }
     } else {
       return NextResponse.json({ error: "invoiceId is required" }, { status: 400 });
+    }
+
+    // ── Idempotency guard ───────────────────────────────────────────────────
+    //
+    // Nothing used to stop the same invoice being uploaded to MediData again,
+    // and the UI only disabled its button while a request was in flight. The
+    // result: 1,268 submissions covering 888 invoices — 380 redundant sends,
+    // one invoice uploaded 25 times — and insurers rejecting them with
+    // "La facture a déjà été payée" or "Nous avons déjà reçu la même
+    // facture". Staff then saw "rejected" and pressed send again, which
+    // guaranteed another rejection. The loop was self-reinforcing and is the
+    // single largest cause of the ~71% rejection rate.
+    //
+    // A re-send is only legitimate for a correction, which goes out as a
+    // storno. Anything else is refused with 409 and the details needed to
+    // understand why.
+    if (resolvedInvoiceId && !forceResend) {
+      const { data: priorSubmissions } = await supabaseAdmin
+        .from("medidata_submissions")
+        .select("id, status, created_at, medidata_message_id, is_storno")
+        .eq("invoice_id", resolvedInvoiceId)
+        .order("created_at", { ascending: false });
+
+      const blocking = (priorSubmissions ?? []).find(
+        (submission) =>
+          !submission.is_storno &&
+          ["pending", "transmitted", "accepted"].includes(String(submission.status)),
+      );
+
+      if (blocking) {
+        console.warn(
+          `[SendInvoice] Refusing duplicate upload for invoice ${resolvedInvoiceId}: ` +
+            `submission ${blocking.id} is already "${blocking.status}".`,
+        );
+        return NextResponse.json(
+          {
+            error: "Already submitted",
+            code: "ALREADY_SUBMITTED",
+            details:
+              `This invoice was already sent to MediData on ` +
+              `${new Date(String(blocking.created_at)).toLocaleString("fr-CH")} and is currently ` +
+              `"${blocking.status}". Sending it again would be rejected by the insurer as a ` +
+              `duplicate. To correct an invoice already with the insurer, cancel it first (storno).`,
+            existingSubmission: {
+              id: blocking.id,
+              status: blocking.status,
+              createdAt: blocking.created_at,
+              transmissionReference: blocking.medidata_message_id,
+            },
+          },
+          { status: 409 },
+        );
+      }
     }
 
     const patientId = bodyPatientId
@@ -625,8 +682,11 @@ export async function POST(request: NextRequest) {
       printCopyToGuarantor: billingType === 'TP' ? YesNo.Yes : (invoiceRecord?.copy_to_guarantor ? YesNo.Yes : YesNo.No),
     };
 
-    // Generate XML + PDF via Sumex1 server (no fallback — this is the only path)
-    console.log(`[SendInvoice] Calling Sumex1 with ${sumexServices.length} services`);
+    // XML generation runs natively inside buildInvoiceRequest by default
+    // (SUMEX_USE_SERVER !== "1"), so this no longer depends on the Sumex1
+    // server. The offline branch below only remains reachable if that server
+    // path is deliberately re-enabled.
+    console.log(`[SendInvoice] Generating XML for ${sumexServices.length} services`);
     let sumexResult;
     try {
       sumexResult = await buildInvoiceRequest(sumexInput, { generatePdf: true });
