@@ -163,7 +163,17 @@ const PARTNER_TYPE_MAP: Record<number, string> = {
 // ---------------------------------------------------------------------------
 
 function esc(value: string | number | null | undefined): string {
-  const s = String(value ?? "");
+  // Control characters are stripped before escaping. A CSV import with Windows
+  // line endings left a trailing CR on 205 of 772 `services.code` values and
+  // 4,725 `invoice_line_items.code` values, e.g. "2130\r". Written raw into an
+  // attribute, XML attribute-value normalisation turns that CR into a space,
+  // so the insurer receives the tariff code "2130 " instead of "2130". Doing
+  // this here covers every value in the document rather than relying on each
+  // call site, and on the data staying clean.
+  const s = String(value ?? "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/\r/g, "")
+    .trim();
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

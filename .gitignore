@@ -70,8 +70,10 @@ public/forms/FR - Questionnaire d'anesthésie.pdf
 /whatsapp-server
 /server
 # scripts/* stays excluded, except the committed Academy capture pipeline
+# and the billing verification harness (npm run verify:billing)
 /scripts/*
 !/scripts/academy/
 !/scripts/tsconfig.json
+!/scripts/verify-billing.mjs
 /docs
 /*.md

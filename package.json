@@ -16,7 +16,8 @@
     "academy:sync": "tsx scripts/academy/5-sync.ts",
     "academy:doctor": "tsx scripts/academy/doctor.ts",
     "academy:all": "npm run academy:capture && npm run academy:scripts && npm run academy:encode && npm run academy:publish && npm run academy:sync",
-    "typecheck:scripts": "tsc -p scripts/tsconfig.json --noEmit"
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json --noEmit",
+    "verify:billing": "node scripts/verify-billing.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
