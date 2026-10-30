@@ -14,6 +14,20 @@ function err(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+const PHOTO_BUCKET = "patient-photos";
+
+// Photos are written to <patient-uuid>/<category>/<position>_<ts>.<ext>. The
+// extension is optional because some Android galleries and share sheets hand
+// over a file with no extension at all, which used to be rejected outright.
+const PHOTO_PATH_RE =
+  /^[0-9a-fA-F-]{36}\/[a-z_]+\/[a-z_]+_\d+(\.[a-zA-Z0-9]{1,8})?$/;
+
+function photoPathError(fileName: string): string | null {
+  if (!fileName || fileName.includes("..")) return "file_name required";
+  if (!PHOTO_PATH_RE.test(fileName)) return "invalid file_name";
+  return null;
+}
+
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") || "";
 
@@ -23,14 +37,15 @@ export async function POST(request: Request) {
       if (form.get("action") !== "upload_photo") return err("Unknown action", 404);
       const file = form.get("file");
       const fileName = String(form.get("file_name") || "");
-      if (!(file instanceof File) || !fileName || fileName.includes("..")) {
-        return err("file and file_name required");
-      }
-      // Paths are <patient-uuid>/<category>/<position>_<ts>.<ext>
-      if (!/^[0-9a-fA-F-]{36}\/[a-z_]+\/[a-z_]+_\d+\.[a-zA-Z0-9]+$/.test(fileName)) {
-        return err("invalid file_name");
-      }
-      const { error } = await supabaseAdmin.storage.from("patient-photos").upload(fileName, file);
+      if (!(file instanceof File)) return err("file and file_name required");
+      const pathError = photoPathError(fileName);
+      if (pathError) return err(pathError);
+      // Retained for clients that still post the file itself. Anything over
+      // ~4.5 MB never reaches this handler — Vercel rejects the request first
+      // — so the client is expected to use the signed-URL action below.
+      const { error } = await supabaseAdmin.storage
+        .from(PHOTO_BUCKET)
+        .upload(fileName, file, { contentType: file.type || undefined });
       if (error) return err(error.message, 500);
       return NextResponse.json({ ok: true });
     } catch (e) {
@@ -49,6 +64,27 @@ export async function POST(request: Request) {
 
   try {
     switch (action) {
+      // Hands back a one-shot signed upload URL so the browser can send the
+      // photo straight to Supabase Storage. Posting the file through this
+      // route instead capped uploads at Vercel's 4.5 MB request limit, which
+      // rejected most phone photos (verified: 4 MB passed, 4.5 MB returned
+      // FUNCTION_PAYLOAD_TOO_LARGE). The path is still authorised here, so
+      // anon gains no broader storage access.
+      case "photo_upload_url": {
+        const fileName = String(body.file_name || "");
+        const pathError = photoPathError(fileName);
+        if (pathError) return err(pathError);
+        const { data, error } = await supabaseAdmin.storage
+          .from(PHOTO_BUCKET)
+          .createSignedUploadUrl(fileName);
+        if (error || !data) return err(error?.message || "Could not sign upload", 500);
+        return NextResponse.json({
+          url: data.signedUrl,
+          token: data.token,
+          path: data.path,
+        });
+      }
+
       case "lookup_patient": {
         const email = String(body.email || "").trim();
         if (!email) return err("email required");

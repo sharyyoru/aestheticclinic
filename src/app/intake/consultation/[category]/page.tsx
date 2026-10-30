@@ -332,6 +332,10 @@ function ConsultationContent() {
       // Upload photos if mode is "now"
       if (uploadMode === "now") {
         setUploading(true);
+        // Failures used to be logged to the console only, and the flow then
+        // redirected as if the photos had been stored — so patients believed
+        // an upload had worked when nothing was saved.
+        const failedUploads: string[] = [];
         const photosToUpload = Object.entries(photos).filter(([, file]) => file !== null);
         const totalPhotos = photosToUpload.length;
         
@@ -341,17 +345,56 @@ function ConsultationContent() {
             // Set progress to 50% while uploading
             setUploadProgress(prev => ({ ...prev, [position]: 50 }));
             
-            const fileName = `${patientId}/${category}/${position}_${Date.now()}.${file.name.split('.').pop()}`;
-            const form = new FormData();
-            form.append("action", "upload_photo");
-            form.append("file_name", fileName);
-            form.append("file", file);
-            const uploadRes = await fetch("/api/public/intake", { method: "POST", body: form });
-            const uploadError = uploadRes.ok ? null : new Error((await uploadRes.json().catch(() => ({}))).error || "Upload failed");
+            // Extension comes from the file name when there is one; phone
+            // share sheets sometimes supply none, so fall back to the MIME
+            // type rather than appending the whole file name as an extension.
+            const nameParts = file.name.split(".");
+            const ext = (
+              nameParts.length > 1 ? nameParts.pop() : file.type.split("/")[1]
+            )?.replace(/[^a-zA-Z0-9]/g, "");
+            const fileName =
+              `${patientId}/${category}/${position}_${Date.now()}` +
+              (ext ? `.${ext}` : "");
+
+            // The file is sent directly to Supabase Storage via a signed URL.
+            // Posting it through /api/public/intake capped uploads at Vercel's
+            // 4.5 MB request limit, which rejected most phone photos.
+            let uploadError: Error | null = null;
+            try {
+              const signRes = await fetch("/api/public/intake", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "photo_upload_url", file_name: fileName }),
+              });
+              if (!signRes.ok) {
+                throw new Error(
+                  (await signRes.json().catch(() => ({}))).error || "Could not start upload",
+                );
+              }
+              const { url } = await signRes.json();
+              const putRes = await fetch(url, {
+                method: "PUT",
+                headers: file.type ? { "Content-Type": file.type } : undefined,
+                body: file,
+              });
+              if (!putRes.ok) {
+                const detail = await putRes.text().catch(() => "");
+                let message = `Upload failed (${putRes.status})`;
+                try {
+                  message = JSON.parse(detail).message || message;
+                } catch {
+                  /* non-JSON storage error */
+                }
+                throw new Error(message);
+              }
+            } catch (e) {
+              uploadError = e instanceof Error ? e : new Error("Upload failed");
+            }
 
             if (uploadError) {
               console.error(`Failed to upload ${position}:`, uploadError);
               setUploadProgress(prev => ({ ...prev, [position]: 0 }));
+              failedUploads.push(`${position}: ${uploadError.message}`);
             } else {
               // Mark as completed
               setUploadProgress(prev => ({ ...prev, [position]: 100 }));
@@ -360,6 +403,17 @@ function ConsultationContent() {
           }
         }
         setUploading(false);
+
+        // The consultation answers are already saved, so the patient stays on
+        // this step to retry the photos rather than being moved on silently.
+        if (failedUploads.length > 0) {
+          setError(
+            `${failedUploads.length} photo${failedUploads.length > 1 ? "s" : ""} could not be uploaded. ` +
+              `Your answers have been saved — please try the photos again. (${failedUploads.join("; ")})`,
+          );
+          setLoading(false);
+          return;
+        }
       }
 
       // Push rich GTM conversion event (auto-captures utm/gclid attribution)
