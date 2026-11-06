@@ -7,6 +7,7 @@ import {
   PatientDataForTemplate,
   UserDataForTemplate,
 } from "@/lib/docxTemplate";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +15,11 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = await request.json();
     const { patientId, templatePath, title, patientName, userData } = body;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { printInvoiceRequest } from "@/lib/sumexInvoice";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 /**
  * POST /api/medidata/request-pdf
@@ -9,6 +10,11 @@ import { printInvoiceRequest } from "@/lib/sumexInvoice";
  * Body: { submissionId: string }
  */
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { submissionId } = (await request.json().catch(() => ({}))) as { submissionId?: string };
 

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { parseSwissDateTimeLocal, formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
 import { generatePatientAppointmentEmailHtml } from "@/lib/appointmentEmailTemplates";
 import { isOperationRoomAppointment } from "@/lib/appointmentComms";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -172,6 +173,11 @@ function generateProviderReminderEmailHtml(
 }
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = (await request.json()) as CreateAppointmentPayload;
 

@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 /**
  * Proxy API route for serving images from Supabase storage.
  * This bypasses CORS and bucket access issues by fetching server-side.
  */
 export async function GET(req: NextRequest) {
+    try {
+      await requireStaff(req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const url = req.nextUrl.searchParams.get("url");
 
   if (!url) {

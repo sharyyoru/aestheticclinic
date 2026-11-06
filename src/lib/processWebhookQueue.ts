@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { shouldCreateDeal } from "@/lib/dealDeduplication";
+import { internalAuthHeaders } from "@/lib/serverAuth";
 
 type FacebookLeadPayload = {
   first_name?: string;
@@ -302,7 +303,7 @@ export async function processFacebookLead(payload: FacebookLeadPayload): Promise
             const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
             await fetch(`${baseUrl}/api/workflows/deal-stage-changed`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
               body: JSON.stringify({
                 dealId,
                 patientId,

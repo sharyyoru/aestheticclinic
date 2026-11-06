@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { installAuthFetch } from "@/lib/authFetch";
 import type { User } from "@supabase/supabase-js";
 
 type AuthContextValue = {
@@ -33,6 +34,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       return null;
     }
+  }, []);
+
+  useEffect(() => {
+    // Same-origin /api calls carry the session Bearer token so the server-side
+    // guards can identify the caller. Also installed on import for fetches
+    // issued before this mounts.
+    installAuthFetch();
   }, []);
 
   useEffect(() => {

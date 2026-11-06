@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,11 @@ export const dynamic = "force-dynamic";
  *     we restore the original link.
  */
 export async function POST(req: NextRequest) {
+    try {
+      await requireStaff(req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = await req.json().catch(() => ({}));
     const invoiceId = String(body.invoice_id || "").trim();

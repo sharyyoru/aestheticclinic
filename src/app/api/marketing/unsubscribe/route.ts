@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { verifyUnsubscribeToken } from "@/lib/marketingUnsubscribe";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,11 @@ async function unsubscribe(token: string) {
 }
 
 export async function GET(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const token = new URL(request.url).searchParams.get("token") || "";
   if (!verifyUnsubscribeToken(token)) {
     return htmlPage("Invalid link", "This unsubscribe link is invalid or incomplete.");
@@ -50,6 +56,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const urlToken = new URL(request.url).searchParams.get("token");
   let bodyToken = "";
   if (!urlToken) {

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 const SUMEX_HOST =
   process.env.SUMEX_INVOICE_REQUEST_URL?.replace(/\/[^/]+$/, "") ||
@@ -6,6 +8,11 @@ const SUMEX_HOST =
 
 /** Lightweight Sumex connectivity probe. Returns `{ online, latencyMs }`. */
 export async function GET() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const start = Date.now();
   try {
     const controller = new AbortController();

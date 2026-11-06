@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,11 @@ type DebiteurRow = {
 };
 
 export async function GET(req: NextRequest) {
+    try {
+      await requireStaff(req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const url = new URL(req.url);
     const asOf = url.searchParams.get("asOf"); // optional, defaults to today

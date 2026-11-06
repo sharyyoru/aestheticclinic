@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -192,6 +193,11 @@ async function updateDistributionRecord(
 
 // GET - Test connection or list distributions
 export async function GET(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action") || "list";
 
@@ -237,6 +243,11 @@ export async function GET(request: NextRequest) {
 
 // POST - Submit or check status
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body: DistributionRequest = await request.json();
     const { action } = body;

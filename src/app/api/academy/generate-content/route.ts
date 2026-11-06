@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 /**
  * Lesson content is generated from the documentation registry by
@@ -15,6 +16,11 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
  * It is kept as a thin read so existing clients keep working.
  */
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { lessonId } = await request.json();
 

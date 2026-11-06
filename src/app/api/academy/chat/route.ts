@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { CATEGORIES, getCategoryModules } from "@/app/documentation/content";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
@@ -38,6 +39,11 @@ Rules:
 const SYSTEM_PROMPT = buildSystemPrompt();
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { message, history } = await request.json();
 

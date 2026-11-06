@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -7,6 +8,11 @@ export const runtime = "nodejs";
 // Returns all WhatsApp templates from the DB.
 // Optional query param: ?status=approved  (filter by status)
 export async function GET(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { searchParams } = new URL(request.url);
     const statusFilter = searchParams.get("status"); // e.g. "approved"
@@ -37,6 +43,11 @@ export async function GET(request: NextRequest) {
 // DELETE /api/whatsapp/templates?id=<uuid>
 // Deletes a template from the local DB only (does not touch Twilio).
 export async function DELETE(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

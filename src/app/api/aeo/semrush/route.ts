@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 const SEMRUSH_API_KEY = process.env.SEMRUSH_API_KEY || "f9ad9c77fdbd2b57d551867ab800d380";
 const SEMRUSH_BASE_URL = "https://api.semrush.com/";
@@ -53,6 +54,11 @@ function parseSemrushResponse(csv: string): Record<string, string>[] {
 }
 
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = await request.json();
     const { action, keyword, domain, database = "ch", limit = 50 } = body;
@@ -277,6 +283,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   // Simple health check and API test
   try {
     const csv = await fetchSemrush({

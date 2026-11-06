@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,11 @@ export const runtime = "nodejs";
  * POST body: { appointmentId: string, reason?: "cancelled" | "rescheduled" }
  */
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   let body: { appointmentId?: string; reason?: string };
   try {
     body = await request.json();

@@ -5,6 +5,8 @@ import {
   RETELL_ENGLISH_OUTBOUND_AGENT,
   RETELL_FRENCH_OUTBOUND_AGENT,
 } from "@/lib/retellAgents";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -40,6 +42,11 @@ export const runtime = "nodejs";
  * This can be called from workflows or other system components.
  */
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     if (!RETELL_API_KEY) {
       return NextResponse.json(
@@ -237,6 +244,11 @@ export async function POST(request: NextRequest) {
  * Returns configuration info for the Retell integration
  */
 export async function GET() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   return NextResponse.json({
     configured: !!RETELL_API_KEY,
     default_agent_id: OUTBOUND_AGENTS.english,

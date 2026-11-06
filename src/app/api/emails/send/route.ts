@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 const mailgunApiKey = process.env.MAILGUN_API_KEY;
 const mailgunDomain = process.env.MAILGUN_DOMAIN;
@@ -105,6 +106,11 @@ async function markEmailOutcome(
 }
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   if (!mailgunApiKey || !mailgunDomain) {
     return NextResponse.json(
       { error: "Missing MAILGUN_API_KEY or MAILGUN_DOMAIN environment variables" },

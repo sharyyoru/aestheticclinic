@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAppBaseUrl } from "@/lib/appUrl";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 // GET /api/forms/patient?patientId=xxx - Get all form submissions for a patient
 export async function GET(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { searchParams } = new URL(request.url);
     const patientId = searchParams.get("patientId");
@@ -61,6 +67,11 @@ export async function GET(request: Request) {
 
 // PATCH /api/forms/patient - Update form submission (mark as reviewed, add notes)
 export async function PATCH(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = await request.json();
     const { submissionId, status, notes, reviewedBy } = body;
@@ -115,6 +126,11 @@ export async function PATCH(request: Request) {
 // DELETE /api/forms/patient?submissionId=xxx&patientId=xxx - Delete form submissions
 // Also accepts submissionIds=id1,id2,id3 for bulk deletion.
 export async function DELETE(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { searchParams } = new URL(request.url);
     const submissionId = searchParams.get("submissionId");

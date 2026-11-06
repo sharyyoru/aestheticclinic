@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { notifyDealStageChange } from "@/lib/dealNotifications";
 import { normalizePhone, RETELL_FROM_NUMBER } from "@/lib/retell";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { internalAuthHeaders } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -118,6 +120,11 @@ function sanitizeTelLinks(html: string): string {
 }
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = (await request.json()) as Partial<DealStageChangedPayload>;
 
@@ -1349,7 +1356,7 @@ export async function POST(request: Request) {
             try {
               const res = await fetch(`${appUrl}/api/whatsapp/send`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
                 body: JSON.stringify(sendPayload),
               });
 

@@ -5,11 +5,17 @@ import {
   makeFilename,
 } from "@/lib/statisticsExcel";
 import { fetchMediDataStatus } from "@/lib/medidataStatusData";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
+    try {
+      await requireStaff(req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const url = new URL(req.url);
     const from = url.searchParams.get("from") || "2026-04-01";

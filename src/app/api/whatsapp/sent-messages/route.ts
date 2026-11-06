@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
 // GET /api/whatsapp/sent-messages
 // Fetches outbound WhatsApp messages with their delivery status
 export async function GET(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);

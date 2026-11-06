@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 export async function GET() {
+    try {
+      await requireRole((await headers()), ["owner","admin"]);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({
       page: 1,

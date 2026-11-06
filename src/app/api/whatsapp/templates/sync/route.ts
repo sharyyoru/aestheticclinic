@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 
@@ -102,6 +104,11 @@ function buildVariables(vars?: Record<string, string>): Array<{ key: string; lab
 
 // POST /api/whatsapp/templates/sync
 export async function POST() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   if (!accountSid || !authToken) {
     return NextResponse.json(
       { error: "Twilio credentials not configured" },

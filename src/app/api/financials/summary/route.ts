@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 // Cache the result in Node.js module scope — survives across requests within the
 // same server instance. Invalidated after CACHE_TTL_MS.
@@ -284,6 +285,11 @@ async function buildPayload(): Promise<string> {
 // GET /api/financials/summary
 // ---------------------------------------------------------------------------
 export async function GET(_req: NextRequest) {
+    try {
+      await requireStaff(_req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const payload = await buildPayload();
     return new NextResponse(payload, {

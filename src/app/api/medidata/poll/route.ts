@@ -9,6 +9,8 @@ import {
   getUploadStatus,
 } from "@/lib/medidataProxy";
 import { parseResponseXml } from "@/lib/medidataResponseParser";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 // Vercel Pro supports up to 300s. The poll does many sequential proxy→MediData
 // HTTP calls (status checks + downloads + notifications); without this it times
@@ -28,6 +30,11 @@ export const maxDuration = 300;
  *    For true 30-min polling, use an external cron service.)
  */
 export async function POST() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const results = {
       downloads: { found: 0, processed: 0, errors: 0, items: [] as any[] },

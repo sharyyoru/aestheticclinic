@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -27,6 +28,11 @@ const STORAGE_BUCKETS = [
 ];
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = (await request.json()) as RecoverRequest;
     const { patientId, targetPatientId, dryRun = true } = body;
@@ -200,6 +206,11 @@ export async function POST(request: Request) {
 
 // GET endpoint to quickly check for orphaned files
 export async function GET(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const { searchParams } = new URL(request.url);
   const patientId = searchParams.get("patientId");
 

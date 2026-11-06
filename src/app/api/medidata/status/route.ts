@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getUploadStatus } from "@/lib/medidataProxy";
 import { mapUploadStatusToSubmissionStatus } from "@/lib/medidataResponseParser";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 // This route talks to MediData via the AWS proxy (geoblocking bypass).
 // The old implementation used MediDataClient directly, which only works from
@@ -13,6 +14,11 @@ import { mapUploadStatusToSubmissionStatus } from "@/lib/medidataResponseParser"
  * Poll the upload status of a MediData submission via the proxy.
  */
 export async function GET(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { searchParams } = new URL(request.url);
     const submissionId = searchParams.get("submissionId");
@@ -115,6 +121,11 @@ export async function GET(request: NextRequest) {
  * Manually trigger upload status refresh for multiple submissions.
  */
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = await request.json();
     const { submissionIds } = body;

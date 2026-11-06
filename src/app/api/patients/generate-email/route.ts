@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { generateContentWithFallback } from "@/lib/geminiWithFallback";
 import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,6 +17,11 @@ type GeneratePatientEmailRequestBody = {
 };
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {

@@ -610,11 +610,14 @@ function IntakeStepsContent() {
           timestamp: new Date().toISOString()
         };
 
-        await fetch("/api/emails/send", {
+        // Routed through the public intake proxy rather than /api/emails/send,
+        // which is now staff-only. The recipient is chosen server-side, so this
+        // cannot be used as an open mail relay.
+        await fetch("/api/public/intake", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: "wilson@mutant.ae",
+            action: "report_intake_error",
             subject: `[INTAKE FORM ERROR] Failed submission for ${firstName} ${lastName}`,
             html: `
               <h2>Intake Form Submission Failed</h2>

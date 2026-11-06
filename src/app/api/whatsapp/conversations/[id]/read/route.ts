@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,11 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+    try {
+      await requireStaff(_request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const { id } = await params;
 
   if (!id) {

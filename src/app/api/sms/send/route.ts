@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,11 @@ const smsFrom = process.env.TWILIO_SMS_FROM;
  * Body: { to: string, body: string, patientId?: string, metadata?: object }
  */
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     if (!accountSid || !authToken) {
       console.error("[SMS] Missing Twilio credentials");

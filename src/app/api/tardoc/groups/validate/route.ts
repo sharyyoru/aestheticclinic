@@ -5,6 +5,7 @@ import {
   type ValidationServiceInput,
 } from "@/lib/sumexTardoc";
 import { CANTON_TAX_POINT_VALUES, type SwissCanton } from "@/lib/tardoc";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,11 @@ export const runtime = "nodejs";
  *   OR: { items, canton?, law_type? } — validates ad-hoc items
  */
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = await request.json();
     const { groupId, items: adHocItems, canton: adHocCanton, law_type: adHocLaw, tax_point_value: adHocTpv } = body as {

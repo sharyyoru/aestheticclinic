@@ -6,10 +6,16 @@ import {
   fmtDate,
   makeFilename,
 } from "@/lib/statisticsExcel";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    try {
+      await requireStaff(req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const url = new URL(req.url);
     const asOf = url.searchParams.get("asOf");

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,11 @@ export const dynamic = "force-dynamic";
 const MIN_COUNT = 5;
 
 export async function GET() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     // Fetch all appointment reason strings that contain a [Doctor: X] token.
     // We paginate to avoid hitting Supabase's default 1 000-row limit.

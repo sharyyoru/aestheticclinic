@@ -6,6 +6,7 @@ import {
   MAX_CAMPAIGN_RECIPIENTS,
   type MarketingFilter,
 } from "@/lib/marketingFilters";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,11 @@ export const runtime = "nodejs";
  * Returns: { count, sample: PatientRow[] }
  */
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = (await request.json()) as {
       filter?: MarketingFilter;

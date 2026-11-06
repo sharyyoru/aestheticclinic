@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export async function POST(request: Request) {
+    try {
+      await requireRole(request, ["owner","admin"]);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { email, password, role, firstName, lastName, designation } =
       await request.json();

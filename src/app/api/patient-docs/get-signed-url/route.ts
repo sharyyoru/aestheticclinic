@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,11 @@ const BUCKET_NAME = "patient-docs";
  * This solves the JWT expiration issue by generating URLs when needed.
  */
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = await request.json();
     const { filePath } = body;
@@ -45,6 +51,11 @@ export async function POST(request: NextRequest) {
  * GET endpoint for direct file serving with fresh signed URL redirect
  */
 export async function GET(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const filePath = request.nextUrl.searchParams.get("path");
 
   if (!filePath) {

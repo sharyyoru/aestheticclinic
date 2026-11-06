@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { internalAuthHeaders } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -10,6 +12,11 @@ export const maxDuration = 300;
  * Body: { workflowId: string, dryRun?: boolean }
  */
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { workflowId, dryRun = true } = await request.json();
 
@@ -128,7 +135,7 @@ export async function POST(request: NextRequest) {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         const res = await fetch(`${appUrl}/api/whatsapp/send`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
           body: JSON.stringify({
             to: patientPhone,
             patientId: patient.id,

@@ -7,6 +7,7 @@ import {
   makeFilename,
   type ExcelCell,
 } from "@/lib/statisticsExcel";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,11 @@ function swissDateToUtcRange(dateStr: string): { start: string; end: string } {
 }
 
 export async function GET(req: NextRequest) {
+    try {
+      await requireStaff(req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const url = new URL(req.url);
     const from = url.searchParams.get("from");

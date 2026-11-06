@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   return NextResponse.json({
     SUMEX_INVOICE_REQUEST_URL: process.env.SUMEX_INVOICE_REQUEST_URL,
     SUMEX_INVOICE_RESPONSE_URL: process.env.SUMEX_INVOICE_RESPONSE_URL,
@@ -14,6 +21,11 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const { invoiceId } = await request.json();
   if (!invoiceId) return NextResponse.json({ error: "invoiceId required" }, { status: 400 });
 

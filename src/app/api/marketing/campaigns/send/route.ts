@@ -9,6 +9,7 @@ import {
   type PatientRow,
 } from "@/lib/marketingFilters";
 import { appendUnsubscribeFooter, createUnsubscribeUrl } from "@/lib/marketingUnsubscribe";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -326,6 +327,11 @@ async function loadProcessedPatientIds(workflowId: string): Promise<Set<string>>
 }
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = (await request.json()) as SendRequestBody;
     if (!body.templateId) {

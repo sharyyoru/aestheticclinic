@@ -4,6 +4,8 @@ import {
   RETELL_ENGLISH_OUTBOUND_AGENT,
   RETELL_FRENCH_OUTBOUND_AGENT,
 } from "@/lib/retellAgents";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 
@@ -39,6 +41,11 @@ const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
  * }
  */
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     if (!RETELL_API_KEY) {
       return NextResponse.json(
@@ -184,6 +191,11 @@ export async function POST(request: NextRequest) {
  * Returns test configuration and agent version info
  */
 export async function GET() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   // Fetch agent info to get current version
   let agentInfo = null;
   if (RETELL_API_KEY) {

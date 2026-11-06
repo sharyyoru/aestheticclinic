@@ -27,6 +27,7 @@ import {
   reconcileInvoiceLines,
   type SumexLineItemRow,
 } from "@/lib/sumexLineMapper";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 type PatientData = {
   first_name: string;
@@ -60,6 +61,11 @@ type ProviderData = {
 };
 
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const startTime = Date.now();
   const timings: Record<string, number> = {};
   

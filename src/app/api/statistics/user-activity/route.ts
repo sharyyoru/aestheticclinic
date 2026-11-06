@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { computeUserActivity } from "@/lib/userActivity";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+    try {
+      await requireStaff(req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const url = new URL(req.url);
     const userId = url.searchParams.get("userId");

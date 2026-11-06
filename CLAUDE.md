@@ -88,6 +88,17 @@ Four paths create bookings — public doctor pages, the website embed, the patie
 - All of the above degrade gracefully when `migrations/20260930_email_delivery_truth.sql` has not been applied — keep it that way, because Vercel deploys before migrations are run.
 - **Marketing and transactional mail share one Mailgun domain, which is the underlying bug.** A campaign to stale addresses hard-bounces, Mailgun permanently suppresses those addresses, and the patients' appointment confirmations then silently fail forever. A single 5,000-recipient send cut off 133 patients. Splitting the sending domains is the real fix and is still outstanding.
 
+### API Authorization (`src/lib/serverAuth.ts`)
+Every route under `src/app/api` runs with the service-role key, which **bypasses RLS**. A route without a caller check therefore serves clinic data to anyone — before this was added, `GET /api/debug/patient-intake?patient_id=…` returned a real patient's intake record with no credentials at all. The 2026-10-21 RLS lockdown only closed *direct* Supabase access from the browser; it does nothing for API routes.
+- **New routes must guard themselves.** Start the handler with `await requireStaff(request)` (or `requireRole(request, ["owner","admin"])`) inside a `try`/`catch` returning `authErrorResponse(err)`.
+- `requireStaff` = a row in `public.users` whose role is not `patient`. This deliberately mirrors `public.is_staff_user()` so the API layer and the database agree; patient-app accounts authenticate by OTP and must never reach staff routes.
+- **Roles come from `public.users.role` only** — never from `user_metadata`, which the client can write.
+- `npm run guard:routes` re-runs the codemod; it skips routes that already call `requireStaff`/`requireRole`, so it is safe to re-run after adding routes. The allowlist of genuinely public routes lives at the top of `scripts/guard-routes.js`.
+- **The allowlist is security-critical.** `retell/` was briefly a blanket prefix and `/api/retell/logs` then served call transcripts and patient phone numbers anonymously. Allowlist individual routes, not prefixes, unless every route under the prefix authenticates itself (`cron/` verifies `CRON_SECRET`; `patientapp/` verifies its OTP session).
+- Browser calls are covered by `installAuthFetch()` (attaches the session Bearer token to same-origin `/api` calls); it is installed on import and from `AuthProvider`.
+- **API routes calling other API routes over HTTP must send `internalAuthHeaders()`**, which uses `INTERNAL_API_SECRET` and falls back to `CRON_SECRET`. Forgetting it makes workflows fail silently with 401.
+- `npm run verify:authz` asserts all three properties at once: anonymous callers are refused, a real staff session still gets through, and public/token/webhook flows stay reachable.
+
 ### Public Documentation Site (`/documentation`)
 Public, SEO-indexed end-user docs — no auth, no app shell, always light themed.
 - Pages: `src/app/documentation/page.tsx` (hub) + `[slug]/page.tsx` (one static page per module, via `generateStaticParams`)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { internalAuthHeaders } from "@/lib/serverAuth";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -205,7 +206,7 @@ export async function POST(request: NextRequest) {
           // For existing patients, create deal and task directly
           await fetch(`${baseUrl}/api/workflows/embed-lead-followup`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
             body: JSON.stringify({ 
               patient_id: patientId,
               lead_id: lead.id,

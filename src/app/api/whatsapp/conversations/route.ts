@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 
@@ -7,6 +9,11 @@ export const runtime = "nodejs";
 // Returns all conversations ordered by last_message_at desc, with patient name
 // and window status (open | closed).
 export async function GET() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   const { data, error } = await supabaseAdmin
     .from("whatsapp_conversations")
     .select(`

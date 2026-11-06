@@ -16,6 +16,7 @@ import {
   YesNo,
 } from "@/lib/sumexInvoice";
 import { deriveTariffType } from "@/lib/tariffType";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 const MEDIDATA_INTERMEDIATE_GLN = "7601001304307";
 const SIMULATOR_GLN = "2099988876514";
@@ -31,6 +32,11 @@ const TG_NO_TRANSMISSION_GLN = "2000000000008";
  * - simulatorFlag: string — e.g. "ClinicalDatasetMissing" (pending), "InvalidSchema" (rejected), "" (accepted)
  */
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body = await request.json().catch(() => ({}));
     const {

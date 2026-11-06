@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import fs from "fs";
 import path from "path";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { headers } from "next/headers";
 
 // GET: List available HTML templates from public/templates folder
 export async function GET() {
+    try {
+      await requireStaff((await headers()));
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const templatesDir = path.join(process.cwd(), "public", "templates");
     
@@ -45,6 +52,11 @@ export async function GET() {
 
 // POST: Import selected HTML templates to database
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const { filenames } = await request.json();
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateContentWithFallback } from "@/lib/geminiWithFallback";
 import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -11,6 +12,11 @@ type ChatMessage = {
 };
 
 export async function POST(request: Request) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const apiKey = process.env.GEMINI_API_KEY;
 

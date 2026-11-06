@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { formatSwissPhone } from "@/lib/phoneFormatter";
 import { formatSwissDateWithWeekday, formatSwissTimeAmPm } from "@/lib/swissTimezone";
+import { internalAuthHeaders } from "@/lib/serverAuth";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
 
@@ -274,7 +275,7 @@ export async function sendWhatsAppTemplate(options: {
 
     const res = await fetch(`${APP_URL}/api/whatsapp/send`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...internalAuthHeaders() },
       body: JSON.stringify({
         patientId,
         to: normalized,

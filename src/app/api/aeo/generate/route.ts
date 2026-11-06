@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateContentWithFallback } from "@/lib/geminiWithFallback";
 import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -126,6 +127,11 @@ Return the article in markdown format with:
 }
 
 export async function POST(request: NextRequest) {
+    try {
+      await requireStaff(request);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   try {
     const body: ArticleRequest = await request.json();
     const {

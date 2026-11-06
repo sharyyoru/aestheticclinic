@@ -3,6 +3,7 @@ import {
   RETELL_ENGLISH_VOICE_AGENT,
   RETELL_FRENCH_VOICE_AGENT,
 } from "@/lib/retellAgents";
+import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,11 @@ const RETELL_WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL
   : "https://aestheticclinic.vercel.app/api/webhooks/retell-agent";
 
 export async function POST(req: NextRequest) {
+    try {
+      await requireStaff(req);
+    } catch (err) {
+      return authErrorResponse(err);
+    }
   if (!RETELL_API_KEY) {
     return NextResponse.json({ error: "RETELL_API_KEY not configured" }, { status: 500 });
   }

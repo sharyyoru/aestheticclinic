@@ -85,6 +85,39 @@ export async function POST(request: Request) {
         });
       }
 
+      // The intake form reports its own save failures so a lost submission can
+      // be recreated by hand. It used to POST /api/emails/send directly, which
+      // had to stay unauthenticated for a public page — an open mail relay.
+      // The recipient and sender are fixed here and the caller only supplies
+      // the body, so the route cannot be used to mail arbitrary addresses.
+      case "report_intake_error": {
+        const to = process.env.INTAKE_ERROR_RECIPIENT || "wilson@mutant.ae";
+        const from = process.env.MAILGUN_FROM_EMAIL;
+        const domain = process.env.MAILGUN_DOMAIN;
+        const apiKey = process.env.MAILGUN_API_KEY;
+        if (!from || !domain || !apiKey) {
+          console.error("[PublicIntake] Mailgun not configured; error report dropped");
+          return NextResponse.json({ ok: false });
+        }
+        const subject = String(body.subject || "[INTAKE FORM ERROR]").slice(0, 300);
+        const html = String(body.html || "").slice(0, 100_000);
+        const form = new URLSearchParams({ from, to, subject, html });
+        const base = process.env.MAILGUN_API_BASE_URL || "https://api.eu.mailgun.net";
+        const res = await fetch(`${base}/v3/${domain}/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: form,
+        });
+        if (!res.ok) {
+          console.error("[PublicIntake] error report failed:", res.status, await res.text());
+          return NextResponse.json({ ok: false });
+        }
+        return NextResponse.json({ ok: true });
+      }
+
       case "lookup_patient": {
         const email = String(body.email || "").trim();
         if (!email) return err("email required");
