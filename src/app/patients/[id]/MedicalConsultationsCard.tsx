@@ -527,6 +527,11 @@ export default function MedicalConsultationsCard({
   const [tardocGroupDropdownOpen, setTardocGroupDropdownOpen] = useState(false);
   const [skipSumexValidation, setSkipSumexValidation] = useState(true);
   const [rerunGrouperLoading, setRerunGrouperLoading] = useState(false);
+  // Grouper failures used to go to console.error only, so when the Sumex
+  // flat-rate server is unreachable the button just spun and stopped with no
+  // flat rate added and nothing on screen — reported as "no access to the
+  // flat rate database". The reason has to be visible to the biller.
+  const [rerunGrouperError, setRerunGrouperError] = useState<string | null>(null);
   const [invoiceGroupId, setInvoiceGroupId] = useState("");
   const [invoicePaymentTerm, setInvoicePaymentTerm] =
     useState<InvoicePaymentTerm>("full");
@@ -6404,6 +6409,7 @@ export default function MedicalConsultationsCard({
                                     onClick={async () => {
                                       if (!icdCode) return;
                                       setRerunGrouperLoading(true);
+                                      setRerunGrouperError(null);
                                       try {
                                         const pSex = patientDetails?.gender?.toLowerCase() === "female" ? 1 : 0;
                                         const pBirth = patientDetails?.dob || "1990-01-01";
@@ -6460,9 +6466,13 @@ export default function MedicalConsultationsCard({
                                         if (!json.success && acfCodes.length === 0) {
                                           const errMsg = json.error || json.errors?.join("; ") || json.data?.errors?.join("; ") || "Unknown grouper error";
                                           console.error("Grouper re-run failed:", errMsg);
+                                          setRerunGrouperError(errMsg);
                                         }
                                       } catch (err) {
                                         console.error("Grouper re-run request failed:", err);
+                                        setRerunGrouperError(
+                                          err instanceof Error ? err.message : "Grouper request failed",
+                                        );
                                       }
                                       setRerunGrouperLoading(false);
                                     }}
@@ -6474,6 +6484,11 @@ export default function MedicalConsultationsCard({
                                 {!icdCode && (
                                   <div className="text-[9px] text-amber-600">
                                     No ICD-10 code found on TMA lines. Add flat rates with an ICD-10 code first.
+                                  </div>
+                                )}
+                                {rerunGrouperError && (
+                                  <div className="rounded border border-red-300 bg-red-50 px-2 py-1.5 text-[9px] text-red-700">
+                                    <span className="font-semibold">Grouper failed:</span> {rerunGrouperError}
                                   </div>
                                 )}
                               </div>

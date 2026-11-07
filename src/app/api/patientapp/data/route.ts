@@ -336,27 +336,40 @@ async function getPhotos(patientId: string) {
     }
   }
 
-  // Consultation photos (patient_document bucket, by folder convention)
-  for (const consultType of ["liposuction", "face", "breast"]) {
-    const folderPath = `${patientId}/consultation_photos/${consultType}`;
-    const { data: files } = await supabaseAdmin.storage
-      .from("patient_document")
-      .list(folderPath, { limit: 50 });
+  // Consultation photos, by folder convention, from both locations:
+  //   * patient_document/<id>/consultation_photos/<type>/ — staff uploads
+  //   * patient-photos/<id>/<type>/ — the patient's own intake-form uploads,
+  //     signed by /api/public/intake. This bucket was never read back, so the
+  //     photos a patient submitted online were missing from their own app.
+  const consultationSources = [
+    { bucket: "patient_document", folder: (type: string) => `${patientId}/consultation_photos/${type}` },
+    { bucket: "patient-photos", folder: (type: string) => `${patientId}/${type}` },
+  ];
 
-    for (const file of files || []) {
-      if (file.name === ".keep") continue;
-      const fullPath = `${folderPath}/${file.name}`;
-      const { data: urlData } = await supabaseAdmin.storage
-        .from("patient_document")
-        .createSignedUrl(fullPath, 3600);
-      if (urlData?.signedUrl) {
-        photos.push({
-          id: fullPath,
-          url: urlData.signedUrl,
-          label: file.name.split("_")[0].replace(/-/g, " "),
-          group: consultType.charAt(0).toUpperCase() + consultType.slice(1),
-          uploadedAt: file.created_at ?? null,
-        });
+  for (const source of consultationSources) {
+    for (const consultType of ["liposuction", "face", "breast"]) {
+      const folderPath = source.folder(consultType);
+      const { data: files } = await supabaseAdmin.storage
+        .from(source.bucket)
+        .list(folderPath, { limit: 50 });
+
+      for (const file of files || []) {
+        if (file.name === ".keep" || !file.id) continue;
+        const fullPath = `${folderPath}/${file.name}`;
+        const { data: urlData } = await supabaseAdmin.storage
+          .from(source.bucket)
+          .createSignedUrl(fullPath, 3600);
+        if (urlData?.signedUrl) {
+          photos.push({
+            id: `${source.bucket}/${fullPath}`,
+            url: urlData.signedUrl,
+            // Strip the "_<timestamp>.<ext>" suffix rather than splitting on
+            // the first "_", which turned "left_profile" into "left".
+            label: (file.name.replace(/_\d+(\.[^.]+)?$/, "") || file.name).replace(/[-_]/g, " "),
+            group: consultType.charAt(0).toUpperCase() + consultType.slice(1),
+            uploadedAt: file.created_at ?? null,
+          });
+        }
       }
     }
   }

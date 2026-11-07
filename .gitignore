@@ -77,5 +77,7 @@ public/forms/FR - Questionnaire d'anesthésie.pdf
 !/scripts/verify-billing.mjs
 !/scripts/verify-authz.mjs
 !/scripts/guard-routes.js
+# Provenance of src/data/oaat/*.json — re-running it must reproduce them.
+!/scripts/import-oaat-catalogs.ts
 /docs
 /*.md

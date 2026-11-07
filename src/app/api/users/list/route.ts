@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { requireStaff, authErrorResponse } from "@/lib/serverAuth";
 import { headers } from "next/headers";
 
+// Staff directory, not an admin screen: this is the source for every
+// "assign to" dropdown in the app (tasks, appointments, deals, consultations,
+// CRM owner). Guarding it with requireRole(["owner","admin"]) locked out every
+// real clinic role — staff, user, expert, contact_owner, operating_room — so
+// those dropdowns rendered "No doctors found" and nothing could be assigned.
+// Mutations stay admin-only in users/create and users/update-role.
 export async function GET() {
     try {
-      await requireRole((await headers()), ["owner","admin"]);
+      await requireStaff((await headers()));
     } catch (err) {
       return authErrorResponse(err);
     }
@@ -25,12 +31,14 @@ export async function GET() {
     // Get existing users from public.users table (including provider_id for doctor-provider mapping)
     const { data: existingPublicUsers } = await supabaseAdmin
       .from("users")
-      .select("id, provider_id");
+      .select("id, provider_id, role");
     
     const existingIds = new Set((existingPublicUsers || []).map((u) => u.id));
     const providerIdMap = new Map<string, string | null>();
+    const dbRoleMap = new Map<string, string>();
     for (const u of existingPublicUsers || []) {
       providerIdMap.set(u.id, u.provider_id ?? null);
+      dbRoleMap.set(u.id, ((u as { role?: string | null }).role ?? "").toLowerCase());
     }
 
     // Sync missing users to public.users table to satisfy foreign key constraints
@@ -70,6 +78,10 @@ export async function GET() {
       const meta = (user.user_metadata || {}) as Record<string, unknown>;
       const role = ((meta["role"] as string) ?? "").toLowerCase();
       if (SERVICE_ROLES.has(role)) return false;
+      // Patient-app accounts are not colleagues and must never appear in an
+      // "assign to" dropdown. Judged on public.users.role (the authoritative
+      // copy) rather than client-writable user_metadata.
+      if (dbRoleMap.get(user.id) === "patient") return false;
       // Accounts with no email are almost always programmatic
       if (!user.email) return false;
       // Filter by name — catches automation accounts that lack a proper role tag

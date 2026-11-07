@@ -68,11 +68,18 @@ const staffRoutes = [
   ["/api/invoice-linker/unlinked-invoices", "invoice data", "GET"],
   ["/api/statistics/sent-invoices?from=2026-01-01&to=2026-12-31", "billing statistics", "GET"],
   ["/api/emails/send", "mail relay", "POST"],
+  // The staff directory feeds every "assign to" dropdown (tasks, appointments,
+  // deals, consultations). Treating it as admin-only locked out every real
+  // clinic role — staff, user, expert, contact_owner, operating_room — and the
+  // dropdowns rendered "No doctors found". It is staff-reachable by design;
+  // only users/create and users/update-role are admin-only.
+  ["/api/users/list", "staff directory", "GET"],
 ];
 // Admin-only: a signed-in non-admin staff member must still get 403.
 const adminRoutes = [
   ["/api/debug/patient-intake" + (patientId ? `?patient_id=${patientId}` : ""), "leaked 6 KB of intake data before this fix", "GET"],
-  ["/api/users/list", "staff directory", "GET"],
+  ["/api/users/create", "create accounts", "POST"],
+  ["/api/users/update-role", "change roles", "POST"],
 ];
 for (const [path, why, method] of [...staffRoutes, ...adminRoutes]) {
   const r = await call(path, { method, body: method === "POST" ? {} : undefined });

@@ -441,35 +441,52 @@ export default function PatientIntakeDataCard({
       setPhotoUrls(urls);
     }
 
-    // Load consultation photos from patient_document bucket
+    // Load consultation photos. They live in two places and both have to be
+    // read, otherwise half of a patient's photos silently do not exist:
+    //   * patient_document/<id>/consultation_photos/<type>/ — uploaded by staff
+    //     from this card (handlePhotoUpload below).
+    //   * patient-photos/<id>/<type>/ — uploaded by the patient through the
+    //     public intake form, which signs its upload via /api/public/intake
+    //     ("photo_upload_url"). Nothing ever read this bucket, so every photo
+    //     submitted online was invisible in the patient record.
     const consultationPhotosList: Array<{id: string; path: string; position: string; consultationType: string; url?: string}> = [];
     const photoUrlsMap: Record<string, string> = {};
-    
-    for (const consultType of ["liposuction", "face", "breast"]) {
-      const folderPath = `${patientId}/consultation_photos/${consultType}`;
-      const { data: photoFiles } = await supabaseClient.storage
-        .from("patient_document")
-        .list(folderPath, { limit: 50 });
-      
-      if (photoFiles && photoFiles.length > 0) {
-        for (const file of photoFiles) {
-          if (file.name === ".keep") continue;
-          const fullPath = `${folderPath}/${file.name}`;
-          const position = file.name.split("_")[0]; // e.g., "front_1234.jpg" -> "front"
-          
-          const { data: urlData } = await supabaseClient.storage
-            .from("patient_document")
-            .createSignedUrl(fullPath, 3600);
-          
-          if (urlData?.signedUrl) {
-            photoUrlsMap[fullPath] = urlData.signedUrl;
-            consultationPhotosList.push({
-              id: file.id || fullPath,
-              path: fullPath,
-              position,
-              consultationType: consultType,
-              url: urlData.signedUrl,
-            });
+    const photoSources = [
+      { bucket: "patient_document", folder: (type: string) => `${patientId}/consultation_photos/${type}` },
+      { bucket: "patient-photos", folder: (type: string) => `${patientId}/${type}` },
+    ];
+
+    for (const source of photoSources) {
+      for (const consultType of ["liposuction", "face", "breast"]) {
+        const folderPath = source.folder(consultType);
+        const { data: photoFiles } = await supabaseClient.storage
+          .from(source.bucket)
+          .list(folderPath, { limit: 50 });
+
+        if (photoFiles && photoFiles.length > 0) {
+          for (const file of photoFiles) {
+            // Folder placeholders and nested prefixes carry no id and no file.
+            if (file.name === ".keep" || !file.id) continue;
+            const fullPath = `${folderPath}/${file.name}`;
+            // "front_1234.jpg" -> "front", "left_profile_1234.jpg" -> "left_profile".
+            // Splitting on the first "_" collapsed left_profile/right_profile
+            // onto "left"/"right", so two different views shared one label.
+            const position = file.name.replace(/_\d+(\.[^.]+)?$/, "") || file.name;
+
+            const { data: urlData } = await supabaseClient.storage
+              .from(source.bucket)
+              .createSignedUrl(fullPath, 3600);
+
+            if (urlData?.signedUrl) {
+              photoUrlsMap[fullPath] = urlData.signedUrl;
+              consultationPhotosList.push({
+                id: `${source.bucket}/${fullPath}`,
+                path: fullPath,
+                position,
+                consultationType: consultType,
+                url: urlData.signedUrl,
+              });
+            }
           }
         }
       }
@@ -776,7 +793,9 @@ export default function PatientIntakeDataCard({
       if (urlData?.signedUrl) {
         setUploadedPhotoUrls(prev => ({ ...prev, [storagePath]: urlData.signedUrl }));
         setConsultationPhotos(prev => [...prev, {
-          id: storagePath,
+          // Same bucket-qualified id the loader builds, so a freshly uploaded
+          // photo does not collide with one of the same path in patient-photos.
+          id: `patient_document/${storagePath}`,
           path: storagePath,
           position,
           consultationType,
