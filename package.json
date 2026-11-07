@@ -21,7 +21,8 @@
     "verify:authz": "node scripts/verify-authz.mjs",
     "verify:app": "node scripts/verify-app.mjs",
     "verify:mail": "node scripts/verify-mail.mjs",
-    "verify:all": "npm run verify:authz && npm run verify:app && npm run verify:billing && npm run verify:mail",
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "verify:all": "npm run verify:authz && npm run verify:app && npm run verify:billing && npm run verify:mail && npm run verify:ui",
     "guard:routes": "node scripts/guard-routes.js"
   },
   "dependencies": {
