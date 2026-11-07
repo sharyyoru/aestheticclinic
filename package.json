@@ -19,6 +19,9 @@
     "typecheck:scripts": "tsc -p scripts/tsconfig.json --noEmit",
     "verify:billing": "node scripts/verify-billing.mjs",
     "verify:authz": "node scripts/verify-authz.mjs",
+    "verify:app": "node scripts/verify-app.mjs",
+    "verify:mail": "node scripts/verify-mail.mjs",
+    "verify:all": "npm run verify:authz && npm run verify:app && npm run verify:billing && npm run verify:mail",
     "guard:routes": "node scripts/guard-routes.js"
   },
   "dependencies": {

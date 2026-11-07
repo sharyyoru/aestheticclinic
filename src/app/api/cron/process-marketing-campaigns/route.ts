@@ -2,17 +2,13 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { substitutePatientVariables, type PatientRow } from "@/lib/marketingFilters";
 import { appendUnsubscribeFooter, createUnsubscribeUrl } from "@/lib/marketingUnsubscribe";
+import { marketingStream } from "@/lib/mailgunStreams";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const BATCH_SIZE = 100;
-const mailgunApiKey = process.env.MAILGUN_API_KEY;
-const mailgunDomain = process.env.MAILGUN_DOMAIN;
-const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
-const FROM_EMAIL = "info@aesthetics-ge.ch";
-const FROM_NAME = "Aesthetics Clinic";
 
 async function sendEmail(
   to: string,
@@ -21,6 +17,15 @@ async function sendEmail(
   emailId: string | null,
   patientId: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
+  // Scheduled campaigns use the same marketing stream as an immediate send, so
+  // their bounces cannot suppress a patient's appointment email.
+  const {
+    domain: mailgunDomain,
+    apiKey: mailgunApiKey,
+    apiBaseUrl: mailgunApiBaseUrl,
+    fromEmail: FROM_EMAIL,
+    fromName: FROM_NAME,
+  } = marketingStream();
   if (!mailgunApiKey || !mailgunDomain) {
     return { ok: false, error: "Mailgun is not configured" };
   }
@@ -154,7 +159,7 @@ async function processCampaign(campaign: {
         .insert({
           patient_id: recipient.patient_id,
           to_address: recipient.email,
-          from_address: FROM_EMAIL,
+          from_address: marketingStream().fromEmail,
           subject,
           body: html,
           direction: "outbound",

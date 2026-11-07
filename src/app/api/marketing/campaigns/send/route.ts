@@ -9,6 +9,7 @@ import {
   type PatientRow,
 } from "@/lib/marketingFilters";
 import { appendUnsubscribeFooter, createUnsubscribeUrl } from "@/lib/marketingUnsubscribe";
+import { marketingStream } from "@/lib/mailgunStreams";
 import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
@@ -25,17 +26,7 @@ type SendRequestBody = {
   workflowId?: string | null;
 };
 
-const mailgunApiKey = process.env.MAILGUN_API_KEY;
-const mailgunDomain = process.env.MAILGUN_DOMAIN;
-const mailgunApiBaseUrl =
-  process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://aestheticclinic.vercel.app";
-
-// Marketing emails ALWAYS come from the clinic's branded address for
-// deliverability (DKIM/SPF alignment) and consistent branding. Do not
-// let the caller override this.
-const MARKETING_FROM_EMAIL = "info@aesthetics-ge.ch";
-const MARKETING_FROM_NAME = "Aesthetics Clinic";
 
 type MailgunSendArgs = {
   to: string;
@@ -46,14 +37,13 @@ type MailgunSendArgs = {
 };
 
 async function sendViaMailgun(args: MailgunSendArgs): Promise<{ ok: boolean; error?: string; messageId?: string; status?: number }> {
+  // Campaigns go out on the marketing stream so their bounces land in the
+  // marketing suppression list, not the one that gates appointment emails.
+  const { domain: mailgunDomain, apiKey: mailgunApiKey, apiBaseUrl: mailgunApiBaseUrl, fromEmail: fromAddress, fromName } =
+    marketingStream();
   if (!mailgunApiKey || !mailgunDomain) {
     return { ok: false, error: "Mailgun not configured (missing MAILGUN_API_KEY or MAILGUN_DOMAIN)" };
   }
-  // Marketing emails ALWAYS come from the clinic's branded address, regardless
-  // of what the caller passes. This ensures SPF/DKIM alignment with the
-  // Mailgun sending domain and consistent brand identity.
-  const fromAddress = MARKETING_FROM_EMAIL;
-  const fromName = MARKETING_FROM_NAME;
 
   const unsubscribeUrl = args.patientId
     ? createUnsubscribeUrl(args.patientId, args.to)
@@ -198,7 +188,7 @@ async function processCampaign(
               .insert({
                 patient_id: patient.id,
                 to_address: patient.email,
-                from_address: MARKETING_FROM_EMAIL,
+                from_address: marketingStream().fromEmail,
                 subject: substitutePatientVariables(subject, patient),
                 body: substitutePatientVariables(html, patient),
                 direction: "outbound",

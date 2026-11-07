@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { mailgunDomains } from "@/lib/mailgunStreams";
 
 export const runtime = "nodejs";
 // A campaign day produces thousands of delivery events, and paging them out of
@@ -25,7 +26,6 @@ export const maxDuration = 300;
  */
 
 const mailgunApiKey = process.env.MAILGUN_API_KEY;
-const mailgunDomain = process.env.MAILGUN_DOMAIN;
 const mailgunApiBaseUrl = process.env.MAILGUN_API_BASE_URL || "https://api.mailgun.net";
 
 const MAX_PAGES = 40;
@@ -59,14 +59,15 @@ function reasonOf(event: MailgunEvent): string {
   ).slice(0, 400);
 }
 
-async function fetchEvents(
+async function fetchDomainEvents(
+  domain: string,
   kind: "failed" | "delivered",
   sinceUnix: number,
   deadline: number,
 ): Promise<{ events: MailgunEvent[]; truncated: boolean }> {
   const auth = "Basic " + Buffer.from(`api:${mailgunApiKey}`).toString("base64");
   let url: string | undefined =
-    `${mailgunApiBaseUrl}/v3/${mailgunDomain}/events` +
+    `${mailgunApiBaseUrl}/v3/${domain}/events` +
     `?event=${kind}&limit=${PAGE_SIZE}&begin=${sinceUnix}&ascending=yes`;
   const all: MailgunEvent[] = [];
 
@@ -74,7 +75,7 @@ async function fetchEvents(
     if (Date.now() > deadline) return { events: all, truncated: true };
     const response = await fetch(url, { headers: { Authorization: auth } });
     if (!response.ok) {
-      throw new Error(`Mailgun events ${kind}: HTTP ${response.status} ${(await response.text()).slice(0, 200)}`);
+      throw new Error(`Mailgun events ${kind} (${domain}): HTTP ${response.status} ${(await response.text()).slice(0, 200)}`);
     }
     const body = (await response.json()) as { items?: MailgunEvent[]; paging?: { next?: string } };
     const items = body.items ?? [];
@@ -83,6 +84,28 @@ async function fetchEvents(
     url = body.paging?.next;
   }
   return { events: all, truncated: !!url };
+}
+
+/**
+ * Mailgun's event log is per-domain. Once marketing moves to its own sending
+ * domain, reading only MAILGUN_DOMAIN would silently stop seeing campaign
+ * bounces — and those are exactly the events that flag a patient as
+ * unreachable. So every configured domain is polled and the results merged.
+ */
+async function fetchEvents(
+  kind: "failed" | "delivered",
+  sinceUnix: number,
+  deadline: number,
+): Promise<{ events: MailgunEvent[]; truncated: boolean }> {
+  const results = await Promise.all(
+    mailgunDomains().map(domain => fetchDomainEvents(domain, kind, sinceUnix, deadline)),
+  );
+  return {
+    events: results.flatMap(r => r.events),
+    // Incomplete anywhere means incomplete overall: the caller skips patient
+    // flagging on a truncated run rather than act on a partial picture.
+    truncated: results.some(r => r.truncated),
+  };
 }
 
 /**
@@ -113,7 +136,7 @@ export async function GET(request: Request) {
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!mailgunApiKey || !mailgunDomain) {
+  if (!mailgunApiKey || mailgunDomains().length === 0) {
     return NextResponse.json({ error: "Mailgun is not configured" }, { status: 500 });
   }
 
@@ -314,6 +337,9 @@ export async function GET(request: Request) {
     const summary = {
       ok: true,
       windowHours: hours,
+      // Surfaced so a half-applied domain split (campaigns moved, poller not
+      // following) is visible in the cron log instead of as missing bounces.
+      domainsPolled: mailgunDomains(),
       failedEvents: failed.length,
       deliveredEvents: delivered.length,
       emailsMarkedFailed,
