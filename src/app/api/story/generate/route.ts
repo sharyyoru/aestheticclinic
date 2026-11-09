@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback, GeminiBillingError } from "@/lib/geminiWithFallback";
 import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
 export async function POST(request: NextRequest) {
@@ -9,9 +9,6 @@ export async function POST(request: NextRequest) {
       return authErrorResponse(err);
     }
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
     const { childName, theme, customPrompt } = await request.json();
 
     const themeDescriptions: Record<string, string> = {
@@ -46,12 +43,21 @@ ${customPrompt ? `Special request: ${customPrompt}` : ""}
 Begin the story with a gentle opening and end with the character feeling safe, warm, and sleepy.
 Write ONLY the story, no titles or headers.`;
 
-    const result = await model.generateContent(prompt);
+    // Routed through the shared helper rather than the SDK directly: this
+    // route pinned gemini-1.5-flash, which Google has retired, so it returned
+    // 404 on every call regardless of the account's credit balance.
+    const result = await generateContentWithFallback({
+      apiKey: process.env.GEMINI_API_KEY || "",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
     const story = result.response.text();
 
     return NextResponse.json({ story });
   } catch (error) {
     console.error("Story generation error:", error);
+    if (error instanceof GeminiBillingError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 503 });
+    }
     return NextResponse.json(
       { error: "Failed to generate story" },
       { status: 500 }

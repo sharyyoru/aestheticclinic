@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback, GeminiBillingError } from "@/lib/geminiWithFallback";
 import { CATEGORIES, getCategoryModules } from "@/app/documentation/content";
 import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 /**
  * The feature list is derived from the documentation registry rather than
@@ -58,35 +57,44 @@ export async function POST(request: Request) {
       );
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
     // Build conversation history
     const chatHistory = history?.map((msg: { role: string; content: string }) => ({
       role: msg.role === "user" ? "user" : "model",
       parts: [{ text: msg.content }],
     })) || [];
 
-    const chat = model.startChat({
-      history: [
+    // Shared helper instead of the SDK directly: this route pinned
+    // gemini-2.0-flash, which Google retired, so it 404'd on every call. A
+    // chat session is just the history with the new message appended, so it
+    // maps onto `contents` one-for-one.
+    const result = await generateContentWithFallback({
+      apiKey: process.env.GEMINI_API_KEY || "",
+      generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+      contents: [
         { role: "user", parts: [{ text: "You are the Aliice Academy Assistant." }] },
         { role: "model", parts: [{ text: SYSTEM_PROMPT }] },
         ...chatHistory,
+        { role: "user", parts: [{ text: message }] },
       ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 1024,
-      },
     });
-
-    const result = await chat.sendMessage(message);
     const response = result.response.text();
 
     return NextResponse.json({ response });
   } catch (error) {
     console.error("Academy chat error:", error);
+    // This route used to answer 200 for every failure, so an outage was
+    // indistinguishable from a normal reply and invisible in monitoring.
+    // The status now tells the truth while `response` keeps the widget
+    // working, since the caller reads data.response and ignores the status.
+    if (error instanceof GeminiBillingError) {
+      return NextResponse.json(
+        { response: error.message, error: error.message, code: error.code },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { response: "Sorry, I encountered an error. Please try again." },
-      { status: 200 }
+      { status: 500 }
     );
   }
 }

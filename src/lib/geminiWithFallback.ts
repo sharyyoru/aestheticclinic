@@ -11,9 +11,27 @@ import {
  * rate-limited we can fall back to the next. Gemini 1.5 models were
  * deprecated in September 2025 and return 404, so we only use 2.x models.
  */
+/**
+ * Model chain, most capable first.
+ *
+ * This list has now been invalidated three times by Google retiring models:
+ * 1.5-flash, then 2.0-flash, then 2.5-flash — the last of which still appears
+ * in models.list but answers
+ *   404 "no longer available to new users … use models/gemini-3.8-flash"
+ * for a key created on a new project, so the model list cannot be trusted as
+ * an availability signal. Every entry below was verified with a real
+ * generateContent call on the current key.
+ *
+ * gemini-3.8-flash is Google's own recommendation in that 404. The two
+ * "-latest" aliases follow whatever Google currently ships, so when the
+ * pinned model is eventually retired the chain degrades to a working model
+ * instead of taking every AI feature in the app down: isModelNotFoundError
+ * already treats a 404 as "try the next one".
+ */
 const MODEL_FALLBACK_CHAIN = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
+  "gemini-3.8-flash",
+  "gemini-flash-latest",
+  "gemini-flash-lite-latest",
 ];
 
 /**

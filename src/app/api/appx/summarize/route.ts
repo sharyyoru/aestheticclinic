@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback, GeminiBillingError } from "@/lib/geminiWithFallback";
 
 export const runtime = "nodejs";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,9 +30,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Generate AI summary
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
     const changesText = changes.map((c: { description: string; type: string; entity: string }) => 
       `- ${c.description} (${c.type} ${c.entity})`
     ).join("\n");
@@ -56,7 +51,13 @@ ${conversationSummary}
 
 Write a 2-3 sentence summary suitable for medical records. Be factual and concise.`;
 
-    const result = await model.generateContent(prompt);
+    // Shared helper rather than the SDK directly: this route pinned
+    // gemini-2.0-flash, which Google has retired, so it 404'd on every call
+    // regardless of the account's credit balance.
+    const result = await generateContentWithFallback({
+      apiKey: process.env.GEMINI_API_KEY || "",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
     const summary = result.response.text();
 
     // Update session with summary
@@ -70,15 +71,20 @@ Write a 2-3 sentence summary suitable for medical records. Be factual and concis
     return NextResponse.json({ summary });
   } catch (error) {
     console.error("Summarize error:", error);
-    
-    // Fallback summary
+
+    // The session must still get a summary, so the fallback text stays — but
+    // a depleted AI account is reported alongside it instead of being
+    // silently indistinguishable from a successful generic summary.
     const body = await req.json().catch(() => ({}));
     const changes = body.changes || [];
-    
+
     return NextResponse.json({
       summary: changes.length > 0
         ? `Session completed with ${changes.length} change(s) made to the patient record.`
         : "Session completed. No changes were made.",
+      ...(error instanceof GeminiBillingError
+        ? { degraded: true, code: error.code, error: error.message }
+        : {}),
     });
   }
 }

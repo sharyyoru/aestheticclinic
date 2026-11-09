@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback, GeminiBillingError } from "@/lib/geminiWithFallback";
 
 export const runtime = "nodejs";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 type Intent = {
   type: "query" | "create" | "update" | "send" | "navigate" | "unknown";
@@ -367,20 +366,10 @@ ${deals?.map(d => `• ${d.title}: ${(d.stage as { name?: string })?.name || "Un
 `;
 
     // Analyze intent and generate response
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    
     const chatHistory = context?.map((m: { role: string; content: string }) => ({
       role: m.role === "user" ? "user" : "model",
       parts: [{ text: m.content }],
     })) || [];
-
-    const chat = model.startChat({
-      history: [
-        { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
-        { role: "model", parts: [{ text: "Understood. I'm ready to help manage patient data. What would you like to do?" }] },
-        ...chatHistory,
-      ],
-    });
 
     const prompt = `
 ${patientContext}
@@ -390,7 +379,19 @@ USER REQUEST: ${query}
 Respond helpfully and conversationally. If an action is needed (update, create note, etc.), include the execute JSON at the end of your response.
 Keep responses concise and friendly.`;
 
-    const result = await chat.sendMessage(prompt);
+    // Shared helper rather than the SDK directly: this route pinned
+    // gemini-2.0-flash, which Google retired, so it 404'd on every call. The
+    // chat session maps onto `contents` one-for-one — history plus the new
+    // message appended.
+    const result = await generateContentWithFallback({
+      apiKey: process.env.GEMINI_API_KEY || "",
+      contents: [
+        { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
+        { role: "model", parts: [{ text: "Understood. I'm ready to help manage patient data. What would you like to do?" }] },
+        ...chatHistory,
+        { role: "user", parts: [{ text: prompt }] },
+      ],
+    });
     const responseText = result.response.text();
 
     // Parse and execute any actions from the response
@@ -499,6 +500,14 @@ Keep responses concise and friendly.`;
     });
   } catch (error) {
     console.error("Interpret error:", error);
+    // `response` is kept populated because the caller reads data.response and
+    // ignores the status; the status is what makes an outage visible.
+    if (error instanceof GeminiBillingError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, response: error.message },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { error: "Failed to process request", response: "I'm sorry, something went wrong. Please try again." },
       { status: 500 }
