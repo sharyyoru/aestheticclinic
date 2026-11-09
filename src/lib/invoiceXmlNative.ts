@@ -139,6 +139,31 @@ const CANTON_NAME: Record<string, string> = Object.fromEntries(
   Object.keys(CantonCode).map((k) => [k, k]),
 );
 
+/**
+ * Sumex's documented "unknown SSN". Every one of the 1,266 documents the
+ * Sumex1 SDK produced carries a patient ssn — none omitted it — so the SDK
+ * substituted this whenever it was given no usable AHV number.
+ */
+const UNKNOWN_SSN = "7569999999991";
+
+/**
+ * The XML `ssn` attribute is the 13-digit Swiss AHV number (756 + 10 digits).
+ *
+ * `patient_insurances.avs_number` is overwhelmingly not that: of 4,984 stored
+ * values only 58 (1.2%) are AHV numbers, while 4,779 are 20-digit insurance
+ * *card* numbers (807560…) typed into the wrong field. The Sumex SDK absorbed
+ * this by falling back to the unknown SSN; the native generator passed the
+ * card number straight through, so invoices went out with a 20-digit ssn that
+ * cannot satisfy the schema.
+ *
+ * Format only — the AHV checksum is deliberately not enforced here, so a
+ * mistyped but well-formed number is still sent rather than silently replaced.
+ */
+function normalizeSsn(raw: string | undefined | null): string {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  return /^756\d{10}$/.test(digits) ? digits : UNKNOWN_SSN;
+}
+
 const PARTNER_TYPE_MAP: Record<number, string> = {
   1: "employer",
   2: "referrer",
@@ -466,27 +491,57 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
 
   const guarantorAddr = input.guarantorAddress || input.patientAddress;
   const patientSex = input.patientSex;
+  const ssnAttr = normalizeSsn(input.patientSsn);
   const patient =
     `<invoice:patient gender="${genderAttr(input.patientGender, patientSex)}" sex="${sexAttr(patientSex)}"` +
     ` birthdate="${toDate(input.patientBirthdate)}"` +
-    (input.patientSsn ? ` ssn="${esc(input.patientSsn)}"` : "") +
+    ` ssn="${esc(ssnAttr)}"` +
     `>${addressXml(input.patientAddress)}</invoice:patient>`;
   const insured = input.insuredAddress
-    ? `<invoice:insured${input.patientSsn ? ` ssn="${esc(input.patientSsn)}"` : ""}>${addressXml(input.insuredAddress)}</invoice:insured>`
+    ? `<invoice:insured ssn="${esc(ssnAttr)}">${addressXml(input.insuredAddress)}</invoice:insured>`
     : "";
   const guarantor = `<invoice:guarantor>${addressXml(guarantorAddr)}</invoice:guarantor>`;
 
-  const partners =
-    input.partners && input.partners.length > 0
-      ? `<invoice:partners>` +
-        input.partners
-          .map(
-            (p) =>
-              `<invoice:partner type="${PARTNER_TYPE_MAP[p.type] || "other"}"${p.gln ? ` gln="${esc(p.gln)}"` : ""}${p.zsr ? ` zsr="${esc(p.zsr)}"` : ""}>${addressXml(p.address)}</invoice:partner>`,
-          )
-          .join("") +
-        `</invoice:partners>`
+  // <invoice:partners> is not optional in practice: MediData refuses the
+  // upload without it with errorReason "INVALID_UPLOAD", before the claim ever
+  // reaches the insurer.
+  //
+  // Nothing in this codebase has ever populated input.partners, yet all 1,266
+  // documents produced by the Sumex1 GeneralInvoiceRequestManager carry the
+  // block — the SDK added the service_provider partner itself, independently
+  // of AddPartner. The native generator reimplemented only our explicit calls,
+  // so every invoice built after the Sumex server died was rejected: 4 of 4,
+  // 23 Oct to 5 Nov 2026, while 0 of the 1,266 SDK-built ones failed this way.
+  //
+  // Rule recovered from those 1,266 documents: exactly one partner, type
+  // service_provider, carrying the provider GLN where there is one and the
+  // biller GLN otherwise (reproduces 1,192 of 1,200 exactly, the remainder
+  // being invoices where the two are the same entity), with the matching
+  // address block.
+  const explicitPartners = (input.partners ?? []).map(
+    (p) =>
+      `<invoice:partner type="${PARTNER_TYPE_MAP[p.type] || "other"}"${p.gln ? ` gln="${esc(p.gln)}"` : ""}${p.zsr ? ` zsr="${esc(p.zsr)}"` : ""}>${addressXml(p.address)}</invoice:partner>`,
+  );
+
+  const hasServiceProvider = (input.partners ?? []).some(
+    (p) => PARTNER_TYPE_MAP[p.type] === "service_provider",
+  );
+  const servicePartnerGln = input.providerGln || input.billerGln;
+  const servicePartnerZsr = input.providerGln ? input.providerZsr : input.billerZsr;
+  const servicePartnerAddress = input.providerGln
+    ? input.providerAddress
+    : input.billerAddress;
+  const implicitServiceProvider =
+    !hasServiceProvider && servicePartnerGln
+      ? `<invoice:partner type="service_provider" gln="${esc(servicePartnerGln)}"` +
+        (servicePartnerZsr ? ` zsr="${esc(servicePartnerZsr)}"` : "") +
+        `>${addressXml(servicePartnerAddress)}</invoice:partner>`
       : "";
+
+  const partnerEntries = [implicitServiceProvider, ...explicitPartners].filter(Boolean);
+  const partners = partnerEntries.length
+    ? `<invoice:partners>${partnerEntries.join("")}</invoice:partners>`
+    : "";
 
   const balance =
     `<invoice:balance currency="CHF" amount="${fmt2(totalAmount)}"` +
