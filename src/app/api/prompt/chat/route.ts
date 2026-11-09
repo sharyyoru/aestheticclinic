@@ -297,7 +297,9 @@ Always be helpful, accurate, and thorough. If you're unsure about something, say
         topic_id: topicId,
         role: "assistant",
         content: text,
-        model_used: "gemini-2.0-flash",
+        // The model that actually answered, not a hardcoded guess — the
+        // chain may fall back, and the pinned value was already wrong.
+        model_used: result.modelUsed,
       });
 
     if (assistantMsgError) {

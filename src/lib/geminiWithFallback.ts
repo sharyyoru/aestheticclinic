@@ -109,7 +109,7 @@ function delay(ms: number): Promise<void> {
  */
 export async function generateContentWithFallback(
   args: GenerateArgs,
-): Promise<GenerateContentResult> {
+): Promise<GenerateContentResult & { modelUsed: string }> {
   const { apiKey, systemInstruction, generationConfig, contents, verbose } = args;
   const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -130,7 +130,11 @@ export async function generateContentWithFallback(
           console.log(`[gemini] Trying model=${modelName} attempt=${attempt}`);
         }
         const result = await model.generateContent({ contents });
-        return result;
+        // Which model actually answered is attached to the result so callers
+        // can record it. prompt/chat stored a hardcoded "gemini-2.0-flash" in
+        // knowledge_messages.model_used, which was already untrue before the
+        // chain moved to 3.x and would have gone on being untrue.
+        return Object.assign(result, { modelUsed: modelName });
       } catch (err) {
         lastError = err;
 
