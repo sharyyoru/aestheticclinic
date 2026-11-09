@@ -311,6 +311,27 @@ function addressXml(addr: InvoiceAddress): string {
 
 type RenderedService = { xml: string; amount: number; vatAmount: number; vatRate: number };
 
+/**
+ * OAAT/OTMA "Fachbereich" (service spécialisé), emitted as `section_code`.
+ *
+ * Annex H of the tariff convention requires it with every TARDOC position,
+ * and per generalInvoiceRequest_500.xsd it is an attribute (stringType1_9) of
+ * both serviceType and serviceExType.
+ *
+ * invoice_line_items.section_code has been populated from the TARDOC
+ * catalogue all along, and the legacy Sumex path forwarded it as
+ * bstrSectionCode — but this native generator, which became the default when
+ * the Sumex server died, ignored the field entirely. The value was stored and
+ * then dropped on the floor.
+ *
+ * Optional in the schema with a minimum length of 1, so it is omitted rather
+ * than written empty when no code is known.
+ */
+function sectionCodeAttr(svc: { sectionCode?: string }): string {
+  const code = (svc.sectionCode || "").trim();
+  return code ? ` section_code="${esc(code.slice(0, 9))}"` : "";
+}
+
 function renderSimpleService(svc: InvoiceServiceInput, recordId: number, input: SumexInvoiceInput): RenderedService {
   const unit = svc.unit ?? 0;
   const unitFactor = svc.unitFactor ?? 1;
@@ -333,6 +354,7 @@ function renderSimpleService(svc: InvoiceServiceInput, recordId: number, input: 
     (vatRate ? ` vat_rate="${vatRate}"` : "") +
     ` service_attributes="${svc.serviceAttributes ?? 0}"` +
     ` name="${esc(svc.serviceName || `${svc.code}`)}"` +
+    sectionCodeAttr(svc) +
     (svc.remark ? ` remark="${esc(svc.remark)}"` : "") +
     `/>`;
   return { xml, amount, vatAmount, vatRate };
@@ -366,6 +388,7 @@ function renderExService(svc: InvoiceServiceInput, recordId: number): RenderedSe
     (vatRate ? ` vat_rate="${vatRate}"` : "") +
     ` service_attributes="${svc.serviceAttributes ?? 0}"` +
     ` name="${esc(svc.serviceName || svc.code)}"` +
+    sectionCodeAttr(svc) +
     (svc.remark ? ` remark="${esc(svc.remark)}"` : "") +
     `/>`;
   return { xml, amount, vatAmount, vatRate };
@@ -393,6 +416,7 @@ function renderExInputService(svc: InvoiceServiceExInput, recordId: number): Ren
     (vatRate ? ` vat_rate="${vatRate}"` : "") +
     ` service_attributes="${svc.serviceAttributes ?? 0}"` +
     ` name="${esc(svc.serviceName || svc.code)}"` +
+    sectionCodeAttr(svc) +
     (svc.remark ? ` remark="${esc(svc.remark)}"` : "") +
     `/>`;
   return { xml, amount, vatAmount, vatRate };

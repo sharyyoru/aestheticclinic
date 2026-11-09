@@ -98,7 +98,17 @@ export default function InsuranceBillingModal({
     status: string;
     createdAt: string;
     transmissionReference?: string | null;
+    insurerCode?: string | null;
+    insurerMessage?: string | null;
   } | null>(null);
+  // A 409 is not a failure to report but a state to act on, so the Storno
+  // path is held separately from the generic red error banner. Showing
+  // "failed to send" is what led staff to retry blindly and collect another
+  // duplicate rejection.
+  const [requiresStorno, setRequiresStorno] = useState(false);
+  const [isStornoing, setIsStornoing] = useState(false);
+  const [stornoReason, setStornoReason] = useState("");
+  const [stornoSent, setStornoSent] = useState<string | null>(null);
   const [success, setSuccess] = useState<any | null>(null);
 
   // Real invoice line items loaded from DB
@@ -410,6 +420,48 @@ export default function InsuranceBillingModal({
     }
   };
 
+  /**
+   * Cancel the submission the insurer is already holding (Storno).
+   *
+   * Deliberately one explicit, user-initiated action, and deliberately NOT
+   * chained into an automatic resend: the original only leaves its active
+   * status once the insurer confirms the cancellation, so resending now would
+   * just hit the duplicate guard again. Say where it stands instead of
+   * looping — the blind retry loop is what produced the duplicate rejections
+   * in the first place.
+   */
+  const handleStorno = async () => {
+    if (!alreadySubmitted?.id) return;
+
+    setIsStornoing(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/medidata/cancel-invoice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          submissionId: alreadySubmitted.id,
+          reason: stornoReason.trim() || "Correction resend - previous submission cancelled",
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not cancel the previous submission.");
+      }
+
+      setAlreadySubmitted(null);
+      setRequiresStorno(false);
+      setStornoSent(
+        "Cancellation (Storno) sent. Once the insurer confirms it, this invoice can be sent again. " +
+          "The Insurance tab will show the outcome.",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not cancel the previous submission.");
+    } finally {
+      setIsStornoing(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedInsurerGln) {
       setError("Please select an insurance company");
@@ -419,6 +471,9 @@ export default function InsuranceBillingModal({
     const codes = collectDiagnosisCodes();
     setIsSubmitting(true);
     setError(null);
+    setAlreadySubmitted(null);
+    setRequiresStorno(false);
+    setStornoSent(null);
 
     try {
       const response = await fetch("/api/medidata/send-invoice", {
@@ -456,7 +511,10 @@ export default function InsuranceBillingModal({
         // not something to retry.
         if (response.status === 409 || data.code === "ALREADY_SUBMITTED") {
           setAlreadySubmitted(data.existingSubmission ?? null);
-          throw new Error(details || "This invoice has already been sent to MediData.");
+          setRequiresStorno(Boolean(data.requiresStorno));
+          // Deliberately not thrown: this is a state to act on, not an error.
+          // The amber panel below explains it and offers the Storno.
+          return;
         }
         if (errMsg.includes("Sumex") || errMsg.includes("XML")) {
           throw new Error(`XML generation failed: ${details || errMsg}. Please check invoice line items and try again.`);
@@ -1018,10 +1076,17 @@ export default function InsuranceBillingModal({
             </div>
 
             {/* Error Message */}
+            {stornoSent && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+                <p className="text-sm font-medium text-sky-800">Cancellation sent</p>
+                <p className="mt-0.5 text-xs text-sky-700 break-words">{stornoSent}</p>
+              </div>
+            )}
+
             {alreadySubmitted && (
               <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
                 <p className="text-sm font-semibold text-amber-900">
-                  Already sent to MediData
+                  Not sent — this would be a duplicate
                 </p>
                 <p className="mt-1 text-xs text-amber-800">
                   Sent on{" "}
@@ -1031,9 +1096,42 @@ export default function InsuranceBillingModal({
                     ? ` (ref ${alreadySubmitted.transmissionReference})`
                     : ""}
                   . Sending it again would be rejected by the insurer as a duplicate — this is
-                  what produced the &quot;facture déjà payée&quot; rejections. To correct an
-                  invoice already with the insurer, cancel it first (storno).
+                  what produced the &quot;facture déjà payée&quot; rejections.
                 </p>
+
+                {/* The insurer's own words. Previously the stored code was
+                    status_out ("unknown"), so this said nothing. */}
+                {(alreadySubmitted.insurerMessage || alreadySubmitted.insurerCode) && (
+                  <p className="mt-2 rounded-lg bg-white/70 px-2 py-1.5 text-[11px] text-amber-900">
+                    <span className="font-medium">Insurer reason: </span>
+                    {alreadySubmitted.insurerCode ? `[${alreadySubmitted.insurerCode}] ` : ""}
+                    {alreadySubmitted.insurerMessage || "no message supplied"}
+                  </p>
+                )}
+
+                {requiresStorno && (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="text"
+                      value={stornoReason}
+                      onChange={(e) => setStornoReason(e.target.value)}
+                      placeholder="Reason for cancellation (sent to the insurer)"
+                      className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleStorno}
+                      disabled={isStornoing}
+                      className="w-full rounded-lg bg-amber-600 px-3 py-2 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+                    >
+                      {isStornoing ? "Cancelling…" : "Cancel previous submission (Storno)"}
+                    </button>
+                    <p className="text-[11px] text-amber-700">
+                      The insurer must confirm the cancellation before this invoice can be sent
+                      again.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
             {error && (

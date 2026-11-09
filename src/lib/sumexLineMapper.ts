@@ -53,6 +53,7 @@ export type SumexLineItemRow = {
   tp_tl?: number | null;
   tp_al_value?: number | null;
   tp_tl_value?: number | null;
+  section_code?: string | null;
 };
 
 export type SumexLineMapperContext = {
@@ -67,6 +68,11 @@ export type SumexLineMapperContext = {
    * component was never stored (null) — a stored 0 is preserved.
    */
   tardocCatalog?: Record<string, TardocTaxPointCatalog>;
+  /**
+   * OAAT Fachbereich of the treating doctor, used for lines that carry no
+   * section_code of their own (about 93% of existing TARDOC lines).
+   */
+  defaultSectionCode?: string;
 };
 
 const isValidGln = (g: string | null | undefined): g is string =>
@@ -196,6 +202,17 @@ export function mapLineItemToSumexService(
     externalFactorTT,
     amount: chargeFree ? 0 : amount,
     vatRate: 0,
+    // OAAT/OTMA "Fachbereich" (service spécialisé). Annex H of the tariff
+    // convention requires it with every TARDOC position, and the stored value
+    // never reached the XML: the legacy Sumex path forwarded it, the native
+    // generator that replaced it ignored the field entirely.
+    //
+    // Only the line's own value is used here. It is NOT derived from the
+    // catalogue: a TARDOC position's `dignity` lists every specialty allowed
+    // to bill it (often several), not the one this doctor billed under, so
+    // picking one would be inventing the value. The provider-level default
+    // is applied by the caller, which knows the treating doctor.
+    sectionCode: (item.section_code || "").trim() || ctx.defaultSectionCode || "",
     // ACF 005 lines are already grouped/validated by the standalone
     // acfValidator; the invoice manager's internal grouper would require a
     // TMA session setup we don't use. TMA gesture lines are charge-free

@@ -80,6 +80,9 @@ public/forms/FR - Questionnaire d'anesthésie.pdf
 !/scripts/verify-mail.mjs
 !/scripts/verify-ui.mjs
 !/scripts/guard-routes.js
+# MediData backlog tooling: reconcile must be runnable before the one-active-
+# submission index can be created, so these have to be in the repo.
+!/scripts/medidata/
 # Provenance of src/data/oaat/*.json — re-running it must reproduce them.
 !/scripts/import-oaat-catalogs.ts
 /docs

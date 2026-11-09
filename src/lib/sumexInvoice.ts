@@ -334,6 +334,8 @@ export type InvoiceServiceExInput = {
   amountAsymmetric?: number;
   vatRate?: number;
   remark?: string;
+  /** OAAT/OTMA "Fachbereich" — `section_code` in generalInvoiceRequest_500. */
+  sectionCode?: string;
   ignoreValidate?: YesNo;
   serviceAttributes?: number;
 };

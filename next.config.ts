@@ -8,7 +8,15 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
 
-  serverExternalPackages: ["heic-convert", "libheif-js"],
+  // pdfkit reads its standard-font metrics (Helvetica.afm, …) from its own
+  // package directory at runtime; bundling it would break those paths and the
+  // QR-bill text would render as empty boxes.
+  serverExternalPackages: ["heic-convert", "libheif-js", "pdfkit"],
+  // The OAAT tariff catalogues are read from disk by src/lib/oaatCatalog.ts;
+  // make sure they ship with the serverless functions.
+  outputFileTracingIncludes: {
+    "/api/**/*": ["./src/data/oaat/**/*"],
+  },
   images: {
     remotePatterns: [
       {

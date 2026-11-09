@@ -510,14 +510,27 @@ export default function MedicalConsultationsCard({
   const [selectedTardocCode, setSelectedTardocCode] = useState("");
   const [invoiceCanton, setInvoiceCanton] = useState<SwissCanton>(DEFAULT_CANTON);
   const [taxPointOverride, setTaxPointOverride] = useState<number | null>(null);
-  const effectiveTaxPointValue = taxPointOverride ?? CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
-  // ACF flat-rate lines multiply by the same effective TPV (canton default, or override).
+  // GLN of the patient's primary insurer — drives the per-insurer TPV lookup.
+  const [invoiceInsurerGln, setInvoiceInsurerGln] = useState<string | null>(null);
+  // TPV resolved per insurer/canton/law/treatment date from tariff_point_values.
+  // Starts at the canton default so pricing is never blank and never worse
+  // than the old canton-only behaviour.
+  const [invoiceTpvResolution, setInvoiceTpvResolution] = useState<{ value: number; source: string }>({
+    value: CANTON_TAX_POINT_VALUES[DEFAULT_CANTON] ?? 0.96,
+    source: "fallback",
+  });
+  const resolvedTaxPointValue = invoiceTpvResolution.value;
+  // A hand-typed override still wins — it is the escape hatch for a rate that
+  // is not in the table yet. It is no longer the daily routine.
+  const effectiveTaxPointValue = taxPointOverride ?? resolvedTaxPointValue;
+  // ACF flat-rate lines multiply by the same effective TPV.
   const effectiveAcfTpv = effectiveTaxPointValue;
   const [invoiceLawType, setInvoiceLawType] = useState("KVG");
   const [invoiceAccidentDate, setInvoiceAccidentDate] = useState("");
   const [tardocSearchQuery, setTardocSearchQuery] = useState("");
   const [tardocSearchResults, setTardocSearchResults] = useState<any[]>([]);
   const [tardocSearchLoading, setTardocSearchLoading] = useState(false);
+  const [tardocSearchNotice, setTardocSearchNotice] = useState<string | null>(null);
   const [tardocChapters, setTardocChapters] = useState<{code:string;name:string}[]>([]);
   const [tardocSelectedChapter, setTardocSelectedChapter] = useState("");
   const [tardocDbInfo, setTardocDbInfo] = useState<{dbVersion:string;dbVersionDate:string}|null>(null);
@@ -1017,7 +1030,7 @@ export default function MedicalConsultationsCard({
       try {
         const { data } = await supabaseClient
           .from("patient_insurances")
-          .select("law_type")
+          .select("law_type, insurer_id, gln, insurer_gln")
           .eq("patient_id", patientId)
           .order("is_primary", { ascending: false })
           .order("created_at", { ascending: true })
@@ -1027,6 +1040,19 @@ export default function MedicalConsultationsCard({
         if (isMounted && ["KVG", "UVG", "IVG", "MVG", "VVG"].includes(law)) {
           setInvoiceLawType(law);
         }
+        // The insurer's GLN is what selects a negotiated tariff point value.
+        // Same precedence as /api/sumex/check-xml, so the rate is resolved for
+        // the very insurer the invoice XML is addressed to.
+        let insurerGln: string | null = data?.gln || data?.insurer_gln || null;
+        if (data?.insurer_id) {
+          const { data: insurer } = await supabaseClient
+            .from("swiss_insurers")
+            .select("gln")
+            .eq("id", data.insurer_id)
+            .maybeSingle();
+          insurerGln = insurer?.gln || insurerGln;
+        }
+        if (isMounted) setInvoiceInsurerGln(insurerGln);
       } catch {}
     }
 
@@ -1041,6 +1067,63 @@ export default function MedicalConsultationsCard({
       isMounted = false;
     };
   }, []);
+
+  // Resolve the tariff point value for the patient's insurer + canton + law +
+  // treatment date. Until a contract rate is entered the server returns the
+  // canton default, so pricing matches the previous behaviour exactly. This is
+  // what removes the daily hand-correction of the TPV field.
+  useEffect(() => {
+    setInvoiceTpvResolution({
+      value: CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96,
+      source: "fallback",
+    });
+    const controller = new AbortController();
+    const params = new URLSearchParams({ canton: invoiceCanton, lawType: invoiceLawType });
+    if (invoiceInsurerGln) params.set("insurerGln", invoiceInsurerGln);
+    if (consultationDate) params.set("on", consultationDate);
+    fetch(`/api/tardoc/tax-point-value?${params}`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        const value = Number(json?.value);
+        if (Number.isFinite(value) && value > 0) {
+          setInvoiceTpvResolution({ value, source: json.source || "fallback" });
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [invoiceCanton, invoiceLawType, invoiceInsurerGln, consultationDate]);
+
+  // TARDOC code search. When the Sumex validator is unreachable the API serves
+  // the local catalogue instead; say so, rather than letting the staff read a
+  // partial result (or "No results") as the whole truth.
+  async function runTardocSearch() {
+    if (!tardocSearchQuery.trim()) return;
+    setTardocSearchLoading(true);
+    setTardocSearchNotice(null);
+    try {
+      const res = await fetch(
+        `/api/tardoc/sumex?action=searchCode&code=${encodeURIComponent(tardocSearchQuery.trim())}&canton=${invoiceCanton}`,
+      );
+      const json = await res.json();
+      if (json.success) {
+        setTardocSearchResults(json.data || []);
+        if (json.meta?.source === "local" || json.offline) {
+          setTardocSearchNotice(
+            "TARDOC catalogue service (Sumex) is offline — showing the local catalogue only. Coverage is partial.",
+          );
+        }
+      } else {
+        setTardocSearchResults([]);
+        setTardocSearchNotice(
+          json.details || `TARDOC search failed: ${json.error || res.statusText}`,
+        );
+      }
+    } catch {
+      setTardocSearchResults([]);
+      setTardocSearchNotice("TARDOC search failed — could not reach the server.");
+    }
+    setTardocSearchLoading(false);
+  }
 
   useEffect(() => {
     if (!consultationStopwatchStartedAt) return;
@@ -4267,7 +4350,7 @@ export default function MedicalConsultationsCard({
                                   .map((s: any) => `${s.code}: ${s.errorMessage}`)
                                   .join("\n");
                                 setConsultationError(
-                                  `Sumex TARDOC validation failed:\n${errors || valJson.error || "Unknown validation error"}`,
+                                  `TARDOC validation failed:\n${errors || valJson.error || "Unknown validation error"}`,
                                 );
                                 setConsultationSaving(false);
                                 return;
@@ -4275,7 +4358,7 @@ export default function MedicalConsultationsCard({
                             } catch (valErr) {
                               console.warn("TARDOC validation request failed:", valErr);
                               setConsultationError(
-                                "TARDOC validation failed — could not reach Sumex server. Please try again.",
+                                "TARDOC validation failed — could not reach the server. Please try again.",
                               );
                               setConsultationSaving(false);
                               return;
@@ -5591,8 +5674,9 @@ export default function MedicalConsultationsCard({
                                     onChange={(e) => {
                                       const val = parseFloat(e.target.value);
                                       if (!isNaN(val) && val > 0) {
-                                        const cantonDefault = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
-                                        setTaxPointOverride(val === cantonDefault ? null : val);
+                                        setTaxPointOverride(
+                                          Math.abs(val - resolvedTaxPointValue) < 0.0001 ? null : val,
+                                        );
                                       }
                                     }}
                                     title="Tax point value (CHF/pt). Change if insurer requires a different rate."
@@ -5608,8 +5692,15 @@ export default function MedicalConsultationsCard({
                                       onClick={() => setTaxPointOverride(null)}
                                       className="text-[9px] text-amber-600 hover:text-amber-800"
                                     >
-                                      Reset to {(CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96).toFixed(2)}
+                                      Reset to {resolvedTaxPointValue.toFixed(2)}
                                     </button>
+                                  )}
+                                  {taxPointOverride === null && (
+                                    <span className="block text-[9px] text-slate-500">
+                                      {invoiceTpvResolution.source.startsWith("insurer")
+                                        ? "insurer contract rate"
+                                        : "canton default"}
+                                    </span>
                                   )}
                                 </div>
 
@@ -5762,30 +5853,14 @@ export default function MedicalConsultationsCard({
                                     type="text"
                                     value={tardocSearchQuery}
                                     onChange={(e) => setTardocSearchQuery(e.target.value)}
-                                    onKeyDown={async (e) => {
-                                      if (e.key !== "Enter" || !tardocSearchQuery.trim()) return;
-                                      setTardocSearchLoading(true);
-                                      try {
-                                        const res = await fetch(`/api/tardoc/sumex?action=searchCode&code=${encodeURIComponent(tardocSearchQuery.trim())}&canton=${invoiceCanton}`);
-                                        const json = await res.json();
-                                        if (json.success) setTardocSearchResults(json.data || []);
-                                      } catch { /* ignore */ }
-                                      setTardocSearchLoading(false);
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") void runTardocSearch();
                                     }}
                                     className="block w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
                                   />
                                   <button
                                     type="button"
-                                    onClick={async () => {
-                                      if (!tardocSearchQuery.trim()) return;
-                                      setTardocSearchLoading(true);
-                                      try {
-                                        const res = await fetch(`/api/tardoc/sumex?action=searchCode&code=${encodeURIComponent(tardocSearchQuery.trim())}&canton=${invoiceCanton}`);
-                                        const json = await res.json();
-                                        if (json.success) setTardocSearchResults(json.data || []);
-                                      } catch { /* ignore */ }
-                                      setTardocSearchLoading(false);
-                                    }}
+                                    onClick={() => void runTardocSearch()}
                                     className="shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-sm hover:bg-slate-50"
                                   >
                                     Search
@@ -5793,6 +5868,11 @@ export default function MedicalConsultationsCard({
                                 </div>
                               </div>
 
+                              {tardocSearchNotice && !tardocSearchLoading && (
+                                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                                  {tardocSearchNotice}
+                                </div>
+                              )}
                               {/* Search results */}
                               {tardocSearchLoading && (
                                 <div className="py-3 text-center text-[10px] text-slate-400">Loading...</div>
@@ -6016,9 +6096,8 @@ export default function MedicalConsultationsCard({
                                     onChange={(e) => {
                                       const val = parseFloat(e.target.value);
                                       if (!isNaN(val) && val > 0) {
-                                        const cantonDefault = CANTON_TAX_POINT_VALUES[invoiceCanton] ?? 0.96;
                                         setTaxPointOverride(
-                                          Math.abs(val - cantonDefault) < 0.0001 ? null : val,
+                                          Math.abs(val - resolvedTaxPointValue) < 0.0001 ? null : val,
                                         );
                                       }
                                     }}
@@ -6035,7 +6114,7 @@ export default function MedicalConsultationsCard({
                                       onClick={() => setTaxPointOverride(null)}
                                       className="text-[9px] text-amber-600 hover:text-amber-800"
                                     >
-                                      Reset to canton default
+                                      Reset to {resolvedTaxPointValue.toFixed(2)}
                                     </button>
                                   )}
                                 </div>
@@ -6690,7 +6769,10 @@ export default function MedicalConsultationsCard({
                                       </div>
                                       <div className="flex items-center gap-1">
                                         <span className="text-[9px] text-slate-400">TPV:</span>
-                                        <span className="font-mono text-[10px] font-medium text-slate-700">{(effectiveTaxPointValue).toFixed(2)}</span>
+                                        <span
+                                          className="font-mono text-[10px] font-medium text-slate-700"
+                                          title={taxPointOverride !== null ? "Source: manual override" : `Source: ${invoiceTpvResolution.source}`}
+                                        >{(effectiveTaxPointValue).toFixed(2)}</span>
                                       </div>
                                       <div className="flex items-center gap-1">
                                         <span className="text-[9px] text-slate-400">Ext.F:</span>

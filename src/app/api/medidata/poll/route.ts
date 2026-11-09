@@ -8,7 +8,7 @@ import {
   confirmNotification,
   getUploadStatus,
 } from "@/lib/medidataProxy";
-import { parseResponseXml } from "@/lib/medidataResponseParser";
+import { parseResponseXml, primaryErrorCode } from "@/lib/medidataResponseParser";
 import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 import { headers } from "next/headers";
 
@@ -188,6 +188,10 @@ export async function POST() {
 
         // Parse response type from XML
         const parsed = parseResponseXml(content);
+        // status_out is the literal string "unknown" in most insurer payloads,
+        // so storing it left staff with a rejected invoice and no reason. The
+        // machine-readable <error code=… text=…> elements are the real signal.
+        const responseCode = primaryErrorCode(parsed.errors) || parsed.statusOut;
 
         // Detect if this response is for a patient copy (request_subtype="copy")
         // Patient copies (TP Art. 42) are often rejected as duplicates by insurers.
@@ -266,7 +270,7 @@ export async function POST() {
               submission_id: matchedSub.id,
               previous_status: matchedSub.status,
               new_status: matchedSub.status, // status unchanged
-              response_code: parsed.statusOut,
+              response_code: responseCode,
               response_message: `[PATIENT COPY] Insurer response: ${parsed.type}${parsed.explanation ? ` — ${parsed.explanation}` : ""}`,
             });
           } else {
@@ -282,7 +286,7 @@ export async function POST() {
                 .update({
                   status: newStatus,
                   insurance_response_date: new Date().toISOString(),
-                  insurance_response_code: parsed.statusOut,
+                  insurance_response_code: responseCode,
                   insurance_response_message: parsed.explanation || parsed.type,
                   updated_at: new Date().toISOString(),
                 })
@@ -292,7 +296,7 @@ export async function POST() {
                 submission_id: matchedSub.id,
                 previous_status: matchedSub.status,
                 new_status: newStatus,
-                response_code: parsed.statusOut,
+                response_code: responseCode,
                 response_message: `Insurer response: ${parsed.type}${parsed.explanation ? ` — ${parsed.explanation}` : ""}`,
               });
 
@@ -367,7 +371,10 @@ export async function POST() {
           ref,
           type: parsed.type,
           statusOut: parsed.statusOut,
+          responseCode,
           explanation: parsed.explanation,
+          errors: parsed.errors,
+          allowModification: parsed.allowModification,
           submissionId,
           confirmed,
         });

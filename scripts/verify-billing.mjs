@@ -348,9 +348,41 @@ async function post(path, body) {
     body: JSON.stringify(body),
   });
 }
+/**
+ * Staff bearer token.
+ *
+ * Every /api route became staff-only in 23ef2d2a, but this harness was
+ * written before that and sent no credentials, so from then on it reported
+ * "Unauthorized" for every endpoint check — ten false failures that masked
+ * whatever the endpoints were actually doing. Same sign-in as
+ * scripts/verify-authz.mjs.
+ */
+let STAFF_TOKEN = null;
+async function signIn() {
+  const fs = await import("node:fs");
+  const env = fs.readFileSync(".env.local", "utf8");
+  const read = (k) => env.match(new RegExp(`^${k}=(.*)$`, "m"))?.[1]?.trim().replace(/^["']|["']$/g, "");
+  try {
+    const res = await fetch(`${read("NEXT_PUBLIC_SUPABASE_URL")}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: read("NEXT_PUBLIC_SUPABASE_ANON_KEY"), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: process.env.VERIFY_EMAIL || "wilson@mutant.ae",
+        password: process.env.VERIFY_PASSWORD || "wilsontest",
+      }),
+    });
+    STAFF_TOKEN = (await res.json()).access_token ?? null;
+  } catch {
+    STAFF_TOKEN = null;
+  }
+  return STAFF_TOKEN;
+}
+
 async function request(path, init) {
   try {
-    const res = await fetch(`${BASE}${path}`, { ...init, signal: AbortSignal.timeout(180000) });
+    const headers = { ...(init.headers || {}) };
+    if (STAFF_TOKEN && !headers.Authorization) headers.Authorization = `Bearer ${STAFF_TOKEN}`;
+    const res = await fetch(`${BASE}${path}`, { ...init, headers, signal: AbortSignal.timeout(180000) });
     const text = await res.text();
     let json = null;
     try {
@@ -397,9 +429,16 @@ const RESET = "\x1b[0m";
 const COLOUR = { PASS: "\x1b[32m", FAIL: "\x1b[31m", SKIP: "\x1b[33m" };
 
 console.log(`\nBilling verification — ${BASE}${INCLUDE_UNSAFE ? "  [--all: write checks enabled]" : ""}\n`);
+await signIn();
+if (!STAFF_TOKEN) {
+  console.log(
+    "  WARNING: could not obtain a staff token — every endpoint check will report Unauthorized.\n" +
+      "  Set VERIFY_EMAIL / VERIFY_PASSWORD for a staff account.\n",
+  );
+}
 fixtures = await loadFixtures();
 console.log(
-  `fixtures: invoice=${fixtures.invoiceId?.slice(0, 8) ?? "none"} transmitted=${fixtures.transmittedInvoiceId?.slice(0, 8) ?? "none"}\n`,
+  `fixtures: invoice=${fixtures.invoiceId?.slice(0, 8) ?? "none"} transmitted=${fixtures.transmittedInvoiceId?.slice(0, 8) ?? "none"} auth=${STAFF_TOKEN ? "staff" : "NONE"}\n`,
 );
 
 const tally = { PASS: 0, FAIL: 0, SKIP: 0 };

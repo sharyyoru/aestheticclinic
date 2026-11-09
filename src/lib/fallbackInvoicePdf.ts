@@ -1,7 +1,13 @@
 import jsPDF from "jspdf";
-import QRCode from "qrcode";
+import { PDFDocument } from "pdf-lib";
 import type { Invoice, InvoiceLineItem } from "@/lib/invoiceTypes";
-import { generateSwissQrBillDataUrl, generateSwissReference, type SwissQrBillData } from "@/lib/swissQrBill";
+import {
+  renderPaymentPartPdf,
+  buildQrrReference,
+  PAYMENT_PART_HEIGHT_MM,
+} from "@/lib/swissQrBillPaymentPart";
+
+const A4_HEIGHT_MM = 297;
 
 type Party = {
   name: string;
@@ -43,6 +49,33 @@ type FallbackInvoicePdfInput = {
   billingType?: string | null;
 };
 
+/**
+ * Whether the Swiss QR-bill payment slip may be printed.
+ *
+ * Tiers Payant: the insurer is the debtor and pays the clinic directly; the
+ * patient's copy is for information only. Printing a payable slip on it
+ * invites the patient to pay an amount the insurer is also paying.
+ * The invoice's own billing_type is authoritative, same rule as the Sumex path.
+ */
+export function shouldPrintPaymentSlip(input: {
+  billingType?: string | null;
+  remaining: number;
+  iban?: string | null;
+}): boolean {
+  if (!(input.remaining > 0.004) || !input.iban) return false;
+  if ((input.billingType || "").toUpperCase() === "TP") return false;
+  return true;
+}
+
+export function fallbackDocumentTitle(input: {
+  billingType?: string | null;
+  remaining: number;
+}): string {
+  if (input.remaining <= 0.004) return "QUITTANCE";
+  if ((input.billingType || "").toUpperCase() === "TP") return "FACTURE TIERS PAYANT";
+  return "FACTURE";
+}
+
 const money = (value: number | null | undefined) => `${(Number(value) || 0).toFixed(2)} CHF`;
 const date = (value: string | null | undefined) => value ? new Date(value).toLocaleDateString("fr-CH") : "";
 
@@ -83,7 +116,7 @@ export async function buildFallbackInvoicePdf({ invoice, lineItems, patient, bil
   pdf.setTextColor(0, 0, 0);
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(18);
-  pdf.text(paid >= total - 0.01 ? "QUITTANCE" : "FACTURE", margin, 53);
+  pdf.text(fallbackDocumentTitle({ billingType, remaining }), margin, 53);
   pdf.setFontSize(10);
   pdf.text(`N° ${invoice.invoice_number}`, width - margin, 49, { align: "right" });
   pdf.setFont("helvetica", "normal");
@@ -174,42 +207,93 @@ export async function buildFallbackInvoicePdf({ invoice, lineItems, patient, bil
   pdf.text("Solde", width - 55, y + 22, { align: "right" });
   pdf.text(money(remaining), width - margin, y + 22, { align: "right" });
 
-  if (remaining > 0 && biller.iban) {
-    let qrDataUrl: string | null = null;
-    if (invoice.payrexx_payment_link) {
-      qrDataUrl = await QRCode.toDataURL(invoice.payrexx_payment_link, { width: 300, margin: 1 });
-    } else {
-      const addressMatch = (patient.street_address || "").match(/^(.+?)\s+(\d+\S*)$/);
-      const qrData: SwissQrBillData = {
-        iban: biller.iban.replace(/\s/g, ""),
-        creditorName: biller.name,
-        creditorStreet: biller.street || "",
-        creditorBuildingNumber: biller.streetNo || "",
-        creditorPostalCode: biller.postalCode || "",
-        creditorTown: biller.town || "",
-        creditorCountry: "CH",
-        amount: remaining,
-        currency: "CHF",
-        debtorName: `${patient.first_name} ${patient.last_name}`,
-        debtorStreet: addressMatch?.[1] || patient.street_address || undefined,
-        debtorBuildingNumber: addressMatch?.[2] || undefined,
-        debtorPostalCode: patient.postal_code || undefined,
-        debtorTown: patient.town || undefined,
-        debtorCountry: "CH",
-        referenceType: "QRR",
-        reference: generateSwissReference(invoice.invoice_number),
-        unstructuredMessage: `Facture ${invoice.invoice_number}`,
-      };
-      qrDataUrl = await generateSwissQrBillDataUrl(qrData);
-    }
+  // ── Swiss QR-bill payment part ──────────────────────────────────────────
+  //
+  // This replaces the bare 38x38mm QR square that used to sit inline next to
+  // the IBAN. That was not a QR-bill: the Swiss Implementation Guidelines
+  // require a 210x105mm band at the foot of the page (62mm receipt + 148mm
+  // payment part, cut lines, Swiss cross, 46mm code). Counters and banks
+  // refuse anything else, which is why patients could not pay at the post
+  // office — and at 38mm the code was under the 46mm minimum, so it may not
+  // have scanned either.
+  //
+  // A Payrexx link is deliberately NOT encoded here any more: a URL QR is
+  // meaningless at a post office counter. The online link still appears in
+  // the e-mail; this slip is the offline payment route.
+  if (remaining > 0.004 && (billingType || "").toUpperCase() === "TP") {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
-    pdf.text(`IBAN: ${biller.iban}`, margin, y + 38);
-    pdf.addImage(qrDataUrl, "PNG", margin, y + 43, 38, 38);
+    pdf.setTextColor(90, 90, 90);
+    pdf.text(
+      pdf.splitTextToSize(
+        "Copie pour le patient — facture transmise directement à votre assurance (tiers payant). Ne pas payer ce document.",
+        width - margin * 2,
+      ),
+      margin,
+      y + 34,
+    );
+    pdf.setTextColor(0, 0, 0);
   }
 
-  pdf.setTextColor(110, 110, 110);
-  pdf.setFontSize(7);
-  pdf.text("Document de secours généré localement pendant l’indisponibilité du service de facturation.", margin, 289);
-  return Buffer.from(pdf.output("arraybuffer"));
+  let slipPdf: Buffer | null = null;
+  if (biller.iban && shouldPrintPaymentSlip({ billingType, remaining, iban: biller.iban })) {
+    const addressMatch = (patient.street_address || "").match(/^(.+?)\s+(\d+\S*)$/);
+    try {
+      slipPdf = await renderPaymentPartPdf({
+        iban: biller.iban.replace(/\s/g, ""),
+        amount: remaining,
+        currency: "CHF",
+        // QRR is only valid with a QR-IBAN; renderPaymentPartPdf drops the
+        // reference otherwise rather than emitting an invalid combination.
+        reference: buildQrrReference(invoice.invoice_number),
+        creditor: {
+          name: biller.name,
+          street: biller.street,
+          buildingNumber: biller.streetNo,
+          postalCode: biller.postalCode,
+          town: biller.town,
+        },
+        debtor: {
+          name: `${patient.first_name} ${patient.last_name}`.trim(),
+          street: addressMatch?.[1] || patient.street_address || null,
+          buildingNumber: addressMatch?.[2] || null,
+          postalCode: patient.postal_code || null,
+          town: patient.town || null,
+        },
+        message: `Facture ${invoice.invoice_number}`,
+        language: "FR",
+      });
+
+      // The totals block ends at y + 26. If that reaches into the slip band,
+      // put the slip on its own page rather than printing over the totals.
+      if (y + 26 > A4_HEIGHT_MM - PAYMENT_PART_HEIGHT_MM - 4) pdf.addPage();
+    } catch (err) {
+      // Never ship a malformed slip: a wrong-looking payment part is refused
+      // at the counter just the same, but silently. Fall back to printing the
+      // IBAN so the patient can at least pay by manual transfer.
+      console.error("[fallbackInvoicePdf] QR-bill rendering failed:", err);
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.text(`IBAN: ${biller.iban}`, margin, y + 38);
+      pdf.setFontSize(8);
+      pdf.setTextColor(150, 60, 60);
+      pdf.text(
+        "Bulletin de versement indisponible — paiement par virement sur l’IBAN ci-dessus.",
+        margin,
+        y + 44,
+      );
+      pdf.setTextColor(0, 0, 0);
+    }
+  }
+
+  const invoicePdf = Buffer.from(pdf.output("arraybuffer"));
+  if (!slipPdf) return invoicePdf;
+
+  // Overlay the A4 page carrying the vector payment part onto the last page.
+  const out = await PDFDocument.load(invoicePdf);
+  const [slip] = await out.embedPdf(slipPdf, [0]);
+  const pages = out.getPages();
+  const last = pages[pages.length - 1];
+  last.drawPage(slip, { x: 0, y: 0, width: last.getWidth(), height: last.getHeight() });
+  return Buffer.from(await out.save());
 }

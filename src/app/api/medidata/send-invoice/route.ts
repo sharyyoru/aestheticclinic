@@ -29,6 +29,7 @@ import {
 } from "@/lib/sumexInvoice";
 import { deriveTariffType } from "@/lib/tariffType";
 import { resolveTardocTaxPoints, type TardocTaxPointCatalog } from "@/lib/tardocTaxPoints";
+import { getTardocPosition } from "@/lib/oaatCatalog";
 import {
   mapLineItemToSumexService,
   reconcileInvoiceLines,
@@ -191,16 +192,43 @@ export async function POST(request: NextRequest) {
     // storno. Anything else is refused with 409 and the details needed to
     // understand why.
     if (resolvedInvoiceId && !forceResend) {
-      const { data: priorSubmissions } = await supabaseAdmin
+      // `*` rather than a column list on purpose: is_superseded arrives in
+      // 20261106_medidata_superseded_flag.sql and Vercel deploys before
+      // migrations run, so naming it would make this query fail — and a
+      // failing query here used to mean "no prior submissions", i.e. the
+      // guard would silently switch itself off.
+      const { data: priorSubmissions, error: priorError } = await supabaseAdmin
         .from("medidata_submissions")
-        .select("id, status, created_at, medidata_message_id, is_storno")
+        .select("*")
         .eq("invoice_id", resolvedInvoiceId)
         .order("created_at", { ascending: false });
+
+      if (priorError) {
+        // Fail closed. Sending without knowing whether this invoice is
+        // already with the insurer is what produced the duplicate rejections.
+        console.error("[SendInvoice] Duplicate guard lookup failed:", priorError.message);
+        return NextResponse.json(
+          {
+            error: "Could not verify previous submissions",
+            code: "GUARD_UNAVAILABLE",
+            details:
+              "The duplicate check could not run, so the invoice was not sent. " +
+              "Please retry; if this persists, contact support rather than forcing a resend.",
+          },
+          { status: 503 },
+        );
+      }
 
       const blocking = (priorSubmissions ?? []).find(
         (submission) =>
           !submission.is_storno &&
-          ["pending", "transmitted", "accepted"].includes(String(submission.status)),
+          // Retired by scripts/medidata/reconcile-submissions.ts; the row is
+          // kept for audit but is no longer the live submission.
+          !(submission as { is_superseded?: boolean }).is_superseded &&
+          // "delivered" is produced by mapUploadStatusToSubmissionStatus and is
+          // unambiguously live. Omitting it left a hole that would have opened
+          // as soon as the backlog started returning DELIVERED statuses.
+          ["pending", "transmitted", "delivered", "accepted"].includes(String(submission.status)),
       );
 
       if (blocking) {
@@ -222,7 +250,17 @@ export async function POST(request: NextRequest) {
               status: blocking.status,
               createdAt: blocking.created_at,
               transmissionReference: blocking.medidata_message_id,
+              // The insurer's own words, so the modal can say why the invoice
+              // is waiting instead of showing a bare "already submitted".
+              insurerCode: blocking.insurance_response_code || null,
+              insurerMessage: blocking.insurance_response_message || null,
             },
+            // The invoice is in an active state with the insurer, so a
+            // correction can only go out after a cancellation. The modal
+            // offers that as one explicit action.
+            requiresStorno: true,
+            previousSubmissionId: blocking.id,
+            previousStatus: blocking.status,
           },
           { status: 409 },
         );
@@ -394,10 +432,21 @@ export async function POST(request: NextRequest) {
         .filter(Boolean);
       if (tardocCodesNeedingLookup.length > 0) {
         const uniqueCodes = [...new Set(tardocCodesNeedingLookup)];
-        const { data: catalogRows } = await supabaseAdmin
-          .from("tardoc_group_items")
-          .select("tardoc_code, tp_mt, tp_tt")
-          .in("tardoc_code", uniqueCodes);
+        // Official OAAT TARDOC catalogue first; the clinic's saved TARDOC
+        // groups only cover codes it has used before and may hold stale
+        // tax points, so they are the fallback, not the source of truth.
+        const missingCodes: string[] = [];
+        for (const code of uniqueCodes) {
+          const pos = getTardocPosition(code);
+          if (pos) tardocCatalogMap[code] = { tp_mt: pos.tpMT, tp_tt: pos.tpTT };
+          else missingCodes.push(code);
+        }
+        const { data: catalogRows } = missingCodes.length
+          ? await supabaseAdmin
+              .from("tardoc_group_items")
+              .select("tardoc_code, tp_mt, tp_tt")
+              .in("tardoc_code", missingCodes)
+          : { data: [] as Array<{ tardoc_code: string; tp_mt: number | null; tp_tt: number | null }> };
         for (const row of (catalogRows ?? [])) {
           if (row.tardoc_code && !tardocCatalogMap[row.tardoc_code]) {
             tardocCatalogMap[row.tardoc_code] = { tp_mt: row.tp_mt ?? 0, tp_tt: row.tp_tt ?? 0 };
@@ -499,11 +548,39 @@ export async function POST(request: NextRequest) {
     for (const [code, cat] of Object.entries(tardocCatalogMap)) {
       tardocCatalogForMapper[code] = { tpMt: cat.tp_mt, tpTt: cat.tp_tt };
     }
+    // OAAT Fachbereich for lines that carry no section_code of their own.
+    // The treating doctor first, then the billing entity.
+    //
+    // Fetched separately and failure-tolerantly rather than added to the
+    // provider selects above: providers.medical_section_code arrives in
+    // 20261106_provider_medical_section_code.sql and Vercel deploys before
+    // migrations run, so naming it in those selects would make them fail and
+    // take the whole invoice down. Absent column -> no default -> the
+    // attribute is simply omitted, which is valid.
+    let defaultSectionCode = "";
+    const sectionProviderIds = [invoiceRecord?.doctor_user_id, invoiceRecord?.provider_id].filter(
+      Boolean,
+    ) as string[];
+    if (sectionProviderIds.length) {
+      const { data: sectionRows } = await supabaseAdmin
+        .from("providers")
+        .select("id, medical_section_code")
+        .in("id", sectionProviderIds);
+      for (const id of sectionProviderIds) {
+        const hit = (sectionRows ?? []).find((r) => r.id === id);
+        const code = String(hit?.medical_section_code || "").trim();
+        if (code) {
+          defaultSectionCode = code;
+          break;
+        }
+      }
+    }
     const mapperCtx = {
       fallbackProviderGln: provGln,
       fallbackTreatmentDate: treatmentDate,
       skipValidation,
       tardocCatalog: tardocCatalogForMapper,
+      defaultSectionCode,
     };
     const sumexServices: SumexServiceInput[] = (dbLineItems as SumexLineItemRow[]).map(
       (item) => mapLineItemToSumexService(item, mapperCtx),
@@ -856,7 +933,7 @@ export async function POST(request: NextRequest) {
           medidataTransmissionRef = uploadResult.transmissionReference;
 
           // Update submission with transmission details
-          await supabaseAdmin
+          const { error: activateError } = await supabaseAdmin
             .from("medidata_submissions")
             .update({
               status: 'pending',
@@ -865,6 +942,44 @@ export async function POST(request: NextRequest) {
               medidata_response_code: String(uploadResult.statusCode),
             })
             .eq("id", submission.id);
+
+          // 23505 = the one-active-submission-per-invoice index fired, i.e. a
+          // concurrent request beat this one past the application guard.
+          //
+          // Note this protects the DATA, not the transmission: the upload above
+          // has already happened. Both rows cannot be active, so this one is
+          // retired and the row that already holds a MediData reference stays
+          // authoritative. Retiring the loser is what keeps the invoice
+          // re-sendable later instead of being wedged behind a phantom row.
+          if (activateError?.code === "23505") {
+            console.warn(
+              `[SendInvoice] Lost a race for invoice ${resolvedInvoiceId}; ` +
+                `retiring submission ${submission.id} (ref ${uploadResult.transmissionReference}).`,
+            );
+            await supabaseAdmin
+              .from("medidata_submissions")
+              .update({
+                is_superseded: true,
+                medidata_message_id: uploadResult.transmissionReference,
+                medidata_transmission_date: new Date().toISOString(),
+              })
+              .eq("id", submission.id);
+
+            return NextResponse.json(
+              {
+                error: "Already submitted",
+                code: "ALREADY_SUBMITTED",
+                details:
+                  "Another submission for this invoice was created at the same moment and is now " +
+                  "the active one. This copy was retired; do not send again.",
+                requiresStorno: false,
+              },
+              { status: 409 },
+            );
+          }
+          if (activateError) {
+            console.error("[SendInvoice] Could not activate submission:", activateError.message);
+          }
 
           // Record status change
           await supabaseAdmin.from("medidata_submission_history").insert({
