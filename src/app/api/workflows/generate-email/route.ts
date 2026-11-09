@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateContentWithFallback } from "@/lib/geminiWithFallback";
+import { generateContentWithFallback, GeminiBillingError } from "@/lib/geminiWithFallback";
 import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
 import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
@@ -245,8 +245,17 @@ Example output:
     return NextResponse.json({ subject, html, design, paragraphs });
   } catch (error) {
     console.error("Error generating workflow email via Gemini", error);
+    if (error instanceof GeminiBillingError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
-      { error: "Failed to generate email" },
+      {
+        error: "Failed to generate email",
+        details: error instanceof Error ? error.message : undefined,
+      },
       { status: 500 },
     );
   }

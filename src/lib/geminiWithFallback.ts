@@ -12,11 +12,35 @@ import {
  * deprecated in September 2025 and return 404, so we only use 2.x models.
  */
 const MODEL_FALLBACK_CHAIN = [
-  "gemini-2.0-flash",
   "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
-  "gemini-2.0-flash-lite",
 ];
+
+/**
+ * Billing/credit exhaustion, as opposed to per-minute rate limiting.
+ *
+ * Google answers this with HTTP 402 and `RESOURCE_EXHAUSTED`, which reads
+ * like a 429 but is account-wide: every model fails identically, so trying
+ * the next one in the chain is pointless and only delays the error. It is
+ * also not something staff can resolve by retrying, so it must be reported
+ * as itself rather than collapsed into "Failed to generate email".
+ */
+export class GeminiBillingError extends Error {
+  readonly code = "GEMINI_BILLING_EXHAUSTED";
+  constructor(message: string) {
+    super(message);
+    this.name = "GeminiBillingError";
+  }
+}
+
+function isBillingError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes("402") ||
+    message.toLowerCase().includes("prepayment credits are depleted") ||
+    message.toLowerCase().includes("billing")
+  );
+}
 
 /** Errors that indicate the model itself doesn't exist / isn't usable. */
 function isModelNotFoundError(err: unknown): boolean {
@@ -91,6 +115,16 @@ export async function generateContentWithFallback(
         return result;
       } catch (err) {
         lastError = err;
+
+        // Account-wide: every model will fail the same way, so stop here and
+        // say what is actually wrong instead of walking the whole chain.
+        if (isBillingError(err)) {
+          throw new GeminiBillingError(
+            "The Gemini API account has no remaining credits, so AI text generation is unavailable. " +
+              "Top up the Google AI Studio billing account to restore it.",
+          );
+        }
+
         const rateLimited = isRateLimitError(err);
         const retryable = isRetryableError(err);
 

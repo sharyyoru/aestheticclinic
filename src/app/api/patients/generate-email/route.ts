@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { generateContentWithFallback } from "@/lib/geminiWithFallback";
+import { generateContentWithFallback, GeminiBillingError } from "@/lib/geminiWithFallback";
 import { buildKnowledgeBaseSection } from "@/lib/knowledgeBase";
 import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 
@@ -156,8 +156,19 @@ Book an appointment: https://aestheticclinic.vercel.app/book-appointment/locatio
     return NextResponse.json({ subject, body: bodyText });
   } catch (error) {
     console.error("Error generating patient email via Gemini", error);
+    // Report a depleted AI account as itself. Collapsing it into a generic
+    // 500 is why "AI email composition is broken" with no visible cause.
+    if (error instanceof GeminiBillingError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
-      { error: "Failed to generate email" },
+      {
+        error: "Failed to generate email",
+        details: error instanceof Error ? error.message : undefined,
+      },
       { status: 500 },
     );
   }
