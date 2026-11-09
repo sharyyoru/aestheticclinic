@@ -176,7 +176,68 @@ try {
   }
 
   // ── 3. nothing exploded on the way ────────────────────────────────────────
-  console.log("\n3. Browser console");
+  // ── 3. document previews in the File Storage tab ──────────────────────────
+  console.log("\n3. File Storage previews — \"images are still not visible\"");
+  {
+    // Thumbnails and the preview pane load through
+    // /api/documents/proxy-image. An <img> cannot send a bearer token, so
+    // guarding that route made every one of them render broken.
+    const withDocs = await (async () => {
+      const headers = { apikey: SRV, Authorization: `Bearer ${SRV}`, "Content-Type": "application/json" };
+      const list = async (prefix) => {
+        const r = await fetch(`${SUPA}/storage/v1/object/list/patient_document`, {
+          method: "POST", headers, body: JSON.stringify({ prefix, limit: 100 }),
+        });
+        return r.ok ? await r.json() : [];
+      };
+      for (const folder of (await list("")).slice(0, 10)) {
+        const imgs = (await list(folder.name)).filter((f) => f.id && /\.(jpe?g|png)$/i.test(f.name));
+        if (imgs.length) return { patientId: folder.name, count: imgs.length };
+      }
+      return null;
+    })();
+
+    if (!withDocs) {
+      log("INFO", "image documents", "no patient with image documents — nothing to verify");
+    } else {
+      await page.goto(`${BASE}/patients/${withDocs.patientId}?m_tab=medical&medical_sub=documents`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page
+        .waitForFunction(
+          () => [...document.querySelectorAll("img")].some((i) => i.src.includes("proxy-image")),
+          { timeout: 60000 },
+        )
+        .catch(() => {});
+      await page
+        .waitForFunction(
+          () =>
+            [...document.querySelectorAll("img")]
+              .filter((i) => i.src.includes("proxy-image"))
+              .every((i) => i.complete),
+          { timeout: 90000 },
+        )
+        .catch(() => {});
+
+      const shown = await page.evaluate(() =>
+        [...document.querySelectorAll("img")]
+          .filter((i) => i.src.includes("proxy-image"))
+          .map((i) => i.complete && i.naturalWidth > 0),
+      );
+      const ok = shown.filter(Boolean).length;
+      if (shown.length === 0) {
+        log("FAIL", "document previews are rendered", "no proxy-image <img> on the File Storage tab");
+      } else {
+        log(
+          ok === shown.length ? "PASS" : "FAIL",
+          "document previews load",
+          `${ok}/${shown.length} decoded for patient ${withDocs.patientId.slice(0, 8)}`,
+        );
+      }
+    }
+  }
+
+  console.log("\n4. Browser console");
   // 401/403 here is how all three outages looked from inside the page.
   const authErrors = consoleErrors.filter((e) => /401|403|Forbidden|Unauthorized/i.test(e));
   log(

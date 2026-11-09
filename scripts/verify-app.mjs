@@ -47,12 +47,18 @@ async function call(path, token) {
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   try {
     const r = await fetch(`${BASE}${path}`, { headers, signal: AbortSignal.timeout(90000) });
+    const responseHeaders = Object.fromEntries(r.headers.entries());
+    // Images must not be read as text — only the content type matters here.
+    if (String(responseHeaders["content-type"] ?? "").startsWith("image/")) {
+      const bytes = (await r.arrayBuffer()).byteLength;
+      return { status: r.status, headers: responseHeaders, bytes, text: "" };
+    }
     const text = await r.text();
     let json;
     try { json = JSON.parse(text); } catch { /* html error page */ }
-    return { status: r.status, json, text };
+    return { status: r.status, headers: responseHeaders, json, text };
   } catch (e) {
-    return { status: 0, text: String(e.message || e) };
+    return { status: 0, headers: {}, text: String(e.message || e) };
   }
 }
 
@@ -190,6 +196,63 @@ console.log("\n3. Flat-rate + TARDOC catalogues — billing depends on these");
   // state rather than a surprise, and so the fallbacks above stay meaningful.
   const health = await call("/api/sumex/health", token);
   log("INFO", "Sumex1 validator server", `online=${health.json?.online} — catalogues must not depend on it`);
+}
+
+// ───────────────────── 4. the image proxy that document previews load through
+console.log("\n4. Document image proxy — \"images are not visible\"");
+{
+  // Patient File Storage renders thumbnails and previews as
+  // <img src="/api/documents/proxy-image?url=…">. An image subresource cannot
+  // send an Authorization header, so guarding this route with requireStaff
+  // made every document preview answer 401 and render broken. It must serve a
+  // self-authorising storage URL WITHOUT a session — while still refusing to
+  // be used as an open SSRF proxy.
+  // Resolved from the bucket, not patient_documents: the File Storage tab
+  // lists the bucket directly, and most of what it shows has no table row.
+  const listBucket = async (prefix) => {
+    const r = await fetch(`${SUPA}/storage/v1/object/list/patient_document`, {
+      method: "POST",
+      headers: { ...srvHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ prefix, limit: 100 }),
+    });
+    return r.ok ? await r.json() : [];
+  };
+  let imagePath = null;
+  for (const folder of (await listBucket("")).slice(0, 8)) {
+    const hit = (await listBucket(folder.name)).find(
+      (f) => f.id && /\.(jpe?g|png)$/i.test(f.name),
+    );
+    if (hit) { imagePath = `${folder.name}/${hit.name}`; break; }
+  }
+
+  if (!imagePath) {
+    log("INFO", "image document available", "no image document found to verify");
+  } else {
+    const publicUrl = `${SUPA}/storage/v1/object/public/patient_document/${imagePath
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/")}`;
+    const proxied = `/api/documents/proxy-image?url=${encodeURIComponent(publicUrl)}`;
+
+    // No token on purpose: this is exactly what the browser's <img> sends.
+    const anon = await call(proxied, null);
+    const isImage = String(anon.headers?.["content-type"] ?? "").startsWith("image/");
+    log(
+      anon.status === 200 && isImage ? "PASS" : "FAIL",
+      "previews load without a bearer token (as <img> does)",
+      `HTTP ${anon.status}, content-type ${anon.headers?.["content-type"] ?? "none"}`,
+    );
+  }
+
+  // The reason it cannot simply be public: it used to fetch any URL
+  // server-side. Blocked for everyone now, session or not.
+  for (const [label, probe] of [
+    ["external host", "https://example.com/x.png"],
+    ["cloud metadata", "http://169.254.169.254/latest/meta-data/"],
+  ]) {
+    const r = await call(`/api/documents/proxy-image?url=${encodeURIComponent(probe)}`, token);
+    log(r.status === 400 ? "PASS" : "FAIL", `refuses to proxy a ${label} (SSRF)`, `HTTP ${r.status}`);
+  }
 }
 
 console.log(`\n${tally.PASS} passed, ${tally.FAIL} failed\n`);
