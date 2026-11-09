@@ -221,10 +221,25 @@ function toDate(v: string): string {
   return v.length > 10 ? v.slice(0, 10) : v;
 }
 
-/** Ensure a datetime value ("2026-10-08" -> "2026-10-08T00:00:00"). */
+/**
+ * Ensure a datetime value ("2026-10-08" -> "2026-10-08T00:00:00") with NO
+ * timezone designator.
+ *
+ * A service date that arrives as "2026-11-04T08:49:00+00:00" used to be
+ * passed through unchanged, and MediData refused the upload. The offset is
+ * the only thing separating the rejected documents from the accepted ones:
+ * 17 of 17 native service lines carried one, 0 of 1,108 lines the Sumex SDK
+ * produced did. The SDK always emitted bare local time, so that is what is
+ * emitted here — the trailing "Z" or "±HH:MM" is stripped rather than
+ * converted, because the clinic's stored times are already local.
+ */
 function toDateTime(v: string): string {
   if (!v) return "";
-  return v.includes("T") ? v : `${v}T00:00:00`;
+  const withTime = v.includes("T") ? v : `${v}T00:00:00`;
+  // Drop a trailing Z or ±HH:MM / ±HHMM, and any sub-second precision.
+  return withTime
+    .replace(/(?:Z|[+-]\d{2}:?\d{2})$/, "")
+    .replace(/\.\d+$/, "");
 }
 
 function unixSeconds(v: string): number {
@@ -341,15 +356,20 @@ function renderSimpleService(svc: InvoiceServiceInput, recordId: number, input: 
   const vatAmount = Math.round(amount * (vatRate / 100) * 100) / 100;
   const xml =
     `<invoice:service record_id="${recordId}" tariff_type="${esc(svc.tariffType)}" code="${esc(svc.code)}"` +
-    (svc.referenceCode ? ` reference_code="${esc(svc.referenceCode)}"` : "") +
+    // billing_role and medical_role belong on <invoice:service_ex> only: in
+    // the 341 documents MediData accepted they appear on 1,048 service_ex
+    // lines and on none of the 28 simple service lines.
     ` quantity="${svc.quantity}" session="${svc.sessionNumber ?? 1}"` +
     ` date_begin="${toDateTime(svc.dateBegin)}"` +
     (svc.dateEnd ? ` date_end="${toDateTime(svc.dateEnd)}"` : "") +
     ` provider_id="${esc(svc.providerGln)}" responsible_id="${esc(svc.responsibleGln)}"` +
-    ` billing_role="${BILLING_ROLE_MAP[BillingRoleType.Both]}"` +
-    ` medical_role="${MEDICAL_ROLE_MAP[MedicalRoleType.SelfEmployed]}"` +
     ` body_location="${SIDE_MAP[svc.side ?? SideType.None]}"` +
-    ` unit="${unit}" unit_factor="${unitFactor}" scale_factor="${extFactor}"` +
+    // scale_factor is deliberately NOT emitted on a simple <invoice:service>.
+    // The Sumex SDK never did: 0 of the 1,076 service lines in documents
+    // MediData accepted carry it, while all 4 native ones did — two of them
+    // as scale_factor="0". It still takes part in the amount calculation
+    // above; it is only kept out of the element.
+    ` unit="${unit}" unit_factor="${unitFactor}"` +
     ` amount="${fmt2(amount)}"` +
     (vatRate ? ` vat_rate="${vatRate}"` : "") +
     ` service_attributes="${svc.serviceAttributes ?? 0}"` +
@@ -374,7 +394,9 @@ function renderExService(svc: InvoiceServiceInput, recordId: number): RenderedSe
   const vatAmount = Math.round(amount * (vatRate / 100) * 100) / 100;
   const xml =
     `<invoice:service_ex record_id="${recordId}" tariff_type="${esc(svc.tariffType)}" code="${esc(svc.code)}"` +
-    (svc.referenceCode ? ` reference_code="${esc(svc.referenceCode)}"` : "") +
+    // reference_code is never emitted: it occurs zero times across all 1,076
+    // service lines in the documents MediData accepted. The ICD-10 travels in
+    // <invoice:diagnosis> instead, which is where the Sumex SDK put it.
     ` quantity="${svc.quantity}" session="${svc.sessionNumber ?? 1}"` +
     ` date_begin="${toDateTime(svc.dateBegin)}"` +
     (svc.dateEnd ? ` date_end="${toDateTime(svc.dateEnd)}"` : "") +
@@ -402,7 +424,9 @@ function renderExInputService(svc: InvoiceServiceExInput, recordId: number): Ren
   const vatAmount = Math.round(amount * (vatRate / 100) * 100) / 100;
   const xml =
     `<invoice:service_ex record_id="${recordId}" tariff_type="${esc(svc.tariffType)}" code="${esc(svc.code)}"` +
-    (svc.referenceCode ? ` reference_code="${esc(svc.referenceCode)}"` : "") +
+    // reference_code is never emitted: it occurs zero times across all 1,076
+    // service lines in the documents MediData accepted. The ICD-10 travels in
+    // <invoice:diagnosis> instead, which is where the Sumex SDK put it.
     ` quantity="${svc.quantity}" session="${svc.sessionNumber}"` +
     ` date_begin="${toDateTime(svc.dateBegin)}"` +
     (svc.dateEnd ? ` date_end="${toDateTime(svc.dateEnd)}"` : "") +
@@ -557,8 +581,9 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
     : input.billerAddress;
   const implicitServiceProvider =
     !hasServiceProvider && servicePartnerGln
+      // No zsr: all 341 partner elements in accepted documents carry a gln
+      // and none carries a zsr.
       ? `<invoice:partner type="service_provider" gln="${esc(servicePartnerGln)}"` +
-        (servicePartnerZsr ? ` zsr="${esc(servicePartnerZsr)}"` : "") +
         `>${addressXml(servicePartnerAddress)}</invoice:partner>`
       : "";
 

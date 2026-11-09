@@ -106,6 +106,69 @@ const checks = [
     },
   },
 
+  {
+    // MediData validates the upload before any insurer sees it and answers a
+    // bare "INVALID_UPLOAD" with no detail, so the only way to know the shape
+    // is wrong is to compare against documents it already accepted. Every
+    // invoice the native generator produced was refused this way, and the
+    // causes were found one at a time: a missing <partners> block, a 20-digit
+    // card number in ssn, a timezone offset on date_begin, scale_factor and
+    // billing_role/medical_role/reference_code on a simple <service>. This
+    // check exists so the next one is caught here instead of by the clinic.
+    name: "Native XML uses no attribute absent from accepted documents",
+    fn: async () => {
+      const accepted = await db(
+        "medidata_submissions?select=xml_content,status&status=in.(transmitted,accepted)&xml_content=not.is.null&limit=400",
+      );
+      const sdk = accepted.filter((r) => !/AestheticsClinic Native XML/.test(r.xml_content || ""));
+      if (sdk.length < 20) return skip(`only ${sdk.length} accepted documents to compare against`);
+
+      const pairs = (xml) => {
+        const set = new Set();
+        for (const el of xml.matchAll(/<(invoice:[A-Za-z_]+)([^>]*)>/g))
+          for (const at of el[2].matchAll(/\s([a-z_]+)="/g)) set.add(`${el[1]}@${at[1]}`);
+        return set;
+      };
+      const known = new Set();
+      for (const row of sdk) for (const p of pairs(row.xml_content)) known.add(p);
+
+      // A spread of tariff types: TARDOC goes through service_ex, flat rates
+      // and TMA gestures through the simple service element.
+      const candidates = await db(
+        "medidata_submissions?select=invoice_id,invoice_number,xml_content&invoice_id=not.is.null&xml_content=not.is.null&order=created_at.desc&limit=60",
+      );
+      const seen = new Set();
+      const picks = [];
+      for (const row of candidates) {
+        const kind = /tariff_type="007"/.test(row.xml_content) ? "007" : "other";
+        if (seen.has(kind)) continue;
+        seen.add(kind);
+        picks.push(row);
+        if (picks.length === 2) break;
+      }
+      if (!picks.length) return skip("no invoice available to regenerate");
+
+      const offenders = [];
+      let checked = 0;
+      for (const pick of picks) {
+        const gln = (pick.xml_content.match(/<invoice:insurance[^>]*gln="([^"]*)"/) || [])[1];
+        const r = await post("/api/sumex/check-xml", { invoiceId: pick.invoice_id, insurerGln: gln });
+        const xml = r.json?.xmlContent;
+        if (!xml) continue;
+        checked++;
+        for (const p of pairs(xml)) if (!known.has(p)) offenders.push(`${pick.invoice_number}:${p}`);
+        // A service date with a timezone offset is what MediData rejected most
+        // recently: 17 of 17 native lines had one, 0 of 1,108 accepted lines.
+        for (const m of xml.matchAll(/date_begin="([^"]*)"/g))
+          if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(m[1])) offenders.push(`${pick.invoice_number}:date_begin="${m[1]}"`);
+      }
+      if (!checked) return skip("no invoice could be regenerated");
+      return offenders.length
+        ? fail(`${offenders.length} deviation(s) from the accepted shape: ${offenders.slice(0, 5).join(", ")}`)
+        : ok(`${checked} invoice(s) match the shape of ${sdk.length} accepted documents`);
+    },
+  },
+
   // ── The duplicate-submission guard (the fix under test) ───────────────────
   {
     name: "GUARD refuses an already-transmitted invoice",
