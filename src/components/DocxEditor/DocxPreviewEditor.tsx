@@ -865,13 +865,17 @@ export default function DocxPreviewEditor({
         const hasChildSpans = element.querySelector('span') !== null;
         
         if (!hasChildSpans) {
-          // This is a leaf span - mark it if it has text
+          // Every leaf span is marked, including empty ones. Skipping empty
+          // spans meant a blank fill-in field — exactly the areas highlighted
+          // in red on a pre-printed form — never became contentEditable
+          // (toggleEditMode only touches [data-docx-text-idx]), so it could
+          // not be typed into at all. Marking them also keeps these indices
+          // closer to the w:t ordering in the XML, which the index-based
+          // match below relies on.
           const text = element.textContent || '';
-          if (text.length > 0) {
-            (element as HTMLElement).setAttribute('data-docx-text-idx', String(textIndex));
-            textMap.set(textIndex, text);
-            textIndex++;
-          }
+          (element as HTMLElement).setAttribute('data-docx-text-idx', String(textIndex));
+          textMap.set(textIndex, text);
+          textIndex++;
           return; // Don't recurse further
         }
       }
@@ -954,9 +958,28 @@ export default function DocxPreviewEditor({
       const domChanges = collectChangesFromDOM();
 
       // Apply content control field values and DOM changes in the working DOCX
-      const modifiedBlob = await applyChangesToDocx(workingBlob, documentFields, domChanges);
+      const { blob: modifiedBlob, failed } = await applyChangesToDocx(
+        workingBlob,
+        documentFields,
+        domChanges,
+      );
       await onSave(modifiedBlob);
       setHasChanges(false);
+
+      // Edits that could not be placed used to vanish while the save reported
+      // success, so the text came back blank with no explanation. Say so.
+      if (failed.length > 0) {
+        const preview = failed
+          .map((t) => `• ${t.replace(/\s+/g, ' ').slice(0, 60)}`)
+          .slice(0, 5)
+          .join('\n');
+        alert(
+          `Saved, but ${failed.length} edit${failed.length > 1 ? 's' : ''} could not be written ` +
+            `back into this document:\n\n${preview}` +
+            (failed.length > 5 ? `\n…and ${failed.length - 5} more` : '') +
+            `\n\nPlease re-check those areas — the rest of your changes were saved.`,
+        );
+      }
 
       // Update working blob and text reference after save so re-editing continues from the saved state
       setWorkingBlob(modifiedBlob);
@@ -983,7 +1006,7 @@ export default function DocxPreviewEditor({
     blob: Blob,
     fields: DocumentField[],
     changes: Map<number, string>
-  ): Promise<Blob> => {
+  ): Promise<{ blob: Blob; failed: string[] }> => {
     const xml = await readDocumentXml(blob);
     if (!xml) throw new Error('Invalid DOCX file');
 
@@ -997,11 +1020,14 @@ export default function DocxPreviewEditor({
     let modifiedXml = serializeXml(xmlDoc);
 
     // Apply direct text edits if any
+    let failed: string[] = [];
     if (changes.size > 0) {
-      modifiedXml = applyTextChangesToXml(modifiedXml, changes);
+      const applied = applyTextChangesToXml(modifiedXml, changes);
+      modifiedXml = applied.xml;
+      failed = applied.failed;
     }
 
-    return writeDocumentXml(blob, modifiedXml);
+    return { blob: await writeDocumentXml(blob, modifiedXml), failed };
   };
   
   // Helper function to insert line breaks into DOCX XML for a text node
@@ -1052,9 +1078,21 @@ export default function DocxPreviewEditor({
   };
 
   // Apply text changes to XML using content-based matching with context for empty fields
-  const applyTextChangesToXml = (originalXml: string, changes: Map<number, string>): string => {
+  /**
+   * Applies the DOM edits back into word/document.xml.
+   *
+   * Returns the edits it could NOT place. They used to be dropped in silence:
+   * the save then reported success and the text came back blank, which is the
+   * "I fill in the red areas and the changes are not saved" report. Every
+   * branch below either places the edit or records the failure.
+   */
+  const applyTextChangesToXml = (
+    originalXml: string,
+    changes: Map<number, string>,
+  ): { xml: string; failed: string[] } => {
+    const failed: string[] = [];
     if (changes.size === 0) {
-      return originalXml;
+      return { xml: originalXml, failed };
     }
     
     // Parse XML
@@ -1076,6 +1114,20 @@ export default function DocxPreviewEditor({
       // Skip if no actual change
       if (originalText === newText) continue;
       
+      // Strategy 0 — position. The spans were marked walking the rendered
+      // document in order, so index N usually *is* the Nth w:t. Verifying the
+      // text before using it makes this exact: it cannot pick the wrong
+      // duplicate, and it is the only strategy that works for a short value.
+      // Content matching alone dropped the edit whenever the original text
+      // appeared more than once and was <= 3 characters ("Dr", ":", "..") or
+      // did not appear at all, which is most of a pre-printed form.
+      const atIndex = xmlTextArray[idx];
+      if (atIndex && (atIndex.textContent || '') === originalText) {
+        insertLineBreaksIntoTextNode(atIndex, newText, xmlDoc);
+        updatedCount++;
+        continue;
+      }
+
       // Case 1: Original has content - use content-based matching
       if (originalText.trim().length > 0) {
         const matchingNodes = xmlTextArray.filter(el => el.textContent === originalText);
@@ -1086,6 +1138,9 @@ export default function DocxPreviewEditor({
         } else if (matchingNodes.length > 1 && originalText.length > 3) {
           insertLineBreaksIntoTextNode(matchingNodes[0], newText, xmlDoc);
           updatedCount++;
+        } else {
+          // Ambiguous or absent — previously dropped without a word.
+          failed.push(newText);
         }
       }
       // Case 2: Original is empty - user is adding text to an empty field
@@ -1146,14 +1201,18 @@ export default function DocxPreviewEditor({
               }
             }
           }
-          
+
+          if (!inserted) failed.push(newText);
+        } else {
+          // No preceding text to anchor against.
+          failed.push(newText);
         }
       }
     }
     
     // Serialize back to string
     const serializer = new XMLSerializer();
-    return serializer.serializeToString(xmlDoc);
+    return { xml: serializer.serializeToString(xmlDoc), failed };
   };
 
   if (error) {
