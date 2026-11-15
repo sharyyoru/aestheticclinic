@@ -18,6 +18,12 @@ import {
 } from "@/lib/sumexAcf";
 import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
 import { validateAcfLocal } from "@/lib/oaatCatalog";
+import {
+  appliesTo,
+  runTarifmatcher,
+  tarifmatcherConfigured,
+  TARIFMATCHER_APPLICATION_YEAR,
+} from "@/lib/tarifmatcher";
 
 /**
  * API route for ACF (Ambulatory Case Flatrate) validator.
@@ -158,10 +164,98 @@ export async function POST(request: NextRequest) {
     const action = body.action || "validate005";
 
     if (action === "runGrouper") {
+      // Gesture + ICD-10 -> flat rate grouping is the OAAT TarifMatcher's
+      // job; it is not part of the published catalogues. It is a Java
+      // library, so it runs as its own service (tarifmatcher-server/) and is
+      // reached over HTTP — Vercel's Node runtime has no JVM.
+      if (!ACF_USE_SERVER && tarifmatcherConfigured()) {
+        const serviceDate: string | undefined =
+          body.serviceDate || body.treatmentDate || body.dateBegin;
+
+        // The bundle is application_year 2027. Grouping a 2026 treatment with
+        // it would price this year's work at next year's tariff, so it
+        // refuses instead of answering. Remove this gate once the 2026 trees
+        // are loaded alongside.
+        if (!appliesTo(serviceDate)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                `Le groupeur chargé s'applique à partir du 1.1.${TARIFMATCHER_APPLICATION_YEAR}. ` +
+                `Pour une prestation antérieure, sélectionnez le forfait directement dans le catalogue.`,
+            },
+            { status: 503 },
+          );
+        }
+
+        const codes: string[] = (body.services || [])
+          .map((s: { code?: string }) => s?.code)
+          .filter(Boolean);
+        const icd = String(body.icdCode || "").trim();
+        if (!icd) {
+          return NextResponse.json(
+            { success: false, error: "ICD-10 diagnostic code is required" },
+            { status: 400 },
+          );
+        }
+        if (!codes.length) {
+          return NextResponse.json(
+            { success: false, error: "At least one TMA gesture code is required" },
+            { status: 400 },
+          );
+        }
+
+        try {
+          const grouped = await runTarifmatcher({
+            services: codes,
+            diagnoses: [icd],
+            ageYears: body.ageYears,
+            caseId: body.caseId,
+          });
+          if (!grouped.flatRate) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: "Le groupeur n'a retourné aucun forfait pour cette combinaison.",
+                data: { errors: grouped.warnings },
+              },
+              { status: 200 },
+            );
+          }
+          // acfCodes is the shape the invoice UI already consumes. The 2027
+          // system prices a flat rate by cost weight, not tax points, so the
+          // weight is reported as-is and labelled rather than silently
+          // multiplied by a tax point value that no longer applies.
+          return NextResponse.json({
+            success: true,
+            data: {
+              acfCodes: [
+                {
+                  code: grouped.flatRate,
+                  name: `[ambP ${grouped.applicationYear}] ${grouped.flatRate}`,
+                  tp: grouped.costWeight,
+                  costWeight: grouped.costWeight,
+                  chapterCode: "",
+                  chapterName: "",
+                },
+              ],
+              mappedTardocs: grouped.mappedTardocs,
+              applicationYear: grouped.applicationYear,
+              errors: grouped.warnings,
+            },
+          });
+        } catch (err) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Groupeur indisponible: ${err instanceof Error ? err.message : String(err)}`,
+            },
+            { status: 503 },
+          );
+        }
+      }
+
       if (!ACF_USE_SERVER) {
-        // Gesture + ICD-10 -> flat rate grouping is the OAAT TarifMatcher's
-        // job; it is not part of the published catalogues. Say so clearly
-        // instead of timing out against the dead Sumex server.
         return NextResponse.json(
           {
             success: false,
