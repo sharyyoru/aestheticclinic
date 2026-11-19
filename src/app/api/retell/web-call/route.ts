@@ -36,7 +36,12 @@ export async function POST(req: NextRequest) {
       ? "Merci de vous connecter avec moi. Je suis Alice, votre assistante digitale à la Clinique Esthétique. Comment puis-je vous aider aujourd'hui?"
       : "Thank you for connecting with me. I'm Alice, your digital assistant at Aesthetics Clinic. How may I assist you today?";
 
-  const res = await fetch("https://api.retellai.com/v2/create-web-call", {
+  // v3, not v2. Retell deprecated POST /v2/create-web-call on 2026-10-18 and
+  // it now answers 400 "Deprecated API usage is no longer supported: Create
+  // Web Call v2", which is what the chat widget showed visitors as
+  // "Call ended". The body is unchanged and the response still carries
+  // call_id and access_token, so the browser SDK side needs nothing.
+  const res = await fetch("https://api.retellai.com/v3/create-web-call", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${RETELL_API_KEY}`,
