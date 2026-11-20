@@ -11,11 +11,14 @@ const nextConfig: NextConfig = {
   // pdfkit reads its standard-font metrics (Helvetica.afm, …) from its own
   // package directory at runtime; bundling it would break those paths and the
   // QR-bill text would render as empty boxes.
-  serverExternalPackages: ["heic-convert", "libheif-js", "pdfkit"],
+  // xmllint-wasm loads its .wasm next to its own files at runtime.
+  serverExternalPackages: ["heic-convert", "libheif-js", "pdfkit", "xmllint-wasm"],
   // The OAAT tariff catalogues are read from disk by src/lib/oaatCatalog.ts;
   // make sure they ship with the serverless functions.
   outputFileTracingIncludes: {
     "/api/**/*": ["./src/data/oaat/**/*"],
+    // Read by src/lib/invoiceXsd.ts to validate invoices before MediData.
+    "/api/medidata/send-invoice": ["./src/data/xsd/**/*", "./node_modules/xmllint-wasm/xmllint.wasm"],
   },
   images: {
     remotePatterns: [

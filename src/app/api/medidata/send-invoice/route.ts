@@ -36,6 +36,7 @@ import {
   type SumexLineItemRow,
 } from "@/lib/sumexLineMapper";
 import { requireStaff, requireRole, authErrorResponse } from "@/lib/serverAuth";
+import { validateInvoiceXml } from "@/lib/invoiceXsd";
 
 type ConsultationData = {
   id: string;
@@ -113,6 +114,9 @@ export async function POST(request: NextRequest) {
       // Deliberate re-send of an invoice that already reached MediData. Only
       // legitimate for a correction; see the idempotency guard below.
       forceResend = false,
+      // Build and validate the XML exactly as a real send would, then stop:
+      // nothing is uploaded and nothing is written.
+      dryRun = false,
     } = body as {
       invoiceId?: string;
       consultationId?: string;
@@ -133,6 +137,7 @@ export async function POST(request: NextRequest) {
       language?: 1 | 2 | 3;
       skipValidation?: boolean;
       forceResend?: boolean;
+      dryRun?: boolean;
     };
 
     // ── Resolve the invoice (primary) or fall back to consultation ──
@@ -813,6 +818,25 @@ export async function POST(request: NextRequest) {
     }
 
     const xmlContent = sumexResult.xmlContent;
+
+    // Schema gate. MediData answers a schema-invalid upload with a bare
+    // INVALID_UPLOAD hours later; every native XML from 23 Oct to 17 Nov 2026
+    // was rejected that way. Refuse to send it and say exactly what is wrong.
+    const xsd = await validateInvoiceXml(xmlContent);
+    if (dryRun) {
+      return NextResponse.json({ dryRun: true, valid: xsd.valid, errors: xsd.errors, invoiceNumber, xmlContent });
+    }
+    if (!xsd.valid) {
+      console.error(`[SendInvoice] XML for ${invoiceNumber} fails the generalInvoiceRequest 5.0 schema:`, xsd.errors);
+      return NextResponse.json(
+        {
+          error: "Invoice XML does not match the official insurance schema — not sent to MediData",
+          details: xsd.errors.join("; "),
+          validationErrors: xsd.errors,
+        },
+        { status: 422 },
+      );
+    }
     console.log(`[SendInvoice] Sumex1 XML generated: schema=${sumexResult.usedSchema}, validErr=${sumexResult.validationError}, pdfSize=${sumexResult.pdfContent?.length ?? 0}`);
     console.log(`[SendInvoice] Services: requested=${sumexResult.servicesRequested}, accepted=${sumexResult.servicesAccepted}, rejected=${sumexResult.rejectedServices?.length ?? 0}`);
     

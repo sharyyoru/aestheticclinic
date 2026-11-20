@@ -206,6 +206,35 @@ function esc(value: string | number | null | undefined): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Escaped text clipped to the schema's maximum length (stringType1_N).
+ * Clipping happens before escaping so "&amp;" never counts as five
+ * characters, and at a word boundary where possible. MediData rejects the
+ * whole invoice (INVALID_UPLOAD) for one over-long field, e.g. the insurer
+ * name "Assura assurance maladie et accidents" (37 > 35).
+ */
+function escMax(value: string | number | null | undefined, max: number): string {
+  const plain = String(value ?? "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\r]/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (plain.length <= max) return esc(plain);
+  const cut = plain.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return esc((space >= max * 0.6 ? cut.slice(0, space) : cut).trim());
+}
+
+/**
+ * <familyname>/<givenname> are mandatory (minLength 1). Staff records often
+ * hold the whole name in one field, so the given name can be empty; the
+ * documents MediData accepted from the Sumex SDK carried a single space
+ * there. esc() trims, so the space must be added after escaping.
+ */
+const requiredName = (value: string | null | undefined) => escMax(value, 35) || " ";
+
+/** GLN for a debitor who is a private person (no GLN of their own). */
+const PRIVATE_DEBITOR_GLN = "2099999999998";
+
 function fmt2(n: number): string {
   return (Math.round(n * 100) / 100).toFixed(2);
 }
@@ -278,10 +307,10 @@ function postalXml(addr: InvoiceAddress): string {
   return (
     `<invoice:postal>` +
     (street
-      ? `<invoice:street street_name="${esc(streetName)}"${houseNo ? ` house_no="${esc(houseNo)}"` : ""}>${esc(street)}</invoice:street>`
+      ? `<invoice:street street_name="${escMax(streetName, 35)}"${houseNo ? ` house_no="${escMax(houseNo, 10)}"` : ""}>${escMax(street, 35)}</invoice:street>`
       : "") +
-    `<invoice:zip${addr.stateCode ? ` state_code="${esc(addr.stateCode)}"` : ""}>${esc(addr.zip)}</invoice:zip>` +
-    `<invoice:city>${esc(addr.city)}</invoice:city>` +
+    `<invoice:zip${addr.stateCode ? ` state_code="${escMax(addr.stateCode, 9)}"` : ""}>${escMax(addr.zip, 9)}</invoice:zip>` +
+    `<invoice:city>${escMax(addr.city, 35)}</invoice:city>` +
     `</invoice:postal>`
   );
 }
@@ -302,18 +331,18 @@ function addressXml(addr: InvoiceAddress): string {
   if (addr.companyName) {
     return (
       `<invoice:company>` +
-      `<invoice:companyname>${esc(addr.companyName)}</invoice:companyname>` +
-      (addr.department ? `<invoice:department>${esc(addr.department)}</invoice:department>` : "") +
+      `<invoice:companyname>${escMax(addr.companyName, 35)}</invoice:companyname>` +
+      (addr.department ? `<invoice:department>${escMax(addr.department, 35)}</invoice:department>` : "") +
       postalXml(addr) +
       contactXml(addr) +
       `</invoice:company>`
     );
   }
   return (
-    `<invoice:person${addr.salutation ? ` salutation="${esc(addr.salutation)}"` : ""}${addr.title ? ` title="${esc(addr.title)}"` : ""}>` +
-    `<invoice:familyname>${esc(addr.familyName || "")}</invoice:familyname>` +
-    `<invoice:givenname>${esc(addr.givenName || " ")}</invoice:givenname>` +
-    (addr.subaddressing ? `<invoice:subaddressing>${esc(addr.subaddressing)}</invoice:subaddressing>` : "") +
+    `<invoice:person${addr.salutation ? ` salutation="${escMax(addr.salutation, 35)}"` : ""}${addr.title ? ` title="${escMax(addr.title, 35)}"` : ""}>` +
+    `<invoice:familyname>${requiredName(addr.familyName)}</invoice:familyname>` +
+    `<invoice:givenname>${requiredName(addr.givenName)}</invoice:givenname>` +
+    (addr.subaddressing ? `<invoice:subaddressing>${escMax(addr.subaddressing, 35)}</invoice:subaddressing>` : "") +
     postalXml(addr) +
     contactXml(addr) +
     `</invoice:person>`
@@ -505,6 +534,8 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
   const amountDue = Math.round((totalAmount - prepaid) * 100) / 100;
 
   // --- Tiers block ---
+  // allowModification exists (and is required) on tiers_payant only;
+  // on tiers_garant / tiers_soldant it makes the document schema-invalid.
   const tiersTag =
     input.tiersMode === TiersMode.Payant
       ? "tiers_payant"
@@ -522,8 +553,11 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
 
   const useInsuranceAsDebitor = isTP && input.insuranceGln && input.insuranceAddress;
   const debAddr = input.debitorAddress || (useInsuranceAsDebitor ? input.insuranceAddress! : input.patientAddress);
-  const debGln = useInsuranceAsDebitor ? input.insuranceGln! : "";
-  const debitor = `<invoice:debitor${debGln ? ` gln="${esc(debGln)}"` : ""}>${addressXml(debAddr)}</invoice:debitor>`;
+  // debitor@gln is required by the schema. A patient (Tiers Garant) has no
+  // GLN; the TG invoices MediData accepted from the Sumex SDK all carried
+  // the private-person placeholder 2099999999998.
+  const debGln = useInsuranceAsDebitor ? input.insuranceGln! : PRIVATE_DEBITOR_GLN;
+  const debitor = `<invoice:debitor gln="${esc(debGln)}">${addressXml(debAddr)}</invoice:debitor>`;
 
   const providers =
     `<invoice:providers>` +
@@ -546,7 +580,7 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
     ` ssn="${esc(ssnAttr)}"` +
     `>${addressXml(input.patientAddress)}</invoice:patient>`;
   const insured = input.insuredAddress
-    ? `<invoice:insured ssn="${esc(ssnAttr)}">${addressXml(input.insuredAddress)}</invoice:insured>`
+    ? `<invoice:insured gender="${genderAttr(input.patientGender, patientSex)}" sex="${sexAttr(patientSex)}" birthdate="${toDate(input.patientBirthdate)}" ssn="${esc(ssnAttr)}">${addressXml(input.insuredAddress)}</invoice:insured>`
     : "";
   const guarantor = `<invoice:guarantor>${addressXml(guarantorAddr)}</invoice:guarantor>`;
 
@@ -600,8 +634,8 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
     `</invoice:balance>`;
 
   const tiersXml =
-    `<invoice:${tiersTag} allowModification="0">` +
-    billers + debitor + providers + insurance + patient + insured + guarantor + partners + balance +
+    `<invoice:${tiersTag}${tiersTag === "tiers_payant" ? ` allowModification="0"` : ""}>` +
+    billers + debitor + providers + insurance + patient + guarantor + insured + partners + balance +
     `</invoice:${tiersTag}>`;
 
   // --- esrQR ---
@@ -619,6 +653,19 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
     (input.insuredId ? ` insured_id="${esc(input.insuredId)}"` : "") +
     `/>`;
 
+  // --- Diagnoses ---
+  // Schema: <treatment> contains the <diagnosis> elements; a diagnosis has
+  // its code as an attribute (max 12) and any text as element content (max
+  // 350). As a sibling of <treatment>, or with a value= attribute, the whole
+  // invoice is schema-invalid and MediData rejects it as INVALID_UPLOAD.
+  const diagnosisXml = (input.diagnoses || [])
+    .map((d) => {
+      const open = `<invoice:diagnosis type="${DIAGNOSIS_MAP[d.type] || "freetext"}"${d.code ? ` code="${escMax(d.code, 12)}"` : ""}`;
+      const text = d.text ? escMax(d.text, 350) : "";
+      return text ? `${open}>${text}</invoice:diagnosis>` : `${open}/>`;
+    })
+    .join("");
+
   // --- Treatment ---
   const canton = CANTON_NAME[input.treatmentCanton.toUpperCase()] || input.treatmentCanton.toUpperCase();
   const treatmentXml =
@@ -628,15 +675,8 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
       ? ` type="${TREATMENT_TYPE_MAP[input.treatmentType]}"` : "") +
     (input.apid ? ` apid="${esc(input.apid)}"` : "") +
     (input.acid ? ` acid="${esc(input.acid)}"` : "") +
-    `/>`;
+    (diagnosisXml ? `>${diagnosisXml}</invoice:treatment>` : `/>`);
 
-  // --- Diagnoses ---
-  const diagnosisXml = (input.diagnoses || [])
-    .map(
-      (d) =>
-        `<invoice:diagnosis type="${DIAGNOSIS_MAP[d.type] || "freetext"}"${d.code ? ` code="${esc(d.code)}"` : ""}${d.text ? ` value="${esc(d.text)}"` : ""}/>`,
-    )
-    .join("");
 
   // --- Services ---
   const servicesXml =
@@ -668,7 +708,7 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
     `<invoice:transport from="${esc(transportFrom)}" to="${esc(transportTo)}">${viaXml}</invoice:transport>` +
     `</invoice:processing>`;
 
-  const remarkXml = input.remark ? `<invoice:remark>${esc(input.remark)}</invoice:remark>` : "";
+  const remarkXml = input.remark ? `<invoice:remark>${escMax(input.remark, 350)}</invoice:remark>` : "";
 
   const xml =
     `<?xml version="1.0" encoding="UTF-8" standalone="no"?>` +
@@ -682,13 +722,12 @@ export function generateInvoiceXml(input: SumexInvoiceInput): NativeInvoiceXmlRe
     `<invoice:package name="${esc(input.softwarePackage || "AestheticsClinic")}" copyright="${esc(input.softwareCopyright || "Aesthetics Clinic XT SA")}" version="${input.softwareVersion || 100}"/>` +
     `<invoice:generator name="AestheticsClinic Native XML" copyright="Aesthetics Clinic XT SA" version="100"/>` +
     `</invoice:prolog>` +
+    remarkXml +
     tiersXml +
     esrXml +
     lawXml +
     treatmentXml +
-    diagnosisXml +
     servicesXml +
-    remarkXml +
     `</invoice:body>` +
     `</invoice:payload>` +
     `</invoice:request>`;

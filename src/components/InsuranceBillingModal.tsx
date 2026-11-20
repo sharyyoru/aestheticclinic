@@ -516,6 +516,14 @@ export default function InsuranceBillingModal({
           // The amber panel below explains it and offers the Storno.
           return;
         }
+        // Blocked before MediData: the XML breaks the official schema, nearly
+        // always because a patient or insurer detail is missing or too long.
+        if (response.status === 422 && Array.isArray(data.validationErrors)) {
+          throw new Error(
+            `Not sent to MediData — the insurance XML is incomplete: ${data.validationErrors.join("; ")}. ` +
+              `Complete the patient / insurer details (e.g. town, street, name) and send again.`,
+          );
+        }
         if (errMsg.includes("Sumex") || errMsg.includes("XML")) {
           throw new Error(`XML generation failed: ${details || errMsg}. Please check invoice line items and try again.`);
         } else if (errMsg.includes("Patient not found")) {
