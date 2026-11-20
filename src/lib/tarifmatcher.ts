@@ -12,6 +12,8 @@ export type GrouperCase = {
   diagnoses: string[];
   ageYears?: number;
   caseId?: string;
+  /** Selects the tariff year on the service side. */
+  serviceDate?: string;
 };
 
 export type GrouperResult = {
@@ -27,13 +29,13 @@ export function tarifmatcherConfigured(): boolean {
 }
 
 /**
- * The tariff bundle we ship is application_year 2027 and applies from
- * 1 January 2027. Grouping a 2026 service with it would produce next year's
- * flat rate for this year's treatment — a mispriced invoice, which is worse
- * than no grouping at all. Until the 2026 trees are available this refuses
- * rather than answers.
+ * Tariff years the service has loaded. A treatment is grouped with the tariff
+ * in force on its own service date — pricing 2026 work with the 2027 system
+ * gives the wrong flat rate. The service owns the actual selection and
+ * refuses a year it has no bundle for; this is only the lower bound, so the
+ * app never sends a date that cannot possibly be grouped.
  */
-export const TARIFMATCHER_APPLICATION_YEAR = 2027;
+export const TARIFMATCHER_APPLICATION_YEAR = 2026;
 
 export function appliesTo(serviceDate: string | undefined | null): boolean {
   if (!serviceDate) return false;

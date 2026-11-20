@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
             {
               success: false,
               error:
-                `Le groupeur chargé s'applique à partir du 1.1.${TARIFMATCHER_APPLICATION_YEAR}. ` +
+                `Le groupeur est chargé pour les tarifs à partir du 1.1.${TARIFMATCHER_APPLICATION_YEAR}. ` +
                 `Pour une prestation antérieure, sélectionnez le forfait directement dans le catalogue.`,
             },
             { status: 503 },
@@ -211,6 +211,7 @@ export async function POST(request: NextRequest) {
             diagnoses: [icd],
             ageYears: body.ageYears,
             caseId: body.caseId,
+            serviceDate,
           });
           if (!grouped.flatRate) {
             return NextResponse.json(

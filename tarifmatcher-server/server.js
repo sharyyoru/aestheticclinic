@@ -34,13 +34,36 @@ const T = (f) => path.join(DIR, "tariffs", f);
 // the class. Invoke it on the classpath instead.
 const MAIN_CLASS = "ch.oaat_otma.grouper.batchgrouper.Batchgrouper";
 
-const SYSTEM = T("system_ambP_12_lkaat.json");
-const CATALOGUE = T("catalog_ambP_12.csv");
-const LKAAT = T("lkaat_1.1.json");
-const TARDOC = T("tardoc_TARDOC_1.5_fr.json");
+/**
+ * One tariff set per application year. A treatment must be grouped with the
+ * tariff in force on its own service date: pricing 2026 work with the 2027
+ * system produces the wrong flat rate, which is worse than not grouping.
+ *
+ * The 2026 bundle predates `min_tarifmatcher_version` (introduced in 1.2.0),
+ * so that key is absent and the 1.2.1 jar reads it without complaint — one
+ * engine serves both years.
+ */
+const TARIFFS = {
+  2026: {
+    system: T("system_ambP_11c_260402_lkaat.json"),
+    catalogue: T("catalog_ambP_11c.csv"),
+    lkaat: T("lkaat_1.0c_251128.json"),
+    tardoc: T("tardoc_TARDOC_1.4c_251128_fr.json"),
+  },
+  2027: {
+    system: T("system_ambP_12_lkaat.json"),
+    catalogue: T("catalog_ambP_12.csv"),
+    lkaat: T("lkaat_1.1.json"),
+    tardoc: T("tardoc_TARDOC_1.5_fr.json"),
+  },
+};
 
-/** Everything in this bundle is application_year 2027. */
-const APPLICATION_YEAR = 2027;
+const SUPPORTED_YEARS = Object.keys(TARIFFS).map(Number).sort();
+const DEFAULT_YEAR = SUPPORTED_YEARS[SUPPORTED_YEARS.length - 1];
+
+function tariffsFor(year) {
+  return TARIFFS[year] || null;
+}
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -78,13 +101,13 @@ function buildInputCsv(cases) {
   return rows.join("\n") + "\n";
 }
 
-function runGrouper(csv) {
+function runGrouper(csv, t) {
   return new Promise((resolve, reject) => {
     const tmp = path.join(os.tmpdir(), `tm-${Date.now()}-${Math.random().toString(36).slice(2)}.csv`);
     fs.writeFileSync(tmp, csv, "utf8");
     execFile(
       "java",
-      ["-cp", JAR, MAIN_CLASS, "-cat", CATALOGUE, "-lkaat", LKAAT, "-tardoc", TARDOC, "-map", SYSTEM, tmp],
+      ["-cp", JAR, MAIN_CLASS, "-cat", t.catalogue, "-lkaat", t.lkaat, "-tardoc", t.tardoc, "-map", t.system, tmp],
       { timeout: 60_000, maxBuffer: 16 * 1024 * 1024 },
       (err, stdout, stderr) => {
         fs.unlink(tmp, () => {});
@@ -126,10 +149,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && req.url === "/health") {
-    const missing = [SYSTEM, CATALOGUE, LKAAT, TARDOC, JAR].filter((f) => !fs.existsSync(f));
+    const missing = [JAR, ...SUPPORTED_YEARS.flatMap((y) => Object.values(TARIFFS[y]))].filter((f) => !fs.existsSync(f));
     return send(res, missing.length ? 503 : 200, {
       ok: missing.length === 0,
-      applicationYear: APPLICATION_YEAR,
+      supportedYears: SUPPORTED_YEARS,
       missing: missing.map((f) => path.basename(f)),
     });
   }
@@ -141,11 +164,22 @@ const server = http.createServer(async (req, res) => {
       if (!cases.length || !cases.some((c) => (c.services || []).length)) {
         return send(res, 400, { ok: false, error: "At least one service code is required" });
       }
-      const { stdout, stderr } = await runGrouper(buildInputCsv(cases));
+      // The tariff in force on the service date, not "the newest we have".
+      const requested = Number(body.applicationYear) ||
+        (body.serviceDate ? new Date(body.serviceDate).getFullYear() : DEFAULT_YEAR);
+      const tariffs = tariffsFor(requested);
+      if (!tariffs) {
+        return send(res, 400, {
+          ok: false,
+          error: `No tariff loaded for application year ${requested}. Loaded: ${SUPPORTED_YEARS.join(", ")}.`,
+          supportedYears: SUPPORTED_YEARS,
+        });
+      }
+      const { stdout, stderr } = await runGrouper(buildInputCsv(cases), tariffs);
       const results = parseOutput(stdout);
       return send(res, 200, {
         ok: true,
-        applicationYear: APPLICATION_YEAR,
+        applicationYear: requested,
         results,
         // Surfaced rather than swallowed: the grouper reports unknown codes
         // and unusable rows here, and that is exactly what a biller needs.
