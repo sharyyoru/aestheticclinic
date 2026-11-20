@@ -624,7 +624,8 @@ export default function MediDataDashboard() {
             invoiceNumber: json.submission?.invoiceNumber || invoiceId,
             status: json.submission?.status || "error",
             messageId: json.submission?.messageId || null,
-            error: json.error || null,
+            // Include the reason (e.g. which XML field is missing), not only the headline.
+            error: json.error ? (json.details ? `${json.error}: ${json.details}` : json.error) : null,
           });
           if (!json.success) allSuccess = false;
         } catch (err) {
