@@ -19,6 +19,7 @@ const nextConfig: NextConfig = {
     "/api/**/*": ["./src/data/oaat/**/*"],
     // Read by src/lib/invoiceXsd.ts to validate invoices before MediData.
     "/api/medidata/send-invoice": ["./src/data/xsd/**/*", "./node_modules/xmllint-wasm/xmllint.wasm"],
+    "/api/medidata/schema-check": ["./src/data/xsd/**/*", "./node_modules/xmllint-wasm/xmllint.wasm"],
   },
   images: {
     remotePatterns: [

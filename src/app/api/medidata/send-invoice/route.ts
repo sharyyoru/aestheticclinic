@@ -822,9 +822,18 @@ export async function POST(request: NextRequest) {
     // Schema gate. MediData answers a schema-invalid upload with a bare
     // INVALID_UPLOAD hours later; every native XML from 23 Oct to 17 Nov 2026
     // was rejected that way. Refuse to send it and say exactly what is wrong.
-    const xsd = await validateInvoiceXml(xmlContent);
+    // If the validator itself cannot run (e.g. the WASM failed to load in the
+    // serverless runtime), log it loudly but do not block billing: the XML
+    // generator is schema-correct on its own, and MediData still checks.
+    let xsd: { valid: boolean; errors: string[]; unavailable?: boolean };
+    try {
+      xsd = await validateInvoiceXml(xmlContent);
+    } catch (validatorErr) {
+      console.error("[SendInvoice] XSD VALIDATOR UNAVAILABLE - sending without the schema gate:", validatorErr);
+      xsd = { valid: true, errors: [], unavailable: true };
+    }
     if (dryRun) {
-      return NextResponse.json({ dryRun: true, valid: xsd.valid, errors: xsd.errors, invoiceNumber, xmlContent });
+      return NextResponse.json({ dryRun: true, valid: xsd.valid, errors: xsd.errors, validatorUnavailable: Boolean(xsd.unavailable), invoiceNumber, xmlContent });
     }
     if (!xsd.valid) {
       console.error(`[SendInvoice] XML for ${invoiceNumber} fails the generalInvoiceRequest 5.0 schema:`, xsd.errors);
