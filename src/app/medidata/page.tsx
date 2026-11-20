@@ -316,6 +316,17 @@ export default function MediDataDashboard() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
+  // Inline viewer instead of window.open(): the blob URL is only ready after
+  // an await, by which point the click gesture has expired and popup blockers
+  // discard the new tab silently — the PDF was generated and simply never
+  // appeared, which read as "the invoice has no PDF".
+  const [pdfPreview, setPdfPreview] = useState<{ submissionId: string; url: string; label: string } | null>(null);
+  const closePdfPreview = () => {
+    setPdfPreview((current) => {
+      if (current?.url.startsWith("blob:")) URL.revokeObjectURL(current.url);
+      return null;
+    });
+  };
 
   // Participants
   const [participants, setParticipants] = useState<MediDataParticipant[]>([]);
@@ -1700,7 +1711,7 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
                                 }
                                 const blob = await res.blob();
                                 const url = URL.createObjectURL(blob);
-                                window.open(url, "_blank", "noopener,noreferrer");
+                                setPdfPreview({ submissionId: sub.id, url, label: sub.invoice_number });
                               } catch (err) {
                                 alert("Failed to generate PDF");
                               } finally {
@@ -1718,6 +1729,69 @@ ${d.pending.messages.map((m: {code:string;text:string}) => `<div class="msg-row"
                             )}
                             {generatingPdfId === sub.id ? "Generating..." : "View Invoice PDF"}
                           </button>
+                        )}
+
+                        {/* A submitted invoice usually already has a rendered
+                            PDF; offer it directly so checking what was sent
+                            does not require regenerating it. */}
+                        {sub.invoice?.pdf_path && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPdfPreview({
+                                submissionId: sub.id,
+                                url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/invoice-pdfs/${sub.invoice!.pdf_path!.split("/").map(encodeURIComponent).join("/")}`,
+                                label: sub.invoice_number,
+                              });
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            PDF as sent
+                          </button>
+                        )}
+
+                        {pdfPreview?.submissionId === sub.id && (
+                          <div
+                            className="fixed inset-0 z-[9999] flex flex-col bg-slate-900/70 p-4 sm:p-8"
+                            onClick={(e) => { e.stopPropagation(); closePdfPreview(); }}
+                          >
+                            <div
+                              className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-2.5">
+                                <p className="truncate text-sm font-semibold text-slate-900">
+                                  Invoice {pdfPreview.label}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <a
+                                    href={pdfPreview.url}
+                                    download={`Facture_${pdfPreview.label}.pdf`}
+                                    className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                                  >
+                                    Download
+                                  </a>
+                                  <button
+                                    onClick={closePdfPreview}
+                                    className="rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800"
+                                  >
+                                    Close
+                                  </button>
+                                </div>
+                              </div>
+                              {/* An iframe renders in place, so nothing depends
+                                  on a popup surviving the async generation. */}
+                              <iframe
+                                src={pdfPreview.url}
+                                title={`Invoice ${pdfPreview.label}`}
+                                className="h-full w-full flex-1 bg-slate-50"
+                              />
+                            </div>
+                          </div>
                         )}
                       </div>
 
